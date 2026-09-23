@@ -278,6 +278,54 @@ Causas candidatas, a discriminar en la Fase 1 sin presuponer ninguna: la fila no
 llega vacía; llega completa pero el flag `Procesado BF = TRUE` impide reprocesarla; o la clave
 natural no matchea contra el destino.
 
+#### Resultado del diagnóstico (2026-09-22): el corte está en `B → B2`
+
+`DIAG_HUECO`, 79 filas analizadas:
+
+| diagnostico | filas | % |
+|---|---|---|
+| `no_existe_en_B2` | **72** | 91,1% |
+| `clave_incompleta` | 7 | 8,9% |
+| `B2_vacio_tambien` | 0 | — |
+| `corte_B2_a_PR_flag_TRUE` | 0 | — |
+| `corte_B2_a_PR_flag_FALSE` | 0 | — |
+| `corte_PR_a_destino` | 0 | — |
+
+Conteos de contexto:
+
+```
+Destino:        802 filas con datos (getLastRow=2374)
+B2:             714 claves únicas · 14 duplicadas · 23 con clave incompleta
+Para Revisar:   802 claves · 0 duplicadas
+Inscriptos > 0 con las ocho columnas de sexo/edad exactamente en cero: 1
+```
+
+**El staging no pierde datos.** Cero cortes en el paso 4 y cero en el paso 5. Las dos causas
+candidatas que apuntaban al flag `Procesado BF` y al match de la clave natural contra el destino
+quedan **descartadas**: ninguna fila del hueco llegó a B2 con datos.
+
+**El corte está en `B → B2` o antes.** B2 tiene 714 claves contra las 802 del destino: le faltan
+~88, del mismo orden que las 72. Lo que falta nunca entró.
+
+**`Para Revisar` es un espejo del destino**, no un reservorio: 802 claves, las mismas, cero
+duplicadas. No tiene filas que el destino no tenga, así que **no sirve como fuente del backfill**
+— hay que ir a `B` y, si hace falta, al origen.
+
+**14 claves naturales duplicadas en B2.** Deja de ser una preocupación teórica: es evidencia
+directa del problema de la clave `nombre|inscriptos` (decisión 3). Cuando `Inscriptos` cambia
+entre dos corridas, la clave cambia y `syncB_to_B2` inserta una fila nueva en vez de actualizar
+la que ya estaba. Se listan en `DIAG_DUP_B2`.
+
+**Las 23 claves incompletas en B2 son sospechosas.** `syncB_to_B2` inserta la fila igual cuando
+`detectPersona_` o `detectBarrio_` devuelven `''` — sólo saltea si falta `Nombre`
+([Sync B to B2.js:132](Sync%20B%20to%20B2.js#L132)). O sea que esas filas **están en B2**, pero
+sin `Persona` o sin `BarrioN`, así que no se pueden indexar por clave natural y el upsert nunca
+las encuentra. Es una causa distinta de "no llegó", y `DIAG_CORTE_B` la separa
+(`persona_no_reconocida` / `barrio_no_reconocido`).
+
+El seguimiento está en [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md) y
+lo mide `diagnostico/02_corte_B_a_B2.js`.
+
 **Riesgo adicional:** el upsert escribe las columnas de canales sin condición
 (`setIfIndex_(dest, dRow, D.Mail, mail)`). Si el pipeline corre después de que alguien cargó un
 valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
@@ -417,10 +465,17 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    `Para Revisar` se renombra **`Para Revisar (legado)`** y queda como archivo de sólo lectura.
 
-   **Orden obligatorio: no se toca hasta que haya corrido el diagnóstico de la Fase 1.**
-   `Para Revisar` es evidencia. Si tiene filas que nunca cruzaron al destino (la regla 2 del
-   paso 5 las reporta y las descarta), esas filas son **la fuente del backfill de la Fase 6**,
-   no un residuo. Borrarlo antes de medirlo es destruir el dato que estamos buscando.
+   **Confirmada por el diagnóstico del 2026-09-22 (sección 3.2).** La duda era si `Para Revisar`
+   guardaba filas que nunca cruzaron al destino: en ese caso habría sido la fuente del backfill
+   y no un residuo. **No las guarda.** Tiene 802 claves, las mismas 802 del destino, cero
+   duplicadas: es un espejo. Y los pasos 4 y 5 dieron cero cortes, así que tampoco pierde nada.
+   La decisión no hay que reabrirla.
+
+   Lo que sí cambió es la **urgencia**: sacar el staging es simplificación, no cura. El hueco no
+   está acá. Ver Fase 5b.
+
+   Lo que **no** cambió es el **orden**: Fase 3 → `setSiDelSistema_` (Fase 2) → Fase 5b. Que ya
+   no sea urgente no lo vuelve barato.
 
 ### Estructura de archivos
 
@@ -484,8 +539,26 @@ intermedia (2). **No escribe ni un valor ni un fondo en el destino.**
 - `DIAG_PROCEDENCIA` — cuántas celdas de las seis `COLUMNAS_MANUALES` tienen fondo `#4F81BD`.
   Es la medida directa de cuánto pisó el legado la carga del equipo.
 
-Según el resultado se decide si el backfill es un reproceso o hay que ir al origen.
-**Nada de la Fase 5b se toca hasta que estas cinco solapas existan.**
+Cada reporte es un entry point ejecutable suelto y lee sólo las solapas que necesita: la primera
+corrida murió con `Service Spreadsheets timed out` en el último y se llevó puesto todo lo previo.
+
+**Corrió el 2026-09-22. Resultado en la sección 3.2: el corte está en `B → B2`.** Los pasos 4 y
+5 no pierden nada, así que el backfill no es un reproceso del staging — hay que ir a `B` y, si
+hace falta, al origen.
+
+### Fase 1b — Dónde se corta `B → B2`  *(en curso)*
+
+`diagnostico/02_corte_B_a_B2.js`, sólo lectura. Para las 72 filas con `no_existe_en_B2`, busca
+la reunión en el import crudo `B` y clasifica por qué `syncB_to_B2` no generó fila: la persona o
+el barrio fuera de las listas fijas, la fecha no parseable o mal parseada, la fila que ya no está
+en `B`, o la que debería haber entrado y no entró.
+
+Suma `DIAG_DUP_B2` con las 14 claves duplicadas. Detalle en
+[docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md).
+
+**La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
+eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser
+acumulativo** en vez de un espejo del import.
 
 ### Fase 2 — Base limpia
 - `00_Config.js` (con `COLUMNAS_MANUALES`), `01_Utils.js`, `02_Parsing.js`, `05_Escritura.js`.
@@ -524,35 +597,47 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - `COLUMNAS_MANUALES` chequeadas antes que nada: esas seis ni se intentan.
 - Correr en seco (modo `DRY_RUN` que sólo llena `SIN_MATCH` y loguea) antes de habilitar escritura.
 
-### Fase 5b — Retiro del staging
+### Fase 5b — Retiro del staging  *(baja prioridad desde 2026-09-22)*
 
-Orden obligatorio. Cada paso depende del anterior.
+> **Ya no bloquea nada.** El diagnóstico mostró que el staging no pierde datos: cero cortes en
+> los pasos 4 y 5, y `Para Revisar` es un espejo exacto del destino. Sacarlo es **simplificación,
+> no cura** — deja el sistema más fácil de entender y le saca una clave de encima, pero no
+> recupera ni una fila. El hueco está en `B → B2` (sección 3.2) y ahí va el esfuerzo primero.
+>
+> El paso 2 de la lista original — "backfillear desde `Para Revisar` lo que nunca cruzó" —
+> **queda sin objeto**: no hay nada ahí que el destino no tenga.
+
+Cuando le llegue el turno, el orden sigue siendo obligatorio.
 
 **Prerrequisito duro: la Fase 3 tiene que estar terminada.** Con las once fórmulas de array
 todavía puestas, cualquier escritura mal ubicada del upsert nuevo rompe un bloque entero y el
 daño es silencioso. Convertidas a valores, esa clase de problema desaparece y el retiro del
 staging es un cambio de ruteo y nada más.
 
-1. **Confirmar que la Fase 1 corrió** y que `DIAG_HUECO` tiene la columna `existe_en_PR`
-   poblada. Sin eso no se sabe qué hay en `Para Revisar` que no esté en el destino.
-2. **Backfillear desde `Para Revisar` lo que nunca cruzó.** Las filas que el paso 5 venía
-   reportando como "Solo en Para Revisar" y descartando (regla 2) son datos reales que nunca
-   llegaron. Entran por el upsert nuevo, con `setSiDelSistema_`, como cualquier otro origen.
-3. **Redirigir el flujo Agenda** al upsert nuevo. Es la única dependencia real del staging.
-   Verificar con una reunión de prueba de punta a punta antes de seguir.
-4. **Apagar el activador del paso 5**, si existe (Fase 0 dice cuál es). Dejar el código.
-5. **Correr una semana sin el paso 5** y comparar contra `DIAG_*`. Nada nuevo tiene que faltar.
-6. **Renombrar `Para Revisar` → `Para Revisar (legado)`.** El renombre rompe a propósito
-   cualquier script que todavía la escriba: si algo se queja, es que quedaba una dependencia.
-7. **Borrar `Sinc Base usuario.js`** del proyecto de Apps Script (queda en git).
+**Prerrequisito duro: `setSiDelSistema_` escrito y probado** (Fase 2). El paso 5 protege hoy la
+carga manual del destino por accidente, escribiendo sólo sobre celda vacía; si se lo saca sin
+el helper, el upsert nuevo hereda el `setIfIndex_` del legado y pisa todo.
 
-**No se empieza por el 6 ni por el 7.** `Para Revisar` es evidencia hasta que el punto 2 esté
-hecho y verificado.
+1. **Redirigir el flujo Agenda** al upsert nuevo. Es la única dependencia real del staging.
+   Verificar con una reunión de prueba de punta a punta antes de seguir.
+2. **Apagar el activador del paso 5**, si existe (Fase 0 dice cuál es). Dejar el código.
+3. **Correr una semana sin el paso 5** y comparar contra `DIAG_*`. Nada nuevo tiene que faltar.
+4. **Renombrar `Para Revisar` → `Para Revisar (legado)`.** El renombre rompe a propósito
+   cualquier script que todavía la escriba: si algo se queja, es que quedaba una dependencia.
+5. **Borrar `Sinc Base usuario.js`** del proyecto de Apps Script (queda en git).
+
+**No se empieza por el 4 ni por el 5.** Hasta que el punto 3 esté verificado, `Para Revisar` es
+la red que atrapa lo que el upsert nuevo deje pasar.
 
 ### Fase 6 — Backfill
 - Correr el pipeline completo sobre la ventana abril–septiembre 2026.
 - Objetivo: las 79 filas sin sexo/edades y las 17 sin inscriptos.
 - Verificar contra el conteo de la sección 3.2.
+- **El origen del backfill no es `Para Revisar`.** El diagnóstico lo descartó: es un espejo del
+  destino y no tiene nada que el destino no tenga. Los datos hay que sacarlos de `B`, y lo que
+  ya no esté en `B`, del origen (3) — con la regla dura de la sección 1: se lee, no se modifica.
+- Correr con `setSiDelSistema_`: el backfill escribe sobre celdas vacías, que es justo lo que
+  son las 79. Ninguna de estas filas debería pisar nada.
 
 ### Fase 7 — Activadores y el `onEdit` del azul
 - **Dar de baja todos los activadores viejos** (ahora sí, con el inventario de Fase 0 a mano).
