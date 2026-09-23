@@ -1,0 +1,14 @@
+# El repo es público: nada de datos reales.
+*.xlsx
+*.xls
+*.csv.local
+
+# Credenciales de clasp. .clasprc.json tiene el token de OAuth.
+.clasprc.json
+.clasp.local.json
+
+node_modules/
+
+# Ruido del sistema
+.DS_Store
+Thumbs.db
