@@ -9,6 +9,72 @@ de tocar nada.
 
 ---
 
+## 0. El invariante
+
+> **El pipeline nunca pisa lo que carga el usuario.**
+
+Esta regla está por encima de todo lo demás que dice este documento. Si algo del plan,
+de la arquitectura o de una fase choca con ella, **gana el invariante** y lo que se
+replantea es lo otro.
+
+**Por qué.** El equipo carga a mano una parte de `RVD JM-CM - ES`. Ese trabajo no es
+recuperable: no hay ningún origen del cual volver a sacarlo. Un dato del pipeline que se
+pierde se vuelve a calcular corriendo el pipeline; un dato que cargó una persona y se pisó
+está perdido y nadie se entera hasta que alguien nota que un número cambió.
+
+### La marca de procedencia
+
+El sistema ya distingue lo suyo de lo ajeno, aunque nunca lo haya leído de vuelta.
+[Sinc Base usuario.js:286](Sinc%20Base%20usuario.js#L286) pinta `#4F81BD` cada celda que
+escribe, inmediatamente después del `setValue`:
+
+```js
+rng.setValue(vPR);
+rng.setBackground('#4F81BD'); // azul
+```
+
+Verificado sobre la planilla: ese azul aparece **3.779 veces en `RVD JM-CM - ES` y cero
+veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se mantiene
+tal cual: mismo color, misma semántica.** El detalle de cuándo pinta y cuándo no está en
+[docs/sync-bidireccional.md](docs/sync-bidireccional.md).
+
+### La regla
+
+Toda escritura al destino pasa por un helper único:
+
+```js
+setSiDelSistema_(rango, valor)
+```
+
+que escribe **sólo si** la celda está vacía **o** ya tiene fondo `#4F81BD`, y que vuelve a
+pintar `#4F81BD` al escribir.
+
+**Celda con valor y sin ese fondo → la escribió una persona. No se toca.**
+
+No hay `setValue` ni `setValues` sueltos contra el destino. Ninguno. Si aparece uno en un
+diff, el diff está mal.
+
+### Tres consecuencias que no son negociables
+
+**a) El cero cuenta como valor escrito.** Escribir `0` sobre una celda vacía la marca como
+ocupada y borra la diferencia entre "no hay dato" y "el dato es cero". Por eso **B2 tiene
+que guardar celda vacía cuando no hay dato, nunca `0`**. Hoy hace lo contrario: `num()`
+convierte vacío en cero en todos lados, y por eso una fila de B2 que llegó sin datos se ve
+igual que una que llegó con ceros legítimos. Se arregla en la Fase 2, cuando `01_Utils.js`
+reemplaza las nueve copias de `num()`.
+
+**b) No puede haber sincronización bidireccional.** Sincronizar en dos direcciones obliga a
+elegir un ganador en cada conflicto, y acá el ganador es siempre el usuario — con lo cual la
+dirección destino → origen no tiene nada que aportar y sí mucho que romper. El origen se lee,
+el destino se escribe, y las diferencias se reportan en vez de resolverse. Esto es lo que
+mata al paso 5 (sección 4, decisión 9).
+
+**c) Las columnas manuales no se escriben ni aunque estén vacías.** Ver `COLUMNAS_MANUALES`
+en la decisión 8. El invariante protege celdas; esta lista protege columnas enteras, incluso
+antes de que nadie haya cargado nada en ellas.
+
+---
+
 ## 1. Planillas
 
 | # | Rol | ID | ¿Somos dueños? |
@@ -45,9 +111,25 @@ Solapas que importan:
 1  syncA_to_A2_upsert              Sinc A to A2.js
 2  syncB_to_B2                     Sync B to B2.js
 3  normalizeBarriosToBarrioN_A2B2  Barrios.js
-4  upsertBaseFinal_A2_B2           Upset Base FInal.js   → 'RVD JM-CM - ES'
-5  syncBaseFinal_ParaRevisar_y_RVD Sinc Base usuario.js
+4  upsertBaseFinal_A2_B2           Upset Base FInal.js   → 'Para Revisar'   (staging, en (1))
+5  syncBaseFinal_ParaRevisar_y_RVD Sinc Base usuario.js  → 'Para Revisar' ⇄ 'RVD JM-CM - ES'
 ```
+
+**Entre B2 y el destino hay dos saltos, no uno.** El paso 4 no toca `RVD JM-CM - ES`: escribe
+en `Para Revisar`, que es una solapa de staging dentro de la misma planilla (1)
+([Upset Base FInal.js:7](Upset%20Base%20FInal.js#L7), `DEST_SHEET_NAME = 'Para Revisar'`).
+Recién el paso 5 cruza al destino, y lo hace **en las dos direcciones**, con reglas distintas
+según el sentido.
+
+Esto importa para leer cualquier diagnóstico: una fila puede estar completa en B2 y faltar en
+el destino porque se cortó en `B2 → Para Revisar` **o** porque se cortó en
+`Para Revisar → RVD JM-CM - ES`, y son dos causas distintas con dos arreglos distintos. Por eso
+la Fase 1 mide los dos saltos por separado.
+
+Las reglas del paso 5, leídas línea por línea, están en
+[docs/sync-bidireccional.md](docs/sync-bidireccional.md). El resumen: escribe al destino sólo
+sobre celda vacía, y sólo ahí pinta `#4F81BD`; en el otro sentido copia al staging únicamente
+valores no numéricos; cuando los dos lados tienen valor y difieren, no escribe y lo reporta.
 
 Flujo Agenda, separado y **funcionando** (no romper):
 Gmail → `Agenda traer datos del mail.js` → solapa `Agenda` en (4) → `Agenda push a base.js`
@@ -168,8 +250,18 @@ natural no matchea contra el destino.
 
 **Riesgo adicional:** el upsert escribe las columnas de canales sin condición
 (`setIfIndex_(dest, dRow, D.Mail, mail)`). Si el pipeline corre después de que alguien cargó un
-valor a mano, lo pisa con lo que venga de B2 — incluido un cero. Hay que confirmar qué columnas
-son manuales y protegerlas explícitamente.
+valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
+
+> **Corrección (post-lectura del paso 5).** Ese pisado **hoy se detiene en `Para Revisar`**.
+> El paso 4 escribe los ceros de B2 en el staging sin preguntar, pero el paso 5 sólo completa
+> celdas **vacías** del destino, así que el trabajo manual de `RVD JM-CM - ES` está protegido
+> — por accidente de esa regla, no por diseño, y nadie lo escribió en ningún lado.
+>
+> La consecuencia es incómoda: **sacar el staging (decisión 9) es exactamente el cambio que
+> rompería la protección**, si el upsert nuevo hereda el `setIfIndex_` del legado. Por eso
+> `setSiDelSistema_` (sección 0) no es una mejora opcional sino la condición previa para poder
+> eliminar el paso 5. Las columnas manuales ya están confirmadas: ver `COLUMNAS_MANUALES` en la
+> decisión 8.
 
 ### 3.3 Fragilidades del origen
 
@@ -188,13 +280,28 @@ son manuales y protegerlas explícitamente.
 
 ## 4. Arquitectura destino
 
+**Hoy** (dos saltos, staging en el medio, el paso 5 bidireccional):
+
+```
+Hoja1 (1W7mzk) ──IMPORTRANGE──► B ──► B2 ──┐
+                                           ├─paso 4──► Para Revisar ──paso 5──► RVD JM-CM - ES
+RDV CONJUNTO (1ZpHO6) ─IMPORTRANGE─► A ──► A2 ┘            ▲                          │
+                                                           └──────────────────────────┘
+                                                        (sólo valores no numéricos)
+
+Gmail ──► Agenda (1hP8zMN8) ──► Para Revisar
+```
+
+**Destino** (un salto, sin staging, una sola dirección):
+
 ```
 Hoja1 (1W7mzk) ──openById──► B2 ──┐
-                                  ├──► RVD JM-CM - ES ──► recalcDerivadas_()
-RDV CONJUNTO (1ZpHO6) ─openById─► A2 ┘         │
-                                               └──► SIN_MATCH (lo que no matcheó)
+                                  │
+RDV CONJUNTO (1ZpHO6) ─openById─► A2 ──┼──► upsert único ──► RVD JM-CM - ES ──► recalcDerivadas_()
+                                  │       (setSiDelSistema_)        │
+Gmail ──► Agenda (1hP8zMN8) ───────┘                                 └──► SIN_MATCH
 
-Gmail ──► Agenda (1hP8zMN8) ──► Para Revisar   [flujo aparte, se mantiene]
+Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 ```
 
 ### Decisiones
@@ -217,24 +324,63 @@ Gmail ──► Agenda (1hP8zMN8) ──► Para Revisar   [flujo aparte, se man
    reprocesar escribe el mismo valor en la misma fila. Si preocupa el tiempo de ejecución,
    filtrar por ventana de fecha, no por flag.
 7. **Reescribir la columna `Z (ID)`** con formato consistente `Figura - Barrio - dd/MM/yyyy`.
-8. **Columnas manuales protegidas.** `00_Config.js` lleva una lista explícita de columnas que el
-   equipo carga a mano y que el script **nunca** escribe (canales, y las que se confirmen).
-   Ningún `setIfIndex_` puede tocarlas. Regla: si una columna la llena una persona, el pipeline
-   la lee pero no la escribe.
+8. **Columnas manuales protegidas.** `00_Config.js` lleva la lista explícita de columnas que el
+   equipo carga a mano. **Confirmadas, son seis:**
+
+   ```js
+   const COLUMNAS_MANUALES = [
+     'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
+   ];
+   ```
+
+   El pipeline **las lee y nunca las escribe, ni aunque estén vacías.** No es "no pisar": es no
+   escribir. Una celda vacía en una columna manual significa que todavía nadie la cargó, y ese
+   hueco es información — si el script lo rellena con un cero, el equipo pierde la señal de que
+   falta cargarlo.
+
+   Esto es más fuerte que el invariante de la sección 0: `setSiDelSistema_` permitiría escribir
+   sobre una celda vacía, y acá ni eso. Las dos reglas conviven — la lista se chequea primero.
+
+   Ojo con `Inscriptos`: es el total que ve la gente y lo escribe una persona, pero el
+   desagregado de sexo y edades lo calcula el sistema a partir del `Inscriptos` de B2, que es
+   otro número. `DIAG_TOTAL_DIVERGENTE` (Fase 1) mide en cuántas filas no coinciden.
+
+9. **Se elimina el staging.** B2, A2 y el flujo Agenda escriben **directo al destino** a través
+   de un único upsert. Con eso:
+
+   - desaparece `Sinc Base usuario.js` entero (433 líneas) y con él la bidireccionalidad, que
+     el invariante de la sección 0 prohíbe;
+   - queda **una sola clave en juego** en vez de dos (`B2 → Para Revisar` y
+     `Para Revisar → destino` hoy calculan la misma clave natural dos veces, con dos copias
+     distintas de `toDate_`);
+   - el flujo Agenda se redirige al upsert nuevo. El staging es su única dependencia real:
+     `agenda_pushReadyToBaseFinal` escribe en `Para Revisar` y nada más.
+
+   `Para Revisar` se renombra **`Para Revisar (legado)`** y queda como archivo de sólo lectura.
+
+   **Orden obligatorio: no se toca hasta que haya corrido el diagnóstico de la Fase 1.**
+   `Para Revisar` es evidencia. Si tiene filas que nunca cruzaron al destino (la regla 2 del
+   paso 5 las reporta y las descarta), esas filas son **la fuente del backfill de la Fase 6**,
+   no un residuo. Borrarlo antes de medirlo es destruir el dato que estamos buscando.
 
 ### Estructura de archivos
 
 ```
-00_Config.js       IDs, nombres de solapa, constantes. Único lugar con literales.
+00_Config.js       IDs, nombres de solapa, constantes, COLUMNAS_MANUALES. Único lugar con literales.
 01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num  (una sola vez)
 02_Parsing.js      detectPersona_, detectBarrio_, detectFecha_, mapBarrioCanon_
+05_Escritura.js    setSiDelSistema_ y nada más. El único archivo que escribe en el destino.
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
-20_UpsertDestino.js  A2+B2 → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
+20_UpsertDestino.js  A2+B2+Agenda → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
-40_Agenda.js       flujo Gmail → Agenda → Para Revisar  (rescatado del legado)
+40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 99_Pipeline.js     orquestador + onOpen() con menú
 _archivo/          código muerto, fuera del scope global
 ```
+
+`05_Escritura.js` está separado a propósito. Que `setSiDelSistema_` viva solo en su archivo
+hace que la regla de la sección 0 sea verificable de un vistazo: si `grep -rn "setValue" .`
+devuelve algo fuera de ahí que apunte al destino, está mal.
 
 ### Qué se archiva
 
@@ -244,8 +390,15 @@ Diagnósticos de una época: `Comparacion.js`, `Test Puntual.js`, `Test claves.j
 `Upset Base FInal solo actualizacion.js`. Sueltos: `Sin título 3.js`, `Barrio desde Base.js`,
 `En agenda a Realizada.js`, `Carga Manual persona o barrio por equipo/`.
 
+**Se elimina, no se archiva:** `Sinc Base usuario.js`. Es el paso 5 y con la decisión 9 deja de
+tener razón de existir: sincroniza dos hojas cuando va a quedar una sola, y lo hace en las dos
+direcciones, que el invariante prohíbe. Queda en git y, leído, en
+[docs/sync-bidireccional.md](docs/sync-bidireccional.md) — lo único que hay que llevarse de ahí
+es la regla de `#4F81BD`, que ya está en la sección 0. **Se borra en la Fase 5b, no antes.**
+
 Se rescata y reescribe: los tres `detect*_` de `Código.js`, la canonización de `Barrios.js`,
-los cinco pasos de `Completo.js`, y el bloque Agenda completo.
+los cinco pasos de `Completo.js`, y el bloque Agenda completo (redirigido al upsert nuevo:
+hoy escribe en `Para Revisar` y va a escribir en el destino).
 
 ---
 
@@ -258,13 +411,27 @@ los cinco pasos de `Completo.js`, y el bloque Agenda completo.
   dueño. Anotar en `docs/triggers-legado.md`. Todavía no dar de baja nada.
 
 ### Fase 1 — Diagnóstico del hueco
-- Script de sólo lectura que cruza las 79 filas sin sexo/edades contra B2 y responde:
-  ¿la fila existe en B2? ¿tiene los valores? ¿está marcada `Procesado BF = TRUE`?
-- Según el resultado se decide si el backfill es un reproceso o hay que ir al origen.
-- **No escribir nada en esta fase.**
+`diagnostico/01_hueco_sexo_edades.js`, sólo lectura, cinco solapas de salida en la planilla
+intermedia (2). **No escribe ni un valor ni un fondo en el destino.**
+
+- `DIAG_HUECO` — las filas sin sexo/edades contra los **dos saltos**: ¿existe en B2? ¿existe en
+  `Para Revisar`? ¿dónde se cortó, en `B2 → PR` o en `PR → destino`? ¿está marcada
+  `Procesado BF = TRUE`?
+- `DIAG_PISADO` — qué valor de canales traería B2 contra lo que hay hoy en el destino.
+- `DIAG_ATOMICIDAD` — `Inscriptos` y canales los carga el usuario y tienen que entrar juntos.
+  Mide las filas donde entraron a medias.
+- `DIAG_TOTAL_DIVERGENTE` — el total que ve la gente lo escribe el usuario; el desagregado lo
+  calcula el sistema sobre el total de B2. Cuenta en cuántas filas no son el mismo número.
+- `DIAG_PROCEDENCIA` — cuántas celdas de las seis `COLUMNAS_MANUALES` tienen fondo `#4F81BD`.
+  Es la medida directa de cuánto pisó el legado la carga del equipo.
+
+Según el resultado se decide si el backfill es un reproceso o hay que ir al origen.
+**Nada de la Fase 5b se toca hasta que estas cinco solapas existan.**
 
 ### Fase 2 — Base limpia
-- `00_Config.js`, `01_Utils.js`, `02_Parsing.js`.
+- `00_Config.js` (con `COLUMNAS_MANUALES`), `01_Utils.js`, `02_Parsing.js`, `05_Escritura.js`.
+- `setSiDelSistema_` escrito y probado **antes** que cualquier cosa que escriba en el destino.
+- `num()` deja de convertir vacío en cero: vacío se propaga como vacío (sección 0.a).
 - Mover a `_archivo/` todo lo listado arriba y **borrarlo del proyecto de Apps Script** para
   que salga del scope global (queda en git).
 - Arreglar `SRC_SHEET = 'A'` → `'Asistentes'`.
@@ -283,7 +450,30 @@ los cinco pasos de `Completo.js`, y el bloque Agenda completo.
 
 ### Fase 5 — Upsert nuevo
 - `20_UpsertDestino.js` con match uuid → natural → `SIN_MATCH`.
+- **Toda escritura por `setSiDelSistema_`. Cero `setValue` sueltos.** Revisar el diff con
+  `grep -rn "setValue\|setValues" 20_UpsertDestino.js` — tiene que dar cero.
+- `COLUMNAS_MANUALES` chequeadas antes que nada: esas seis ni se intentan.
 - Correr en seco (modo `DRY_RUN` que sólo llena `SIN_MATCH` y loguea) antes de habilitar escritura.
+
+### Fase 5b — Retiro del staging
+
+Orden obligatorio. Cada paso depende del anterior.
+
+1. **Confirmar que la Fase 1 corrió** y que `DIAG_HUECO` tiene la columna `existe_en_PR`
+   poblada. Sin eso no se sabe qué hay en `Para Revisar` que no esté en el destino.
+2. **Backfillear desde `Para Revisar` lo que nunca cruzó.** Las filas que el paso 5 venía
+   reportando como "Solo en Para Revisar" y descartando (regla 2) son datos reales que nunca
+   llegaron. Entran por el upsert nuevo, con `setSiDelSistema_`, como cualquier otro origen.
+3. **Redirigir el flujo Agenda** al upsert nuevo. Es la única dependencia real del staging.
+   Verificar con una reunión de prueba de punta a punta antes de seguir.
+4. **Apagar el activador del paso 5**, si existe (Fase 0 dice cuál es). Dejar el código.
+5. **Correr una semana sin el paso 5** y comparar contra `DIAG_*`. Nada nuevo tiene que faltar.
+6. **Renombrar `Para Revisar` → `Para Revisar (legado)`.** El renombre rompe a propósito
+   cualquier script que todavía la escriba: si algo se queja, es que quedaba una dependencia.
+7. **Borrar `Sinc Base usuario.js`** del proyecto de Apps Script (queda en git).
+
+**No se empieza por el 6 ni por el 7.** `Para Revisar` es evidencia hasta que el punto 2 esté
+hecho y verificado.
 
 ### Fase 6 — Backfill
 - Correr el pipeline completo sobre la ventana abril–septiembre 2026.
@@ -299,11 +489,39 @@ los cinco pasos de `Completo.js`, y el bloque Agenda completo.
 
 ## 6. Convenciones
 
-- **Nada de datos reales en el repo.** Es público. `fixtures/` tiene sólo encabezados.
-  `.gitignore` bloquea `*.xlsx` / `*.xls`.
+- **Nada de datos reales en el repo.** Es público. `fixtures/` tiene sólo encabezados, en CSV.
+  `.gitignore` bloquea `*.xlsx`, `*.xls`, `.clasprc.json` (tiene el token de OAuth) y
+  `node_modules/`.
 - Un `const` top-level por nombre en todo el proyecto. Antes de `clasp push`, verificar
   que no hay duplicados en el scope global.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.
-- Toda escritura al destino pasa por el upsert. Nada de `setValue` sueltos.
+- Toda escritura al destino pasa por el upsert, y dentro del upsert por `setSiDelSistema_`
+  (sección 0). Nada de `setValue` / `setValues` sueltos.
+
+### Formato: el color es información, no decoración
+
+**Ninguna operación puede alterar fondos existentes en el destino.** El `#4F81BD` es la marca
+de procedencia de la que depende el invariante entero; si se pierde, no hay forma de
+reconstruirlo. Además, sólo hay **3 reglas de formato condicional** en `RVD JM-CM - ES` (sobre
+la columna `A`, por nombre de figura): **todo el resto del color es estático**, o sea que vive
+pegado a la celda y se pierde o se corre con cualquier operación estructural.
+
+Prohibido contra el destino:
+
+| prohibido | por qué | qué usar |
+|---|---|---|
+| `Sheet.clear()` | borra contenido **y formato** | `clearContents()` |
+| `Range.clear()` | ídem | `clearContent()` |
+| `sort()` | mueve los valores y deja los fondos quietos: cada celda queda con el color de otra fila | ordenar una copia, o leer a memoria y ordenar ahí |
+| `deleteRow()` / `deleteRows()` | desplaza todo lo de abajo contra fondos que no se mueven igual | marcar la fila, no borrarla |
+| `insertRow*()` en el medio | ídem | `appendRow` / escribir después de la última fila |
+| `setBackground` con cualquier color que no sea `#4F81BD` | pisa la marca de procedencia | sólo `setSiDelSistema_` pinta |
+
+Las tres reglas condicionales de la columna `A` sí se recalculan solas y no hay que preocuparse
+por ellas. El problema es el otro 100% del color.
+
+Antes de cualquier operación que toque estructura en el destino: leer los fondos con
+`getBackgrounds()`, guardarlos, y verificar después. `DIAG_PROCEDENCIA` hace exactamente esa
+lectura y sirve de línea de base.
