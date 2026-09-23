@@ -35,8 +35,8 @@ rng.setBackground('#4F81BD'); // azul
 
 Verificado sobre la planilla: ese azul aparece **3.779 veces en `RVD JM-CM - ES` y cero
 veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se mantiene: mismo
-color, se sigue pintando en cada escritura del sistema.** Lo que no hace es decidir — ver
-"Por qué el azul no es permiso de escritura", más abajo. El detalle de cuándo pinta hoy y cuándo
+color, se sigue pintando en cada escritura del sistema.** Lo que no hace es decidir si escribir
+— ver "Por qué esa regla alcanza", más abajo. El detalle de cuándo pinta hoy y cuándo
 no está en [docs/sync-bidireccional.md](docs/sync-bidireccional.md).
 
 ### La regla
@@ -54,35 +54,46 @@ que escribe **sólo si la celda está vacía**, y que pinta `#4F81BD` al escribi
 No hay `setValue` ni `setValues` sueltos contra el destino. Ninguno. Si aparece uno en un
 diff, el diff está mal.
 
-#### Por qué el azul no es permiso de escritura
+#### Por qué esa regla alcanza: los números del sistema son cerrados
 
-Es tentador relajar la regla a "vacío **o** con fondo `#4F81BD`": total, el azul marca lo que
-escribió el sistema, así que reescribir encima sería inocuo. **No lo es, y la decisión está
-tomada: el fondo no se consulta.**
+El formulario de inscripción **cierra**. Después de eso el total no se actualiza más: los
+inscriptos de una reunión del mes pasado son los que son y no van a cambiar. Lo mismo el
+desagregado por sexo y edades, que sale de ese mismo total.
 
-El azul dice *"el sistema escribió acá alguna vez"*, no *"esta celda es del sistema ahora"*.
-Nada lo despinta. Si una persona corrige a mano un valor que el sistema había escrito, la celda
-**queda azul con contenido humano**, y un helper que leyera el fondo como permiso pisaría
-exactamente la corrección que alguien se tomó el trabajo de hacer — el peor caso posible, y
-además invisible.
+Eso simplifica el problema entero. Si el origen no corrige, **no hay nada que propagar**, y por
+lo tanto:
 
-Un token de permiso tiene que sobrevivir a la edición del usuario, y este no sobrevive. Mientras
-eso siga así, la única señal confiable es la que no se puede falsificar: **la celda está vacía o
-no lo está.**
+- **no hace falta una regla de resolución de conflictos.** No existe el caso "el sistema tiene
+  un valor nuevo y mejor que el que está en la planilla";
+- **no hace falta distinguir una corrección humana del valor original del sistema.** Da igual
+  quién escribió lo que está: si hay algo, es el valor final.
 
-El `#4F81BD` se mantiene igual, pero con un rol más chico y honesto: **marca visual para el
-equipo.** Sirve para que alguien mirando la planilla sepa de un vistazo qué llenó el proceso, y
-sirve como métrica (`DIAG_PROCEDENCIA` cuenta cuánto pisó el legado). No decide nada.
+`setSiDelSistema_` queda exactamente como está:
 
-**Cómo se destraba, en la Fase 7.** Con un `onEdit(e)` que despinte el azul cuando la edición la
-hace una persona, el fondo pasa a significar de verdad "esto es del sistema y nadie lo tocó
-después" — porque una corrección humana lo borra en el momento. **Recién ahí** tiene sentido
-relajar `setSiDelSistema_` a "vacío o azul", y recién ahí el pipeline puede corregir un dato
-suyo que cambió en el origen. Hasta que ese `onEdit` exista y haya corrido un tiempo, la regla
-es la de arriba.
+1. escribe **sólo si la celda está vacía**;
+2. pinta `#4F81BD` al escribir, como **aviso visual para el equipo**;
+3. **lo que ya está cargado no se toca ni se recalcula.** Nunca.
 
-Ojo con el orden: el `onEdit` no puede llegar antes que el resto. Si se despinta el azul antes
-de tener la línea de base de `DIAG_PROCEDENCIA`, se pierde la medición de cuánto pisó el legado.
+Y por eso mismo el azul **no se consulta para decidir si escribir**. Sería tentador relajar la
+regla a "vacío **o** con fondo `#4F81BD`" —total, el azul marca lo que escribió el sistema—
+pero eso sólo serviría para reescribir un valor con otro, que es justo lo que no pasa: no hay
+valor nuevo. Lo único que se ganaría es el riesgo de pisar algo.
+
+El `#4F81BD` tiene entonces dos usos, los dos de lectura:
+
+- **aviso visual**: alguien mirando la planilla ve de un vistazo qué llenó el proceso y qué no;
+- **métrica**: `DIAG_PROCEDENCIA` mide cuánto de las columnas del equipo viene aportando hoy el
+  pipeline (sección 3.2).
+
+No decide nada, y no hace falta que decida.
+
+> **Descartado: el `onEdit` que despintaba el azul.** Estuvo un tiempo anotado en la Fase 7.
+> Su única razón de ser era volver el fondo confiable como token de permiso, para poder habilitar
+> "vacío o azul" y que el pipeline pudiera **propagar correcciones del origen**. Como el origen
+> no corrige, no hay correcciones que propagar y el `onEdit` no resuelve ningún problema real:
+> agrega un trigger, una forma de romper el formato y una regla más que explicar, a cambio de
+> nada. **No reabrirlo.** Lo que sí hace falta —enterarse si un número cerrado se movió— lo
+> resuelve `verificarCambiosRecientes_()` (sección 4, decisión 11), que avisa en vez de escribir.
 
 ### Tres consecuencias que no son negociables
 
@@ -366,6 +377,60 @@ mezcladas.
 El seguimiento está en [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md) y
 lo mide `diagnostico/02_corte_B_a_B2.js`.
 
+#### Los dos totales que no coinciden: estado heredado, no bug
+
+`DIAG_TOTAL_DIVERGENTE` dio **72 filas** donde el `Inscriptos` del destino no es el mismo número
+que el `Inscriptos` de B2. El contraste con `DIAG_ATOMICIDAD` dice qué son:
+
+| comparación | filas que no cuadran |
+|---|---|
+| suma de canales ≠ `Inscriptos` del destino | **3** |
+| suma de sexo ≠ `Inscriptos` del destino | **72** |
+
+Los canales y el total **los carga la misma persona**, así que cierran entre sí: 3 de 802 es
+ruido de tipeo. El desagregado de sexo y edades **lo calcula el sistema**, y lo calcula bien —
+`syncB_to_B2` hace `Math.round(ins × nM / unique)` sobre el `Inscriptos` **del origen**, y el
+resultado cuadra contra ese número. **No hay bug de reparto.**
+
+Lo que hay son **dos números distintos conviviendo en la misma fila**: el total que ve la gente,
+escrito a mano, y un desagregado calculado contra otro total. Las 72 filas **quedan así**. No se
+recalculan: el formulario cerró, el desagregado del origen es el que es, y reescribirlo sobre un
+total manual sería inventar un reparto que nadie midió.
+
+**La regla nueva evita que se repita**, sin necesidad de ninguna lógica extra:
+
+- si el total ya está cargado, el sistema **no escribe** el desagregado (`Inscriptos` es
+  `COLUMNAS_MANUALES`, y `setSiDelSistema_` no toca celdas con valor);
+- si está vacío, lo escribe él, contra su propio total, y los dos números son el mismo.
+
+#### `DIAG_PROCEDENCIA`: cuánto aporta el pipeline, no cuánto pisa
+
+**605 celdas azules** en las seis `COLUMNAS_MANUALES`, y **0 celdas vacías con azul**.
+
+Ese cero confirma la lectura: el paso 5 escribe **sólo sobre celda vacía**, así que las 605 son
+**huecos que el sistema rellenó**, no cosas que pisó. Por eso la métrica se llama **aporte del
+sistema** y no "pisado" — la primera versión del reporte la etiquetó mal.
+
+Por columna, las que más dependen del pipeline:
+
+| columna | aporte del sistema |
+|---|---|
+| `IVR` | 28% |
+| `Call Center` | 26% |
+| `Difusión` | 14% |
+
+**La consecuencia es incómoda y hay que decidirla, no descubrirla en producción.** Con
+`COLUMNAS_MANUALES` intocables (decisión 8), ese aporte **desaparece**: más de una cuarta parte
+de `IVR` y de `Call Center` la venía llenando el proceso. Dos salidas, y hay que elegir una:
+
+- **reemplazarlo con carga humana**, sabiendo que son ~605 celdas por ciclo de vida de la
+  planilla y que alguien tiene que hacerse cargo;
+- **decidir explícitamente que se pierde**, y asumir que esas columnas van a quedar más vacías
+  que hoy.
+
+Lo que no se puede es dejarlo implícito. Si nadie decide, el equipo va a ver columnas que antes
+se llenaban solas y ahora no, sin saber por qué.
+
 **Riesgo adicional:** el upsert escribe las columnas de canales sin condición
 (`setIfIndex_(dest, dRow, D.Mail, mail)`). Si el pipeline corre después de que alguien cargó un
 valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
@@ -517,10 +582,50 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    Lo que **no** cambió es el **orden**: Fase 3 → `setSiDelSistema_` (Fase 2) → Fase 5b. Que ya
    no sea urgente no lo vuelve barato.
 
+11. **Avisar, no corregir: `verificarCambiosRecientes_()` en `40_Alertas.js`.**
+
+    Corre **al final del pipeline**. Toma las filas del destino cuya **fecha de reunión** cae
+    dentro de los últimos `VENTANA_ALERTA_DIAS` días y compara `Inscriptos`, sexo, edades y los
+    cinco canales contra lo que trae B2. Si difieren, escribe una línea en `ALERTA_CAMBIOS`
+    (en la intermedia):
+
+    ```
+    clave | columna | valor_destino | valor_origen | diferencia | fecha_deteccion
+    ```
+
+    **Sólo lectura sobre el destino: no corrige, no escribe, no repinta.** Los números del
+    sistema son cerrados (sección 0). Si uno que ya estaba cargado aparece distinto en el
+    origen, lo más probable **no** es que el origen tenga la versión buena — es que el origen se
+    equivocó. Escribirlo encima **propagaría el error en vez de detectarlo**, y de paso pisaría
+    carga del equipo. La alerta existe para que lo mire una persona.
+
+    Es lo que queda en lugar del `onEdit` descartado: aquel escribía formato para habilitar
+    escrituras que no hacen falta; este no escribe nada y avisa de lo único que sí importa.
+
+    ```js
+    // 00_Config.js
+    const VENTANA_ALERTA_DIAS = 15;
+    ```
+
+    **La ventana se mide sobre la fecha de la reunión, no sobre cuándo se cargó la fila**,
+    porque **no hay ninguna columna con timestamp de carga** ni en el destino ni en B2. Es una
+    aproximación conocida: una fila vieja que alguien completa hoy queda fuera de la ventana.
+    El día que exista una columna de timestamp, esto debería medirse sobre ella.
+
+    `ALERTA_CAMBIOS` es un log: se acumula, no se limpia, y las alertas repetidas no se vuelven
+    a escribir (dedupe por clave + columna + par de valores) para que correr el pipeline todos
+    los días no la llene de la misma línea.
+
+    Un detalle que va a cambiar: hoy se saltea el caso "B2 trae 0", porque `num()` convierte
+    vacío en cero en todo el legado y los dos casos son indistinguibles (sección 0.a). Cuando la
+    Fase 2 haga que vacío se propague como vacío, un 0 real pasa a alertar. Está marcado en el
+    código.
+
 ### Estructura de archivos
 
 ```
-00_Config.js       IDs, solapas, COLUMNAS_MANUALES, COLUMNAS_DERIVADAS. Único lugar con literales.
+00_Config.js       IDs, solapas, COLUMNAS_MANUALES, COLUMNAS_DERIVADAS, VENTANA_ALERTA_DIAS.
+                   Único lugar con literales.                                   ← ya escrito
 01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num  (una sola vez)
 02_Parsing.js      detectPersona_, detectBarrio_, detectFecha_, mapBarrioCanon_
 05_Escritura.js    setSiDelSistema_ y nada más. El único archivo que escribe en el destino.
@@ -528,9 +633,17 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 20_UpsertDestino.js  A2+B2+Agenda → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
+40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú
+diagnostico/       reportes de sólo lectura de las Fases 1 y 1b                 ← ya escrito
 _archivo/          código muerto, fuera del scope global
 ```
+
+`00_Config.js` y `40_Alertas.js` **ya están en el repo**, adelantados al resto: la alerta es de
+sólo lectura sobre el destino, no depende de nada de la Fase 2 y no rompe nada al convivir con
+el legado. **Todavía no están enganchados al pipeline** — `verificarCambiosRecientes_()` se
+llama desde `99_Pipeline.js` cuando ese archivo exista, o a mano con `correrAlertaCambios()`.
+Sus helpers `_alerta` son provisorios y los reemplaza `01_Utils.js` en la Fase 2.
 
 `05_Escritura.js` está separado a propósito. Que `setSiDelSistema_` viva solo en su archivo
 hace que la regla de la sección 0 sea verificable de un vistazo: si `grep -rn "setValue" .`
@@ -609,7 +722,9 @@ acumulativo** en vez de un espejo del import. Las dos ramas y sus costos están 
 lo esperable es encontrarlas mezcladas.
 
 ### Fase 2 — Base limpia
-- `00_Config.js` (con `COLUMNAS_MANUALES`), `01_Utils.js`, `02_Parsing.js`, `05_Escritura.js`.
+- `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
+  `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` y `05_Escritura.js`.
+- Al escribir `01_Utils.js`, reemplazar los helpers `_alerta` provisorios de `40_Alertas.js`.
 - `setSiDelSistema_` escrito y probado **antes** que cualquier cosa que escriba en el destino.
 - `num()` deja de convertir vacío en cero: vacío se propaga como vacío (sección 0.a).
 - Mover a `_archivo/` todo lo listado arriba y **borrarlo del proyecto de Apps Script** para
@@ -687,22 +802,21 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Correr con `setSiDelSistema_`: el backfill escribe sobre celdas vacías, que es justo lo que
   son las 79. Ninguna de estas filas debería pisar nada.
 
-### Fase 7 — Activadores y el `onEdit` del azul
+### Fase 7 — Activadores
 - **Dar de baja todos los activadores viejos** (ahora sí, con el inventario de Fase 0 a mano).
 - Crear los nuevos apuntando a `99_Pipeline.js`.
 - Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
-- **`onEdit(e)` que despinte el `#4F81BD` cuando la edición la hace una persona.** Es lo que le
-  da al azul la semántica que hoy no tiene: "esto es del sistema **y nadie lo tocó después**".
-  Un `onEdit` simple dispara sólo con edición manual en la UI, que es exactamente el caso que
-  interesa; las escrituras del script no lo activan.
-  - Sólo sobre `RVD JM-CM - ES`, y sólo si la celda estaba en `#4F81BD`.
-  - Dejar el fondo por defecto, no blanco: blanco explícito es otro color y ensucia la métrica.
-  - Verificar con `DIAG_PROCEDENCIA` antes y después de una semana: el conteo de azules tiene
-    que bajar sólo por ediciones reales.
-- **Sólo después de eso** se puede evaluar relajar `setSiDelSistema_` a "vacío o azul"
-  (sección 0). Es un cambio aparte, con su propia corrida de verificación, y **no entra en esta
-  fase**: el `onEdit` tiene que haber estado corriendo un tiempo para que el azul que queda sea
-  confiable. Mientras tanto la regla sigue siendo "sólo si está vacía".
+- **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después
+  del upsert y del recálculo de derivadas. Hasta entonces se corre a mano con
+  `correrAlertaCambios()`.
+- Revisar `ALERTA_CAMBIOS` la primera semana: si se llena, no es que todo cambió — es que algún
+  guard está mal calibrado. Si queda vacía con el pipeline corriendo, tampoco está bien: probar
+  a mano moviendo un número en una copia.
+
+> **No lleva `onEdit`.** Estuvo anotado acá y se descartó: ver el recuadro al final de la
+> sección 0. Servía sólo para habilitar "vacío o azul" en `setSiDelSistema_`, y eso servía sólo
+> para propagar correcciones del origen. El origen no corrige. El aviso de que un número cerrado
+> se movió lo da `verificarCambiosRecientes_()` al final del pipeline, sin tocar el destino.
 
 ---
 

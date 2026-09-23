@@ -106,15 +106,20 @@ ahora". Nada lo despinta: si una persona corrige a mano un valor que el sistema 
 la celda **queda azul** con contenido humano.
 
 **Decisión tomada (CLAUDE.md sección 0): `setSiDelSistema_` no consulta el fondo.** Escribe
-sólo si la celda está vacía. Un token de permiso tiene que sobrevivir a la edición del usuario
-y este no sobrevive, así que el azul queda como **marca visual y métrica**, no como permiso.
+sólo si la celda está vacía, y el azul queda como **aviso visual y métrica**, no como permiso.
 
-Se destraba en la Fase 7, con un `onEdit(e)` que despinte el azul cuando la edición la hace una
-persona. Ahí sí el fondo pasa a significar "es del sistema y nadie lo tocó después", y recién
-ahí tiene sentido evaluar relajar la regla a "vacío o azul".
+Y no hace falta que sea más que eso: **los números del sistema son cerrados.** El formulario
+cierra y el total no se actualiza, así que nunca existe un valor nuevo que quiera reemplazar al
+que ya está. Relajar la regla a "vacío o azul" no habilitaría nada útil.
 
-`DIAG_PROCEDENCIA` mide el tamaño del asunto: cuántas celdas de las seis `COLUMNAS_MANUALES`
-están pintadas, que es cuánto pisó el legado la carga del equipo.
+> Hubo un `onEdit` anotado en la Fase 7 para despintar el azul en ediciones humanas y volverlo
+> un token confiable. **Se descartó**: existía sólo para propagar correcciones del origen, y el
+> origen no corrige. Lo que sí hacía falta —enterarse si un número cerrado se movió— lo cubre
+> `verificarCambiosRecientes_()`, que avisa en `ALERTA_CAMBIOS` sin tocar el destino.
+
+`DIAG_PROCEDENCIA` mide otra cosa, y su primera etiqueta estaba mal: como el paso 5 escribe sólo
+sobre celda vacía, las celdas azules son **huecos que el sistema rellenó**, no cosas que pisó.
+Mide **aporte del sistema**, no pisado.
 
 ## La blacklist de columnas derivadas
 

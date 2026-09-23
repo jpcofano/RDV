@@ -787,14 +787,19 @@ function generarTotalDivergente_diag(cache) {
 
 /**
  * Para las seis COLUMNAS_MANUALES, cuenta cuántas celdas con valor tienen fondo #4F81BD (las
- * escribió el sistema: no debería) y cuántas no (las cargó una persona).
+ * escribió el sistema) y cuántas no (las cargó una persona).
+ *
+ * **Mide aporte, no pisado.** El paso 5 escribe sólo sobre celda vacía, así que una celda azul
+ * es un hueco que el sistema rellenó, no algo que sobreescribió. La columna se llama
+ * `aporte_del_sistema` por eso. `celdas_vacias_con_azul` es el control: si diera > 0, habría
+ * que revisar la premisa.
+ *
+ * Para qué sirve el número: dice cuánta carga de las columnas que son del equipo la viene
+ * haciendo el pipeline. Con COLUMNAS_MANUALES intocables (CLAUDE.md, decisión 8) ese aporte
+ * desaparece, y hay que reemplazarlo con carga humana o decidir que se pierde.
  *
  * Lee los fondos con getBackgrounds(), una llamada por columna: son seis columnas por ~2374
  * filas, contra las ~97.000 celdas que traería leer la hoja entera.
- *
- * Límite conocido: el azul dice "el sistema escribió acá alguna vez", no "esto es del sistema
- * ahora". Si una persona corrigió a mano sobre una celda azul, sigue contando como del sistema.
- * Ver docs/sync-bidireccional.md.
  */
 function generarProcedencia_diag(cache) {
   const dest = cacheDestino_diag(cache);   // no necesita B2 ni Para Revisar
@@ -805,7 +810,7 @@ function generarProcedencia_diag(cache) {
   const nFilas = dest.filasDestCrudas - 1;
 
   const salida = [['columna', 'celdas_con_valor', 'escritas_por_sistema_azul',
-                   'cargadas_a_mano', 'pct_pisado', 'celdas_vacias_con_azul']];
+                   'cargadas_a_mano', 'pct_aporte_del_sistema', 'celdas_vacias_con_azul']];
 
   const totales = { conValor: 0, azul: 0, mano: 0, vaciasAzul: 0 };
 
@@ -848,11 +853,19 @@ function generarProcedencia_diag(cache) {
   Logger.log('=== DIAG_PROCEDENCIA ===');
   Logger.log('Columnas manuales: %s', DIAG_COLUMNAS_MANUALES.join(', '));
   for (let i = 1; i < salida.length; i++) {
-    Logger.log('  %s: con valor %s | azul (sistema) %s | a mano %s | pisado %s%% | vacías con azul %s',
+    Logger.log('  %s: con valor %s | azul (sistema) %s | a mano %s | aporte del sistema %s%% | ' +
+               'vacías con azul %s',
                salida[i][0], salida[i][1], salida[i][2], salida[i][3], salida[i][4], salida[i][5]);
   }
-  Logger.log('El azul marca lo que escribió el sistema en columnas que son del equipo. ' +
-             'Es la medida de cuánto pisó el legado la carga manual.');
+  Logger.log('El azul mide APORTE, no pisado: el paso 5 escribe sólo sobre celda vacía, así que');
+  Logger.log('son huecos que el sistema rellenó. El control es "vacías con azul": %s.',
+             totales.vaciasAzul);
+  if (totales.vaciasAzul > 0) {
+    Logger.log('  >>> Es > 0: alguien borró el contenido de una celda que el sistema había ' +
+               'escrito, o la premisa de "sólo sobre celda vacía" no se cumple. Revisar.');
+  }
+  Logger.log('Consecuencia: con COLUMNAS_MANUALES intocables ese aporte desaparece. Hay que');
+  Logger.log('reemplazarlo con carga humana o decidir explícitamente que se pierde.');
 
   return { porColumna: salida.slice(1, -1), total: totales };
 }
