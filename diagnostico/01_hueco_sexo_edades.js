@@ -535,16 +535,18 @@ function generarPisado_diag(ctx) {
 
 /**
  * Inscriptos y los canales los carga el usuario y tienen que entrar todos juntos.
- * Estados:
+ * Siete estados, que cubren las ocho combinaciones de (hay total, hay canales, hay desagregado):
  *   vacio                      no hay total ni canales ni sexo/edades
  *   solo_total                 hay Inscriptos y nada más
- *   parcial_falta_canales      hay sexo/edades pero los canales están en cero
+ *   solo_desagregado           hay sexo/edades y nada más: el sistema escribió sobre una fila
+ *                              que el usuario todavía no cargó. El espejo de solo_total.
+ *   parcial_falta_canales      hay total y desagregado, pero los canales están en cero
  *   parcial_falta_sexo_edades  hay canales pero el desagregado está en cero
  *   completo_y_cuadra          las tres sumas coinciden con el total
  *   completo_no_cuadra         está todo cargado pero alguna suma no da el total
  *
- * Las filas con desagregado y sin total caen en el estado que refleja lo que falta y se
- * cuentan aparte en el log (sinTotalConDesagregado).
+ * Las filas con canales y/o desagregado pero sin total (que no son solo_desagregado) se
+ * cuentan aparte en el log: sinTotalConDesagregado.
  */
 function generarAtomicidad_diag(ctx) {
   const D = ctx.D;
@@ -554,7 +556,7 @@ function generarAtomicidad_diag(ctx) {
   const conteo = {
     completo_y_cuadra: 0, completo_no_cuadra: 0,
     parcial_falta_canales: 0, parcial_falta_sexo_edades: 0,
-    solo_total: 0, vacio: 0
+    solo_total: 0, solo_desagregado: 0, vacio: 0
   };
   let sinTotalConDesagregado = 0;
   let canalesNoCuadran = 0, sexoNoCuadra = 0, edadesNoCuadran = 0;
@@ -575,6 +577,10 @@ function generarAtomicidad_diag(ctx) {
     let estado;
     if (!hayTotal && !hayCanales && !hayDesagregado) {
       estado = 'vacio';
+    } else if (hayTotal && !hayCanales && !hayDesagregado) {
+      estado = 'solo_total';
+    } else if (!hayTotal && !hayCanales && hayDesagregado) {
+      estado = 'solo_desagregado';
     } else if (hayCanales && hayDesagregado) {
       const cuadra = (sumaCanales === total) && (sumaSexo === total) && (sumaEdades === total);
       estado = cuadra ? 'completo_y_cuadra' : 'completo_no_cuadra';
@@ -587,11 +593,9 @@ function generarAtomicidad_diag(ctx) {
     } else if (hayCanales && !hayDesagregado) {
       estado = 'parcial_falta_sexo_edades';
       if (!hayTotal) sinTotalConDesagregado++;
-    } else if (!hayCanales && hayDesagregado) {
-      estado = 'parcial_falta_canales';
-      if (!hayTotal) sinTotalConDesagregado++;
     } else {
-      estado = 'solo_total';
+      // hayTotal && !hayCanales && hayDesagregado
+      estado = 'parcial_falta_canales';
     }
 
     conteo[estado]++;
@@ -630,11 +634,12 @@ function generarAtomicidad_diag(ctx) {
 function generarTotalDivergente_diag(ctx) {
   const D = ctx.D;
   const salida = [['clave', 'inscriptos_destino_manual', 'inscriptos_B2_origen', 'diferencia',
-                   'suma_sexo', 'suma_edades']];
+                   'suma_sexo', 'suma_edades', 'sin_contraparte_B2']];
 
   let comparadas = 0, sinMatch = 0, divergen = 0;
   let divergenConDesagregado = 0;
   let sexoNoSumaTotalManual = 0, edadesNoSumanTotalManual = 0;
+  let sinMatchConDesagregado = 0;
   let sumaDiferenciaAbs = 0;
 
   for (let i = 0; i < ctx.filas.length; i++) {
@@ -642,14 +647,25 @@ function generarTotalDivergente_diag(ctx) {
     const r = f.valores;
     const b2 = f.clave ? ctx.porClave.get(f.clave) : null;
 
-    // Sin contraparte en B2 no hay nada que comparar: se cuenta y no se emite fila.
-    if (!b2) { sinMatch++; continue; }
-
     const insDestino = num_diag(r[D.Ins]);
-    const insB2 = b2.inscriptos;
-    const diferencia = insDestino - insB2;
     const sumaSexo = num_diag(r[D.Masc]) + num_diag(r[D.Fem]);
     const sumaEdades = D.edades.reduce(function (a, idx) { return a + num_diag(r[idx]); }, 0);
+
+    /*
+     * Sin contraparte en B2 no hay contra qué comparar, pero la fila igual se emite: que no
+     * haya con qué cotejar el total también es un hallazgo, sobre todo si el desagregado está
+     * escrito — quiere decir que salió de algún lado que hoy no se puede reconstruir.
+     */
+    if (!b2) {
+      sinMatch++;
+      if (sumaSexo > 0 || sumaEdades > 0) sinMatchConDesagregado++;
+      salida.push([f.clave || '(clave incompleta)', insDestino, '', '',
+                   sumaSexo, sumaEdades, 'TRUE']);
+      continue;
+    }
+
+    const insB2 = b2.inscriptos;
+    const diferencia = insDestino - insB2;
 
     comparadas++;
     if (diferencia !== 0) {
@@ -660,13 +676,15 @@ function generarTotalDivergente_diag(ctx) {
     if (sumaSexo > 0 && sumaSexo !== insDestino) sexoNoSumaTotalManual++;
     if (sumaEdades > 0 && sumaEdades !== insDestino) edadesNoSumanTotalManual++;
 
-    salida.push([f.clave, insDestino, insB2, diferencia, sumaSexo, sumaEdades]);
+    salida.push([f.clave, insDestino, insB2, diferencia, sumaSexo, sumaEdades, 'FALSE']);
   }
 
   escribirHoja_diag('DIAG_TOTAL_DIVERGENTE', salida);
 
   Logger.log('=== DIAG_TOTAL_DIVERGENTE ===');
-  Logger.log('Filas comparadas: %s (sin contraparte en B2, no comparables: %s)', comparadas, sinMatch);
+  Logger.log('Filas emitidas: %s | comparables: %s | sin contraparte en B2: %s',
+             salida.length - 1, comparadas, sinMatch);
+  Logger.log('  de las sin contraparte, con desagregado ya escrito: %s', sinMatchConDesagregado);
   Logger.log('Filas donde Inscriptos manual != Inscriptos de B2: %s', divergen);
   Logger.log('  >>> de esas, con desagregado escrito por el sistema: %s', divergenConDesagregado);
   Logger.log('      (son las filas donde el desagregado NO suma el total que ve la gente)');
@@ -675,7 +693,8 @@ function generarTotalDivergente_diag(ctx) {
   Logger.log('Filas con edades cargadas que no suman el total manual: %s', edadesNoSumanTotalManual);
 
   return { comparadas: comparadas, sinMatch: sinMatch, divergen: divergen,
-           divergenConDesagregado: divergenConDesagregado };
+           divergenConDesagregado: divergenConDesagregado,
+           sinMatchConDesagregado: sinMatchConDesagregado };
 }
 
 // ===================== DIAG_PROCEDENCIA =====================
