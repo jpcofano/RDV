@@ -6,10 +6,10 @@
  *   - NO toca las once columnas con fórmulas de array (D, W, X, Y, AA–AG). Ver CLAUDE.md 3.1.b;
  *   - sólo crea/reescribe sus cinco solapas DIAG_* en la planilla intermedia (2).
  *
- * Puntos de entrada:
- *   diagFase1()               corre los cinco reportes leyendo todo una sola vez.
+ * Puntos de entrada, todos ejecutables sueltos desde el editor:
+ *   diagFase1()               atajo: los cinco en orden, compartiendo lecturas.
  *   diagHuecoSexoEdades()     → DIAG_HUECO
- *   diagPisadoCanales()       → DIAG_PISADO
+ *   diagPisado()              → DIAG_PISADO
  *   diagAtomicidad()          → DIAG_ATOMICIDAD
  *   diagTotalDivergente()     → DIAG_TOTAL_DIVERGENTE
  *   diagProcedencia()         → DIAG_PROCEDENCIA
@@ -73,23 +73,58 @@ const DIAG_TZ = 'America/Argentina/Buenos_Aires';
 
 // ===================== Puntos de entrada =====================
 
-/** Corre los cinco reportes leyendo destino, Para Revisar y B2 una sola vez. */
+/*
+ * Cada reporte es un entry point ejecutable por su cuenta y lee **sólo** las solapas que
+ * necesita. Esto no es prolijidad: la corrida del 2026-09-22 murió con
+ * "Service Spreadsheets timed out" en el último reporte y se llevó puesto todo el trabajo
+ * previo. Con entry points separados, lo que ya se escribió queda escrito.
+ *
+ *   reporte                 destino   B2   Para Revisar   fondos
+ *   DIAG_HUECO                 x       x        x
+ *   DIAG_PISADO                x       x
+ *   DIAG_ATOMICIDAD            x
+ *   DIAG_TOTAL_DIVERGENTE      x       x
+ *   DIAG_PROCEDENCIA           x                             x
+ */
+
+/**
+ * Atajo: corre los cinco en orden compartiendo una sola lectura de cada solapa.
+ * Si uno falla, los demás siguen — el error queda en el log y en el resultado.
+ * DIAG_PISADO va último a propósito: es el que más filas escribe (~5 por fila del destino),
+ * así que es el candidato natural a quedarse sin tiempo.
+ */
 function diagFase1() {
-  const ctx = leerContexto_diag();
-  return {
-    hueco:      generarHueco_diag(ctx),
-    pisado:     generarPisado_diag(ctx),
-    atomicidad: generarAtomicidad_diag(ctx),
-    divergente: generarTotalDivergente_diag(ctx),
-    procedencia: generarProcedencia_diag(ctx)
-  };
+  const cache = nuevoCache_diag();
+  const pasos = [
+    ['DIAG_HUECO',             generarHueco_diag],
+    ['DIAG_ATOMICIDAD',        generarAtomicidad_diag],
+    ['DIAG_PROCEDENCIA',       generarProcedencia_diag],
+    ['DIAG_TOTAL_DIVERGENTE',  generarTotalDivergente_diag],
+    ['DIAG_PISADO',            generarPisado_diag]
+  ];
+
+  const res = {}, fallaron = [];
+  for (let i = 0; i < pasos.length; i++) {
+    const nombre = pasos[i][0];
+    try {
+      res[nombre] = pasos[i][1](cache);
+    } catch (err) {
+      fallaron.push(nombre);
+      res[nombre] = { error: String(err) };
+      Logger.log('[diag] %s FALLÓ: %s — los reportes anteriores quedaron escritos. ' +
+                 'Correlo suelto desde el editor.', nombre, err);
+    }
+  }
+  if (fallaron.length) Logger.log('[diag] reportes a rehacer sueltos: %s', fallaron.join(', '));
+  else Logger.log('[diag] los cinco reportes se escribieron bien.');
+  return res;
 }
 
-function diagHuecoSexoEdades()  { return generarHueco_diag(leerContexto_diag()); }
-function diagPisadoCanales()    { return generarPisado_diag(leerContexto_diag()); }
-function diagAtomicidad()       { return generarAtomicidad_diag(leerContexto_diag()); }
-function diagTotalDivergente()  { return generarTotalDivergente_diag(leerContexto_diag()); }
-function diagProcedencia()      { return generarProcedencia_diag(leerContexto_diag()); }
+function diagHuecoSexoEdades()  { return generarHueco_diag(nuevoCache_diag()); }
+function diagPisado()           { return generarPisado_diag(nuevoCache_diag()); }
+function diagAtomicidad()       { return generarAtomicidad_diag(nuevoCache_diag()); }
+function diagTotalDivergente()  { return generarTotalDivergente_diag(nuevoCache_diag()); }
+function diagProcedencia()      { return generarProcedencia_diag(nuevoCache_diag()); }
 
 /** Vuelca los encabezados reales de las cuatro hojas al log, para completar fixtures/. */
 function diagEsquemas() {
@@ -111,17 +146,38 @@ function diagEsquemas() {
   });
 }
 
-// ===================== Lectura (una sola vez, en bloque) =====================
+// ===================== Lectura perezosa, una sola vez por solapa =====================
 
 /**
- * Lee destino, Para Revisar y B2 con getValues() en bloque (nunca getValue() por celda: son
- * ~800 filas de destino y Apps Script corta a los 6 minutos).
+ * Cache de lectura. Cada solapa se lee la primera vez que alguien la pide y nunca más.
+ * Un reporte suelto crea el suyo y lee sólo lo que usa; diagFase1() pasa el mismo a los cinco.
  */
-function leerContexto_diag() {
+function nuevoCache_diag() {
+  return { dest: null, b2: null, pr: null };
+}
+
+function cacheDestino_diag(cache) {
+  if (!cache.dest) cache.dest = leerDestino_diag();
+  return cache.dest;
+}
+
+function cacheB2_diag(cache) {
+  if (!cache.b2) cache.b2 = indexarB2_diag();
+  return cache.b2;
+}
+
+function cachePR_diag(cache) {
+  if (!cache.pr) cache.pr = indexarStaging_diag();
+  return cache.pr;
+}
+
+/**
+ * Lee el destino con getValues() en bloque (nunca getValue() por celda: son ~800 filas de
+ * datos sobre 2374 de alto y Apps Script corta a los 6 minutos).
+ */
+function leerDestino_diag() {
   const t0 = new Date();
   const ssDest = SpreadsheetApp.openById(DIAG_ID_DESTINO);
-
-  // ---------- Destino ----------
   const shDest = ssDest.getSheetByName(DIAG_HOJA_DESTINO);
   if (!shDest) throw new Error('No existe la hoja "' + DIAG_HOJA_DESTINO + '".');
 
@@ -166,36 +222,18 @@ function leerContexto_diag() {
     });
   }
 
-  // ---------- Para Revisar (staging: el salto intermedio) ----------
-  const shPR = ssDest.getSheetByName(DIAG_HOJA_PR);
-  if (!shPR) throw new Error('No existe la hoja "' + DIAG_HOJA_PR + '".');
-  const porClavePR = indexarStaging_diag(shPR);
+  Logger.log('[diag] leído destino: %s filas con datos (getLastRow=%s) | %s ms',
+             filas.length, filasDest, new Date() - t0);
 
-  // ---------- B2 ----------
-  const shB2 = SpreadsheetApp.openById(DIAG_ID_INTERMEDIA).getSheetByName(DIAG_HOJA_B2);
-  if (!shB2) throw new Error('No existe la hoja "' + DIAG_HOJA_B2 + '".');
-  const b2 = indexarB2_diag(shB2);
-
-  Logger.log('[diag] lectura: destino %s filas con datos (getLastRow=%s) | B2 %s claves ' +
-             '(%s duplicadas, %s incompletas) | Para Revisar %s claves (%s duplicadas) | %s ms',
-             filas.length, filasDest, b2.porClave.size, b2.duplicadas, b2.incompletas,
-             porClavePR.porClave.size, porClavePR.duplicadas, new Date() - t0);
-
-  return {
-    shDest: shDest,
-    D: D,
-    filas: filas,
-    filasDestCrudas: filasDest,
-    porClave: b2.porClave,
-    clavesDuplicadasB2: b2.duplicadas,
-    clavesIncompletasB2: b2.incompletas,
-    porClavePR: porClavePR.porClave,
-    clavesDuplicadasPR: porClavePR.duplicadas
-  };
+  return { shDest: shDest, D: D, filas: filas, filasDestCrudas: filasDest };
 }
 
-/** Índice clave natural → datos de B2. */
-function indexarB2_diag(sh) {
+/** Índice clave natural → datos de B2. Abre la solapa por su cuenta. */
+function indexarB2_diag() {
+  const t0 = new Date();
+  const sh = SpreadsheetApp.openById(DIAG_ID_INTERMEDIA).getSheetByName(DIAG_HOJA_B2);
+  if (!sh) throw new Error('No existe la hoja "' + DIAG_HOJA_B2 + '".');
+
   const filas = sh.getLastRow();
   if (filas < 2) throw new Error('La hoja "' + DIAG_HOJA_B2 + '" no tiene datos.');
   const bloque = sh.getRange(1, 1, filas, sh.getLastColumn()).getValues();
@@ -205,6 +243,8 @@ function indexarB2_diag(sh) {
     Persona: findIdx_diag(hdr, ['persona', 'figura', 'nombre']),
     BarrioN: findIdx_diag(hdr, ['barrion']),
     Fecha:   findIdx_diag(hdr, ['fecha']),
+    Nombre:  findIdx_diag(hdr, ['nombre'], true),
+    KEY:     findIdx_diag(hdr, ['key'], true),
     Ins:     findIdx_diag(hdr, ['inscriptos', 'inscritos'], true),
     Masc:    findIdx_diag(hdr, ['masculino', 'masculinos'], true),
     Fem:     findIdx_diag(hdr, ['femenino', 'femeninos'], true),
@@ -221,6 +261,8 @@ function indexarB2_diag(sh) {
   };
 
   const porClave = new Map();
+  const grupos = new Map();          // clave natural → todas las filas de B2 que la comparten
+  const incompletasDetalle = [];     // filas de B2 que no se pueden indexar: Persona o BarrioN vacío
   let incompletas = 0, duplicadas = 0;
 
   for (let i = 1; i < bloque.length; i++) {
@@ -231,7 +273,16 @@ function indexarB2_diag(sh) {
     if (persona === '' && barrioN === '' && fecha === null) continue;
 
     const clave = claveNatural_diag(persona, barrioN, fecha);
-    if (!clave) { incompletas++; continue; }
+    if (!clave) {
+      incompletas++;
+      incompletasDetalle.push({
+        fila: i + 1,
+        nombre: B.Nombre != null ? str_diag(r[B.Nombre]) : '',
+        persona: persona, barrioN: barrioN, fecha: fecha,
+        inscriptos: B.Ins != null ? num_diag(r[B.Ins]) : 0
+      });
+      continue;
+    }
 
     const masc = B.Masc != null ? num_diag(r[B.Masc]) : 0;
     const fem  = B.Fem  != null ? num_diag(r[B.Fem])  : 0;
@@ -241,12 +292,18 @@ function indexarB2_diag(sh) {
 
     const reg = {
       fila: i + 1,
+      nombre: B.Nombre != null ? str_diag(r[B.Nombre]) : '',
+      keyB2: B.KEY != null ? str_diag(r[B.KEY]) : '',
       inscriptos: B.Ins != null ? num_diag(r[B.Ins]) : 0,
+      masc: masc, fem: fem, sumaEdades: sumaEdades,
       tieneSexo: (masc > 0 || fem > 0),
       tieneEdades: (sumaEdades > 0),
       procesado: esProcesado_diag(B.Proc != null ? r[B.Proc] : ''),
       canales: DIAG_CANALES.map(function (nombre) { return valorCanalB2_diag(r, B, nombre); })
     };
+
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(reg);
 
     const previo = porClave.get(clave);
     if (!previo) {
@@ -259,11 +316,22 @@ function indexarB2_diag(sh) {
     }
   }
 
-  return { porClave: porClave, duplicadas: duplicadas, incompletas: incompletas };
+  Logger.log('[diag] leído B2: %s claves únicas, %s filas duplicadas, %s con clave incompleta | %s ms',
+             porClave.size, duplicadas, incompletas, new Date() - t0);
+
+  return { porClave: porClave, grupos: grupos, duplicadas: duplicadas,
+           incompletas: incompletas, incompletasDetalle: incompletasDetalle };
 }
 
-/** Índice clave natural → datos de Para Revisar (mismos nombres de columna que el destino). */
-function indexarStaging_diag(sh) {
+/**
+ * Índice clave natural → datos de Para Revisar (mismos nombres de columna que el destino).
+ * Abre la solapa por su cuenta.
+ */
+function indexarStaging_diag() {
+  const t0 = new Date();
+  const sh = SpreadsheetApp.openById(DIAG_ID_DESTINO).getSheetByName(DIAG_HOJA_PR);
+  if (!sh) throw new Error('No existe la hoja "' + DIAG_HOJA_PR + '".');
+
   const filas = sh.getLastRow();
   const porClave = new Map();
   if (filas < 2) return { porClave: porClave, duplicadas: 0 };
@@ -316,6 +384,9 @@ function indexarStaging_diag(sh) {
     }
   }
 
+  Logger.log('[diag] leído Para Revisar: %s claves, %s duplicadas | %s ms',
+             porClave.size, duplicadas, new Date() - t0);
+
   return { porClave: porClave, duplicadas: duplicadas };
 }
 
@@ -334,8 +405,15 @@ function indexarStaging_diag(sh) {
  * La rama de Para Revisar se decide por sexo O edades (en la práctica faltan siempre juntos,
  * CLAUDE.md 3.2); la columna que se publica es PR_tiene_sexo, como se pidió.
  */
-function generarHueco_diag(ctx) {
-  const D = ctx.D;
+function generarHueco_diag(cache) {
+  const dest = cacheDestino_diag(cache);
+  const b2   = cacheB2_diag(cache);
+  const pr   = cachePR_diag(cache);
+  const ctx = {
+    filas: dest.filas, porClave: b2.porClave, porClavePR: pr.porClave,
+    clavesDuplicadasB2: b2.duplicadas, clavesDuplicadasPR: pr.duplicadas
+  };
+  const D = dest.D;
 
   const salida = [[
     'Figura', 'Barrio', 'Fecha', 'clave_calculada', 'existe_en_B2',
@@ -445,8 +523,11 @@ function generarHueco_diag(ctx) {
 
 // ===================== DIAG_PISADO =====================
 
-function generarPisado_diag(ctx) {
-  const D = ctx.D;
+function generarPisado_diag(cache) {
+  const dest = cacheDestino_diag(cache);
+  const b2   = cacheB2_diag(cache);
+  const ctx = { filas: dest.filas, porClave: b2.porClave };
+  const D = dest.D;
   const salida = [['Figura', 'Barrio', 'Fecha', 'columna', 'valor_destino', 'valor_B2', 'coincide']];
 
   const res = {
@@ -548,8 +629,10 @@ function generarPisado_diag(ctx) {
  * Las filas con canales y/o desagregado pero sin total (que no son solo_desagregado) se
  * cuentan aparte en el log: sinTotalConDesagregado.
  */
-function generarAtomicidad_diag(ctx) {
-  const D = ctx.D;
+function generarAtomicidad_diag(cache) {
+  const dest = cacheDestino_diag(cache);   // no necesita B2 ni Para Revisar
+  const ctx = { filas: dest.filas };
+  const D = dest.D;
   const salida = [['Figura', 'Barrio', 'Fecha', 'inscriptos', 'suma_canales',
                    'suma_sexo', 'suma_edades', 'estado']];
 
@@ -631,8 +714,11 @@ function generarAtomicidad_diag(ctx) {
  * del ORIGEN; pero el Inscriptos que se muestra en el destino lo escribe el USUARIO. Si esos
  * dos números no son el mismo, el desagregado que ve la gente no suma el total que ve la gente.
  */
-function generarTotalDivergente_diag(ctx) {
-  const D = ctx.D;
+function generarTotalDivergente_diag(cache) {
+  const dest = cacheDestino_diag(cache);
+  const b2   = cacheB2_diag(cache);
+  const ctx = { filas: dest.filas, porClave: b2.porClave };
+  const D = dest.D;
   const salida = [['clave', 'inscriptos_destino_manual', 'inscriptos_B2_origen', 'diferencia',
                    'suma_sexo', 'suma_edades', 'sin_contraparte_B2']];
 
@@ -710,11 +796,13 @@ function generarTotalDivergente_diag(ctx) {
  * ahora". Si una persona corrigió a mano sobre una celda azul, sigue contando como del sistema.
  * Ver docs/sync-bidireccional.md.
  */
-function generarProcedencia_diag(ctx) {
-  const D = ctx.D;
-  const sh = ctx.shDest;
+function generarProcedencia_diag(cache) {
+  const dest = cacheDestino_diag(cache);   // no necesita B2 ni Para Revisar
+  const ctx = { filas: dest.filas };
+  const D = dest.D;
+  const sh = dest.shDest;
   const primeraFila = 2;
-  const nFilas = ctx.filasDestCrudas - 1;
+  const nFilas = dest.filasDestCrudas - 1;
 
   const salida = [['columna', 'celdas_con_valor', 'escritas_por_sistema_azul',
                    'cargadas_a_mano', 'pct_pisado', 'celdas_vacias_con_azul']];
@@ -901,14 +989,32 @@ function escribirHoja_diag(nombre, matriz) {
   if (nombre.indexOf('DIAG_') !== 0) {
     throw new Error('escribirHoja_diag sólo escribe solapas DIAG_*. Recibió: ' + nombre);
   }
-  const ss = SpreadsheetApp.openById(DIAG_ID_SALIDA);
-  let sh = ss.getSheetByName(nombre);
-  if (!sh) sh = ss.insertSheet(nombre);
-  else sh.clearContents();
 
-  sh.getRange(1, 1, matriz.length, matriz[0].length).setValues(matriz);
-  sh.setFrozenRows(1);
-  sh.getRange(1, 1, 1, matriz[0].length).setFontWeight('bold');
-  Logger.log('[diag] %s: %s filas escritas', nombre, matriz.length - 1);
-  return sh;
+  /*
+   * Un reintento. "Service Spreadsheets timed out" es transitorio y fue lo que tiró la corrida
+   * del 2026-09-22. La escritura es idempotente (limpia y reescribe todo), así que repetirla
+   * no puede dejar la solapa a medias.
+   */
+  let ultimoError = null;
+  for (let intento = 1; intento <= 2; intento++) {
+    try {
+      const ss = SpreadsheetApp.openById(DIAG_ID_SALIDA);
+      let sh = ss.getSheetByName(nombre);
+      if (!sh) sh = ss.insertSheet(nombre);
+      else sh.clearContents();
+
+      sh.getRange(1, 1, matriz.length, matriz[0].length).setValues(matriz);
+      sh.setFrozenRows(1);
+      sh.getRange(1, 1, 1, matriz[0].length).setFontWeight('bold');
+      SpreadsheetApp.flush();
+      Logger.log('[diag] %s: %s filas escritas%s', nombre, matriz.length - 1,
+                 intento > 1 ? ' (en el segundo intento)' : '');
+      return sh;
+    } catch (err) {
+      ultimoError = err;
+      Logger.log('[diag] %s: falló la escritura (intento %s): %s', nombre, intento, err);
+      if (intento === 1) Utilities.sleep(5000);
+    }
+  }
+  throw ultimoError;
 }
