@@ -75,8 +75,28 @@ contra ellos.
 | rango de fechas | 05/07/2025 → 24/09/2026 | |
 | última fila alcanzada por las fórmulas | 2374 | |
 
-- [ ] Correr `diagnostico/01_hueco_sexo_edades.js` **antes** de tocar nada y guardar las
-      solapas `DIAG_HUECO` y `DIAG_PISADO` que genera. Son sólo lectura y son la línea de base.
+- [ ] Correr `diagFase1()` **antes** de tocar nada. Genera cinco solapas en la planilla
+      intermedia — `DIAG_HUECO`, `DIAG_PISADO`, `DIAG_ATOMICIDAD`, `DIAG_TOTAL_DIVERGENTE`,
+      `DIAG_PROCEDENCIA` — y es sólo lectura. **Esa corrida es la línea de base de toda la
+      migración.** Guardar también el log de ejecución.
+- [ ] Anotar el total de `DIAG_PROCEDENCIA`: cuántas celdas de las seis `COLUMNAS_MANUALES`
+      están pintadas `#4F81BD`. Ese número tiene que **bajar o quedar igual** después de la
+      migración. Si sube, el pipeline nuevo está pisando carga manual.
+
+## 4.b Los fondos
+
+El color no es decoración: `#4F81BD` es la marca de procedencia de la que depende el
+invariante (CLAUDE.md 0). Sólo hay 3 reglas de formato condicional en el destino (columna `A`);
+**el resto del color es estático y se pierde con cualquier operación estructural.**
+
+- [ ] Verificar en la copia de backup que los fondos se copiaron. Una copia de planilla se
+      lleva el formato, pero conviene mirarlo: si el backup pierde el azul, no sirve para
+      restaurar la procedencia.
+- [ ] Contar los `#4F81BD` de hoy en `RVD JM-CM - ES` (la auditoría midió **3.779**) y
+      anotarlo acá: `____________`
+- [ ] Antes de cualquier operación que toque estructura: nada de `clear()` (usar
+      `clearContents()`), nada de `sort()`, `deleteRow` ni `insertRow` contra el destino.
+      Todas desplazan los valores respecto de los fondos.
 
 ## 5. Código y estado del proyecto de Apps Script
 
