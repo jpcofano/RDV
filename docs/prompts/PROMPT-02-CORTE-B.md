@@ -2,7 +2,7 @@
 
 **Rama:** `migracion`
 **Depende de:** `docs/prompts/PROMPT-CODE.md` (Fase 0 y 1)
-**Estado:** pendiente
+**Estado:** ejecutado el 2026-09-23 — código escrito y verificado en banco de prueba; falta correrlo contra las planillas reales.
 
 ---
 
