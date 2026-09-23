@@ -240,6 +240,47 @@ y sólo queda un contador en un log que nadie mira.
   `exportMissingPersonaBarrio_B2_toManualSheet()` e `importManuals_fromManualSheet_toB2()`:
   **esas funciones no existen en runtime.**
 
+**f) `syncB_to_B2` inserta filas que después nadie puede encontrar.**
+
+Lo único que hace saltear una fila del import es que falte `Nombre`
+([Sync B to B2.js:132](Sync%20B%20to%20B2.js#L132)):
+
+```js
+const key = buildKeyByNombreInscriptos_(nombre, ins);
+if (!key) { skipped++; continue; }   // buildKey sólo devuelve '' si no hay nombre
+```
+
+Más abajo, cuando `detectPersona_` o `detectBarrio_` no reconocen el texto libre, **la fila se
+inserta igual**, con la columna vacía:
+
+```js
+const persona = (typeof detectPersona_ === 'function') ? detectPersona_(nombre) : '';
+const barrio  = (typeof detectBarrio_  === 'function') ? detectBarrio_(nombre)  : '';
+// ...y se escriben así, vacías, en la fila nueva de B2
+```
+
+El resultado es una fila que **está en B2 pero no es indexable por la clave natural**
+`Persona|BarrioN|Fecha`: le falta uno de los tres componentes. El upsert nunca la encuentra, y
+cualquier diagnóstico que indexe B2 por clave natural la cuenta como si no existiera.
+
+**Son las 23 claves incompletas** que midió la Fase 1 (sección 3.2). Y son la razón por la que
+`no_existe_en_B2` no quiere decir "la fila no llegó a B2".
+
+→ **Dos ramas de arreglo, con costos muy distintos.** No son alternativas: hay que saber cuánto
+pesa cada una antes de elegir por dónde empezar.
+
+| rama | qué es | costo |
+|---|---|---|
+| **Ampliar las listas fijas** de `detectPersona_` (20 nombres) y `detectBarrio_`, o derivar la figura de otro lado en vez de adivinarla del texto libre | la fila **sí está** en B2, sólo que sin `Persona`/`BarrioN` | **bajo**: es data, no arquitectura. Se puede hacer hoy |
+| **Rehacer `syncB_to_B2` como acumulativo** | la fila **no está** en B2 porque ya no está en `B`, y B2 es un espejo del import, no un acumulado | **alto**: cambia el modelo de la solapa y hay que rellenarla hacia atrás |
+
+`DIAG_CORTE_B` (Fase 1b) mide el reparto. **Las 23 claves incompletas no alcanzan a explicar 72
+filas**, así que hay que esperar las dos causas mezcladas y dimensionar cada una, no elegir la
+primera que aparezca.
+
+Mientras tanto, el arreglo de fondo es la decisión 2: con `RDV_UID` la identidad deja de
+depender de que una lista fija de nombres reconozca el texto libre.
+
 ### 3.2 Calidad de datos, medida
 
 Destino `RVD JM-CM - ES`, 802 filas con datos, fechas 05/07/2025 → 24/09/2026:
@@ -316,12 +357,11 @@ directa del problema de la clave `nombre|inscriptos` (decisión 3). Cuando `Insc
 entre dos corridas, la clave cambia y `syncB_to_B2` inserta una fila nueva en vez de actualizar
 la que ya estaba. Se listan en `DIAG_DUP_B2`.
 
-**Las 23 claves incompletas en B2 son sospechosas.** `syncB_to_B2` inserta la fila igual cuando
-`detectPersona_` o `detectBarrio_` devuelven `''` — sólo saltea si falta `Nombre`
-([Sync B to B2.js:132](Sync%20B%20to%20B2.js#L132)). O sea que esas filas **están en B2**, pero
-sin `Persona` o sin `BarrioN`, así que no se pueden indexar por clave natural y el upsert nunca
-las encuentra. Es una causa distinta de "no llegó", y `DIAG_CORTE_B` la separa
-(`persona_no_reconocida` / `barrio_no_reconocido`).
+**Las 23 claves incompletas en B2 son una causa aparte, no un detalle.** Esas filas **están en
+B2** pero sin `Persona` o sin `BarrioN`, así que no se pueden indexar y el upsert nunca las
+encuentra — ver el bloqueante **3.1.f**. Es distinto de "no llegó", y `DIAG_CORTE_B` lo separa
+(`persona_no_reconocida` / `barrio_no_reconocido`). 23 no alcanzan para 72: hay dos causas
+mezcladas.
 
 El seguimiento está en [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md) y
 lo mide `diagnostico/02_corte_B_a_B2.js`.
@@ -548,17 +588,25 @@ hace falta, al origen.
 
 ### Fase 1b — Dónde se corta `B → B2`  *(en curso)*
 
-`diagnostico/02_corte_B_a_B2.js`, sólo lectura. Para las 72 filas con `no_existe_en_B2`, busca
-la reunión en el import crudo `B` y clasifica por qué `syncB_to_B2` no generó fila: la persona o
-el barrio fuera de las listas fijas, la fecha no parseable o mal parseada, la fila que ya no está
-en `B`, o la que debería haber entrado y no entró.
+`diagnostico/02_corte_B_a_B2.js`, sólo lectura. Busca cada reunión en el import crudo `B` y
+clasifica por qué `syncB_to_B2` no generó fila: la persona o el barrio fuera de las listas fijas,
+la fecha no parseable o mal parseada, la fila que ya no está en `B`, o la que debería haber
+entrado y no entró.
+
+**La población son todas las filas del destino sin contraparte en B2**, no sólo las 72 del hueco.
+El recorte por el hueco era operativo y traía un sesgo que apuntaba contra lo que hay que medir:
+**las filas viejas ya tienen sexo y edades cargados a mano, así que nunca entran al hueco**, y es
+justo ahí donde se manifestaría una ventana móvil del import. Medir sólo el hueco habría dado
+`desaparecida_del_origen = 0` por construcción. La columna `origen_fila` separa `hueco` de
+`sin_contraparte_B2` y el reporte da el reparto de causa en cada población y en el total.
 
 Suma `DIAG_DUP_B2` con las 14 claves duplicadas. Detalle en
 [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md).
 
 **La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
 eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser
-acumulativo** en vez de un espejo del import.
+acumulativo** en vez de un espejo del import. Las dos ramas y sus costos están en **3.1.f**;
+lo esperable es encontrarlas mezcladas.
 
 ### Fase 2 — Base limpia
 - `00_Config.js` (con `COLUMNAS_MANUALES`), `01_Utils.js`, `02_Parsing.js`, `05_Escritura.js`.

@@ -6,7 +6,7 @@
  *
  * Contexto: el diagnóstico del 2026-09-22 mostró que los pasos 4 y 5 no pierden nada y que el
  * hueco está aguas arriba — 72 de las 79 filas del hueco dan `no_existe_en_B2` (CLAUDE.md 3.2).
- * Este archivo pregunta por qué `syncB_to_B2` no generó fila para ellas.
+ * Este archivo pregunta por qué `syncB_to_B2` no generó fila.
  *
  * Puntos de entrada:
  *   diagFase1b()    corre los dos, compartiendo lecturas.
@@ -14,8 +14,18 @@
  *   diagDupB2()     → DIAG_DUP_B2
  *
  * Depende de `diagnostico/01_hueco_sexo_edades.js`, que está en el mismo proyecto y comparte
- * scope: usa sus helpers `_diag` (str_diag, toDate_diag, normalizeText_diag, findIdx_diag,
- * escribirHoja_diag, indexarB2_diag) y lee la solapa DIAG_HUECO que produce.
+ * scope: usa sus lectores (`leerDestino_diag`, `indexarB2_diag`), sus helpers `_diag` y el
+ * criterio `esFilaDelHueco_diag`. **No lee las solapas DIAG_***: trabaja sobre los datos, no
+ * sobre la salida de otro reporte, así que no depende de que la Fase 1 se haya corrido antes
+ * ni de que su salida esté fresca.
+ *
+ * --- La población ---
+ * **Toda fila del destino sin contraparte en B2**, no sólo las del hueco. La definición por
+ * DIAG_HUECO era operativa y tenía un sesgo grave: las filas viejas ya tienen sexo y edades
+ * cargados a mano, así que nunca entran al hueco, y es justo ahí donde se manifestaría una
+ * ventana móvil del import. Medir sólo el hueco habría dado `desaparecida_del_origen = 0` por
+ * construcción. La columna `origen_fila` separa `hueco` de `sin_contraparte_B2` para poder
+ * mirar las dos juntas y por separado.
  *
  * --- Lo que mide exactamente ---
  * Los tres `detect*` se copian acá con sufijo `_diag2`, **verbatim de Código.js**. El objetivo
@@ -38,7 +48,6 @@
 // ===================== Configuración =====================
 
 const DIAG2_HOJA_B      = 'B';
-const DIAG2_HOJA_HUECO  = 'DIAG_HUECO';
 const DIAG2_SALIDA_CORTE = 'DIAG_CORTE_B';
 const DIAG2_SALIDA_DUP   = 'DIAG_DUP_B2';
 
@@ -71,7 +80,7 @@ function diagDupB2()  { return generarDupB2_diag2(nuevoCache2_diag2()); }
 // ===================== Lectura perezosa =====================
 
 function nuevoCache2_diag2() {
-  return { b: null, hueco: null, b2: null };
+  return { b: null, dest: null, b2: null };
 }
 
 function cacheB_diag2(cache) {
@@ -79,13 +88,13 @@ function cacheB_diag2(cache) {
   return cache.b;
 }
 
-function cacheHueco_diag2(cache) {
-  if (!cache.hueco) cache.hueco = leerHueco_diag2();
-  return cache.hueco;
+function cacheDestino_diag2(cache) {
+  if (!cache.dest) cache.dest = leerDestino_diag();   // de 01_hueco_sexo_edades.js
+  return cache.dest;
 }
 
 function cacheB2_diag2(cache) {
-  if (!cache.b2) cache.b2 = indexarB2_diag();   // de 01_hueco_sexo_edades.js
+  if (!cache.b2) cache.b2 = indexarB2_diag();         // de 01_hueco_sexo_edades.js
   return cache.b2;
 }
 
@@ -168,39 +177,57 @@ function leerB_diag2() {
            minFin: minFin, maxFin: maxFin, cargando: cargando };
 }
 
-/** Lee DIAG_HUECO y devuelve las filas con `no_existe_en_B2`. */
-function leerHueco_diag2() {
-  const sh = SpreadsheetApp.openById(DIAG_ID_SALIDA).getSheetByName(DIAG2_HOJA_HUECO);
-  if (!sh) {
-    throw new Error('No existe la solapa "' + DIAG2_HOJA_HUECO + '". Corré diagHuecoSexoEdades() ' +
-                    'primero: este reporte trabaja sobre su salida.');
-  }
-  const nFilas = sh.getLastRow();
-  if (nFilas < 2) throw new Error('"' + DIAG2_HOJA_HUECO + '" está vacía.');
-
-  const bloque = sh.getRange(1, 1, nFilas, sh.getLastColumn()).getValues();
-  const hdr = bloque[0];
-  const iFigura = findIdx_diag(hdr, ['figura']);
-  const iBarrio = findIdx_diag(hdr, ['barrio']);
-  const iFecha  = findIdx_diag(hdr, ['fecha']);
-  const iClave  = findIdx_diag(hdr, ['clave_calculada']);
-  const iDiag   = findIdx_diag(hdr, ['diagnostico']);
+/**
+ * La población: **toda fila del destino sin contraparte en B2**, venga del hueco o no.
+ *
+ * Antes esto salía de las filas `no_existe_en_B2` de DIAG_HUECO. Era una definición operativa,
+ * no conceptual, y tenía un sesgo que apuntaba justo contra lo que queremos medir: las filas
+ * más viejas ya tienen sexo y edades cargados a mano, así que **nunca entran al hueco**. Si el
+ * import es una ventana móvil, sus casos se concentran en las filas viejas — exactamente las
+ * que estábamos excluyendo — y `desaparecida_del_origen` habría dado cero por construcción.
+ *
+ * Se lee el destino directo, y cada fila de la población queda etiquetada en `origen_fila`:
+ *
+ *   hueco               la fila cumple el criterio del hueco (esFilaDelHueco_diag): el
+ *                       pipeline falló a la vista, nadie lo tapó a mano.
+ *   sin_contraparte_B2  el resto. El trabajo manual cubrió el agujero, así que no se nota,
+ *                       pero la fila tampoco tiene fila en B2.
+ *
+ * Las dos etiquetas son disjuntas y cubren la población entera. `hueco` es un subconjunto de
+ * "sin contraparte", no una población aparte: por eso se reporta el reparto de causa en cada
+ * una y en el total.
+ */
+function poblacionSinContraparte_diag2(cache) {
+  const dest = cacheDestino_diag2(cache);
+  const b2 = cacheB2_diag2(cache);
+  const D = dest.D;
 
   const filas = [];
-  let total = 0;
-  for (let i = 1; i < bloque.length; i++) {
-    const r = bloque[i];
-    total++;
-    if (str_diag(r[iDiag]) !== 'no_existe_en_B2') continue;
+  let conContraparte = 0, enHueco = 0, resto = 0, claveIncompleta = 0;
+
+  for (let i = 0; i < dest.filas.length; i++) {
+    const f = dest.filas[i];
+    const reg = f.clave ? b2.porClave.get(f.clave) : null;
+    if (reg) { conContraparte++; continue; }
+
+    const esHueco = esFilaDelHueco_diag(f.valores, D);
+    if (esHueco) enHueco++; else resto++;
+    if (!f.clave) claveIncompleta++;
+
     filas.push({
-      clave: str_diag(r[iClave]),
-      figura: str_diag(r[iFigura]),
-      barrio: str_diag(r[iBarrio]),
-      fecha: toDate_diag(r[iFecha])
+      clave: f.clave || '(clave incompleta)',
+      figura: f.figura,
+      barrio: f.barrio,
+      fecha: f.fecha,
+      origen: esHueco ? 'hueco' : 'sin_contraparte_B2'
     });
   }
 
-  Logger.log('[diag2] leído DIAG_HUECO: %s filas, %s con no_existe_en_B2', total, filas.length);
+  Logger.log('[diag2] población: %s filas del destino sin contraparte en B2 ' +
+             '(%s del hueco + %s tapadas por carga manual) | con contraparte: %s | ' +
+             'sin clave natural completa: %s',
+             filas.length, enHueco, resto, conContraparte, claveIncompleta);
+
   return filas;
 }
 
@@ -225,18 +252,23 @@ function leerHueco_diag2() {
  */
 function generarCorteB_diag2(cache) {
   const b = cacheB_diag2(cache);
-  const hueco = cacheHueco_diag2(cache);
   const b2 = cacheB2_diag2(cache);
+  const poblacion = poblacionSinContraparte_diag2(cache);
 
-  const salida = [['clave_destino', 'figura', 'barrio', 'fecha', 'encontrada_en_B',
+  const salida = [['clave_destino', 'origen_fila', 'figura', 'barrio', 'fecha', 'encontrada_en_B',
                    'nombre_evento_en_B', 'detectPersona_devuelve', 'detectBarrio_devuelve',
                    'detectFecha_devuelve', 'causa']];
 
-  const conteo = {
-    no_esta_en_B: 0, desaparecida_del_origen: 0, persona_no_reconocida: 0,
-    barrio_no_reconocido: 0, fecha_no_parseable: 0, fecha_mal_parseada: 0,
-    deberia_haber_entrado: 0
+  const nuevoConteo = function () {
+    return {
+      no_esta_en_B: 0, desaparecida_del_origen: 0, persona_no_reconocida: 0,
+      barrio_no_reconocido: 0, fecha_no_parseable: 0, fecha_mal_parseada: 0,
+      deberia_haber_entrado: 0
+    };
   };
+  const conteo = nuevoConteo();
+  const porOrigen = { hueco: nuevoConteo(), sin_contraparte_B2: nuevoConteo() };
+  const totalPorOrigen = { hueco: 0, sin_contraparte_B2: 0 };
   let matchExacto = 0, matchAprox = 0, matchSinFecha = 0, multiples = 0, conVariosProblemas = 0;
   const deberianHaberEntrado = [];
 
@@ -248,8 +280,9 @@ function generarCorteB_diag2(cache) {
   });
   let confirmadasEnB2SinClave = 0;
 
-  for (let i = 0; i < hueco.length; i++) {
-    const h = hueco[i];
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    totalPorOrigen[h.origen]++;
     const figuraNorm = normalizeText_diag(h.figura);
 
     // --- buscar candidatos en B ---
@@ -339,9 +372,10 @@ function generarCorteB_diag2(cache) {
     }
 
     conteo[causa]++;
+    porOrigen[h.origen][causa]++;
 
     salida.push([
-      h.clave, h.figura, h.barrio, h.fecha ? fmt_diag2(h.fecha) : '',
+      h.clave, h.origen, h.figura, h.barrio, h.fecha ? fmt_diag2(h.fecha) : '',
       comoMatcheo, nombreEvento, devPersona, devBarrio, devFecha, causa
     ]);
   }
@@ -350,34 +384,67 @@ function generarCorteB_diag2(cache) {
 
   const total = salida.length - 1;
   Logger.log('=== DIAG_CORTE_B ===');
-  Logger.log('Filas analizadas (no_existe_en_B2): %s', total);
+  Logger.log('Población: %s filas del destino sin contraparte en B2', total);
+  Logger.log('  del hueco (el pipeline falló a la vista): %s', totalPorOrigen.hueco);
+  Logger.log('  tapadas por carga manual (sin_contraparte_B2): %s', totalPorOrigen.sin_contraparte_B2);
   const encontradas = matchExacto + matchAprox + matchSinFecha;
   Logger.log('Encontradas en B: %s | %s por fecha exacta, %s por fecha aproximada, %s sin fecha ' +
              'en B | no encontradas: %s',
              encontradas, matchExacto, matchAprox, matchSinFecha, total - encontradas);
   if (multiples) Logger.log('  %s filas tenían más de un candidato en B; se tomó el mejor.', multiples);
-  Logger.log('--- conteo por causa ---');
+
+  Logger.log('--- conteo por causa: TOTAL | hueco | tapadas ---');
   Object.keys(conteo).forEach(function (k) {
-    const n = conteo[k];
-    Logger.log('  %s: %s  (%s%%)', k, n, total ? Math.round(n * 1000 / total) / 10 : 0);
+    Logger.log('  %s: %s  |  %s  |  %s   (%s%% del total)',
+               k, conteo[k], porOrigen.hueco[k], porOrigen.sin_contraparte_B2[k],
+               total ? Math.round(conteo[k] * 1000 / total) / 10 : 0);
   });
   if (conVariosProblemas) {
     Logger.log('%s filas tienen más de un problema a la vez; se reporta el primero en el orden ' +
                'persona → barrio → fecha.', conVariosProblemas);
   }
 
+  /*
+   * El punto de mirar las dos poblaciones por separado: las filas viejas ya tienen sexo y
+   * edades cargados a mano, así que no entran al hueco. Si el import es una ventana móvil,
+   * sus casos viven en la columna "tapadas" y no en la del hueco.
+   */
+  const desapHueco = porOrigen.hueco.desaparecida_del_origen;
+  const desapTapadas = porOrigen.sin_contraparte_B2.desaparecida_del_origen;
+  Logger.log('--- el sesgo que motivó ampliar la población ---');
+  Logger.log('  desaparecida_del_origen: %s en el hueco, %s en las tapadas', desapHueco, desapTapadas);
+  if (desapTapadas > desapHueco) {
+    Logger.log('  >>> Se concentra en las tapadas, como se esperaba. Mirar sólo el hueco habría ' +
+               'subestimado la ventana móvil.');
+  }
+
   Logger.log('--- el arreglo que implica cada grupo ---');
-  const enB2SinClave = conteo.persona_no_reconocida + conteo.barrio_no_reconocido;
-  Logger.log('  ampliar las listas de detectPersona_/detectBarrio_: %s filas', enB2SinClave);
+  const listas = conteo.persona_no_reconocida + conteo.barrio_no_reconocido;
+  const acumulativo = conteo.no_esta_en_B + conteo.desaparecida_del_origen;
+  const fechas = conteo.fecha_no_parseable + conteo.fecha_mal_parseada;
+  Logger.log('  ampliar las listas de detectPersona_/detectBarrio_ (barato): %s filas', listas);
   Logger.log('    (están en B2 pero sin Persona/BarrioN, así que no se pueden indexar; ' +
              'confirmadas contra las %s claves incompletas de B2: %s coinciden por nombre)',
              b2.incompletas, confirmadasEnB2SinClave);
-  Logger.log('  arreglar el parseo de fechas: %s filas',
-             conteo.fecha_no_parseable + conteo.fecha_mal_parseada);
-  Logger.log('  >>> B2 acumulativo (la fila ya no está en el import): %s filas',
-             conteo.no_esta_en_B + conteo.desaparecida_del_origen);
+  Logger.log('  arreglar el parseo de fechas (barato): %s filas', fechas);
+  Logger.log('  >>> B2 acumulativo, rehacer syncB_to_B2 (caro): %s filas', acumulativo);
   Logger.log('  sin explicación: %s filas', conteo.deberia_haber_entrado);
   deberianHaberEntrado.forEach(function (s) { Logger.log('    · %s', s); });
+
+  /*
+   * B2 tiene 23 claves incompletas y el hueco solo son 72 filas: la rama "ampliar listas" no
+   * puede explicarlo todo. Si el conteo de abajo da bajo, hay dos causas mezcladas y hay que
+   * atacar las dos.
+   */
+  Logger.log('--- ¿alcanza con ampliar las listas? ---');
+  Logger.log('  filas que esa rama explica: %s de %s (%s%%)', listas, total,
+             total ? Math.round(listas * 1000 / total) / 10 : 0);
+  Logger.log('  el resto (%s filas) necesita otra cosa: %s de fechas, %s de acumulado, %s sin explicar',
+             total - listas, fechas, acumulativo, conteo.deberia_haber_entrado);
+  if (listas < total && acumulativo > 0) {
+    Logger.log('  >>> Las dos causas están mezcladas. Ampliar listas es necesario pero no ' +
+               'suficiente: sin B2 acumulativo quedan %s filas afuera.', acumulativo);
+  }
 
   Logger.log('--- ventana de fechas ---');
   Logger.log('  B por Fecha_Fin:      %s → %s  (el campo confiable)',
@@ -399,7 +466,7 @@ function generarCorteB_diag2(cache) {
                'este conteo puede estar corrido. Volver a correr.', b.cargando);
   }
 
-  return { total: total, conteo: conteo,
+  return { total: total, conteo: conteo, porOrigen: porOrigen, totalPorOrigen: totalPorOrigen,
            rangoB: { min: b.minFin || b.minFecha, max: b.maxFin || b.maxFecha },
            deberianHaberEntrado: deberianHaberEntrado };
 }

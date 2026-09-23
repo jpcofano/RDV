@@ -456,7 +456,7 @@ function generarHueco_diag(cache) {
     else if (sexoVacio) soloSexoVacio++;
     else if (edadesVacias) soloEdadesVacias++;
 
-    if (!(sexoVacio && edadesVacias)) continue; // el hueco es sexo Y edades vacíos a la vez
+    if (!esFilaDelHueco_diag(r, D)) continue; // el hueco es sexo Y edades vacíos a la vez
 
     const b2  = f.clave ? ctx.porClave.get(f.clave) : null;
     const pr  = f.clave ? ctx.porClavePR.get(f.clave) : null;
@@ -858,6 +858,18 @@ function generarProcedencia_diag(cache) {
 }
 
 // ===================== Helpers (sufijo _diag, sin colisiones) =====================
+
+/**
+ * El criterio del hueco, definido en un solo lugar: `Inscriptos` cargado y las ocho columnas
+ * de sexo/edad en blanco. Lo usan DIAG_HUECO y DIAG_CORTE_B (archivo 02). Si se escribiera
+ * dos veces, los conteos de los dos reportes dejarían de reconciliar y nadie se daría cuenta.
+ */
+function esFilaDelHueco_diag(valores, D) {
+  if (esVacio_diag(valores[D.Ins])) return false;
+  const sexoVacio = esVacio_diag(valores[D.Masc]) && esVacio_diag(valores[D.Fem]);
+  const edadesVacias = D.edades.every(function (idx) { return esVacio_diag(valores[idx]); });
+  return sexoVacio && edadesVacias;
+}
 
 function str_diag(v) {
   return v == null ? '' : String(v).trim();
