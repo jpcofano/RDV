@@ -105,17 +105,16 @@ El azul dice **"el sistema escribió acá al menos una vez"**. No dice "esta cel
 ahora". Nada lo despinta: si una persona corrige a mano un valor que el sistema había escrito,
 la celda **queda azul** con contenido humano.
 
-Esto es un límite real de `setSiDelSistema_(rango, valor)` tal como quedó definido en la sección
-0: sobre una celda así, el helper va a considerar que puede escribir y va a pisar la corrección.
-Hay tres salidas posibles, y la elección todavía no está tomada:
+**Decisión tomada (CLAUDE.md sección 0): `setSiDelSistema_` no consulta el fondo.** Escribe
+sólo si la celda está vacía. Un token de permiso tiene que sobrevivir a la edición del usuario
+y este no sobrevive, así que el azul queda como **marca visual y métrica**, no como permiso.
 
-- convivir con el hueco y avisarle al equipo que corregir sobre azul no es estable;
-- que el helper compare contra el último valor que el sistema escribió y no pise si cambió
-  (requiere guardar ese valor en algún lado);
-- un segundo color para "escrito por el sistema y corregido por una persona", pintado por el
-  propio helper cuando detecta la divergencia.
+Se destraba en la Fase 7, con un `onEdit(e)` que despinte el azul cuando la edición la hace una
+persona. Ahí sí el fondo pasa a significar "es del sistema y nadie lo tocó después", y recién
+ahí tiene sentido evaluar relajar la regla a "vacío o azul".
 
-`DIAG_PROCEDENCIA` mide el tamaño del problema antes de decidir.
+`DIAG_PROCEDENCIA` mide el tamaño del asunto: cuántas celdas de las seis `COLUMNAS_MANUALES`
+están pintadas, que es cuánto pisó el legado la carga del equipo.
 
 ## La blacklist de columnas derivadas
 
@@ -149,7 +148,7 @@ nombres de columna.
 | lo que hay que conservar | lo que hay que tirar |
 |---|---|
 | Escribir sólo sobre celda vacía | Que la protección dependa de que la celda esté vacía **y nada más** |
-| Pintar `#4F81BD` en cada escritura del sistema | Que el azul sea sólo decorativo y nadie lo lea de vuelta |
+| Pintar `#4F81BD` en cada escritura del sistema | Que nadie lo lea nunca de vuelta (ahora lo lee `DIAG_PROCEDENCIA`) — sin convertirlo por eso en permiso de escritura |
 | La blacklist explícita de columnas derivadas | Que tenga diez nombres en vez de once |
 | Reportar las diferencias en vez de resolverlas | Que la fila que no matchea se descarte en silencio (regla 2) |
 | — | La bidireccionalidad entera, con su regla numérica/no-numérica |

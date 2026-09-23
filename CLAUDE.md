@@ -34,9 +34,10 @@ rng.setBackground('#4F81BD'); // azul
 ```
 
 Verificado sobre la planilla: ese azul aparece **3.779 veces en `RVD JM-CM - ES` y cero
-veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se mantiene
-tal cual: mismo color, misma semántica.** El detalle de cuándo pinta y cuándo no está en
-[docs/sync-bidireccional.md](docs/sync-bidireccional.md).
+veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se mantiene: mismo
+color, se sigue pintando en cada escritura del sistema.** Lo que no hace es decidir — ver
+"Por qué el azul no es permiso de escritura", más abajo. El detalle de cuándo pinta hoy y cuándo
+no está en [docs/sync-bidireccional.md](docs/sync-bidireccional.md).
 
 ### La regla
 
@@ -46,13 +47,42 @@ Toda escritura al destino pasa por un helper único:
 setSiDelSistema_(rango, valor)
 ```
 
-que escribe **sólo si** la celda está vacía **o** ya tiene fondo `#4F81BD`, y que vuelve a
-pintar `#4F81BD` al escribir.
+que escribe **sólo si la celda está vacía**, y que pinta `#4F81BD` al escribir.
 
-**Celda con valor y sin ese fondo → la escribió una persona. No se toca.**
+**Celda con cualquier valor → no se toca.** No importa quién lo puso ni de qué color está.
 
 No hay `setValue` ni `setValues` sueltos contra el destino. Ninguno. Si aparece uno en un
 diff, el diff está mal.
+
+#### Por qué el azul no es permiso de escritura
+
+Es tentador relajar la regla a "vacío **o** con fondo `#4F81BD`": total, el azul marca lo que
+escribió el sistema, así que reescribir encima sería inocuo. **No lo es, y la decisión está
+tomada: el fondo no se consulta.**
+
+El azul dice *"el sistema escribió acá alguna vez"*, no *"esta celda es del sistema ahora"*.
+Nada lo despinta. Si una persona corrige a mano un valor que el sistema había escrito, la celda
+**queda azul con contenido humano**, y un helper que leyera el fondo como permiso pisaría
+exactamente la corrección que alguien se tomó el trabajo de hacer — el peor caso posible, y
+además invisible.
+
+Un token de permiso tiene que sobrevivir a la edición del usuario, y este no sobrevive. Mientras
+eso siga así, la única señal confiable es la que no se puede falsificar: **la celda está vacía o
+no lo está.**
+
+El `#4F81BD` se mantiene igual, pero con un rol más chico y honesto: **marca visual para el
+equipo.** Sirve para que alguien mirando la planilla sepa de un vistazo qué llenó el proceso, y
+sirve como métrica (`DIAG_PROCEDENCIA` cuenta cuánto pisó el legado). No decide nada.
+
+**Cómo se destraba, en la Fase 7.** Con un `onEdit(e)` que despinte el azul cuando la edición la
+hace una persona, el fondo pasa a significar de verdad "esto es del sistema y nadie lo tocó
+después" — porque una corrección humana lo borra en el momento. **Recién ahí** tiene sentido
+relajar `setSiDelSistema_` a "vacío o azul", y recién ahí el pipeline puede corregir un dato
+suyo que cambió en el origen. Hasta que ese `onEdit` exista y haya corrido un tiempo, la regla
+es la de arriba.
+
+Ojo con el orden: el `onEdit` no puede llegar antes que el resto. Si se despinta el azul antes
+de tener la línea de base de `DIAG_PROCEDENCIA`, se pierde la medición de cuánto pisó el legado.
 
 ### Tres consecuencias que no son negociables
 
@@ -67,7 +97,7 @@ reemplaza las nueve copias de `num()`.
 elegir un ganador en cada conflicto, y acá el ganador es siempre el usuario — con lo cual la
 dirección destino → origen no tiene nada que aportar y sí mucho que romper. El origen se lee,
 el destino se escribe, y las diferencias se reportan en vez de resolverse. Esto es lo que
-mata al paso 5 (sección 4, decisión 9).
+mata al paso 5 (sección 4, decisión 10).
 
 **c) Las columnas manuales no se escriben ni aunque estén vacías.** Ver `COLUMNAS_MANUALES`
 en la decisión 8. El invariante protege celdas; esta lista protege columnas enteras, incluso
@@ -257,7 +287,7 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 > celdas **vacías** del destino, así que el trabajo manual de `RVD JM-CM - ES` está protegido
 > — por accidente de esa regla, no por diseño, y nadie lo escribió en ningún lado.
 >
-> La consecuencia es incómoda: **sacar el staging (decisión 9) es exactamente el cambio que
+> La consecuencia es incómoda: **sacar el staging (decisión 10) es exactamente el cambio que
 > rompería la protección**, si el upsert nuevo hereda el `setIfIndex_` del legado. Por eso
 > `setSiDelSistema_` (sección 0) no es una mejora opcional sino la condición previa para poder
 > eliminar el paso 5. Las columnas manuales ya están confirmadas: ver `COLUMNAS_MANUALES` en la
@@ -345,7 +375,36 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    desagregado de sexo y edades lo calcula el sistema a partir del `Inscriptos` de B2, que es
    otro número. `DIAG_TOTAL_DIVERGENTE` (Fase 1) mide en cuántas filas no coinciden.
 
-9. **Se elimina el staging.** B2, A2 y el flujo Agenda escriben **directo al destino** a través
+9. **Las once columnas derivadas, bloqueadas por nombre desde `00_Config.js`.**
+
+   ```js
+   const COLUMNAS_DERIVADAS = [
+     'Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion',
+     'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'
+   ];
+   ```
+
+   **Nada de `getFormula()` dinámico.** El paso 5 lo usa como guard ([línea 266](Sinc%20Base%20usuario.js#L266))
+   y no protege nada: en un bloque expandido por una fórmula de array, la fórmula vive **sólo en
+   la celda ancla** — acá, el encabezado de la fila 1. `getFormula()` sobre `X500` devuelve
+   cadena vacía, el guard no dispara, el `setValue` entra y rompe el array entero.
+
+   La lista del paso 5 tiene **diez** nombres para once columnas: le falta `Direccion2` (`X`),
+   que es justo la que el `getFormula()` tampoco cubre. Es un `#REF!` esperando su turno, si
+   `Para Revisar` tiene una columna que normalice a `direccion2` — hay que mirarlo en la
+   planilla. Detalle en [docs/sync-bidireccional.md](docs/sync-bidireccional.md).
+
+   Una lista explícita de once nombres es aburrida, verificable de un vistazo y no depende de
+   que la API devuelva lo que uno cree. Es todo lo que se necesita.
+
+   **Esto es un puente, no una solución.** La Fase 3 convierte las once columnas en valores
+   escritos por el script, y con eso **desaparece la clase entera de problema**: sin fórmulas de
+   array no hay bloque que romper, no hay celda ancla, no hay límite en la fila 2374 y la lista
+   pasa a ser sólo "columnas que calcula `recalcDerivadas_()`". Por eso **la Fase 3 es
+   prerrequisito duro de la Fase 5b**: sacar el staging con las fórmulas todavía puestas es
+   poner un upsert nuevo a escribir contra once bombas.
+
+10. **Se elimina el staging.** B2, A2 y el flujo Agenda escriben **directo al destino** a través
    de un único upsert. Con eso:
 
    - desaparece `Sinc Base usuario.js` entero (433 líneas) y con él la bidireccionalidad, que
@@ -366,7 +425,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 ### Estructura de archivos
 
 ```
-00_Config.js       IDs, nombres de solapa, constantes, COLUMNAS_MANUALES. Único lugar con literales.
+00_Config.js       IDs, solapas, COLUMNAS_MANUALES, COLUMNAS_DERIVADAS. Único lugar con literales.
 01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num  (una sola vez)
 02_Parsing.js      detectPersona_, detectBarrio_, detectFecha_, mapBarrioCanon_
 05_Escritura.js    setSiDelSistema_ y nada más. El único archivo que escribe en el destino.
@@ -390,7 +449,7 @@ Diagnósticos de una época: `Comparacion.js`, `Test Puntual.js`, `Test claves.j
 `Upset Base FInal solo actualizacion.js`. Sueltos: `Sin título 3.js`, `Barrio desde Base.js`,
 `En agenda a Realizada.js`, `Carga Manual persona o barrio por equipo/`.
 
-**Se elimina, no se archiva:** `Sinc Base usuario.js`. Es el paso 5 y con la decisión 9 deja de
+**Se elimina, no se archiva:** `Sinc Base usuario.js`. Es el paso 5 y con la decisión 10 deja de
 tener razón de existir: sincroniza dos hojas cuando va a quedar una sola, y lo hace en las dos
 direcciones, que el invariante prohíbe. Queda en git y, leído, en
 [docs/sync-bidireccional.md](docs/sync-bidireccional.md) — lo único que hay que llevarse de ahí
@@ -438,10 +497,20 @@ Según el resultado se decide si el backfill es un reproceso o hay que ir al ori
 - Verificar que `clasp push` no deja duplicados: `grep -c "function toDate_"` debe dar 1.
 
 ### Fase 3 — Derivadas a valores
+
+**Es prerrequisito duro de la Fase 5b.** No se saca el staging con las fórmulas de array
+todavía puestas: sería poner un upsert nuevo a escribir contra once bloques que se rompen
+enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problema no existe más.
+
 - Escribir `recalcDerivadas_()` y correrlo **sobre una copia** de (1).
 - Comparar columna por columna contra el original. Deben coincidir en las 802 filas.
 - Recién ahí: borrar las once fórmulas del original y correr el recálculo.
 - El límite de la fila 2374 desaparece con esto.
+- `COLUMNAS_DERIVADAS` (decisión 9) deja de ser una lista de cosas prohibidas y pasa a ser la
+  lista de lo que calcula `recalcDerivadas_()`. **No se borra del config**: el upsert las sigue
+  sin tocar, porque las escribe el recálculo y nadie más.
+- Verificar que ninguna quedó con fórmula:
+  `getRange(1,1,1,ultimaCol).getFormulas()[0].filter(String)` tiene que dar vacío.
 
 ### Fase 4 — Lectura directa y UID
 - `10_LeerOrigenes.js` con `openById`.
@@ -458,6 +527,11 @@ Según el resultado se decide si el backfill es un reproceso o hay que ir al ori
 ### Fase 5b — Retiro del staging
 
 Orden obligatorio. Cada paso depende del anterior.
+
+**Prerrequisito duro: la Fase 3 tiene que estar terminada.** Con las once fórmulas de array
+todavía puestas, cualquier escritura mal ubicada del upsert nuevo rompe un bloque entero y el
+daño es silencioso. Convertidas a valores, esa clase de problema desaparece y el retiro del
+staging es un cambio de ruteo y nada más.
 
 1. **Confirmar que la Fase 1 corrió** y que `DIAG_HUECO` tiene la columna `existe_en_PR`
    poblada. Sin eso no se sabe qué hay en `Para Revisar` que no esté en el destino.
@@ -480,10 +554,22 @@ hecho y verificado.
 - Objetivo: las 79 filas sin sexo/edades y las 17 sin inscriptos.
 - Verificar contra el conteo de la sección 3.2.
 
-### Fase 7 — Activadores
+### Fase 7 — Activadores y el `onEdit` del azul
 - **Dar de baja todos los activadores viejos** (ahora sí, con el inventario de Fase 0 a mano).
 - Crear los nuevos apuntando a `99_Pipeline.js`.
 - Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
+- **`onEdit(e)` que despinte el `#4F81BD` cuando la edición la hace una persona.** Es lo que le
+  da al azul la semántica que hoy no tiene: "esto es del sistema **y nadie lo tocó después**".
+  Un `onEdit` simple dispara sólo con edición manual en la UI, que es exactamente el caso que
+  interesa; las escrituras del script no lo activan.
+  - Sólo sobre `RVD JM-CM - ES`, y sólo si la celda estaba en `#4F81BD`.
+  - Dejar el fondo por defecto, no blanco: blanco explícito es otro color y ensucia la métrica.
+  - Verificar con `DIAG_PROCEDENCIA` antes y después de una semana: el conteo de azules tiene
+    que bajar sólo por ediciones reales.
+- **Sólo después de eso** se puede evaluar relajar `setSiDelSistema_` a "vacío o azul"
+  (sección 0). Es un cambio aparte, con su propia corrida de verificación, y **no entra en esta
+  fase**: el `onEdit` tiene que haber estado corriendo un tiempo para que el azul que queda sea
+  confiable. Mientras tanto la regla sigue siendo "sólo si está vacía".
 
 ---
 
