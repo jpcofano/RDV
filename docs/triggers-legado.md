@@ -15,15 +15,20 @@ dispararon de verdad en el último mes y cuáles están muertos.
 
 ## Activadores
 
-**Son cuatro.** Relevados desde el editor el 2026-09-24. Falta completar tipo, frecuencia, dueño
-y última modificación de cada uno.
+Eran cuatro. **Al 24/09/2026 queda uno activo.**
 
-| # | función | archivo | tasa de error | tipo | frecuencia | dueño | última mod. |
-|---|---|---|---|---|---|---|---|
-| 1 | `runFullPipelineWithDelays` | `Completo.js` | **100%** | | | | |
-| 2 | `syncManualCorrections_B2` | `Carga Manual persona o barrio por equipo/.js` | **24,22%** | | | | |
-| 3 | `syncAgendaSheetInBaseFromAgenda_2` | `Solapa agenda base final.js` | *(pendiente)* | | | | |
-| 4 | `syncBarriosFromBaseToAjusteRDV` | `Barrio desde Base.js` | *(pendiente)* | | | | |
+| función | archivo | estado | tasa de error | tipo | frecuencia | dueño |
+|---|---|---|---|---|---|---|
+| `syncAgendaSheetInBaseFromAgenda_2` | `Solapa agenda base final.js` | **ACTIVO** | 0,63% | | | |
+| `runFullPipelineWithDelays` | `Completo.js` | APAGADO 24/09/2026 | 100% | | | |
+| `syncManualCorrections_B2` | `Carga Manual persona o barrio por equipo/.js` | APAGADO 24/09/2026 | 24,22% | | | |
+| `syncBarriosFromBaseToAjusteRDV` | `Barrio desde Base.js` | APAGADO 24/09/2026 | **0%** | | | |
+
+Falta completar tipo, frecuencia y dueño de cada uno.
+
+> **El pipeline principal está frenado a propósito.** No es una falla: es un estado elegido
+> mientras dura la migración. Ver CLAUDE.md, "El pipeline está frenado". Consecuencia a tener
+> presente: **el hueco de sexo/edades no se llena solo hasta la Fase 6.**
 
 ### Qué sabemos de cada uno
 
@@ -40,8 +45,48 @@ CLAUDE.md 3.6: depende de `mapBarrioCanon_`, que tiene **dos implementaciones di
 proyecto, y borra filas invalidando su propio índice a mitad del loop. Escribe `BarrioN` en B2,
 que es la mitad de la clave natural.
 
-**3 y 4.** Falta la tasa de error. Los dos estaban marcados para archivar por error —
-ver "Lo que NO se archiva" en CLAUDE.md sección 4.
+**3. `syncAgendaSheetInBaseFromAgenda_2` — 0,63%, el único que queda vivo.** Arma la solapa
+espejo `Agenda` dentro de la planilla (1). Es el paso que menos decide de todo el flujo Agenda, y
+es el único de los tres que tiene activador: la ingesta desde Gmail y el push a `Para Revisar`
+**se ejecutan a mano**. Detalle en [docs/agenda-legado.md](agenda-legado.md).
+
+Ojo con un efecto lateral que su nombre no sugiere: llama a `ensureColumnsExist_` sobre
+**`Para Revisar`**, así que puede agregarle columnas a la solapa de staging.
+
+**4. `syncBarriosFromBaseToAjusteRDV` — 0% de error. PENDIENTE DE EVALUAR, no de baja.**
+
+Venía funcionando sin fallar una sola vez, así que apagarlo **sacó algo que andaba**. Antes de
+darlo de baja definitivo hay que saber qué hacía y quién dependía de eso.
+
+**Qué hace, leído del código** ([Barrio desde Base.js](../Barrio%20desde%20Base.js)):
+
+| | |
+|---|---|
+| **lee** | `RVD JM-CM - ES` de (1): columnas `Figura`, `FECHA`, `Barrio` |
+| **arma** | un mapa `normalizeText(Figura)\|yyyyMMdd(FECHA)` → `Barrio` |
+| **escribe** | la columna `Barrio` de `Ajuste Formularios RDV`, en la planilla de Agenda (4) |
+| **cuándo escribe** | **sólo donde el barrio de esa hoja está vacío** |
+| **cómo** | reescribe la columna entera en bloque, con los valores sin cambiar incluidos |
+
+Tres cosas que importan:
+
+1. **Usa `Figura + Fecha` como clave** — la única clave confirmada como única (CLAUDE.md 1.a).
+   Es el único script del legado que ya usa la clave correcta, y encima sin depender del barrio.
+2. **Sólo completa lo vacío.** La misma disciplina de `setSiDelSistema_`, sin el pintado.
+3. **Cierra un circuito que nadie declaró.** `Ajuste Formularios RDV` es la hoja que lee
+   `syncManualCorrections_B2` para escribir `B2.Barrio (manual)` → `B2.BarrioN`. O sea:
+   **el barrio del destino vuelve al destino convertido en clave de búsqueda.**
+
+> **Por qué importa haberlo apagado:** ese circuito era lo que mantenía vivo `BarrioN` en B2
+> después de que el origen dejara de mandar barrio (CLAUDE.md 3.3.b). Con los dos activadores
+> apagados, las filas nuevas de B2 van a quedar sin `BarrioN` y **las 23 claves incompletas
+> deberían subir**. Vale la pena medirlo con `diagDupB2()` en unas semanas: confirma que el
+> circuito estaba haciendo ese trabajo.
+
+**La pregunta que no se contesta leyendo código:** ¿quién mira `Ajuste Formularios RDV`? Si hay
+gente que corrige datos ahí, el barrio prellenado les ahorraba trabajo y hay que reemplazarlo por
+otra cosa antes de dar el activador de baja definitiva. Opinión sobre el rediseño en
+[docs/agenda-legado.md](agenda-legado.md), punto 5.
 
 ### Y uno que NO tiene activador
 

@@ -221,6 +221,33 @@ entre 2 y 6 barrios. La comuna confirma, nunca identifica.
 
 ## 2. Flujo actual
 
+> ### ⏸ El pipeline está frenado, a propósito
+>
+> **Al 24/09/2026 hay un solo activador vivo en todo el proyecto**:
+> `syncAgendaSheetInBaseFromAgenda_2`, que arma una solapa espejo y no escribe datos nuevos.
+> Los otros tres están apagados:
+>
+> | función | estado | tasa de error que traía |
+> |---|---|---|
+> | `runFullPipelineWithDelays` | APAGADO 24/09/2026 | 100% |
+> | `syncManualCorrections_B2` | APAGADO 24/09/2026 | 24,22% |
+> | `syncBarriosFromBaseToAjusteRDV` | APAGADO 24/09/2026 | **0%** |
+>
+> **Esto no es una falla: es un estado elegido.** Un pipeline que lleva meses sin correr, sobre
+> datos que se movieron todo ese tiempo, escribiendo con el upsert legado —el que no tiene
+> `setSiDelSistema_`— haría más daño encendido que apagado. Se enciende de nuevo en la Fase 2,
+> y recién después de `setSiDelSistema_`.
+>
+> **Consecuencia que hay que tener presente en todas las decisiones: el hueco de sexo/edades no
+> se llena solo.** Nada lo está completando hoy y nada lo va a completar hasta la **Fase 6**. Si
+> alguien pregunta por qué siguen faltando datos, la respuesta es esta y es intencional.
+>
+> `syncBarriosFromBaseToAjusteRDV` es el caso a mirar: venía en **0% de error**, o sea que
+> andaba. Queda **pendiente de evaluar**, no dado de baja — ver
+> [docs/triggers-legado.md](docs/triggers-legado.md).
+>
+> Lo que sigue describe el pipeline **como está escrito**, no como está corriendo.
+
 `runFullPipelineWithDelays()` en `Completo.js`, cinco pasos con `Utilities.sleep()` entre medio:
 
 ```
@@ -247,9 +274,18 @@ Las reglas del paso 5, leídas línea por línea, están en
 sobre celda vacía, y sólo ahí pinta `#4F81BD`; en el otro sentido copia al staging únicamente
 valores no numéricos; cuando los dos lados tienen valor y difieren, no escribe y lo reporta.
 
-Flujo Agenda, separado y **funcionando** (no romper):
+Flujo Agenda, separado:
 Gmail → `Agenda traer datos del mail.js` → solapa `Agenda` en (4) → `Agenda push a base.js`
 → `Para Revisar` en (1).
+
+> **Corrección: "funcionando" era demasiado generoso.** De sus tres pasos, **sólo el espejo
+> tiene activador.** La ingesta desde Gmail y el push a `Para Revisar` corren únicamente si
+> alguien los ejecuta a mano desde el editor. Y la ingesta **falla en silencio** si cambia el
+> formato del mail: devuelve cero eventos, muestra un `toast` de cuatro segundos y termina bien.
+>
+> Lectura completa en [docs/agenda-legado.md](docs/agenda-legado.md), que también documenta que
+> **la clave del mail (`persona|fecha|hora`) es la mejor del proyecto**, porque no usa barrio y
+> no depende de canonizar nada.
 
 No hay `onOpen()` ni triggers declarados en código. Todo corre por activadores cargados a
 mano en la UI del editor.
@@ -423,6 +459,68 @@ Sigue siendo un arma cargada —alcanza que alguien la ejecute a mano desde el e
 hay nada que apagar. El archivo va a `_archivo/` en la Fase 2 como el resto. Lo que la función
 decide se rescata en `marcarRealizada_` (sección 0), que escribe una celda por vez y no toca ni
 el formato ni el orden.
+
+**h) Dos `mapBarrioCanon_` con listas distintas — y una se contradice a sí misma.**
+
+Es una **fábrica identificada** de las 48 variantes de barrio que cuenta 3.2. No es drift de
+tipeo del equipo: lo produce el código.
+
+| dónde | implementación | `Villa General Mitre` → | `Montserrat` → |
+|---|---|---|---|
+| [Barrios.js:45](Barrios.js#L45) | `CANON` + `ALIAS` propios | `Villa Gral. Mitre` | `Monserrat` |
+| [Solapa agenda base final.js:214](Solapa%20agenda%20base%20final.js#L214) | delega en `canonBarrio_` | **`Villa Gral. Mitre`** | `Monserrat` |
+
+Hasta ahí, coinciden. El problema está adentro del segundo, en
+[la línea 182](Solapa%20agenda%20base%20final.js#L182):
+
+```js
+['villa gral mitre','Villa General Mitre'], ['villa general mitre','Villa Gral. Mitre'],
+```
+
+**Las dos entradas están cruzadas.** `villa gral mitre` devuelve `Villa General Mitre`, y
+`villa general mitre` devuelve `Villa Gral. Mitre`. Cada escritura del barrio **alterna entre
+las dos formas según cómo venía escrito**, y ninguna converge.
+
+Peor: `'Villa General Mitre'` **no está en su propia `CABA_BARRIOS_CANON`**, que tiene
+`'Villa Gral. Mitre'`. El alias produce un valor que su propia lista canónica no reconoce, así
+que una segunda pasada sobre ese valor lo vuelve a cambiar.
+
+**Por qué es bloqueante y no una curiosidad:**
+
+- las dos funciones se llaman igual, así que **cuál corre depende del orden de carga** (3.1.c),
+  que no está en el repo;
+- los dos archivos que las definen **tenían activador**;
+- `syncManualCorrections_B2` la usa para escribir **`BarrioN` en B2**, que es la mitad de la
+  clave natural, y `agenda_pushReadyToBaseFinal` la usa para escribir **`Barrio` en
+  `Para Revisar`**;
+- `Villa Gral. Mitre` y `Villa General Mitre` son **exactamente las dos variantes que 3.2 cuenta
+  como barrios distintos**.
+
+→ **Una sola implementación, una sola lista, en `02_Parsing.js`** (Fase 2). Las otras se borran.
+Y antes de reescribirla hay que decidir cuál es la forma canónica —`Villa Gral. Mitre` o
+`Villa General Mitre`, `Monserrat` o `Montserrat`— porque el destino hoy tiene las dos.
+
+**i) `syncManualCorrections_B2` borra filas invalidando su propio índice.**
+
+[Carga Manual persona o barrio por equipo/.js](Carga%20Manual%20persona%20o%20barrio%20por%20equipo/.js),
+todo dentro del mismo loop:
+
+```js
+const idToRowM = new Map();            // línea 76: ID → fila del sheet
+...
+const existsM = idToRowM.get(id);      // línea  97
+...
+manSh.deleteRow(existsM);              // línea 132  ← corre todas las filas de abajo
+```
+
+Después del primer `deleteRow`, **cada fila por debajo se corrió una posición** y el mapa quedó
+viejo. Las iteraciones siguientes leen y escriben en la fila equivocada.
+
+**No tira error: escribe mal en silencio.** Y está en la función que escribe `BarrioN` en B2,
+o sea que el daño cae sobre la mitad de la clave natural. Análisis completo en 3.6.
+
+El segundo bloque de borrados del mismo archivo (líneas 197-200) **sí está bien hecho**: ordena
+descendente antes de borrar. Es la misma operación resuelta bien a diez líneas de distancia.
 
 ### 3.2 Calidad de datos, medida
 
