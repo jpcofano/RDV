@@ -260,9 +260,22 @@ mano en la UI del editor.
 
 ### 3.1 Bloqueantes
 
-**a) El paso 1 está roto.** `Sinc A to A2.js:3` tiene `const SRC_SHEET = 'A'` y la solapa se
-renombró a `Asistentes`. Tira `throw new Error('No existe la hoja "A".')` y corta el pipeline
-entero en el primer paso.
+**a) El paso 1 está roto, y el pipeline entero falla el 100% de las veces.**
+
+[Sinc A to A2.js:3](Sinc%20A%20to%20A2.js#L3) tiene `const SRC_SHEET = 'A'` y la solapa se
+renombró a `Asistentes`. Tira `throw new Error('No existe la hoja "A".')` y corta el pipeline en
+el **primer paso de cinco**.
+
+> **Confirmado contra las ejecuciones: `runFullPipelineWithDelays` tiene una tasa de error del
+> 100%.** No es intermitente ni depende de los datos. Muere siempre en el mismo lugar, antes de
+> llegar a `syncB_to_B2`.
+
+La consecuencia que hay que tener presente en todo lo demás: **B2 no se está actualizando.** No
+es que se actualice mal — no se actualiza. Todo lo que hay en B2 llegó por corridas manuales de
+`syncB_to_B2`, o es anterior al renombre de la solapa.
+
+Una línea de una constante tira los cinco pasos. Y como el error queda en un log que nadie mira
+(3.1.d es el mismo patrón), estuvo fallando sin que nadie se enterara.
 
 **b) Las fórmulas del destino impiden escribir.** En `RVD JM-CM - ES`, once columnas son
 fórmulas de array que viven **en la celda del encabezado** y se expanden hacia abajo:
@@ -403,10 +416,13 @@ invariante entero— se vuelve ruido irrecuperable. Es exactamente lo que prohí
 Encima ordena hasta `lastRow`, que por las fórmulas es 2374 y no 802: arrastra ~1.570 filas
 vacías al ordenamiento.
 
-→ **Prioridad: verificar en la Fase 0 si esta función tiene un activador.** Si lo tiene, hay que
-apagarlo **antes** que cualquier otra cosa del plan. Lo que la función decide se rescata en
-`marcarRealizada_` (sección 0), que escribe una celda por vez y no toca ni el formato ni el
-orden. El archivo va a `_archivo/` en la Fase 2.
+> **Verificado: `marcarRevisadaEnOrden` NO tiene activador.** Nunca corrió contra el destino y
+> las once fórmulas de array están intactas. **Baja de urgente a riesgo latente.**
+
+Sigue siendo un arma cargada —alcanza que alguien la ejecute a mano desde el editor— pero no
+hay nada que apagar. El archivo va a `_archivo/` en la Fase 2 como el resto. Lo que la función
+decide se rescata en `marcarRealizada_` (sección 0), que escribe una celda por vez y no toca ni
+el formato ni el orden.
 
 ### 3.2 Calidad de datos, medida
 
@@ -474,6 +490,22 @@ quedan **descartadas**: ninguna fila del hueco llegó a B2 con datos.
 
 **El corte está en `B → B2` o antes.** B2 tiene 714 claves contra las 802 del destino: le faltan
 ~88, del mismo orden que las 72. Lo que falta nunca entró.
+
+> **Ojo con atribuirle las 72 al barrio.** Hay una segunda causa, y explica algo que el barrio
+> no explica.
+>
+> El barrio dejó de venir en **2025-10** (3.3.b): eso es un escalón, y debería producir un nivel
+> de falla parejo desde entonces. Pero la tasa de falla **acelera** — 11% en abril, 20% en junio,
+> 26% en julio, 56% en septiembre. Un escalón no produce una rampa.
+>
+> Lo que sí la produce: **el pipeline falla el 100% de las veces** (3.1.a), así que **B2 no se
+> actualiza**. Cada mes que pasa, B2 se queda más atrás del destino, y la proporción de filas
+> del destino sin contraparte crece sola. **La rampa es el pipeline caído, no el barrio.**
+>
+> Las dos causas conviven y hay que dimensionarlas por separado: `DIAG_CORTE_B` separa
+> `no_esta_en_B` (el dato no llegó al import) de `persona_no_reconocida` /
+> `barrio_no_reconocido` (llegó pero no se pudo indexar). La primera es la que crece con el
+> pipeline caído.
 
 **`Para Revisar` es un espejo del destino**, no un reservorio: 802 claves, las mismas, cero
 duplicadas. No tiene filas que el destino no tenga, así que **no sirve como fuente del backfill**
@@ -743,6 +775,76 @@ Qué cambia y qué no:
 | **los repartos por mes** | van completos: son justamente para ver el cambio |
 
 La ventana se mide sobre la fecha de la reunión, contra el día de hoy.
+
+### 3.6 `syncManualCorrections_B2`: qué es ese 24,22% de error
+
+Relevado por el activador que falla uno de cada cuatro disparos. **Sólo lectura.**
+
+#### No depende de la mitad comentada
+
+La pregunta concreta primero: **no.** `syncManualCorrections_B2` (línea 13, parte viva) **no
+llama a nada de las líneas 266-547**, que están dentro de un comentario de bloque. Las dos
+funciones que viven ahí —`exportMissingPersonaBarrio_B2_toManualSheet` e
+`importManuals_fromManualSheet_toB2`— no las invoca nadie.
+
+Los helpers que sí usa (`findIdxOr_`, `ensureHeaders_`, `str`, `strSafe`, `toDate_`) están
+duplicados: una copia en la parte viva (líneas 213-253) y otra en la comentada. La comentada
+está muerta, así que no compite.
+
+> Detalle: el bloque comentado **no se puede revivir sacándole los `/* */`.** Vuelve a declarar
+> `const MANUAL_SPREADSHEET_ID` y `MANUAL_SHEET_NAME`, que ya existen en las líneas 2-3 del
+> mismo archivo. Descomentarlo es un `SyntaxError` inmediato.
+
+#### Lo que sí encontré, y es peor
+
+**a) Llama a `mapBarrioCanon_`, que no está en este archivo — y hay DOS en el proyecto.**
+
+| dónde | qué hace |
+|---|---|
+| [Barrios.js:45](Barrios.js#L45) | lista `CANON` propia, con `'Villa Gral. Mitre'` y `'Monserrat'` |
+| [Solapa agenda base final.js:208](Solapa%20agenda%20base%20final.js#L208) | delega en `canonBarrio_`, otra implementación |
+
+**No devuelven lo mismo**, y cuál gana depende del orden de carga del proyecto, que no está en
+el repo (3.1.c). Lo grave es dónde cae: `syncManualCorrections_B2` **escribe `BarrioN` en B2**,
+que es la mitad de la clave natural. Y encima `Barrios.js` canoniza a `Villa Gral. Mitre`
+mientras `detectBarrio_` de `Código.js` canoniza a `Villa General Mitre` — **las dos formas del
+mismo barrio que 3.2 cuenta como variantes distintas.** Acá está una de las fábricas de ese
+drift.
+
+Los dos archivos que definen `mapBarrioCanon_` tienen activador, así que los dos están vivos.
+
+**b) `deleteRow` invalida el índice en el medio del loop.**
+
+Línea 76 arma `idToRowM`: ID → número de fila del sheet manual. Línea 97 lo consulta. Y línea
+132, **dentro del mismo loop**, borra una fila:
+
+```js
+const existsM = idToRowM.get(id);      // línea 97
+...
+manSh.deleteRow(existsM);              // línea 132
+```
+
+Después del primer borrado, **todas las filas por debajo se corrieron una posición** y el mapa
+quedó desactualizado. Las iteraciones siguientes escriben en la fila equivocada. No tira error:
+**corrompe en silencio.**
+
+El segundo bloque de borrados (líneas 197-200) sí está bien hecho —ordena descendente antes de
+borrar— y la fase 2 vuelve a leer la hoja (`valsM2`, línea 146), así que el daño queda contenido
+dentro de la fase 1.
+
+#### Qué explica el 24,22%
+
+No lo puedo afirmar sin ver el log de errores; los candidatos, por probabilidad:
+
+1. **`findIdxOr_` sin `optional`** en `id`, `nombre`, `persona`, `fecha` (líneas 21-24): si
+   falta cualquiera de esas columnas en B2, **tira**. Y cuál `findIdxOr_` corre depende del
+   orden de carga — hay seis copias.
+2. **`mapBarrioCanon_` resuelto a la versión de `Solapa agenda base final.js`**, que llama a
+   `canonBarrio_`: si esa cadena se rompe, es `TypeError`.
+3. Que B2 esté a medio escribir cuando arranca, porque el pipeline principal no corre (3.1.a).
+
+**Es el mismo patrón de 3.1.c en todos los casos: el proyecto depende de un orden de carga que
+no está versionado.** Un 24% de fallas intermitentes es exactamente la forma que toma eso.
 
 ---
 
@@ -1098,8 +1200,36 @@ algo fuera de ahí que apunte al destino, está mal. Tiene dos funciones y la se
 100% comentados: `Back up Agenda traer datos del mail.js`, `Completo Actualizacion sola.js`.
 Diagnósticos de una época: `Comparacion.js`, `Test Puntual.js`, `Test claves.js`, `Control.js`,
 `Backfill.js`. Forks del mismo upsert: `Con Barrio Sinc A to A2.js`,
-`Upset Base FInal solo actualizacion.js`. Sueltos: `Sin título 3.js`, `Barrio desde Base.js`,
-`En agenda a Realizada.js`, `Carga Manual persona o barrio por equipo/`.
+`Upset Base FInal solo actualizacion.js`. Sueltos: `Sin título 3.js`,
+`En agenda a Realizada.js`.
+
+### Lo que NO se archiva: tienen activador
+
+> **Corrección.** Tres archivos estaban en la lista de arriba y **hay que sacarlos**:
+>
+> | archivo | función | por qué estaba mal |
+> |---|---|---|
+> | `Solapa agenda base final.js` | `syncAgendaSheetInBaseFromAgenda_2` | **tiene activador activo** |
+> | `Barrio desde Base.js` | `syncBarriosFromBaseToAjusteRDV` | **tiene activador activo** |
+> | `Carga Manual persona o barrio por equipo/.js` | `syncManualCorrections_B2` | **tiene activador activo** |
+>
+> Estaban marcados para archivar porque **ninguna función del proyecto los llama**. Y es cierto:
+> no los llama el código. **Los llama un activador.**
+
+**La regla, para que no vuelva a pasar:**
+
+> **"No lo llama nadie en el código" no significa huérfano mientras no se coteje contra los
+> activadores.**
+
+En este proyecto hay **dos** grafos de llamadas y sólo uno está en el repo. El otro vive en la
+UI del editor, no se ve en un `grep`, no aparece en un diff y no está en `appsscript.json`.
+Archivar por análisis estático es apagar procesos en producción sin saberlo.
+
+Por eso `docs/triggers-legado.md` es **prerrequisito de la Fase 2**, no un trámite de la Fase 0:
+sin ese inventario, cualquier decisión de archivado es una apuesta.
+
+Qué hacer con los tres: se mantienen vivos hasta que su función esté cubierta por la
+arquitectura nueva, y recién ahí se da de baja el activador **antes** de archivar el archivo.
 
 **Se elimina, no se archiva:** `Sinc Base usuario.js`. Es el paso 5 y con la decisión 10 deja de
 tener razón de existir: sincroniza dos hojas cuando va a quedar una sola, y lo hace en las dos
@@ -1120,10 +1250,8 @@ hoy escribe en `Para Revisar` y va a escribir en el destino).
 - Copia completa de (1) y (2) en Drive, fechada. **Antes de tocar una sola fórmula.**
 - Inventario de los activadores actuales (editor → Activadores): función, tipo, frecuencia,
   dueño. Anotar en `docs/triggers-legado.md`. Todavía no dar de baja nada.
-- **Excepción a lo anterior: buscar `marcarRevisadaEnOrden`.** Si tiene activador, **apagarlo
-  ya**. Es la única baja que no espera al inventario completo: reescribe el destino entero y lo
-  ordena, y con un solo disparo rompe las once fórmulas de array y desordena los 3.779 `#4F81BD`
-  respecto de sus filas (3.1.g).
+- Anotar la **tasa de error** de cada activador (editor → Ejecuciones). Es lo que separa un
+  activador que funciona de uno que viene fallando hace meses sin que nadie lo note.
 
 ### Fase 1 — Diagnóstico del hueco
 `diagnostico/01_hueco_sexo_edades.js`, sólo lectura, cinco solapas de salida en la planilla
@@ -1213,7 +1341,19 @@ lo esperable es encontrarlas mezcladas.
 - `num()` deja de convertir vacío en cero: vacío se propaga como vacío (sección 0.a).
 - Mover a `_archivo/` todo lo listado arriba y **borrarlo del proyecto de Apps Script** para
   que salga del scope global (queda en git).
-- Arreglar `SRC_SHEET = 'A'` → `'Asistentes'`.
+- **Antes de arreglar `SRC_SHEET`: apagar el activador de `runFullPipelineWithDelays`.**
+
+  > Hoy ese activador es **inofensivo porque falla**: muere en el paso 1 y no escribe nada.
+  > Arreglar la constante **lo despierta**. Un pipeline que lleva meses sin correr, sobre datos
+  > que se movieron todo ese tiempo, escribiendo con el upsert legado —el que no tiene
+  > `setSiDelSistema_`, el que pisa canales con ceros— es exactamente lo que el invariante
+  > existe para impedir.
+  >
+  > **El orden importa y es contraintuitivo: primero apagar, después arreglar.** Al revés, entre
+  > el arreglo y la baja hay una ventana en la que el activador corre solo.
+
+- Arreglar `SRC_SHEET = 'A'` → `'Asistentes'`, con el activador ya apagado.
+- Correr el pipeline **a mano** y revisar qué escribió, antes de volver a habilitar nada.
 - Verificar que `clasp push` no deja duplicados: `grep -c "function toDate_"` debe dar 1.
 
 ### Fase 3 — Derivadas a valores
