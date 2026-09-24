@@ -496,6 +496,69 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    nueva al final (`AP`). El upsert busca por `RDV_UID`; si está vacío cae a la clave natural
    `normalizeText_(Figura)|normalizeText_(Barrio)|yyyyMMdd(Fecha)` y **estampa el uuid**.
    Después de una corrida casi todo entra por uuid y el drift de acentos deja de importar.
+
+   #### Cuando la clave natural tampoco alcanza: match por score
+
+   Los nombres de evento del origen **no los controlamos** (regla dura, sección 1). Son texto
+   libre, y a veces una sola inscripción menciona a varios funcionarios. Un match exacto o nada
+   deja afuera casos perfectamente resolubles, así que el tercer nivel es un **score**.
+
+   Cada candidato de `B` recibe un puntaje sobre **1.0**:
+
+   | señal | puntaje |
+   |---|---|
+   | figura mencionada en el texto del evento | **0,35** |
+   | fecha exacta | **0,30** |
+   | fecha ±1 día | 0,20 |
+   | fecha ±3 días | 0,10 |
+   | barrio canónico coincide | **0,25** |
+   | misma comuna | 0,15 |
+   | hora coincide | **0,10** |
+
+   **Decide el umbral más el margen contra el segundo candidato, no la unicidad.** Que haya un
+   solo candidato no lo vuelve correcto, y que haya varios no vuelve al mejor incorrecto:
+
+   | condición | qué pasa |
+   |---|---|
+   | score ≥ `UMBRAL_MATCH` **y** margen ≥ `MARGEN_MINIMO` | escribe y **estampa el `RDV_UID`** |
+   | score ≥ `UMBRAL_MATCH` pero margen chico | va a **`REVISAR_MATCH`**, no se escribe |
+   | score < `UMBRAL_MATCH` | va a **`SIN_MATCH`** |
+
+   ```js
+   // 00_Config.js — PROVISORIOS, a calibrar
+   const UMBRAL_MATCH  = 0.75;
+   const MARGEN_MINIMO = 0.15;
+   ```
+
+   **Los dos números son provisorios y están puestos a ojo.** Se calibran corriendo en seco
+   contra las **103 filas de `DIAG_CORTE_B`** y mirando la distribución real de scores:
+   `diagScores()` (en `diagnostico/02_corte_B_a_B2.js`) la vuelca sin escribir nada. Hasta que
+   esa distribución exista, cualquier umbral es inventado.
+
+   #### Barrio contra barrio, comuna contra comuna
+
+   **Nunca se compara un barrio contra una comuna.** Para el parcial de 0,15 se **sube** cada
+   barrio a su comuna con la tabla `Comunas` (la misma que hoy alimenta las columnas `AA`–`AG`)
+   y se comparan **dos comunas**. Si alguno de los dos barrios no está en la tabla, esa señal
+   no suma: no se inventa la comuna ni se compara el texto crudo.
+
+   #### `multi_figura` no es ambigüedad
+
+   Si el texto del evento menciona **dos o más figuras conocidas**, el caso no es "no sé cuál
+   es": es **una inscripción compartida por varias reuniones**. Se marca `multi_figura` y se
+   lista en `REVISAR_MATCH` con **todos** los candidatos, no sólo el mejor.
+
+   > **Abierto, decisión de negocio:** cómo se reparten los inscriptos de una inscripción
+   > compartida entre las reuniones que la comparten. ¿Se duplica el total en cada una? ¿Se
+   > divide? ¿Se asigna a una sola? **No lo resuelve el pipeline por su cuenta.** Hasta que haya
+   > una respuesta, estos casos quedan en `REVISAR_MATCH` sin escribir nada.
+
+   #### `REVISAR_MATCH`
+
+   Una fila por cada caso que quedó a mano, con lo necesario para resolverlo sin volver a
+   calcular nada: **fila del destino, los candidatos con su score, el margen y el motivo**
+   (`margen_chico` o `multi_figura`). Cuando una persona confirma cuál era, **se estampa el
+   `RDV_UID`** y el caso no vuelve a aparecer: la próxima corrida entra por uuid.
 3. **Clave B→B2 sin métricas**: `normalizeText_(Nombre) + "|" + yyyyMMdd(fecha_fin)`.
    Hoy usa `nombre|inscriptos`. Los inscriptos son finales (el formulario cierra), así que en
    la práctica funciona, pero una métrica no puede formar parte de una clave.
@@ -715,6 +778,11 @@ justo ahí donde se manifestaría una ventana móvil del import. Medir sólo el 
 
 Suma `DIAG_DUP_B2` con las 14 claves duplicadas. Detalle en
 [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md).
+
+`diagScores()` va aparte, y es el insumo de la decisión 2: calcula el score de las **103 filas**
+de la población contra todos los candidatos de `B` y vuelca la distribución en `DIAG_SCORES`,
+con un barrido de umbrales. **Es lo que convierte `UMBRAL_MATCH` y `MARGEN_MINIMO` de suposición
+en número medido.** Sólo lectura, y no estampa ningún `RDV_UID`.
 
 **La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
 eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser

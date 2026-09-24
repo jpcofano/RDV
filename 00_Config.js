@@ -47,6 +47,48 @@ const COLUMNAS_DERIVADAS = [
   'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'
 ];
 
+// ===================== Match por score =====================
+
+/**
+ * Pesos del match por score (CLAUDE.md, decisión 2). Suman 1.0 exacto con el máximo de cada
+ * señal: 0.35 + 0.30 + 0.25 + 0.10.
+ *
+ * El barrio se compara **barrio contra barrio**, y para el parcial de comuna se sube cada uno
+ * a su comuna con la tabla `Comunas`. Nunca se compara un barrio contra una comuna.
+ */
+const PESOS_MATCH = {
+  figura:        0.35,
+  fechaExacta:   0.30,
+  fecha1Dia:     0.20,
+  fecha3Dias:    0.10,
+  barrioIgual:   0.25,
+  mismaComuna:   0.15,
+  hora:          0.10
+};
+
+/**
+ * **PROVISORIOS.** Puestos a ojo, no medidos.
+ *
+ * Se calibran corriendo `diagScores()` (diagnostico/02_corte_B_a_B2.js) contra las 103 filas de
+ * DIAG_CORTE_B y mirando la distribución real: cuántas superarían el umbral, con qué margen, y
+ * cuántas caen en multi_figura. Hasta entonces, cualquier valor acá es una suposición.
+ *
+ *   score >= UMBRAL_MATCH y margen >= MARGEN_MINIMO  →  escribe y estampa RDV_UID
+ *   score >= UMBRAL_MATCH y margen chico             →  REVISAR_MATCH
+ *   score <  UMBRAL_MATCH                            →  SIN_MATCH
+ *
+ * Decide el umbral **más el margen contra el segundo candidato**, no la unicidad: que haya un
+ * solo candidato no lo vuelve correcto, y que haya varios no vuelve al mejor incorrecto.
+ */
+const UMBRAL_MATCH  = 0.75;
+const MARGEN_MINIMO = 0.15;
+
+/** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */
+const TOLERANCIA_HORA_MIN = 30;
+
+/** Solapa de lookup barrio → comuna, en la planilla (1). Es la que alimenta las columnas AA–AG. */
+const RDV_HOJA_COMUNAS = 'Comunas';
+
 // ===================== Alertas =====================
 
 /**

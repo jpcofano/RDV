@@ -9,9 +9,12 @@
  * Este archivo pregunta por qué `syncB_to_B2` no generó fila.
  *
  * Puntos de entrada:
- *   diagFase1b()    corre los dos, compartiendo lecturas.
+ *   diagFase1b()    corre DIAG_CORTE_B y DIAG_DUP_B2, compartiendo lecturas.
  *   diagCorteB()    → DIAG_CORTE_B
  *   diagDupB2()     → DIAG_DUP_B2
+ *   diagScores()    → DIAG_SCORES. Calibra UMBRAL_MATCH y MARGEN_MINIMO (CLAUDE.md decisión 2)
+ *                    con la distribución real de scores. Va suelto: es más caro que los otros
+ *                    dos (población × todas las filas de B) y no hace falta en cada corrida.
  *
  * Depende de `diagnostico/01_hueco_sexo_edades.js`, que está en el mismo proyecto y comparte
  * scope: usa sus lectores (`leerDestino_diag`, `indexarB2_diag`), sus helpers `_diag` y el
@@ -157,6 +160,10 @@ function leerB_diag2() {
       fila: i + 1,
       nombre: nombre,
       nombreNorm: normalizeText_diag(nombre),
+      // Precalculados una sola vez: diagScores los usa ~103 × ~740 veces.
+      figuras: figurasMencionadas_diag2(nombre),
+      horaMin: horaDesdeTexto_diag2(nombre),
+      barrioDet: detectBarrio_diag2(nombre),
       fechaFin: fechaFin,
       fechaTexto: fechaTexto || null,
       fechaEfectiva: fechaEfectiva,
@@ -219,6 +226,7 @@ function poblacionSinContraparte_diag2(cache) {
       figura: f.figura,
       barrio: f.barrio,
       fecha: f.fecha,
+      hora: D.Hora != null ? f.valores[D.Hora] : '',
       origen: esHueco ? 'hueco' : 'sin_contraparte_B2'
     });
   }
@@ -533,15 +541,251 @@ function generarDupB2_diag2(cache) {
            soloDifiereInscriptos: soloDifiereInscriptos, incompletas: b2.incompletas };
 }
 
+// ===================== DIAG_SCORES: calibrar el umbral =====================
+
+/**
+ * Calcula el score de cada fila de la población contra **todos** los candidatos de `B`, y vuelca
+ * la distribución. Sólo lectura: no escribe en el destino ni estampa ningún `RDV_UID`.
+ *
+ * Existe porque `UMBRAL_MATCH = 0.75` y `MARGEN_MINIMO = 0.15` están puestos a ojo
+ * (CLAUDE.md, decisión 2). Sin ver la distribución real, cualquier umbral es inventado. El log
+ * incluye un barrido de umbrales para poder elegir uno mirando qué pasa en cada corte.
+ *
+ * Los pesos salen de `PESOS_MATCH` en `00_Config.js`: se calibra contra los mismos números que
+ * va a usar el matcher, no contra una copia.
+ */
+function diagScores() {
+  const cache = nuevoCache2_diag2();
+  const b = cacheB_diag2(cache);
+  const poblacion = poblacionSinContraparte_diag2(cache);
+  const comunas = leerComunas_diag2();
+
+  const salida = [['clave_destino', 'origen_fila', 'mejor_score', 'segundo_score', 'margen',
+                   'veredicto', 'motivo', 'multi_figura', 'fila_B', 'nombre_evento_en_B',
+                   's_figura', 's_fecha', 's_barrio', 's_hora']];
+
+  const veredictos = { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 };
+  const motivos = { margen_chico: 0, multi_figura: 0, '': 0 };
+  const histograma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];   // 0.0-0.1 ... 0.9-1.0
+  const aportes = { figura: 0, fecha: 0, barrio: 0, hora: 0 };
+  const porOrigen = { hueco: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 },
+                      sin_contraparte_B2: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 } };
+  const mejores = [];
+  let sinNingunCandidato = 0, multiFigura = 0;
+
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    const horaDestino = horaDesdeCelda_diag2(h.hora);
+
+    let mejor = null, segundo = null;
+    for (let j = 0; j < b.filas.length; j++) {
+      const sc = scoreCandidato_diag2(h, horaDestino, b.filas[j], comunas);
+      if (sc.total <= 0) continue;
+      if (!mejor || sc.total > mejor.total) { segundo = mejor; mejor = sc; }
+      else if (!segundo || sc.total > segundo.total) { segundo = sc; }
+    }
+
+    if (!mejor) {
+      sinNingunCandidato++;
+      veredictos.SIN_MATCH++;
+      porOrigen[h.origen].SIN_MATCH++;
+      histograma[0]++;
+      salida.push([h.clave, h.origen, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
+                   '', '', 0, 0, 0, 0]);
+      continue;
+    }
+
+    const scoreSegundo = segundo ? segundo.total : 0;
+    const margen = redondear_diag2(mejor.total - scoreSegundo);
+    const esMulti = mejor.fb.figuras.length >= 2;
+    if (esMulti) multiFigura++;
+
+    let veredicto, motivo;
+    if (mejor.total < UMBRAL_MATCH) {
+      veredicto = 'SIN_MATCH'; motivo = '';
+    } else if (esMulti) {
+      // No es ambigüedad: es una inscripción compartida por varias reuniones. El reparto de
+      // inscriptos es una decisión de negocio abierta (CLAUDE.md, decisión 2).
+      veredicto = 'REVISAR_MATCH'; motivo = 'multi_figura';
+    } else if (margen < MARGEN_MINIMO) {
+      veredicto = 'REVISAR_MATCH'; motivo = 'margen_chico';
+    } else {
+      veredicto = 'escribiria'; motivo = '';
+    }
+
+    veredictos[veredicto]++;
+    porOrigen[h.origen][veredicto]++;
+    motivos[motivo]++;
+    mejores.push(mejor.total);
+    histograma[Math.min(9, Math.floor(mejor.total * 10))]++;
+    if (mejor.sFigura > 0) aportes.figura++;
+    if (mejor.sFecha > 0) aportes.fecha++;
+    if (mejor.sBarrio > 0) aportes.barrio++;
+    if (mejor.sHora > 0) aportes.hora++;
+
+    salida.push([h.clave, h.origen, redondear_diag2(mejor.total), redondear_diag2(scoreSegundo),
+                 margen, veredicto, motivo, esMulti ? 'TRUE' : 'FALSE',
+                 mejor.fb.fila, mejor.fb.nombre,
+                 mejor.sFigura, mejor.sFecha, mejor.sBarrio, mejor.sHora]);
+  }
+
+  escribirHoja_diag('DIAG_SCORES', salida);
+
+  const total = salida.length - 1;
+  Logger.log('=== DIAG_SCORES ===');
+  Logger.log('Población: %s filas | candidatos evaluados por fila: %s', total, b.filas.length);
+  Logger.log('Pesos: figura %s | fecha %s/%s/%s | barrio %s/%s | hora %s',
+             PESOS_MATCH.figura, PESOS_MATCH.fechaExacta, PESOS_MATCH.fecha1Dia,
+             PESOS_MATCH.fecha3Dias, PESOS_MATCH.barrioIgual, PESOS_MATCH.mismaComuna,
+             PESOS_MATCH.hora);
+  Logger.log('Umbrales PROVISORIOS en uso: UMBRAL_MATCH=%s MARGEN_MINIMO=%s',
+             UMBRAL_MATCH, MARGEN_MINIMO);
+
+  Logger.log('--- distribución del mejor score ---');
+  for (let k = 9; k >= 0; k--) {
+    const desde = (k / 10).toFixed(1), hasta = ((k + 1) / 10).toFixed(1);
+    Logger.log('  %s–%s : %s %s', desde, hasta, histograma[k],
+               barra_diag2(histograma[k], total));
+  }
+  Logger.log('  sin ningún candidato con score > 0: %s', sinNingunCandidato);
+
+  Logger.log('--- veredicto con los umbrales actuales: TOTAL | hueco | tapadas ---');
+  ['escribiria', 'REVISAR_MATCH', 'SIN_MATCH'].forEach(function (v) {
+    Logger.log('  %s: %s  |  %s  |  %s', v, veredictos[v],
+               porOrigen.hueco[v], porOrigen.sin_contraparte_B2[v]);
+  });
+  Logger.log('  de los REVISAR_MATCH: %s por margen chico, %s por multi_figura',
+             motivos.margen_chico, motivos.multi_figura);
+  Logger.log('  filas cuyo mejor candidato menciona 2+ figuras: %s', multiFigura);
+
+  Logger.log('--- barrido de umbrales (margen mínimo fijo en %s) ---', MARGEN_MINIMO);
+  Logger.log('  umbral | escribiría | a revisar | sin match');
+  for (let u = 50; u <= 95; u += 5) {
+    const umbral = u / 100;
+    let esc = 0, rev = 0, sin = 0;
+    for (let i = 1; i < salida.length; i++) {
+      const mejorSc = Number(salida[i][2]), marg = Number(salida[i][4]);
+      const multi = salida[i][7] === 'TRUE';
+      if (mejorSc < umbral) sin++;
+      else if (multi || marg < MARGEN_MINIMO) rev++;
+      else esc++;
+    }
+    Logger.log('   %s   |     %s      |    %s     |    %s',
+               umbral.toFixed(2), esc, rev, sin);
+  }
+
+  Logger.log('--- qué señal aporta en el mejor candidato ---');
+  Logger.log('  figura: %s de %s | fecha: %s | barrio: %s | hora: %s',
+             aportes.figura, total - sinNingunCandidato, aportes.fecha, aportes.barrio,
+             aportes.hora);
+  if (aportes.hora === 0) {
+    Logger.log('  >>> La hora no aportó en NINGÚN caso. O el destino no la tiene cargada, o el ' +
+               'texto libre de B no la trae en un formato reconocible. Con 0.10 de peso muerto, ' +
+               'el máximo alcanzable es 0.90 y el umbral de 0.75 es más exigente de lo que parece.');
+  }
+  if (!comunas.size) {
+    Logger.log('  >>> La tabla Comunas no se pudo leer: el parcial de "misma comuna" nunca suma.');
+  }
+
+  return { total: total, veredictos: veredictos, histograma: histograma,
+           multiFigura: multiFigura, sinNingunCandidato: sinNingunCandidato };
+}
+
+/**
+ * Score de un candidato de `B` contra una fila del destino. Máximo 1.0 con los pesos por
+ * defecto: 0.35 figura + 0.30 fecha + 0.25 barrio + 0.10 hora.
+ */
+function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
+  let sFigura = 0, sFecha = 0, sBarrio = 0, sHora = 0;
+
+  // --- figura: mencionada en el texto libre del evento ---
+  const figuraNorm = normalizeText_diag(h.figura);
+  if (figuraNorm && fb.nombreNorm.indexOf(figuraNorm) !== -1) sFigura = PESOS_MATCH.figura;
+
+  // --- fecha: contra la del texto y contra Fecha_Fin, se queda con la más cercana ---
+  if (h.fecha) {
+    let dias = null;
+    [fb.fechaTexto, fb.fechaFin].forEach(function (f) {
+      if (!f) return;
+      const d = Math.abs(diasEntre_diag2(f, h.fecha));
+      if (dias === null || d < dias) dias = d;
+    });
+    if (dias !== null) {
+      if (dias === 0)      sFecha = PESOS_MATCH.fechaExacta;
+      else if (dias <= 1)  sFecha = PESOS_MATCH.fecha1Dia;
+      else if (dias <= 3)  sFecha = PESOS_MATCH.fecha3Dias;
+    }
+  }
+
+  /*
+   * --- barrio ---
+   * Barrio contra barrio. Para el parcial se sube CADA UNO a su comuna con la tabla Comunas y
+   * se comparan dos comunas: nunca un barrio contra una comuna (CLAUDE.md, decisión 2).
+   * Si alguno de los dos no está en la tabla, la señal no suma. No se inventa la comuna.
+   */
+  const bDest = normalizeText_diag(h.barrio);
+  const bCand = normalizeText_diag(fb.barrioDet);
+  if (bDest && bCand) {
+    if (bDest === bCand) {
+      sBarrio = PESOS_MATCH.barrioIgual;
+    } else {
+      const cDest = comunas.get(bDest), cCand = comunas.get(bCand);
+      if (cDest && cCand && cDest === cCand) sBarrio = PESOS_MATCH.mismaComuna;
+    }
+  }
+
+  // --- hora ---
+  if (horaDestino !== null && fb.horaMin !== null &&
+      Math.abs(horaDestino - fb.horaMin) <= TOLERANCIA_HORA_MIN) {
+    sHora = PESOS_MATCH.hora;
+  }
+
+  return { total: sFigura + sFecha + sBarrio + sHora, fb: fb,
+           sFigura: sFigura, sFecha: sFecha, sBarrio: sBarrio, sHora: sHora };
+}
+
+/** Tabla `Comunas` de la planilla (1): normalizeText(barrio) → comuna. A=barrio, B=comuna. */
+function leerComunas_diag2() {
+  const mapa = new Map();
+  const sh = SpreadsheetApp.openById(DIAG_ID_DESTINO).getSheetByName('Comunas');
+  if (!sh) {
+    Logger.log('[diag2] no existe la solapa "Comunas": el parcial de misma comuna no va a sumar.');
+    return mapa;
+  }
+  const n = sh.getLastRow();
+  if (n < 2) return mapa;
+  const vals = sh.getRange(2, 1, n - 1, 2).getValues();
+  for (let i = 0; i < vals.length; i++) {
+    const barrio = normalizeText_diag(vals[i][0]);
+    const comuna = str_diag(vals[i][1]);
+    if (barrio && comuna) mapa.set(barrio, comuna);
+  }
+  Logger.log('[diag2] leída Comunas: %s barrios mapeados', mapa.size);
+  return mapa;
+}
+
+function redondear_diag2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function barra_diag2(n, total) {
+  if (!total || !n) return '';
+  const largo = Math.max(1, Math.round(n * 40 / total));
+  return new Array(largo + 1).join('#');
+}
+
 // ===================== Copias verbatim de Código.js, sufijo _diag2 =====================
 /*
  * Copiadas tal cual del legado. NO corregir: acá se mide lo que el código hace hoy.
  * Si el legado cambia, estas copias se actualizan en un commit aparte y se vuelve a medir.
  */
 
-function detectPersona_diag2(s) {
-  const sNorm = normalize_diag2(s);
-  const PERSONAS = [
+/*
+ * La lista sale a un const para que `figurasMencionadas_diag2` pueda contar TODAS las menciones
+ * y no sólo la primera. Es el único cambio respecto del original: mismo contenido, mismo orden,
+ * misma semántica en `detectPersona_diag2`.
+ */
+const PERSONAS_DIAG2 = [
     { canon: 'Diego Kravetz',            re: /\bdiego\s+kravetz\b/ },
     { canon: 'Gabriel Mraida',           re: /\bgabriel\s+mraida\b/ },
     { canon: 'Mercedes Miguel',          re: /\bmercedes\s+miguel\b/ },
@@ -562,10 +806,56 @@ function detectPersona_diag2(s) {
     { canon: 'Pablo Bereciartua',        re: /\bpablo\s+bereciartua\b/ },
     { canon: 'Gabriela Ricardes',        re: /\bgabriela\s+ricardes\b/ },
     { canon: 'Ruth Landerreche',         re: /\bruth\s+lander+eche\b/ },
-  ];
-  for (const p of PERSONAS) if (p.re.test(sNorm)) return p.canon;
+];
+
+function detectPersona_diag2(s) {
+  const sNorm = normalize_diag2(s);
+  for (const p of PERSONAS_DIAG2) if (p.re.test(sNorm)) return p.canon;
   if (/^jorge\s+macri\b/.test(sNorm)) return 'Jorge Macri';
   return '';
+}
+
+/** Todas las figuras conocidas mencionadas en el texto. Dos o más ⇒ inscripción compartida. */
+function figurasMencionadas_diag2(s) {
+  const sNorm = normalize_diag2(s);
+  const out = [];
+  for (const p of PERSONAS_DIAG2) if (p.re.test(sNorm)) out.push(p.canon);
+  return out;
+}
+
+/**
+ * Hora de inicio en minutos desde medianoche, sacada del texto libre. **No existe en el legado**:
+ * es nueva, para la señal de 0.10 del match por score. Conservadora a propósito — si no
+ * reconoce el patrón devuelve null y la señal simplemente no suma.
+ */
+function horaDesdeTexto_diag2(s) {
+  const t = String(s == null ? '' : s);
+  let m = /\b(\d{1,2})[:.](\d{2})\b/.exec(t);
+  if (m) return validarHora_diag2(parseInt(m[1], 10), parseInt(m[2], 10));
+  m = /\b(\d{1,2})\s*(?:a|-|–)\s*\d{1,2}\s*(?:hs?\b|horas\b)/i.exec(t);
+  if (m) return validarHora_diag2(parseInt(m[1], 10), 0);
+  m = /\b(\d{1,2})\s*(?:hs\b|horas\b)/i.exec(t);
+  if (m) return validarHora_diag2(parseInt(m[1], 10), 0);
+  return null;
+}
+
+/** Hora de la columna HORA del destino: puede venir como Date, como '18:30' o como '18'. */
+function horaDesdeCelda_diag2(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return validarHora_diag2(v.getHours(), v.getMinutes());
+  }
+  if (v == null || String(v).trim() === '') return null;
+  const t = String(v).trim();
+  let m = /^(\d{1,2})[:.](\d{2})/.exec(t);
+  if (m) return validarHora_diag2(parseInt(m[1], 10), parseInt(m[2], 10));
+  m = /^(\d{1,2})$/.exec(t);
+  if (m) return validarHora_diag2(parseInt(m[1], 10), 0);
+  return horaDesdeTexto_diag2(t);
+}
+
+function validarHora_diag2(h, min) {
+  if (!(h >= 0 && h <= 23 && min >= 0 && min <= 59)) return null;
+  return h * 60 + min;
 }
 
 function detectBarrio_diag2(s) {

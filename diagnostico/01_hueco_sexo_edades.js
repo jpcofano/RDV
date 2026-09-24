@@ -193,6 +193,7 @@ function leerDestino_diag() {
     Barrio: findIdx_diag(hdrDest, ['barrio']),
     Fecha:  findIdx_diag(hdrDest, ['fecha']),
     Ins:    findIdx_diag(hdrDest, ['inscriptos', 'inscritos']),
+    Hora:   findIdx_diag(hdrDest, ['hora'], true),   // la usa el match por score (archivo 02)
     Masc:   findIdx_diag(hdrDest, ['masculinos', 'masculino']),
     Fem:    findIdx_diag(hdrDest, ['femeninos', 'femenino']),
     edades: DIAG_RANGOS_ETARIOS.map(function (n) { return findIdx_diag(hdrDest, [n]); }),
