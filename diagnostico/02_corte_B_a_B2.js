@@ -734,13 +734,14 @@ function diagScores() {
   const poblacion = poblacionSinContraparte_diag2(cache);
   const comunas = leerComunas_diag2();
 
-  const salida = [['clave_destino', 'origen_fila', 'mejor_score', 'techo_alcanzable',
+  const salida = [['clave_destino', 'origen_fila', 'score', 'score_absoluto', 'alcanzable',
                    'segundo_score', 'margen', 'veredicto', 'motivo', 'multi_figura',
-                   'fila_B', 'nombre_evento_en_B', 'ubicacion',
+                   'fila_B', 'nombre_evento_en_B', 'ubicacion', 'resto_sin_ubicacion',
                    's_figura', 's_fecha', 's_ubicacion', 's_hora']];
 
   const veredictos = { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 };
-  const motivos = { margen_chico: 0, multi_figura: 0, '': 0 };
+  const motivos = { margen_chico: 0, multi_figura: 0, ubicacion_en_desacuerdo: 0,
+                    desacuerdo_y_resto_bajo: 0, score_bajo: 0, sin_candidatos: 0, '': 0 };
   const histograma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];   // 0.0-0.1 ... 0.9-1.0
   const aportes = { figura: 0, fecha: 0, ubicacion: 0, hora: 0 };
   const ubicaciones = {};
@@ -753,37 +754,68 @@ function diagScores() {
     const h = poblacion[i];
     const horaDestino = horaDesdeCelda_diag2(h.hora);
 
-    let mejor = null, segundo = null;
+    /*
+     * Un candidato con desacuerdo de ubicación NUNCA le gana a uno sin desacuerdo, por más
+     * score que tenga: el desacuerdo descalifica. Sólo compite contra otros descalificados, y
+     * si termina ganando es porque no había alternativa — y entonces va a revisión.
+     *
+     * Los dos grupos se rankean por separado a propósito. Mezclarlos daba márgenes negativos:
+     * el "segundo" podía ser un candidato descalificado con más score que el elegido, y el
+     * margen dejaba de medir ambigüedad entre opciones viables.
+     */
+    let mejorOk = null, segundoOk = null, mejorDes = null, segundoDes = null;
     for (let j = 0; j < b.filas.length; j++) {
       const sc = scoreCandidato_diag2(h, horaDestino, b.filas[j], comunas);
-      // Barrio presente en las dos puntas y distinto: el candidato queda afuera, no compite.
-      if (sc.descartado) { descartadosPorBarrio++; continue; }
-      if (sc.total <= 0) continue;
-      if (!mejor || sc.total > mejor.total) { segundo = mejor; mejor = sc; }
-      else if (!segundo || sc.total > segundo.total) { segundo = sc; }
+      if (sc.desacuerdo) {
+        descartadosPorBarrio++;
+        if (!mejorDes || sc.normalizado > mejorDes.normalizado) { segundoDes = mejorDes; mejorDes = sc; }
+        else if (!segundoDes || sc.normalizado > segundoDes.normalizado) { segundoDes = sc; }
+      } else {
+        if (sc.total <= 0) continue;
+        if (!mejorOk || sc.normalizado > mejorOk.normalizado) { segundoOk = mejorOk; mejorOk = sc; }
+        else if (!segundoOk || sc.normalizado > segundoOk.normalizado) { segundoOk = sc; }
+      }
     }
+    const mejor = mejorOk || mejorDes;
+    const segundo = mejorOk ? segundoOk : segundoDes;
 
     if (!mejor) {
       sinNingunCandidato++;
       veredictos.SIN_MATCH++;
       porOrigen[h.origen].SIN_MATCH++;
       histograma[0]++;
-      salida.push([h.clave, h.origen, 0, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
-                   '', '', 'sin_candidato', 0, 0, 0, 0]);
+      motivos.sin_candidatos++;
+      salida.push([h.clave, h.origen, 0, 0, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
+                   '', '', 'sin_candidato', 0, 0, 0, 0, 0]);
       continue;
     }
 
     ubicaciones[mejor.ubicacion] = (ubicaciones[mejor.ubicacion] || 0) + 1;
-    techos[mejor.techo] = (techos[mejor.techo] || 0) + 1;
+    techos[mejor.alcanzable] = (techos[mejor.alcanzable] || 0) + 1;
 
-    const scoreSegundo = segundo ? segundo.total : 0;
-    const margen = redondear_diag2(mejor.total - scoreSegundo);
+    const scoreSegundo = segundo ? segundo.normalizado : 0;
+    const margen = redondear_diag2(mejor.normalizado - scoreSegundo);
     const esMulti = mejor.fb.figuras.length >= 2;
     if (esMulti) multiFigura++;
 
     let veredicto, motivo;
-    if (mejor.total < UMBRAL_MATCH) {
-      veredicto = 'SIN_MATCH'; motivo = '';
+    if (mejor.desacuerdo) {
+      /*
+       * Desacuerdo de ubicación. NO se escribe solo, pero tampoco es un "no hay match": hay un
+       * candidato razonable con una contradicción en un solo campo.
+       *
+       * Y esa contradicción puede ser culpa del destino, no del origen: la comuna del destino
+       * deriva del barrio, que lo carga una persona. Si se equivocó de barrio, descartar sería
+       * castigar al origen por un error nuestro. Va a revisión, que es exactamente el caso para
+       * el que existe.
+       */
+      if (mejor.restoNormalizado >= UMBRAL_MATCH) {
+        veredicto = 'REVISAR_MATCH'; motivo = 'ubicacion_en_desacuerdo';
+      } else {
+        veredicto = 'SIN_MATCH'; motivo = 'desacuerdo_y_resto_bajo';
+      }
+    } else if (mejor.normalizado < UMBRAL_MATCH) {
+      veredicto = 'SIN_MATCH'; motivo = 'score_bajo';
     } else if (esMulti) {
       // No es ambigüedad: es una inscripción compartida por varias reuniones. El reparto de
       // inscriptos es una decisión de negocio abierta (CLAUDE.md, decisión 2).
@@ -797,15 +829,16 @@ function diagScores() {
     veredictos[veredicto]++;
     porOrigen[h.origen][veredicto]++;
     motivos[motivo]++;
-    histograma[Math.min(9, Math.floor(mejor.total * 10))]++;
+    histograma[Math.min(9, Math.floor(mejor.normalizado * 10))]++;
     if (mejor.sFigura > 0) aportes.figura++;
     if (mejor.sFecha > 0) aportes.fecha++;
     if (mejor.sBarrio > 0) aportes.ubicacion++;
     if (mejor.sHora > 0) aportes.hora++;
 
-    salida.push([h.clave, h.origen, redondear_diag2(mejor.total), mejor.techo,
+    salida.push([h.clave, h.origen, mejor.normalizado, mejor.total, mejor.alcanzable,
                  redondear_diag2(scoreSegundo), margen, veredicto, motivo,
                  esMulti ? 'TRUE' : 'FALSE', mejor.fb.fila, mejor.fb.nombre, mejor.ubicacion,
+                 mejor.restoNormalizado,
                  mejor.sFigura, mejor.sFecha, mejor.sBarrio, mejor.sHora]);
   }
 
@@ -821,7 +854,10 @@ function diagScores() {
   Logger.log('Umbrales PROVISORIOS en uso: UMBRAL_MATCH=%s MARGEN_MINIMO=%s',
              UMBRAL_MATCH, MARGEN_MINIMO);
 
-  Logger.log('--- distribución del mejor score ---');
+  Logger.log('El score que decide es NORMALIZADO: obtenido / alcanzable, o sea qué proporción');
+  Logger.log('de la evidencia disponible coincide. El absoluto y el alcanzable van igual en la');
+  Logger.log('solapa, para ver qué señales se están perdiendo.');
+  Logger.log('--- distribución del score normalizado ---');
   for (let k = 9; k >= 0; k--) {
     const desde = (k / 10).toFixed(1), hasta = ((k + 1) / 10).toFixed(1);
     Logger.log('  %s–%s : %s %s', desde, hasta, histograma[k],
@@ -844,8 +880,10 @@ function diagScores() {
     const umbral = u / 100;
     let esc = 0, rev = 0, sin = 0;
     for (let i = 1; i < salida.length; i++) {
-      const mejorSc = Number(salida[i][2]), marg = Number(salida[i][5]);
-      const multi = salida[i][8] === 'TRUE';
+      const mejorSc = Number(salida[i][2]), marg = Number(salida[i][6]);
+      const multi = salida[i][9] === 'TRUE';
+      const desac = String(salida[i][8]).indexOf('desacuerdo') !== -1;
+      if (desac) { rev++; continue; }
       if (mejorSc < umbral) sin++;
       else if (multi || marg < MARGEN_MINIMO) rev++;
       else esc++;
@@ -870,18 +908,17 @@ function diagScores() {
                ubicaciones.comuna_distinta);
   }
 
-  Logger.log('--- techo alcanzable (cuánto podría sumar como máximo cada par) ---');
+  Logger.log('--- alcanzable absoluto (qué señales existían en cada par) ---');
+  Logger.log('  Con el score normalizado esto ya NO limita el veredicto; sirve para ver cuánta');
+  Logger.log('  evidencia se está perdiendo. 1.00 = estaban las cuatro señales.');
   Object.keys(techos).map(Number).sort(function (x, y) { return y - x; }).forEach(function (t) {
     Logger.log('  %s : %s %s', t.toFixed(2), techos[t], barra_diag2(techos[t], total));
   });
-  const bajoUmbral = Object.keys(techos).map(Number)
-    .filter(function (t) { return t < UMBRAL_MATCH; })
-    .reduce(function (a, t) { return a + techos[t]; }, 0);
-  if (bajoUmbral > 0) {
-    Logger.log('  >>> %s filas tienen un TECHO por debajo de UMBRAL_MATCH=%s: por más que todo ' +
-               'coincida, no pueden alcanzarlo. No es que el match falle, es que el umbral es ' +
-               'inalcanzable para ellas. Bajar el umbral o repesar las señales.',
-               bajoUmbral, UMBRAL_MATCH);
+  const sinUbicacion = (ubicaciones.sin_dato || 0) + (ubicaciones.destino_sin_barrio || 0) +
+                       (ubicaciones.destino_sin_comuna || 0);
+  if (sinUbicacion > 0) {
+    Logger.log('  %s filas no tienen NINGUNA señal de ubicación evaluable: el match se decide ' +
+               'sólo con figura, fecha y hora.', sinUbicacion);
   }
   if (aportes.hora === 0) {
     Logger.log('  >>> La hora no aportó en NINGÚN caso: 0.10 de peso muerto.');
@@ -1072,50 +1109,63 @@ function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
   const bDest = normalizeText_diag(h.barrio);
   const bCand = normalizeText_diag(fb.barrioDet);
   let ubicacion = 'sin_dato';
+  let desacuerdo = false;
+  let pesoUbicacion = 0;        // cuánto podía sumar la ubicación, si es que era evaluable
 
-  if (bCand) {
-    if (!bDest) {
-      ubicacion = 'destino_sin_barrio';           // no se puede comparar, no puntúa
-    } else if (bDest === bCand) {
-      sBarrio = PESOS_MATCH.barrioIgual;
-      ubicacion = 'barrio_igual';
-    } else {
-      // Barrio presente en las dos puntas y distinto: no es una reunión candidata.
-      return { total: 0, descartado: true, fb: fb, ubicacion: 'barrio_distinto',
-               sFigura: sFigura, sFecha: sFecha, sBarrio: 0, sHora: 0 };
-    }
+  if (bCand && bDest) {
+    pesoUbicacion = PESOS_MATCH.barrioIgual;
+    if (bDest === bCand) { sBarrio = pesoUbicacion; ubicacion = 'barrio_igual'; }
+    else { ubicacion = 'barrio_distinto'; desacuerdo = true; }
+  } else if (bCand && !bDest) {
+    ubicacion = 'destino_sin_barrio';          // no evaluable
   } else if (fb.comunaDet != null) {
-    // El origen mandó comuna en vez de barrio. Se compara contra la comuna que deriva del
-    // barrio del destino, por la tabla Comunas. Comuna contra comuna, nunca contra un barrio.
+    // El origen mandó comuna en vez de barrio. Comuna contra comuna: la del destino sale de
+    // subir su barrio por la tabla Comunas. Nunca un barrio contra una comuna.
     const cDest = bDest ? comunaNumero_diag2(comunas.get(bDest)) : null;
-    if (cDest != null && cDest === fb.comunaDet) {
-      sBarrio = PESOS_MATCH.comunaSinBarrio;
-      ubicacion = 'comuna_igual';
-    } else if (cDest != null) {
-      ubicacion = 'comuna_distinta';              // se cuenta, pero NO descarta: ver el log
+    if (cDest == null) {
+      ubicacion = 'destino_sin_comuna';        // no evaluable
     } else {
-      ubicacion = 'destino_sin_comuna';
+      pesoUbicacion = PESOS_MATCH.comunaSinBarrio;
+      if (cDest === fb.comunaDet) { sBarrio = pesoUbicacion; ubicacion = 'comuna_igual'; }
+      else { ubicacion = 'comuna_distinta'; desacuerdo = true; }
     }
   }
+  // ubicacion 'sin_dato': el origen no manda ni barrio ni comuna. NO evaluable, y por eso ni
+  // suma ni resta: la ausencia no puede puntuar como contradicción.
 
   // --- hora ---
-  if (horaDestino !== null && fb.horaMin !== null &&
-      Math.abs(horaDestino - fb.horaMin) <= TOLERANCIA_HORA_MIN) {
+  const horaEvaluable = (horaDestino !== null && fb.horaMin !== null);
+  if (horaEvaluable && Math.abs(horaDestino - fb.horaMin) <= TOLERANCIA_HORA_MIN) {
     sHora = PESOS_MATCH.hora;
   }
 
   /*
-   * Techo alcanzable para ESTE par: cuánto podría sumar como máximo dadas las señales que
-   * existen. Si el origen no manda barrio, el techo baja a 0.90; sin hora, a 0.80. Es el
-   * número que dice si el umbral es siquiera alcanzable.
+   * --- normalización ---
+   * `alcanzable` es la suma de los pesos de las señales que se PUDIERON evaluar. El score que
+   * decide es obtenido/alcanzable: "qué proporción de la evidencia disponible coincide".
+   *
+   * Sin esto, una fila con figura + fecha exacta + comuna coincidente —que acertó todo lo que
+   * había para acertar— puntuaría 0.80 por campos que el origen ya no manda, y el umbral
+   * habría que recalibrarlo cada vez que cambia el formulario.
    */
-  const techo = PESOS_MATCH.figura + PESOS_MATCH.fechaExacta +
-                (bCand ? PESOS_MATCH.barrioIgual
-                       : (fb.comunaDet != null ? PESOS_MATCH.comunaSinBarrio : 0)) +
-                ((fb.horaMin !== null && horaDestino !== null) ? PESOS_MATCH.hora : 0);
+  const fechaEvaluable = !!(h.fecha && (fb.fechaTexto || fb.fechaFin));
+  const alcanzable = PESOS_MATCH.figura +
+                     (fechaEvaluable ? PESOS_MATCH.fechaExacta : 0) +
+                     pesoUbicacion +
+                     (horaEvaluable ? PESOS_MATCH.hora : 0);
 
-  return { total: sFigura + sFecha + sBarrio + sHora, descartado: false, fb: fb,
-           ubicacion: ubicacion, techo: redondear_diag2(techo),
+  const obtenido = sFigura + sFecha + sBarrio + sHora;
+  const normalizado = alcanzable > 0 ? obtenido / alcanzable : 0;
+
+  // El resto de las señales, sin la ubicación: es lo que decide si un desacuerdo va a revisión
+  // (hay un candidato razonable con una contradicción en un solo campo) o no va a ningún lado.
+  const alcSinUbic = alcanzable - pesoUbicacion;
+  const restoNormalizado = alcSinUbic > 0 ? (obtenido - sBarrio) / alcSinUbic : 0;
+
+  return { total: redondear_diag2(obtenido), normalizado: redondear_diag2(normalizado),
+           alcanzable: redondear_diag2(alcanzable),
+           restoNormalizado: redondear_diag2(restoNormalizado),
+           desacuerdo: desacuerdo, fb: fb, ubicacion: ubicacion,
            sFigura: sFigura, sFecha: sFecha, sBarrio: sBarrio, sHora: sHora };
 }
 

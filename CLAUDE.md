@@ -54,6 +54,36 @@ que escribe **sólo si la celda está vacía**, y que pinta `#4F81BD` al escribi
 No hay `setValue` ni `setValues` sueltos contra el destino. Ninguno. Si aparece uno en un
 diff, el diff está mal.
 
+### La única excepción: `STATUS REUNIÓN`
+
+Hay **una** escritura que la regla general no puede hacer y que igual hace falta. Está acá
+arriba, junto al invariante, y no escondida en el código, porque una excepción que no se
+anuncia deja de ser una excepción y pasa a ser un agujero.
+
+**`STATUS REUNIÓN` no es un número cerrado: es un estado que cambia.** Una reunión agendada que
+efectivamente ocurrió tiene que pasar a `Realizada`, y "escribir sólo en celda vacía" se lo
+impide — la celda ya dice `en agenda`. Sin excepción, el estado se congela en el momento en que
+alguien lo carga por primera vez.
+
+La excepción es **una sola transición, en una sola dirección**:
+
+> `en agenda` → `Realizada`, y sólo cuando la fila tiene `Asistentes` cargado.
+
+- nunca al revés;
+- nunca hacia ningún otro valor;
+- **nunca desde ningún otro estado.** La whitelist es de un único origen. Ver 3.4: hay tres
+  estados más —`Suspendida`, `Reprogramada`, `Se modifico el barrio`— que son **decisiones de
+  una persona**, y el pipeline no puede pisar una reunión que alguien suspendió a mano;
+- nunca desde un estado que el pipeline no conozca: si aparece uno nuevo, se loguea y se deja.
+
+**Vive en `05_Escritura.js` como función aparte, `marcarRealizada_`, y no pasa por
+`setSiDelSistema_`.** Es deliberado: la regla general tiene que seguir siendo verificable con un
+grep, y una excepción metida adentro del helper la volvería inauditable — el helper diría "sólo
+escribo en celda vacía" y sería mentira.
+
+Pinta `#4F81BD` como cualquier otra escritura del sistema: el equipo tiene que poder ver que ese
+`Realizada` lo puso el proceso.
+
 #### Por qué esa regla alcanza: los números del sistema son cerrados
 
 El formulario de inscripción **cierra**. Después de eso el total no se actualiza más: los
@@ -323,6 +353,47 @@ primera que aparezca.
 Mientras tanto, el arreglo de fondo es la decisión 2: con `RDV_UID` la identidad deja de
 depender de que una lista fija de nombres reconozca el texto libre.
 
+**g) `marcarRevisadaEnOrden()` reescribe el destino entero y después lo ordena.**
+
+Está en [En agenda a Realizada.js](En%20agenda%20a%20Realizada.js). **Lo que decide está bien**
+—es exactamente la transición de la sección 0— pero **cómo escribe es destructivo en dos formas
+distintas**, las dos silenciosas.
+
+**1. Escribe de vuelta la planilla completa, fórmulas incluidas**
+([líneas 64-84](En%20agenda%20a%20Realizada.js#L64)):
+
+```js
+const data = sh.getDataRange().getValues();   // 41 columnas x ~2374 filas, valores calculados
+// ... cambia una celda de STATUS en algunas filas ...
+sh.getRange(2, 1, out.length, data[0].length).setValues(out);   // y escribe TODO de vuelta
+```
+
+Eso escribe **valores literales sobre `D2:D2374`, `W`, `X`, `Y`, `AA`–`AG`** — las once columnas
+que son fórmulas de array ancladas en la fila 1 (3.1.b). El bloque se rompe entero. Los valores
+se ven iguales porque son los mismos que acababa de leer, así que **el daño no se nota mirando
+la planilla**: se nota cuando entra la primera fila nueva y ya no se calcula nada.
+
+> Las once fórmulas hoy están vivas, así que esta función **no corrió nunca contra el destino**,
+> o corrió antes de que existieran. Es un arma cargada: alcanza un disparo.
+
+**2. Ordena el destino** ([líneas 39-47](En%20agenda%20a%20Realizada.js#L39)):
+
+```js
+sh.getRange(2, 1, lastRow - 1, lastCol).sort([byFecha, byHora, byFig]);
+```
+
+`sort()` **mueve los valores y deja los fondos quietos**. Las 3.779 celdas `#4F81BD` quedarían
+repartidas sobre filas que no les corresponden, y la marca de procedencia —de la que depende el
+invariante entero— se vuelve ruido irrecuperable. Es exactamente lo que prohíbe la sección 6.
+
+Encima ordena hasta `lastRow`, que por las fórmulas es 2374 y no 802: arrastra ~1.570 filas
+vacías al ordenamiento.
+
+→ **Prioridad: verificar en la Fase 0 si esta función tiene un activador.** Si lo tiene, hay que
+apagarlo **antes** que cualquier otra cosa del plan. Lo que la función decide se rescata en
+`marcarRealizada_` (sección 0), que escribe una celda por vez y no toca ni el formato ni el
+orden. El archivo va a `_archivo/` en la Fase 2.
+
 ### 3.2 Calidad de datos, medida
 
 Destino `RVD JM-CM - ES`, 802 filas con datos, fechas 05/07/2025 → 24/09/2026:
@@ -556,6 +627,65 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   a B2 sin `Persona` y queda inindexable (3.1.f).
 - `DEFAULT_YEAR = 2025` hardcodeado en `Código.js`.
 
+### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
+
+Relevado antes de definir la excepción de la sección 0. **Sólo lectura, nada cambiado.**
+
+#### Los cinco valores
+
+Son los únicos que aparecen como literal en todo el repo
+([Upset Base FInal.js:310-312](Upset%20Base%20FInal.js#L310)):
+
+| valor | qué significa | ¿lo puede escribir el pipeline? |
+|---|---|---|
+| `en agenda` | agendada, todavía no pasó | es el **único origen** de la transición |
+| `Realizada` | ocurrió | es el **único destino** de la transición |
+| `Suspendida` | no se hizo | **no.** Decisión de una persona |
+| `Reprogramada` | se movió de fecha | **no.** Decisión de una persona |
+| `Se modifico el barrio` | cambió la ubicación | **no.** Decisión de una persona |
+
+**Hay un solo valor que significa realizada** (`Realizada`), así que no hay ambigüedad de
+sinónimos. Y **hay tres estados terminales distintos**, que es justo lo que había que confirmar:
+por eso la whitelist de la sección 0 es de **un solo estado de origen** y no "cualquiera que no
+sea `Realizada`".
+
+`mapStatusToAllowed_` ([Upset Base FInal.js:318](Upset%20Base%20FInal.js#L318)) mapea variantes
+—`cancelad*` → `Suspendida`, `programad*` → `en agenda`— y **cae a `en agenda` por defecto**.
+Eso sería peligroso combinado con la transición: un estado desconocido se convertiría en
+`en agenda` y de ahí a `Realizada`. **Hoy no pasa**: la única llamada está en `Control.js:159`,
+que es un diagnóstico y no escribe. No incorporarla al camino de escritura.
+
+#### La transición ya existe en el legado
+
+[En agenda a Realizada.js:14-16](En%20agenda%20a%20Realizada.js#L14):
+
+```js
+const STATUS_FROM  = 'en agenda';
+const STATUS_TO    = 'Realizada';
+const MIN_ASISTENTES = 1;
+```
+
+Y la aplica sólo desde `en agenda` — la misma whitelist. **El criterio no hay que inventarlo,
+hay que rescatarlo.** Lo que está mal es cómo escribe: ver 3.1.g.
+
+#### De dónde viene `Asistentes`
+
+**De A2, que sale de `RDV CONJUNTO`. No de B2.** Verificado en tres puntos:
+
+- `B2` no tiene columna `Asistentes` en absoluto
+  ([Sync B to B2.js:13-20](Sync%20B%20to%20B2.js#L13)): trae inscriptos, canales, sexo y edades;
+- `A2` sí la tiene ([Sinc A to A2.js:14](Sinc%20A%20to%20A2.js#L14)), y se llena desde la solapa
+  `Asistentes` de (2), que es IMPORTRANGE de `RDV CONJUNTO!A:L` de (1);
+- en el upsert, `D.Asis` se escribe **únicamente** en el bloque de A2
+  ([Upset Base FInal.js:104-105](Upset%20Base%20FInal.js#L104)); el bloque de B2 no lo toca.
+
+Importa porque la transición se dispara con `Asistentes`: **el estado de una reunión depende de
+la cadena de asistentes (A2), no de la de inscriptos (B2)**, que es la que está rota. Son dos
+caminos independientes, y el que alimenta la transición es el que hoy funciona.
+
+El flujo Agenda, además, evita pisarla a propósito
+([Agenda push a base.js:387](Agenda%20push%20a%20base.js#L387)): `// NO tocar asistentes`.
+
 ---
 
 ## 4. Arquitectura destino
@@ -617,6 +747,24 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    tiene más de una reunión por día— esos dos campos alcanzan como clave. **La ubicación no
    entra en la identidad: confirma.**
 
+   #### El score se normaliza sobre las señales disponibles
+
+   El score que decide es **`obtenido / alcanzable`**, donde `alcanzable` es la suma de los
+   pesos de las señales que **se pudieron evaluar** en esa fila.
+
+   Los pesos suman 1.0 sólo con las cuatro señales presentes, pero **el barrio ya no viene nunca
+   y la hora casi nunca**, así que 1.0 es inalcanzable por construcción para el caso normal. Una
+   fila con figura, fecha exacta y comuna coincidente **acertó todo lo que había para acertar** y
+   tiene que puntuar 1.00, no 0.80 por campos que el origen no manda.
+
+   Bajar el umbral tapaba el síntoma. Normalizar arregla la causa, y de paso el umbral pasa a
+   significar algo estable: **qué proporción de la evidencia disponible coincide**. Deja de
+   necesitar recalibración cada vez que cambia el formulario — que es exactamente lo que ya nos
+   pasó con el barrio.
+
+   El score absoluto y el alcanzable se reportan igual en `DIAG_SCORES`: no deciden nada, pero
+   muestran **qué señales se están perdiendo**.
+
    Cada candidato de `B` recibe un puntaje sobre **1.0**:
 
    | señal | puntaje |
@@ -635,16 +783,32 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    |---|---|
    | barrio presente y **igual** | **+0,25** |
    | barrio **ausente**, comuna presente y coincide | **+0,15** |
-   | barrio presente y **distinto** | **descarte del candidato** |
-   | ni barrio ni comuna | **0, sin penalización** |
+   | barrio **o comuna** presentes y **distintos** | **descalifica** el candidato |
+   | ni barrio ni comuna | **no puntúa ni cuenta para el denominador** |
 
-   **La diferencia entre las dos últimas es el punto entero.** La ausencia de dato no puede
-   puntuar como contradicción. Si "no vino el barrio" restara lo mismo que "vino otro barrio",
-   **todas las filas nuevas caerían bajo el umbral** —porque el origen dejó de mandar barrio
-   (3.3.b)— y el pipeline fallaría exactamente en los casos que vinimos a arreglar.
+   **La distinción no es barrio contra comuna: es ausencia contra desacuerdo.**
 
-   Y un barrio distinto no es una penalización parcial: es **descarte**. No hay grados entre
-   "esta es la reunión" y "esta es otra reunión".
+   - **Ausencia no puntúa** — y tampoco resta, porque ni siquiera entra al denominador de la
+     normalización. Si "no vino el barrio" restara lo mismo que "vino otro barrio", todas las
+     filas nuevas caerían bajo el umbral —porque el origen dejó de mandar barrio (3.3.b)— y el
+     pipeline fallaría exactamente en los casos que vinimos a arreglar.
+   - **Desacuerdo descalifica**, venga del barrio o de la comuna. No hay grados entre "esta es
+     la reunión" y "esta es otra reunión". Un candidato descalificado **nunca le gana a uno sin
+     desacuerdo**, por más score que tenga.
+
+   #### Pero el desacuerdo va a `REVISAR_MATCH`, no a `SIN_MATCH`
+
+   Con una salvedad que cambia el destino del caso: **la comuna del destino se deriva del
+   barrio, y el barrio lo carga una persona** (sección 1.b, decisión 8). Si esa persona se
+   equivocó de barrio, el desacuerdo es un dato malo **del destino**, no del origen — y
+   descartar sería castigar al origen por un error nuestro.
+
+   Así que un candidato descalificado por ubicación, **cuando el resto de las señales da alto**,
+   va a `REVISAR_MATCH` con motivo `ubicacion_en_desacuerdo`. Hay un candidato razonable y una
+   contradicción en un solo campo: es literalmente el caso para el que existe la revisión.
+
+   `SIN_MATCH` queda para lo que de verdad no tiene match: ningún candidato, o ninguno lo
+   bastante bueno.
 
    > **Cae la medición de colisiones dentro de la comuna** que estaba pedida antes. Con la regla
    > de la sección 1.a no puede haber dos reuniones de la misma figura el mismo día, así que no
@@ -713,9 +877,14 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    ```js
    const COLUMNAS_MANUALES = [
-     'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
+     'Barrio', 'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
    ];
    ```
+
+   **`Barrio` entró a la lista** cuando el origen dejó de mandarlo (3.3.b): hoy lo carga una
+   persona, así que es de ellos. Con una consecuencia que conviene tener presente: la columna
+   `AA (Comuna)` deriva del barrio por fórmula, así que **la comuna del destino también pasó a
+   depender de carga manual** — y es la que usa el match por score como señal de confirmación.
 
    El pipeline **las lee y nunca las escribe, ni aunque estén vacías.** No es "no pisar": es no
    escribir. Una celda vacía en una columna manual significa que todavía nadie la cargó, y ese
@@ -822,6 +991,20 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     Fase 2 haga que vacío se propague como vacío, un 0 real pasa a alertar. Está marcado en el
     código.
 
+12. **`marcarRealizada_`: la transición de estado, como excepción anunciada.**
+
+    El detalle está en la sección 0 y los valores relevados en 3.4. Lo que hay que retener acá:
+
+    - **está afuera de `setSiDelSistema_`**, en `05_Escritura.js`, para que la regla general
+      siga siendo cierta y verificable con un grep;
+    - **whitelist de un solo estado de origen** (`en agenda`), no "cualquiera que no sea
+      `Realizada`". Esa diferencia es lo que impide pisar una reunión suspendida a mano;
+    - se dispara con `Asistentes`, que viene de **A2 / `RDV CONJUNTO`**, no de B2 (3.4);
+    - pinta `#4F81BD` como cualquier escritura del sistema.
+
+    Y lo que reemplaza: `marcarRevisadaEnOrden()` (3.1.g), que decide lo mismo pero reescribe la
+    planilla entera y la ordena.
+
 ### Estructura de archivos
 
 ```
@@ -829,7 +1012,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    Único lugar con literales.                                   ← ya escrito
 01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num  (una sola vez)
 02_Parsing.js      detectPersona_, detectBarrio_, detectFecha_, mapBarrioCanon_
-05_Escritura.js    setSiDelSistema_ y nada más. El único archivo que escribe en el destino.
+05_Escritura.js    setSiDelSistema_ + marcarRealizada_. El único que escribe en el destino.  ← ya escrito
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  A2+B2+Agenda → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
@@ -846,9 +1029,10 @@ el legado. **Todavía no están enganchados al pipeline** — `verificarCambiosR
 llama desde `99_Pipeline.js` cuando ese archivo exista, o a mano con `correrAlertaCambios()`.
 Sus helpers `_alerta` son provisorios y los reemplaza `01_Utils.js` en la Fase 2.
 
-`05_Escritura.js` está separado a propósito. Que `setSiDelSistema_` viva solo en su archivo
-hace que la regla de la sección 0 sea verificable de un vistazo: si `grep -rn "setValue" .`
-devuelve algo fuera de ahí que apunte al destino, está mal.
+`05_Escritura.js` está separado a propósito. Que las escrituras vivan sólo ahí hace que la regla
+de la sección 0 sea verificable de un vistazo: si `grep -rn "setValue\|setBackground" .` devuelve
+algo fuera de ahí que apunte al destino, está mal. Tiene dos funciones y la segunda,
+`marcarRealizada_`, es la única excepción — anunciada, no escondida adentro del helper.
 
 ### Qué se archiva
 
@@ -877,6 +1061,10 @@ hoy escribe en `Para Revisar` y va a escribir en el destino).
 - Copia completa de (1) y (2) en Drive, fechada. **Antes de tocar una sola fórmula.**
 - Inventario de los activadores actuales (editor → Activadores): función, tipo, frecuencia,
   dueño. Anotar en `docs/triggers-legado.md`. Todavía no dar de baja nada.
+- **Excepción a lo anterior: buscar `marcarRevisadaEnOrden`.** Si tiene activador, **apagarlo
+  ya**. Es la única baja que no espera al inventario completo: reescribe el destino entero y lo
+  ordena, y con un solo disparo rompe las once fórmulas de array y desordena los 3.779 `#4F81BD`
+  respecto de sus filas (3.1.g).
 
 ### Fase 1 — Diagnóstico del hueco
 `diagnostico/01_hueco_sexo_edades.js`, sólo lectura, cinco solapas de salida en la planilla
@@ -985,7 +1173,8 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - `20_UpsertDestino.js` con match uuid → natural → `SIN_MATCH`.
 - **Toda escritura por `setSiDelSistema_`. Cero `setValue` sueltos.** Revisar el diff con
   `grep -rn "setValue\|setValues" 20_UpsertDestino.js` — tiene que dar cero.
-- `COLUMNAS_MANUALES` chequeadas antes que nada: esas seis ni se intentan.
+- `COLUMNAS_MANUALES` chequeadas antes que nada: esas siete ni se intentan.
+- `marcarRealizada_` enganchada al upsert (decisión 12), con los asistentes que vienen de A2.
 - Correr en seco (modo `DRY_RUN` que sólo llena `SIN_MATCH` y loguea) antes de habilitar escritura.
 
 ### Fase 5b — Retiro del staging  *(baja prioridad desde 2026-09-22)*

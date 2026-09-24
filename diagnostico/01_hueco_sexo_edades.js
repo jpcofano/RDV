@@ -60,8 +60,10 @@ const DIAG_CANALES = ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'];
 /**
  * COLUMNAS_MANUALES confirmadas (CLAUDE.md, decisión 8). Las carga el equipo a mano; el
  * pipeline las lee y nunca las escribe, ni aunque estén vacías.
+ *
+ * `Barrio` entró a la lista cuando el origen dejó de mandarlo (CLAUDE.md 3.3.b).
  */
-const DIAG_COLUMNAS_MANUALES = ['Inscriptos'].concat(DIAG_CANALES);
+const DIAG_COLUMNAS_MANUALES = ['Barrio', 'Inscriptos'].concat(DIAG_CANALES);
 
 /**
  * La marca de procedencia: Sinc Base usuario.js:286 pinta este color cada celda que escribe.
@@ -644,6 +646,10 @@ function generarAtomicidad_diag(cache) {
   };
   let sinTotalConDesagregado = 0;
   let canalesNoCuadran = 0, sexoNoCuadra = 0, edadesNoCuadran = 0;
+  // Una fila `vacio` con fecha futura no es un hueco: es una reunión que todavía no pasó.
+  let vacioFuturo = 0, vacioPasado = 0, vacioSinFecha = 0;
+  const hoy = new Date();
+  const hoyMedioDia = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 12, 0, 0);
 
   for (let i = 0; i < ctx.filas.length; i++) {
     const f = ctx.filas[i];
@@ -683,6 +689,11 @@ function generarAtomicidad_diag(cache) {
     }
 
     conteo[estado]++;
+    if (estado === 'vacio') {
+      if (!f.fecha) vacioSinFecha++;
+      else if (f.fecha > hoyMedioDia) vacioFuturo++;
+      else vacioPasado++;
+    }
 
     salida.push([
       f.figura, f.barrio,
@@ -705,7 +716,22 @@ function generarAtomicidad_diag(cache) {
              canalesNoCuadran, sexoNoCuadra, edadesNoCuadran);
   Logger.log('Filas con desagregado y sin total cargado: %s', sinTotalConDesagregado);
 
-  return { total: total, conteo: conteo, sinTotalConDesagregado: sinTotalConDesagregado };
+  /*
+   * Las filas `vacio` no son todas iguales: una reunión que todavía no ocurrió está vacía
+   * porque corresponde, no porque el pipeline falló. Separarlas evita perseguir huecos que no
+   * son huecos.
+   */
+  Logger.log('--- las filas `vacio`, separadas ---');
+  Logger.log('  fecha futura (todavía no corresponde completarlas): %s', vacioFuturo);
+  Logger.log('  fecha pasada (estas SÍ son huecos reales): %s', vacioPasado);
+  Logger.log('  sin fecha: %s', vacioSinFecha);
+  if (conteo.vacio) {
+    Logger.log('  >>> de las %s filas `vacio`, %s son reuniones futuras. El faltante real es %s.',
+               conteo.vacio, vacioFuturo, vacioPasado + vacioSinFecha);
+  }
+
+  return { total: total, conteo: conteo, sinTotalConDesagregado: sinTotalConDesagregado,
+           vacioFuturo: vacioFuturo, vacioPasado: vacioPasado, vacioSinFecha: vacioSinFecha };
 }
 
 // ===================== DIAG_TOTAL_DIVERGENTE =====================

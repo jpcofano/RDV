@@ -29,9 +29,13 @@ const RDV_TZ = 'America/Argentina/Buenos_Aires';
  * Columnas que carga el equipo a mano. El pipeline **las lee y nunca las escribe, ni aunque
  * estén vacías** (CLAUDE.md, decisión 8). No es "no pisar": es no escribir. Una celda vacía en
  * una columna manual significa que todavía nadie la cargó, y ese hueco es información.
+ *
+ * `Barrio` entró a la lista cuando el origen dejó de mandarlo (CLAUDE.md 3.3.b): hoy lo carga
+ * una persona, así que es de ellos. Ojo con la consecuencia: la columna `AA (Comuna)` deriva
+ * del barrio por fórmula, así que **la comuna del destino también depende de carga manual**.
  */
 const COLUMNAS_MANUALES = [
-  'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
+  'Barrio', 'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
 ];
 
 /**
@@ -72,17 +76,28 @@ const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
  * Pesos del match por score (CLAUDE.md, decisión 2). Suman 1.0 con el máximo de cada señal:
  * 0.35 + 0.30 + 0.25 + 0.10.
  *
- * **La ubicación tiene tres estados, no dos** (CLAUDE.md 3.3.b):
+ * **El score se normaliza sobre las señales disponibles**: `obtenido / alcanzable`, donde
+ * `alcanzable` es la suma de los pesos de las señales que se **pudieron evaluar** en esa fila.
  *
- *   barrio del origen == barrio del destino        → +0.25
- *   el origen NO manda barrio, pero la comuna coincide → +0.15
- *   barrio del origen presente y DISTINTO          → **descarte del candidato**
- *   el origen no manda ni barrio ni comuna         → 0, sin penalización
+ * Por qué: los pesos suman 1.0 sólo con todas las señales presentes, pero el barrio ya no viene
+ * nunca y la hora casi nunca, así que **1.0 es inalcanzable por construcción para el caso
+ * normal**. Una fila con figura, fecha exacta y comuna coincidente acertó todo lo que había
+ * para acertar y tiene que puntuar alto, no 0.80 por campos que el origen no manda.
  *
- * La diferencia entre las dos últimas es el punto entero: **la ausencia de dato no puede
- * puntuar como contradicción.** Si "no vino el barrio" penalizara igual que "vino otro barrio",
- * todas las filas nuevas —que son justamente las que ya no traen barrio— caerían bajo el umbral
- * y el pipeline fallaría exactamente en los casos que vinimos a arreglar.
+ * Bajar el umbral tapaba el síntoma; normalizar arregla la causa. Con esto el umbral significa
+ * **"qué proporción de la evidencia disponible coincide"** y deja de necesitar recalibración
+ * cada vez que cambia el formulario — que es exactamente lo que ya nos pasó con el barrio.
+ *
+ * **Ausencia contra desacuerdo**, que no es lo mismo (CLAUDE.md 3.3.b):
+ *
+ *   barrio igual                               → +0.25
+ *   comuna igual, con barrio ausente en origen → +0.15
+ *   ausencia (ni barrio ni comuna)             → no puntúa NI cuenta para el denominador
+ *   desacuerdo (barrio o comuna distintos)     → descalifica: el candidato no se escribe solo
+ *
+ * La ausencia de dato no puede puntuar como contradicción. El desacuerdo sí es contradicción,
+ * venga del barrio o de la comuna: la distinción no es qué campo es, es ausencia contra
+ * desacuerdo.
  *
  * El parcial de comuna se compara **comuna contra comuna**: la del origen sale de
  * `detectComuna_` sobre el texto libre, y la del destino de subir su barrio por la tabla
@@ -105,9 +120,12 @@ const PESOS_MATCH = {
  * DIAG_CORTE_B y mirando la distribución real: cuántas superarían el umbral, con qué margen, y
  * cuántas caen en multi_figura. Hasta entonces, cualquier valor acá es una suposición.
  *
- *   score >= UMBRAL_MATCH y margen >= MARGEN_MINIMO  →  escribe y estampa RDV_UID
- *   score >= UMBRAL_MATCH y margen chico             →  REVISAR_MATCH
- *   score <  UMBRAL_MATCH                            →  SIN_MATCH
+ * Se aplican sobre el score **normalizado**, no sobre el absoluto:
+ *
+ *   normalizado >= UMBRAL_MATCH, margen ok, sin desacuerdo →  escribe y estampa RDV_UID
+ *   desacuerdo de ubicación con el resto alto              →  REVISAR_MATCH
+ *   margen chico, o multi_figura                           →  REVISAR_MATCH
+ *   ningún candidato, o ninguno lo bastante bueno          →  SIN_MATCH
  *
  * Decide el umbral **más el margen contra el segundo candidato**, no la unicidad: que haya un
  * solo candidato no lo vuelve correcto, y que haya varios no vuelve al mejor incorrecto.
@@ -120,6 +138,35 @@ const TOLERANCIA_HORA_MIN = 30;
 
 /** Solapa de lookup barrio → comuna, en la planilla (1). Es la que alimenta las columnas AA–AG. */
 const RDV_HOJA_COMUNAS = 'Comunas';
+
+// ===================== STATUS REUNIÓN =====================
+
+/**
+ * Los cinco valores que toma `STATUS REUNIÓN` en el destino (CLAUDE.md 3.4). Son los únicos
+ * que aparecen como literal en todo el legado.
+ */
+const STATUS_CONOCIDOS = [
+  'en agenda', 'Realizada', 'Reprogramada', 'Suspendida', 'Se modifico el barrio'
+];
+
+/**
+ * La única transición que el pipeline puede escribir sobre `STATUS REUNIÓN`
+ * (CLAUDE.md, sección 0 → "La única excepción", y decisión 12).
+ *
+ * **Whitelist de un solo estado de origen, a propósito.** La regla NO es "cualquier estado que
+ * no sea Realizada": eso permitiría pisar una reunión que alguien suspendió o reprogramó a
+ * mano. Sólo se avanza desde `en agenda`, que es el único estado que significa "todavía no
+ * pasó nada". `Suspendida`, `Reprogramada` y `Se modifico el barrio` son decisiones de una
+ * persona y el pipeline no las toca nunca.
+ *
+ * Es la misma regla que ya usa `marcarRevisadaEnOrden()` en el legado
+ * ([En agenda a Realizada.js:14-16](En%20agenda%20a%20Realizada.js#L14)) — lo que está mal ahí
+ * es cómo escribe, no qué decide (CLAUDE.md 3.1.g).
+ */
+const TRANSICION_REALIZADA = { desde: 'en agenda', hacia: 'Realizada' };
+
+/** Mínimo de asistentes para dar una reunión por realizada. Mismo valor que el legado. */
+const MIN_ASISTENTES_REALIZADA = 1;
 
 // ===================== Alertas =====================
 
