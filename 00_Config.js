@@ -69,20 +69,33 @@ const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
 // ===================== Match por score =====================
 
 /**
- * Pesos del match por score (CLAUDE.md, decisión 2). Suman 1.0 exacto con el máximo de cada
- * señal: 0.35 + 0.30 + 0.25 + 0.10.
+ * Pesos del match por score (CLAUDE.md, decisión 2). Suman 1.0 con el máximo de cada señal:
+ * 0.35 + 0.30 + 0.25 + 0.10.
  *
- * El barrio se compara **barrio contra barrio**, y para el parcial de comuna se sube cada uno
- * a su comuna con la tabla `Comunas`. Nunca se compara un barrio contra una comuna.
+ * **La ubicación tiene tres estados, no dos** (CLAUDE.md 3.3.b):
+ *
+ *   barrio del origen == barrio del destino        → +0.25
+ *   el origen NO manda barrio, pero la comuna coincide → +0.15
+ *   barrio del origen presente y DISTINTO          → **descarte del candidato**
+ *   el origen no manda ni barrio ni comuna         → 0, sin penalización
+ *
+ * La diferencia entre las dos últimas es el punto entero: **la ausencia de dato no puede
+ * puntuar como contradicción.** Si "no vino el barrio" penalizara igual que "vino otro barrio",
+ * todas las filas nuevas —que son justamente las que ya no traen barrio— caerían bajo el umbral
+ * y el pipeline fallaría exactamente en los casos que vinimos a arreglar.
+ *
+ * El parcial de comuna se compara **comuna contra comuna**: la del origen sale de
+ * `detectComuna_` sobre el texto libre, y la del destino de subir su barrio por la tabla
+ * `Comunas`. Nunca un barrio contra una comuna.
  */
 const PESOS_MATCH = {
-  figura:        0.35,
-  fechaExacta:   0.30,
-  fecha1Dia:     0.20,
-  fecha3Dias:    0.10,
-  barrioIgual:   0.25,
-  mismaComuna:   0.15,
-  hora:          0.10
+  figura:          0.35,
+  fechaExacta:     0.30,
+  fecha1Dia:       0.20,
+  fecha3Dias:      0.10,
+  barrioIgual:     0.25,
+  comunaSinBarrio: 0.15,
+  hora:            0.10
 };
 
 /**

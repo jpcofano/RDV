@@ -166,6 +166,7 @@ function leerB_diag2() {
       figuras: figurasMencionadas_diag2(nombre),
       horaMin: horaDesdeTexto_diag2(nombre),
       barrioDet: detectBarrio_diag2(nombre),
+      comunaDet: detectComuna_diag2(nombre),
       fechaFin: fechaFin,
       fechaTexto: fechaTexto || null,
       fechaEfectiva: fechaEfectiva,
@@ -733,18 +734,20 @@ function diagScores() {
   const poblacion = poblacionSinContraparte_diag2(cache);
   const comunas = leerComunas_diag2();
 
-  const salida = [['clave_destino', 'origen_fila', 'mejor_score', 'segundo_score', 'margen',
-                   'veredicto', 'motivo', 'multi_figura', 'fila_B', 'nombre_evento_en_B',
-                   's_figura', 's_fecha', 's_barrio', 's_hora']];
+  const salida = [['clave_destino', 'origen_fila', 'mejor_score', 'techo_alcanzable',
+                   'segundo_score', 'margen', 'veredicto', 'motivo', 'multi_figura',
+                   'fila_B', 'nombre_evento_en_B', 'ubicacion',
+                   's_figura', 's_fecha', 's_ubicacion', 's_hora']];
 
   const veredictos = { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 };
   const motivos = { margen_chico: 0, multi_figura: 0, '': 0 };
   const histograma = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];   // 0.0-0.1 ... 0.9-1.0
-  const aportes = { figura: 0, fecha: 0, barrio: 0, hora: 0 };
+  const aportes = { figura: 0, fecha: 0, ubicacion: 0, hora: 0 };
+  const ubicaciones = {};
+  const techos = {};
   const porOrigen = { hueco: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 },
                       sin_contraparte_B2: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 } };
-  const mejores = [];
-  let sinNingunCandidato = 0, multiFigura = 0;
+  let sinNingunCandidato = 0, multiFigura = 0, descartadosPorBarrio = 0;
 
   for (let i = 0; i < poblacion.length; i++) {
     const h = poblacion[i];
@@ -753,6 +756,8 @@ function diagScores() {
     let mejor = null, segundo = null;
     for (let j = 0; j < b.filas.length; j++) {
       const sc = scoreCandidato_diag2(h, horaDestino, b.filas[j], comunas);
+      // Barrio presente en las dos puntas y distinto: el candidato queda afuera, no compite.
+      if (sc.descartado) { descartadosPorBarrio++; continue; }
       if (sc.total <= 0) continue;
       if (!mejor || sc.total > mejor.total) { segundo = mejor; mejor = sc; }
       else if (!segundo || sc.total > segundo.total) { segundo = sc; }
@@ -763,10 +768,13 @@ function diagScores() {
       veredictos.SIN_MATCH++;
       porOrigen[h.origen].SIN_MATCH++;
       histograma[0]++;
-      salida.push([h.clave, h.origen, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
-                   '', '', 0, 0, 0, 0]);
+      salida.push([h.clave, h.origen, 0, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
+                   '', '', 'sin_candidato', 0, 0, 0, 0]);
       continue;
     }
+
+    ubicaciones[mejor.ubicacion] = (ubicaciones[mejor.ubicacion] || 0) + 1;
+    techos[mejor.techo] = (techos[mejor.techo] || 0) + 1;
 
     const scoreSegundo = segundo ? segundo.total : 0;
     const margen = redondear_diag2(mejor.total - scoreSegundo);
@@ -789,16 +797,15 @@ function diagScores() {
     veredictos[veredicto]++;
     porOrigen[h.origen][veredicto]++;
     motivos[motivo]++;
-    mejores.push(mejor.total);
     histograma[Math.min(9, Math.floor(mejor.total * 10))]++;
     if (mejor.sFigura > 0) aportes.figura++;
     if (mejor.sFecha > 0) aportes.fecha++;
-    if (mejor.sBarrio > 0) aportes.barrio++;
+    if (mejor.sBarrio > 0) aportes.ubicacion++;
     if (mejor.sHora > 0) aportes.hora++;
 
-    salida.push([h.clave, h.origen, redondear_diag2(mejor.total), redondear_diag2(scoreSegundo),
-                 margen, veredicto, motivo, esMulti ? 'TRUE' : 'FALSE',
-                 mejor.fb.fila, mejor.fb.nombre,
+    salida.push([h.clave, h.origen, redondear_diag2(mejor.total), mejor.techo,
+                 redondear_diag2(scoreSegundo), margen, veredicto, motivo,
+                 esMulti ? 'TRUE' : 'FALSE', mejor.fb.fila, mejor.fb.nombre, mejor.ubicacion,
                  mejor.sFigura, mejor.sFecha, mejor.sBarrio, mejor.sHora]);
   }
 
@@ -807,9 +814,9 @@ function diagScores() {
   const total = salida.length - 1;
   Logger.log('=== DIAG_SCORES ===');
   Logger.log('Población: %s filas | candidatos evaluados por fila: %s', total, b.filas.length);
-  Logger.log('Pesos: figura %s | fecha %s/%s/%s | barrio %s/%s | hora %s',
+  Logger.log('Pesos: figura %s | fecha %s/%s/%s | barrio %s, comuna-sin-barrio %s | hora %s',
              PESOS_MATCH.figura, PESOS_MATCH.fechaExacta, PESOS_MATCH.fecha1Dia,
-             PESOS_MATCH.fecha3Dias, PESOS_MATCH.barrioIgual, PESOS_MATCH.mismaComuna,
+             PESOS_MATCH.fecha3Dias, PESOS_MATCH.barrioIgual, PESOS_MATCH.comunaSinBarrio,
              PESOS_MATCH.hora);
   Logger.log('Umbrales PROVISORIOS en uso: UMBRAL_MATCH=%s MARGEN_MINIMO=%s',
              UMBRAL_MATCH, MARGEN_MINIMO);
@@ -837,8 +844,8 @@ function diagScores() {
     const umbral = u / 100;
     let esc = 0, rev = 0, sin = 0;
     for (let i = 1; i < salida.length; i++) {
-      const mejorSc = Number(salida[i][2]), marg = Number(salida[i][4]);
-      const multi = salida[i][7] === 'TRUE';
+      const mejorSc = Number(salida[i][2]), marg = Number(salida[i][5]);
+      const multi = salida[i][8] === 'TRUE';
       if (mejorSc < umbral) sin++;
       else if (multi || marg < MARGEN_MINIMO) rev++;
       else esc++;
@@ -848,20 +855,181 @@ function diagScores() {
   }
 
   Logger.log('--- qué señal aporta en el mejor candidato ---');
-  Logger.log('  figura: %s de %s | fecha: %s | barrio: %s | hora: %s',
-             aportes.figura, total - sinNingunCandidato, aportes.fecha, aportes.barrio,
+  Logger.log('  figura: %s de %s | fecha: %s | ubicación: %s | hora: %s',
+             aportes.figura, total - sinNingunCandidato, aportes.fecha, aportes.ubicacion,
              aportes.hora);
-  if (aportes.hora === 0) {
-    Logger.log('  >>> La hora no aportó en NINGÚN caso. O el destino no la tiene cargada, o el ' +
-               'texto libre de B no la trae en un formato reconocible. Con 0.10 de peso muerto, ' +
-               'el máximo alcanzable es 0.90 y el umbral de 0.75 es más exigente de lo que parece.');
-  }
-  if (!comunas.size) {
-    Logger.log('  >>> La tabla Comunas no se pudo leer: el parcial de "misma comuna" nunca suma.');
+  Logger.log('  candidatos descartados por barrio presente y distinto: %s', descartadosPorBarrio);
+  Logger.log('--- estado de la ubicación en el mejor candidato ---');
+  Object.keys(ubicaciones).sort().forEach(function (k) {
+    Logger.log('  %s: %s', k, ubicaciones[k]);
+  });
+  if (ubicaciones.comuna_distinta) {
+    Logger.log('  >>> %s con comuna distinta. Hoy suman 0 pero NO descartan: la regla de ' +
+               'descarte es sólo para barrio presente y distinto. Si estos casos resultan ser ' +
+               'todos falsos, conviene discutir una segunda regla de descarte por comuna.',
+               ubicaciones.comuna_distinta);
   }
 
+  Logger.log('--- techo alcanzable (cuánto podría sumar como máximo cada par) ---');
+  Object.keys(techos).map(Number).sort(function (x, y) { return y - x; }).forEach(function (t) {
+    Logger.log('  %s : %s %s', t.toFixed(2), techos[t], barra_diag2(techos[t], total));
+  });
+  const bajoUmbral = Object.keys(techos).map(Number)
+    .filter(function (t) { return t < UMBRAL_MATCH; })
+    .reduce(function (a, t) { return a + techos[t]; }, 0);
+  if (bajoUmbral > 0) {
+    Logger.log('  >>> %s filas tienen un TECHO por debajo de UMBRAL_MATCH=%s: por más que todo ' +
+               'coincida, no pueden alcanzarlo. No es que el match falle, es que el umbral es ' +
+               'inalcanzable para ellas. Bajar el umbral o repesar las señales.',
+               bajoUmbral, UMBRAL_MATCH);
+  }
+  if (aportes.hora === 0) {
+    Logger.log('  >>> La hora no aportó en NINGÚN caso: 0.10 de peso muerto.');
+  }
+  if (!comunas.size) {
+    Logger.log('  >>> La tabla Comunas no se pudo leer: el parcial de comuna nunca suma.');
+  }
+
+  // ---------- Las tres mediciones que sostienen el diseño ----------
+  const colisiones = medirColisionesFiguraFecha_diag2(cache);
+  const barrioPorMes = medirBarrioPorMes_diag2(b);
+  const comunaEnTexto = medirComunaEnTexto_diag2(poblacion, b, comunas);
+
   return { total: total, veredictos: veredictos, histograma: histograma,
-           multiFigura: multiFigura, sinNingunCandidato: sinNingunCandidato };
+           multiFigura: multiFigura, sinNingunCandidato: sinNingunCandidato,
+           techos: techos, ubicaciones: ubicaciones,
+           colisiones: colisiones, barrioPorMes: barrioPorMes, comunaEnTexto: comunaEnTexto };
+}
+
+/**
+ * **Verifica la regla de negocio antes de apoyarse en ella**: "una figura no tiene más de una
+ * reunión por día" (CLAUDE.md 1). Si es cierta, `figura + fecha` es clave única y la ubicación
+ * deja de ser identidad. Si no lo es, el matching falla en silencio en las excepciones.
+ *
+ * Se mide sobre **todas** las filas del destino, no sólo sobre la población.
+ */
+function medirColisionesFiguraFecha_diag2(cache) {
+  const dest = cacheDestino_diag2(cache);
+  const D = dest.D;
+  const porFiguraFecha = new Map();
+
+  for (let i = 0; i < dest.filas.length; i++) {
+    const f = dest.filas[i];
+    if (!f.figura || !f.fecha) continue;
+    const k = normalizeText_diag(f.figura) + '|' +
+              Utilities.formatDate(f.fecha, DIAG_TZ, 'yyyyMMdd');
+    if (!porFiguraFecha.has(k)) porFiguraFecha.set(k, []);
+    porFiguraFecha.get(k).push(f);
+  }
+
+  const choques = [];
+  porFiguraFecha.forEach(function (filas, k) {
+    if (filas.length > 1) choques.push({ clave: k, filas: filas });
+  });
+
+  Logger.log('--- ¿figura + fecha es clave única en el destino? ---');
+  Logger.log('  pares figura+fecha distintos: %s | filas con figura y fecha: %s',
+             porFiguraFecha.size, dest.filas.filter(function (f) { return f.figura && f.fecha; }).length);
+  if (!choques.length) {
+    Logger.log('  >>> CERO colisiones. La regla de negocio se sostiene contra los datos: ' +
+               'figura + fecha alcanza como clave y la ubicación es sólo confirmación.');
+  } else {
+    Logger.log('  >>> %s pares figura+fecha con MÁS DE UNA fila. La regla NO se sostiene: ' +
+               'estas son las excepciones donde el matching fallaría en silencio.', choques.length);
+    choques.slice(0, 50).forEach(function (c) {
+      Logger.log('    · %s → %s filas: %s', c.clave, c.filas.length,
+                 c.filas.map(function (f) {
+                   return 'fila ' + f.fila + ' (' + (f.barrio || 'sin barrio') + ')';
+                 }).join(' | '));
+    });
+    if (choques.length > 50) Logger.log('    ... y %s más', choques.length - 50);
+  }
+  return choques.length;
+}
+
+/**
+ * **Desde cuándo el origen dejó de mandar barrio.** Reparte por mes las filas de `B` con barrio
+ * detectable y sin él. Si el corte es reciente, explica la degradación mes a mes del pipeline
+ * (6 casos en abril → 20 en septiembre, CLAUDE.md 3.2).
+ *
+ * El mes sale de `Fecha_Fin`, que es el campo confiable (CLAUDE.md 3.3).
+ */
+function medirBarrioPorMes_diag2(b) {
+  const meses = {};
+  for (let i = 0; i < b.filas.length; i++) {
+    const fb = b.filas[i];
+    const ref = fb.fechaFin || fb.fechaEfectiva;
+    if (!ref) continue;
+    const m = Utilities.formatDate(ref, DIAG_TZ, 'yyyy-MM');
+    if (!meses[m]) meses[m] = { con: 0, sin: 0, conComuna: 0 };
+    if (fb.barrioDet) meses[m].con++;
+    else {
+      meses[m].sin++;
+      if (fb.comunaDet != null) meses[m].conComuna++;
+    }
+  }
+
+  Logger.log('--- ¿desde cuándo B dejó de mandar barrio? ---');
+  Logger.log('  mes     | con barrio | sin barrio | de esas, con comuna | %% sin barrio');
+  const claves = Object.keys(meses).sort();
+  claves.forEach(function (m) {
+    const x = meses[m], tot = x.con + x.sin;
+    Logger.log('  %s |     %s     |     %s     |        %s         |    %s%%',
+               m, x.con, x.sin, x.conComuna, tot ? Math.round(x.sin * 1000 / tot) / 10 : 0);
+  });
+
+  // ¿Hay un corte abrupto? Se busca el primer mes donde "sin barrio" pasa a ser mayoría.
+  let corte = null;
+  for (let i = 0; i < claves.length; i++) {
+    const x = meses[claves[i]], tot = x.con + x.sin;
+    if (tot >= 5 && x.sin > x.con) { corte = claves[i]; break; }
+  }
+  if (corte) {
+    Logger.log('  >>> Desde %s el barrio falta en la mayoría de las filas. Si eso coincide con ' +
+               'el salto de fallas del pipeline, la causa es el cambio del formulario, no el ' +
+               'código.', corte);
+  }
+  return meses;
+}
+
+/**
+ * De la población, cuántas tienen comuna en el texto del candidato de `B`, y de esas cuántas
+ * coinciden con la comuna que **deriva del barrio del destino** por la tabla `Comunas`.
+ *
+ * Es la medida de si la comuna sirve de reemplazo del barrio como señal de confirmación.
+ */
+function medirComunaEnTexto_diag2(poblacion, b, comunas) {
+  let conCandidato = 0, conComuna = 0, coinciden = 0, difieren = 0, sinComunaDestino = 0;
+
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    const elegido = buscarCandidato_diag2(h, b).elegido;
+    if (!elegido) continue;
+    conCandidato++;
+    if (elegido.comunaDet == null) continue;
+    conComuna++;
+    const bDest = normalizeText_diag(h.barrio);
+    const cDest = bDest ? comunaNumero_diag2(comunas.get(bDest)) : null;
+    if (cDest == null) { sinComunaDestino++; continue; }
+    if (cDest === elegido.comunaDet) coinciden++; else difieren++;
+  }
+
+  Logger.log('--- ¿sirve la comuna del texto como reemplazo del barrio? ---');
+  Logger.log('  filas de la población con candidato en B: %s', conCandidato);
+  Logger.log('  de esas, con comuna en el texto de B: %s (%s%%)', conComuna,
+             conCandidato ? Math.round(conComuna * 1000 / conCandidato) / 10 : 0);
+  Logger.log('  de esas, coinciden con la comuna que deriva del barrio del destino: %s', coinciden);
+  Logger.log('  difieren: %s | el destino no tiene barrio del cual derivar comuna: %s',
+             difieren, sinComunaDestino);
+  if (conComuna && coinciden / conComuna >= 0.9) {
+    Logger.log('  >>> La comuna del texto es confiable: sirve como confirmación en lugar del ' +
+               'barrio que el origen dejó de mandar.');
+  } else if (conComuna) {
+    Logger.log('  >>> Coincide en menos del 90%%: como señal de confirmación es floja. Revisar ' +
+               'detectComuna_ antes de darle 0.15 de peso.');
+  }
+  return { conCandidato: conCandidato, conComuna: conComuna, coinciden: coinciden,
+           difieren: difieren };
 }
 
 /**
@@ -891,19 +1059,42 @@ function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
   }
 
   /*
-   * --- barrio ---
-   * Barrio contra barrio. Para el parcial se sube CADA UNO a su comuna con la tabla Comunas y
-   * se comparan dos comunas: nunca un barrio contra una comuna (CLAUDE.md, decisión 2).
-   * Si alguno de los dos no está en la tabla, la señal no suma. No se inventa la comuna.
+   * --- ubicación: tres estados, no dos (CLAUDE.md 3.3.b y decisión 2) ---
+   *
+   *   barrio del origen == el del destino     → +0.25
+   *   el origen no manda barrio, comuna igual → +0.15
+   *   barrio del origen presente y DISTINTO   → DESCARTE del candidato
+   *   el origen no manda nada                 → 0, sin penalización
+   *
+   * La ausencia de dato no puede puntuar como contradicción: desde que el origen dejó de
+   * mandar barrio, penalizarla hundiría bajo el umbral justo a las filas que hay que arreglar.
    */
   const bDest = normalizeText_diag(h.barrio);
   const bCand = normalizeText_diag(fb.barrioDet);
-  if (bDest && bCand) {
-    if (bDest === bCand) {
+  let ubicacion = 'sin_dato';
+
+  if (bCand) {
+    if (!bDest) {
+      ubicacion = 'destino_sin_barrio';           // no se puede comparar, no puntúa
+    } else if (bDest === bCand) {
       sBarrio = PESOS_MATCH.barrioIgual;
+      ubicacion = 'barrio_igual';
     } else {
-      const cDest = comunas.get(bDest), cCand = comunas.get(bCand);
-      if (cDest && cCand && cDest === cCand) sBarrio = PESOS_MATCH.mismaComuna;
+      // Barrio presente en las dos puntas y distinto: no es una reunión candidata.
+      return { total: 0, descartado: true, fb: fb, ubicacion: 'barrio_distinto',
+               sFigura: sFigura, sFecha: sFecha, sBarrio: 0, sHora: 0 };
+    }
+  } else if (fb.comunaDet != null) {
+    // El origen mandó comuna en vez de barrio. Se compara contra la comuna que deriva del
+    // barrio del destino, por la tabla Comunas. Comuna contra comuna, nunca contra un barrio.
+    const cDest = bDest ? comunaNumero_diag2(comunas.get(bDest)) : null;
+    if (cDest != null && cDest === fb.comunaDet) {
+      sBarrio = PESOS_MATCH.comunaSinBarrio;
+      ubicacion = 'comuna_igual';
+    } else if (cDest != null) {
+      ubicacion = 'comuna_distinta';              // se cuenta, pero NO descarta: ver el log
+    } else {
+      ubicacion = 'destino_sin_comuna';
     }
   }
 
@@ -913,7 +1104,18 @@ function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
     sHora = PESOS_MATCH.hora;
   }
 
-  return { total: sFigura + sFecha + sBarrio + sHora, fb: fb,
+  /*
+   * Techo alcanzable para ESTE par: cuánto podría sumar como máximo dadas las señales que
+   * existen. Si el origen no manda barrio, el techo baja a 0.90; sin hora, a 0.80. Es el
+   * número que dice si el umbral es siquiera alcanzable.
+   */
+  const techo = PESOS_MATCH.figura + PESOS_MATCH.fechaExacta +
+                (bCand ? PESOS_MATCH.barrioIgual
+                       : (fb.comunaDet != null ? PESOS_MATCH.comunaSinBarrio : 0)) +
+                ((fb.horaMin !== null && horaDestino !== null) ? PESOS_MATCH.hora : 0);
+
+  return { total: sFigura + sFecha + sBarrio + sHora, descartado: false, fb: fb,
+           ubicacion: ubicacion, techo: redondear_diag2(techo),
            sFigura: sFigura, sFecha: sFecha, sBarrio: sBarrio, sHora: sHora };
 }
 
@@ -1029,6 +1231,32 @@ function horaDesdeCelda_diag2(v) {
 function validarHora_diag2(h, min) {
   if (!(h >= 0 && h <= 23 && min >= 0 && min <= 59)) return null;
   return h * 60 + min;
+}
+
+/**
+ * Número de comuna desde el texto libre: `Comuna 6`, `COMUNA 06`, `C6` → 6.
+ * **No existe en el legado**: es nueva, porque el origen dejó de mandar barrio y pasó a mandar
+ * comuna (CLAUDE.md 3.3.b). La versión de producción va en `02_Parsing.js` como `detectComuna_`.
+ *
+ * CABA tiene 15 comunas; fuera de 1–15 devuelve null.
+ */
+function detectComuna_diag2(s) {
+  const t = String(s == null ? '' : s);
+  let m = /\bcomuna\s*0?(\d{1,2})\b/i.exec(t);
+  if (!m) m = /\bc0?(\d{1,2})\b/i.exec(t);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return (n >= 1 && n <= 15) ? n : null;
+}
+
+/** Normaliza el valor de comuna de la tabla `Comunas` (puede venir '6', 'Comuna 6', 6). */
+function comunaNumero_diag2(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return (v >= 1 && v <= 15) ? v : null;
+  const m = /(\d{1,2})/.exec(String(v));
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return (n >= 1 && n <= 15) ? n : null;
 }
 
 function detectBarrio_diag2(s) {

@@ -142,6 +142,37 @@ Solapas que importan:
 **No se modifica nada en (3) ni en `RDV CONJUNTO`.** No se agregan columnas, no se pide un
 `evento_id` al origen. Cualquier identidad se genera de nuestro lado.
 
+### Reglas de negocio confirmadas
+
+**a) Una figura no tiene más de una reunión por día.** Confirmado con el equipo.
+
+Es la regla que más simplifica el matching: **`figura + fecha` ya es clave única**. La ubicación
+deja de ser parte de la identidad y pasa a ser **sólo confirmación** — sirve para ganar
+confianza en un match, no para decidirlo. Eso es lo que permite que el pipeline siga funcionando
+ahora que el origen dejó de mandar el barrio (3.3.b).
+
+Consecuencia directa: **el error de parseo de fechas deja de ser un campo mal cargado y pasa a
+ser un error de identidad.** Si la fecha está mal, la clave está mal. Ver 3.3.c.
+
+`diagScores()` la verifica contra los datos antes de que el diseño se apoye en ella: cuenta los
+pares `figura + fecha` con más de una fila en el destino. Si no da cero, esas son las
+excepciones donde el matching fallaría en silencio.
+
+**b) La comuna del destino no es un dato propio: se deriva del barrio.** La columna `AA (Comuna)`
+es una de las once fórmulas de array (3.1.b):
+
+```
+={"Comuna"; IFERROR(VLOOKUP(B2:B2374, Comunas!A:B, 2, FALSE),)}
+```
+
+**No se puede usar como campo independiente.** Vale la pena decirlo explícito porque invita al
+error: comparar comuna contra comuna *parece* una forma de rescatar las filas que no matchean
+por barrio, pero `AA` sólo tiene valor **cuando `B (Barrio)` ya tiene valor** — o sea, nunca en
+las filas que fallan por barrio. Si el barrio del destino está vacío, la comuna también.
+
+Y en la otra dirección tampoco sirve: **de la comuna no se deduce el barrio.** Cada comuna tiene
+entre 2 y 6 barrios. La comuna confirma, nunca identifica.
+
 ---
 
 ## 2. Flujo actual
@@ -489,8 +520,40 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
   `diagAnclaFecha()` (en `diagnostico/02_corte_B_a_B2.js`) mide cuántas de las
   `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve esta regla, antes de escribirla en el parser.
-- `detectPersona_` y `detectBarrio_` son listas fijas. Nombre fuera de lista → `''` → la fila se
-  descarta en el upsert como `noFigura` / `noBarrioN`.
+
+  > **Sube de prioridad: ahora bloquea el matching.** Con `figura + fecha` como clave única
+  > (sección 1.a), la fecha es **la mitad de la identidad**. Un error de parseo deja de ser "un
+  > campo mal cargado que se corrige después" y pasa a ser **un error de identidad**: la fila no
+  > matchea con nada y no hay señal de confirmación que la rescate, porque el barrio tampoco
+  > viene. Las **20 `fecha_mal_parseada`** no son 20 campos sucios, son 20 filas que el matching
+  > no puede resolver. **Se arregla antes que el score**, no después.
+- **El barrio ya no viene en `B`.** Ni en el texto libre del evento ni como columna. **El origen
+  pasó a mandar comuna.**
+
+  Esto reinterpreta las **49 `barrio_no_reconocido`** de `DIAG_CORTE_B`: no son lista incompleta
+  ni drift de escritura (`villa gral. mitre` vs `Villa General Mitre`). **El dato no está.**
+  Ningún cambio en `detectBarrio_` las recupera: no hay nada que reconocer.
+
+  > Queda sin objeto la idea de partirlas en `barrio_presente_no_reconocido` /
+  > `barrio_ausente_en_origen`. Ya está contestado: **son todas ausentes.**
+
+  Las dos consecuencias:
+
+  1. **`detectBarrio_` deja de ser el camino.** Se suma `detectComuna_` a `02_Parsing.js`
+     (`Comuna 6`, `C6`, `COMUNA 06` → `6`), y la comuna pasa a ser la señal de ubicación
+     disponible. Confirma, no identifica (sección 1.b).
+  2. **La ausencia de barrio no puede puntuar como contradicción.** Es el punto central del
+     ajuste de la decisión 2: si "no vino el barrio" penalizara igual que "vino otro barrio",
+     todas las filas nuevas caerían bajo el umbral y el pipeline fallaría justo en los casos que
+     vinimos a arreglar.
+
+  `diagScores()` mide **desde cuándo** dejó de venir, repartiendo por mes las filas de `B` con
+  barrio detectable y sin él. Si el corte es reciente, explica la degradación mes a mes de la
+  sección 3.2 — 6 casos en abril contra 20 en septiembre — y entonces **la causa es el cambio
+  del formulario, no el código.**
+
+- `detectPersona_` es una lista fija de 20 nombres. Nombre fuera de lista → `''` → la fila entra
+  a B2 sin `Persona` y queda inindexable (3.1.f).
 - `DEFAULT_YEAR = 2025` hardcodeado en `Código.js`.
 
 ---
@@ -527,15 +590,32 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    lectura, que ya tenemos. Elimina la carrera de recálculo. `B` y `Asistentes` quedan como
    vista para el equipo; el script deja de depender de ellas.
 2. **`RDV_UID`**: uuid generado en B2/A2 al insertar, inmutable. En el destino va como columna
-   nueva al final (`AP`). El upsert busca por `RDV_UID`; si está vacío cae a la clave natural
-   `normalizeText_(Figura)|normalizeText_(Barrio)|yyyyMMdd(Fecha)` y **estampa el uuid**.
-   Después de una corrida casi todo entra por uuid y el drift de acentos deja de importar.
+   nueva al final (`AP`). El upsert busca por `RDV_UID`; si está vacío cae a `figura + fecha` y
+   **estampa el uuid**. Después de una corrida casi todo entra por uuid.
+
+   > **No es una mejora: es la única identidad estable que podemos tener.**
+   >
+   > Mientras la clave dependa de campos que manda el origen, **cada cambio del formulario
+   > rompe el matching de nuevo**. No es hipotético: **ya pasó, con el barrio.** El origen dejó
+   > de mandarlo, y de golpe 49 filas quedaron sin poder identificarse — sin que nadie tocara
+   > una línea de código de este lado (3.3.b).
+   >
+   > La clave natural es un **puente para la primera corrida**, no el destino. Todo lo demás de
+   > esta decisión —el score, los umbrales, `detectComuna_`— existe para poder estampar uuids en
+   > las filas que hoy no los tienen. Una vez estampados, el origen puede cambiar lo que quiera.
+   >
+   > Corolario para la Fase 4: **estampar uuids es urgente**, y cuanto antes se corra, menos
+   > filas quedan expuestas al próximo cambio de formulario.
 
    #### Cuando la clave natural tampoco alcanza: match por score
 
    Los nombres de evento del origen **no los controlamos** (regla dura, sección 1). Son texto
    libre, y a veces una sola inscripción menciona a varios funcionarios. Un match exacto o nada
    deja afuera casos perfectamente resolubles, así que el tercer nivel es un **score**.
+
+   **Nivel 2 es `figura + fecha`.** Por la regla de negocio de la sección 1.a —una figura no
+   tiene más de una reunión por día— esos dos campos alcanzan como clave. **La ubicación no
+   entra en la identidad: confirma.**
 
    Cada candidato de `B` recibe un puntaje sobre **1.0**:
 
@@ -545,9 +625,30 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | fecha exacta | **0,30** |
    | fecha ±1 día | 0,20 |
    | fecha ±3 días | 0,10 |
-   | barrio canónico coincide | **0,25** |
-   | misma comuna | 0,15 |
+   | barrio coincide | **0,25** |
+   | comuna coincide, **con barrio ausente en el origen** | 0,15 |
    | hora coincide | **0,10** |
+
+   #### La ubicación tiene tres estados, no dos
+
+   | situación en el origen | efecto |
+   |---|---|
+   | barrio presente y **igual** | **+0,25** |
+   | barrio **ausente**, comuna presente y coincide | **+0,15** |
+   | barrio presente y **distinto** | **descarte del candidato** |
+   | ni barrio ni comuna | **0, sin penalización** |
+
+   **La diferencia entre las dos últimas es el punto entero.** La ausencia de dato no puede
+   puntuar como contradicción. Si "no vino el barrio" restara lo mismo que "vino otro barrio",
+   **todas las filas nuevas caerían bajo el umbral** —porque el origen dejó de mandar barrio
+   (3.3.b)— y el pipeline fallaría exactamente en los casos que vinimos a arreglar.
+
+   Y un barrio distinto no es una penalización parcial: es **descarte**. No hay grados entre
+   "esta es la reunión" y "esta es otra reunión".
+
+   > **Cae la medición de colisiones dentro de la comuna** que estaba pedida antes. Con la regla
+   > de la sección 1.a no puede haber dos reuniones de la misma figura el mismo día, así que no
+   > hay empate posible que la comuna tenga que desempatar.
 
    **Decide el umbral más el margen contra el segundo candidato, no la unicidad.** Que haya un
    solo candidato no lo vuelve correcto, y que haya varios no vuelve al mejor incorrecto:
@@ -571,10 +672,13 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    #### Barrio contra barrio, comuna contra comuna
 
-   **Nunca se compara un barrio contra una comuna.** Para el parcial de 0,15 se **sube** cada
-   barrio a su comuna con la tabla `Comunas` (la misma que hoy alimenta las columnas `AA`–`AG`)
-   y se comparan **dos comunas**. Si alguno de los dos barrios no está en la tabla, esa señal
-   no suma: no se inventa la comuna ni se compara el texto crudo.
+   **Nunca se compara un barrio contra una comuna.** Para el parcial de 0,15: la comuna del
+   origen sale de `detectComuna_` sobre el texto libre, y la del destino de **subir su barrio**
+   por la tabla `Comunas`. Se comparan **dos comunas**. Si el barrio del destino no está en la
+   tabla, la señal no suma: no se inventa la comuna ni se compara texto crudo.
+
+   Ojo con el sentido: se sube de barrio a comuna, nunca al revés. **De la comuna no se deduce
+   el barrio** — cada comuna tiene entre 2 y 6 (sección 1.b).
 
    #### `multi_figura` no es ambigüedad
 
@@ -818,14 +922,36 @@ de la población contra todos los candidatos de `B` y vuelca la distribución en
 con un barrido de umbrales. **Es lo que convierte `UMBRAL_MATCH` y `MARGEN_MINIMO` de suposición
 en número medido.** Sólo lectura, y no estampa ningún `RDV_UID`.
 
+Además reporta **techo alcanzable** por fila: cuánto podría sumar como máximo ese par dadas las
+señales que existen. Sin barrio el techo baja a 0,90 y sin hora a 0,80, así que puede haber
+filas que **no lleguen al umbral aunque todo coincida**. Eso no es un match fallido, es un
+umbral inalcanzable — y hay que verlo antes de fijar el número.
+
+Y las tres mediciones que sostienen el diseño:
+
+- **colisiones `figura + fecha`** en el destino → verifica la regla de negocio de la sección 1.a
+  antes de que el matching se apoye en ella. Si no da cero, lista las excepciones;
+- **barrio por mes en `B`** → desde cuándo el origen dejó de mandarlo (3.3.b);
+- **comuna en el texto** → de las 103, cuántas la traen y cuántas coinciden con la comuna que
+  deriva del barrio del destino. Es la medida de si la comuna sirve de reemplazo.
+
+### Fase 1c — Anclar la fecha  *(prioridad alta)*
+
+Subió de prioridad: con `figura + fecha` como clave, las 20 `fecha_mal_parseada` son errores de
+identidad, no campos sucios (3.3.c). `diagAnclaFecha()` mide cuántas resuelve el ancla; el
+arreglo va en `02_Parsing.js`, en la Fase 2. **Antes que calibrar el score**: no tiene sentido
+afinar umbrales sobre una clave que todavía tiene la mitad mal.
+
 **La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
 eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser
 acumulativo** en vez de un espejo del import. Las dos ramas y sus costos están en **3.1.f**;
 lo esperable es encontrarlas mezcladas.
 
 ### Fase 2 — Base limpia
+- **Primero `detectFecha_` con ancla** (3.3.c): es lo que desbloquea el matching.
 - `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
-  `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` y `05_Escritura.js`.
+  `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y el ancla de fecha) y
+  `05_Escritura.js`.
 - Al escribir `01_Utils.js`, reemplazar los helpers `_alerta` provisorios de `40_Alertas.js`.
 - `setSiDelSistema_` escrito y probado **antes** que cualquier cosa que escriba en el destino.
 - `num()` deja de convertir vacío en cero: vacío se propaga como vacío (sección 0.a).
