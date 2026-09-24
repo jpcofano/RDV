@@ -1183,7 +1183,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    escritos por el script, y con eso **desaparece la clase entera de problema**: sin fórmulas de
    array no hay bloque que romper, no hay celda ancla, no hay límite en la fila 2374 y la lista
    pasa a ser sólo "columnas que calcula `recalcDerivadas_()`". Por eso **la Fase 3 es
-   prerrequisito duro de la Fase 5b**: sacar el staging con las fórmulas todavía puestas es
+   prerrequisito duro de la Fase 9**: sacar el staging con las fórmulas todavía puestas es
    poner un upsert nuevo a escribir contra once bombas.
 
 10. **Se elimina el staging.** B2, A2 y el flujo Agenda escriben **directo al destino** a través
@@ -1206,9 +1206,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    La decisión no hay que reabrirla.
 
    Lo que sí cambió es la **urgencia**: sacar el staging es simplificación, no cura. El hueco no
-   está acá. Ver Fase 5b.
+   está acá. Ver Fase 9.
 
-   Lo que **no** cambió es el **orden**: Fase 3 → `setSiDelSistema_` (Fase 2) → Fase 5b. Que ya
+   Lo que **no** cambió es el **orden**: Fase 3 → `setSiDelSistema_` (Fase 2) → Fase 8 → Fase 9. Que ya
    no sea urgente no lo vuelve barato.
 
 11. **Avisar, no corregir: `verificarCambiosRecientes_()` en `40_Alertas.js`.**
@@ -1269,8 +1269,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 ```
 00_Config.js       IDs, solapas, COLUMNAS_MANUALES, COLUMNAS_DERIVADAS, VENTANA_ALERTA_DIAS.
                    Único lugar con literales.                                   ← ya escrito
-01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num  (una sola vez)
-02_Parsing.js      detectPersona_, detectBarrio_, detectFecha_, mapBarrioCanon_
+01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num   ← ya escrito
+02_Parsing.js      detectPersona_/Barrio_/Comuna_/Fecha_, listas derivadas de datos ← ya escrito
 05_Escritura.js    setSiDelSistema_ + marcarRealizada_. El único que escribe en el destino.  ← ya escrito
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  A2+B2+Agenda → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
@@ -1333,7 +1333,7 @@ arquitectura nueva, y recién ahí se da de baja el activador **antes** de archi
 tener razón de existir: sincroniza dos hojas cuando va a quedar una sola, y lo hace en las dos
 direcciones, que el invariante prohíbe. Queda en git y, leído, en
 [docs/sync-bidireccional.md](docs/sync-bidireccional.md) — lo único que hay que llevarse de ahí
-es la regla de `#4F81BD`, que ya está en la sección 0. **Se borra en la Fase 5b, no antes.**
+es la regla de `#4F81BD`, que ya está en la sección 0. **Se borra en la Fase 9, no antes.**
 
 Se rescata y reescribe: los tres `detect*_` de `Código.js`, la canonización de `Barrios.js`,
 los cinco pasos de `Completo.js`, y el bloque Agenda completo (redirigido al upsert nuevo:
@@ -1429,7 +1429,14 @@ eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene 
 acumulativo** en vez de un espejo del import. Las dos ramas y sus costos están en **3.1.f**;
 lo esperable es encontrarlas mezcladas.
 
-### Fase 2 — Base limpia
+### Fase 2 — Base limpia  *(en curso, NO cerrada)*
+
+> **Estado al 24/09/2026.** Hecho: `00_Config.js`, `01_Utils.js`, `02_Parsing.js`,
+> `05_Escritura.js`, `SRC_SHEET` arreglado, 14 archivos a `_archivo/`, y el bloque duplicado
+> de `Upset Base FInal.js` eliminado.
+>
+> **La verificación de duplicados NO pasa todavía**, y no es un descuido: es un conflicto de
+> orden. Ver "Por qué la Fase 2 no cierra", abajo.
 - **Primero `detectFecha_` con ancla** (3.3.c): es lo que desbloquea el matching.
 - `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
   `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y el ancla de fecha) y
@@ -1454,9 +1461,57 @@ lo esperable es encontrarlas mezcladas.
 - Correr el pipeline **a mano** y revisar qué escribió, antes de volver a habilitar nada.
 - Verificar que `clasp push` no deja duplicados: `grep -c "function toDate_"` debe dar 1.
 
+#### Por qué la Fase 2 no cierra
+
+La verificación da esto:
+
+| helper | copias | dónde |
+|---|---|---|
+| `detectPersona_` / `detectBarrio_` / `detectFecha_` / `detectComuna_` | **1** ✓ | `02_Parsing.js` |
+| `mapBarrioCanon_` | **1** ✓ | `Solapa agenda base final.js` |
+| `toDate_`, `normalizeText_`, `str`, `num` | **4** ✗ | `01_Utils.js` + los tres del pipeline |
+| `normalizeHeader_` | 3 ✗ | ídem |
+| `findIdxOr_` | 2 ✗ | `01_Utils.js` + `Upset Base FInal.js` |
+
+Los `detect*` llegaron a 1 porque `Código.js` se archivó, y `mapBarrioCanon_` porque se archivó
+`Barrios.js` — **eso resuelve la mitad del bloqueante 3.1.h**: ya no hay dos implementaciones
+compitiendo, aunque la que quedó viva sigue teniendo los alias cruzados hasta la Fase 8.
+
+Lo que no baja a 1 son los seis helpers de `01_Utils.js`, y el motivo es concreto:
+**tres archivos del legado no se pueden archivar todavía.**
+
+| archivo | por qué se queda |
+|---|---|
+| `Upset Base FInal.js` | el **único activador vivo** lo necesita: `syncAgendaSheetInBaseFromAgenda_2` usa su `ensureColumnsExist_` y su `findIdxOr_` |
+| `Sinc A to A2.js` | es el paso 1, y acaba de recibir el arreglo de `SRC_SHEET` |
+| `Sync B to B2.js` | es el paso 2, se reescribe en la Fase 4 |
+
+**Y no alcanza con borrarles los helpers**, que sería lo obvio. `num` cambió de comportamiento a
+propósito —devuelve `''` y no `0` cuando no hay dato (sección 0.a)— y esos tres archivos hacen
+aritmética con él: `num(a) + num(b)` con vacíos concatena strings en lugar de sumar. Sacarles su
+copia los rompería de una forma nueva.
+
+> **Consecuencia que hay que tener presente: `01_Utils.js` y `02_Parsing.js` todavía no son
+> confiables.** El prefijo `01_` hace que carguen **primero**, así que las copias del legado los
+> **pisan**. No cambian el comportamiento del legado, y tampoco son las versiones que corren. Es
+> inerte y engañoso a la vez, y está avisado en el encabezado de los dos archivos.
+
+**Cuándo cierra.** Cuando los tres archivos dejen de existir, y eso pasa solo:
+
+1. **Fase 4** reescribe la lectura de orígenes → se va `Sync B to B2.js`;
+2. **Fase 5** reescribe el upsert → se va `Upset Base FInal.js`, y con él el último
+   `findIdxOr_` y `ensureColumnsExist_` duplicados;
+3. `Sinc A to A2.js` se va con el mismo movimiento de la Fase 4.
+
+Queda entonces `Solapa agenda base final.js`, que cae en la **Fase 8**.
+
+→ **La verificación de duplicados se mueve de la Fase 2 al final de la Fase 5**, que es donde
+puede dar 1. Mantenerla en la Fase 2 era pedirle a la fase que resolviera algo que depende de
+dos fases posteriores.
+
 ### Fase 3 — Derivadas a valores
 
-**Es prerrequisito duro de la Fase 5b.** No se saca el staging con las fórmulas de array
+**Es prerrequisito duro de la Fase 9.** No se saca el staging con las fórmulas de array
 todavía puestas: sería poner un upsert nuevo a escribir contra once bloques que se rompen
 enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problema no existe más.
 
@@ -1483,7 +1538,69 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - `marcarRealizada_` enganchada al upsert (decisión 12), con los asistentes que vienen de A2.
 - Correr en seco (modo `DRY_RUN` que sólo llena `SIN_MATCH` y loguea) antes de habilitar escritura.
 
-### Fase 5b — Retiro del staging  *(baja prioridad desde 2026-09-22)*
+### Fase 6 — Backfill
+- Correr el pipeline completo sobre la ventana abril–septiembre 2026.
+- Objetivo: las 79 filas sin sexo/edades y las 17 sin inscriptos.
+- Verificar contra el conteo de la sección 3.2.
+- **El origen del backfill no es `Para Revisar`.** El diagnóstico lo descartó: es un espejo del
+  destino y no tiene nada que el destino no tenga. Los datos hay que sacarlos de `B`, y lo que
+  ya no esté en `B`, del origen (3) — con la regla dura de la sección 1: se lee, no se modifica.
+- Correr con `setSiDelSistema_`: el backfill escribe sobre celdas vacías, que es justo lo que
+  son las 79. Ninguna de estas filas debería pisar nada.
+
+### Fase 7 — Activadores del pipeline de inscriptos
+- **Dar de baja los activadores viejos del pipeline de inscriptos** (ahora sí, con el inventario de Fase 0 a mano).
+- Crear los nuevos apuntando a `99_Pipeline.js`.
+- Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
+- **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después
+  del upsert y del recálculo de derivadas. Hasta entonces se corre a mano con
+  `correrAlertaCambios()`.
+- Revisar `ALERTA_CAMBIOS` la primera semana: si se llena, no es que todo cambió — es que algún
+  guard está mal calibrado. Si queda vacía con el pipeline corriendo, tampoco está bien: probar
+  a mano moviendo un número en una copia.
+
+> **No lleva `onEdit`.** Estuvo anotado acá y se descartó: ver el recuadro al final de la
+> sección 0. Servía sólo para habilitar "vacío o azul" en `setSiDelSistema_`, y eso servía sólo
+> para propagar correcciones del origen. El origen no corrige. El aviso de que un número cerrado
+> se movió lo da `verificarCambiosRecientes_()` al final del pipeline, sin tocar el destino.
+
+### Fase 8 — Agenda  *(al final, a propósito)*
+
+Agenda **no se toca hasta acá**. Los motivos:
+
+- **no hay urgencia**: de sus tres pasos sólo el espejo tiene activador, y el espejo no escribe
+  datos nuevos (docs/agenda-legado.md);
+- **no hay material para decidir**: rediseñar la ingesta requiere saber cuántas variantes de
+  formato de mail hay, y eso hoy no lo sabemos. El legado mira 21 días hacia atrás y no guarda
+  nada, así que **el material se junta antes y se analiza después**;
+- **el flujo de inscriptos es el que tiene el hueco**, y es el que se cierra primero.
+
+**8a. Análisis de patrones de mails.** Primer paso, y el único que conviene empezar ya:
+`diagnostico/03_muestras_mail.js` vuelca a `DIAG_MAILS` el asunto, la fecha y el cuerpo crudo de
+todo el historial que devuelva Gmail. Sólo lectura, corre a mano, sin activador. Cuanto antes
+corra, más muestras hay cuando llegue el momento de decidir. Del análisis salen:
+
+- cuántas variantes de asunto hay y en qué mes aparece cada una — un cambio de asunto es un
+  corte silencioso de la ingesta;
+- cuántas variantes de estructura tiene el cuerpo;
+- si el parser actual cubre todas o sólo la que estaba vigente cuando se escribió.
+
+**8b. Rediseño de la ingesta.** Con el análisis hecho. Mínimo: un activador (hoy no tiene) y una
+alerta cuando la query devuelve cero mensajes habiendo mails que matchean el asunto — hoy eso
+termina con un `toast` de cuatro segundos y un `return` limpio.
+
+**8c. Redirigir el push al upsert nuevo.** `agenda_pushReadyToBaseFinal` deja de escribir en
+`Para Revisar` y pasa por el upsert, con `setSiDelSistema_`. Es lo que habilita la Fase 9.
+
+**8d. Una sola canonización de barrios.** `Solapa agenda base final.js` es el último archivo con
+`mapBarrioCanon_` propio, y es el que tiene los alias cruzados de 3.1.h. Se borra y usa
+`canonizarBarrio_` de `02_Parsing.js`.
+
+> **Pendiente hasta acá:** el punto 5 de [docs/agenda-legado.md](docs/agenda-legado.md) —qué se
+> rescata, qué se adapta y qué se reescribe— es una **opinión formada leyendo el código, no una
+> decisión tomada**. Se confirma o se descarta con el análisis de 8a en la mano.
+
+### Fase 9 — Retiro del staging  *(última, y depende de la Fase 8)*
 
 > **Ya no bloquea nada.** El diagnóstico mostró que el staging no pierde datos: cero cortes en
 > los pasos 4 y 5, y `Para Revisar` es un espejo exacto del destino. Sacarlo es **simplificación,
@@ -1500,12 +1617,16 @@ todavía puestas, cualquier escritura mal ubicada del upsert nuevo rompe un bloq
 daño es silencioso. Convertidas a valores, esa clase de problema desaparece y el retiro del
 staging es un cambio de ruteo y nada más.
 
+**Prerrequisito duro: la Fase 8 terminada.** El flujo Agenda es el único que todavía escribe
+en `Para Revisar`, así que el staging no se puede retirar antes. Reordenar el plan para poner
+Agenda al final movió esta fase con él.
+
 **Prerrequisito duro: `setSiDelSistema_` escrito y probado** (Fase 2). El paso 5 protege hoy la
 carga manual del destino por accidente, escribiendo sólo sobre celda vacía; si se lo saca sin
 el helper, el upsert nuevo hereda el `setIfIndex_` del legado y pisa todo.
 
-1. **Redirigir el flujo Agenda** al upsert nuevo. Es la única dependencia real del staging.
-   Verificar con una reunión de prueba de punta a punta antes de seguir.
+1. **El flujo Agenda ya redirigido al upsert nuevo** (Fase 8c). Es la única dependencia real
+   del staging, y es lo que empuja esta fase al final del plan.
 2. **Apagar el activador del paso 5**, si existe (Fase 0 dice cuál es). Dejar el código.
 3. **Correr una semana sin el paso 5** y comparar contra `DIAG_*`. Nada nuevo tiene que faltar.
 4. **Renombrar `Para Revisar` → `Para Revisar (legado)`.** El renombre rompe a propósito
@@ -1514,32 +1635,6 @@ el helper, el upsert nuevo hereda el `setIfIndex_` del legado y pisa todo.
 
 **No se empieza por el 4 ni por el 5.** Hasta que el punto 3 esté verificado, `Para Revisar` es
 la red que atrapa lo que el upsert nuevo deje pasar.
-
-### Fase 6 — Backfill
-- Correr el pipeline completo sobre la ventana abril–septiembre 2026.
-- Objetivo: las 79 filas sin sexo/edades y las 17 sin inscriptos.
-- Verificar contra el conteo de la sección 3.2.
-- **El origen del backfill no es `Para Revisar`.** El diagnóstico lo descartó: es un espejo del
-  destino y no tiene nada que el destino no tenga. Los datos hay que sacarlos de `B`, y lo que
-  ya no esté en `B`, del origen (3) — con la regla dura de la sección 1: se lee, no se modifica.
-- Correr con `setSiDelSistema_`: el backfill escribe sobre celdas vacías, que es justo lo que
-  son las 79. Ninguna de estas filas debería pisar nada.
-
-### Fase 7 — Activadores
-- **Dar de baja todos los activadores viejos** (ahora sí, con el inventario de Fase 0 a mano).
-- Crear los nuevos apuntando a `99_Pipeline.js`.
-- Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
-- **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después
-  del upsert y del recálculo de derivadas. Hasta entonces se corre a mano con
-  `correrAlertaCambios()`.
-- Revisar `ALERTA_CAMBIOS` la primera semana: si se llena, no es que todo cambió — es que algún
-  guard está mal calibrado. Si queda vacía con el pipeline corriendo, tampoco está bien: probar
-  a mano moviendo un número en una copia.
-
-> **No lleva `onEdit`.** Estuvo anotado acá y se descartó: ver el recuadro al final de la
-> sección 0. Servía sólo para habilitar "vacío o azul" en `setSiDelSistema_`, y eso servía sólo
-> para propagar correcciones del origen. El origen no corrige. El aviso de que un número cerrado
-> se movió lo da `verificarCambiosRecientes_()` al final del pipeline, sin tocar el destino.
 
 ---
 

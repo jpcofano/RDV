@@ -1,9 +1,8 @@
 /**
  * 00_Config.js — el único lugar del proyecto con literales.
  *
- * **Primer archivo de la arquitectura nueva** (CLAUDE.md 4). Todavía no lo usa el pipeline
- * legado: se adelantó porque `40_Alertas.js` lo necesita. El resto de sus constantes se suman
- * en la Fase 2, cuando se escriban `01_Utils.js`, `02_Parsing.js` y `05_Escritura.js`.
+ * **Arquitectura nueva** (CLAUDE.md 4). El pipeline legado no lo usa: lo usan `01_Utils.js`,
+ * `02_Parsing.js`, `05_Escritura.js` y `40_Alertas.js`.
  *
  * Nada de acá pisa nombres del legado: el prefijo `RDV_` y los dos `COLUMNAS_*` son únicos en
  * el scope global compartido (CLAUDE.md 3.1.c).
@@ -16,10 +15,24 @@ const RDV_SS_INTERMEDIA = '1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM'; // (2)
 const RDV_SS_ORIGEN     = '1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg'; // (3) NO somos dueños
 const RDV_SS_AGENDA     = '1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U'; // (4) Agenda
 
-const RDV_HOJA_DESTINO = 'RVD JM-CM - ES';
-const RDV_HOJA_B2      = 'B2';
-const RDV_HOJA_A2      = 'A2';
-const RDV_HOJA_ALERTAS = 'ALERTA_CAMBIOS';
+// --- solapas de (1), el destino ---
+const RDV_HOJA_DESTINO   = 'RVD JM-CM - ES';   // el único destino
+const RDV_HOJA_ASISTENTES_SRC = 'RDV CONJUNTO'; // origen de asistentes. NO se modifica
+const RDV_HOJA_COMUNAS   = 'Comunas';          // lookup barrio → comuna, A:H
+const RDV_HOJA_STAGING   = 'Para Revisar';     // staging legado. Se retira en la Fase 9
+const RDV_HOJA_SIN_MATCH = 'SIN_MATCH';
+const RDV_HOJA_REVISAR   = 'REVISAR_MATCH';
+
+// --- solapas de (2), la intermedia ---
+const RDV_HOJA_B2       = 'B2';
+const RDV_HOJA_A2       = 'A2';
+const RDV_HOJA_B        = 'B';           // IMPORTRANGE del origen. Queda como vista
+const RDV_HOJA_ASIST_IR = 'Asistentes';  // IMPORTRANGE de RDV CONJUNTO. Antes se llamaba 'A'
+const RDV_HOJA_ALERTAS  = 'ALERTA_CAMBIOS';
+
+// --- solapas de (3) y (4) ---
+const RDV_HOJA_ORIGEN = 'Hoja1';   // en (3). NO somos dueños, no se modifica
+const RDV_HOJA_AGENDA = 'Agenda';  // en (4)
 
 const RDV_TZ = 'America/Argentina/Buenos_Aires';
 
@@ -152,9 +165,6 @@ const MARGEN_MINIMO = 0.15;
 
 /** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */
 const TOLERANCIA_HORA_MIN = 30;
-
-/** Solapa de lookup barrio → comuna, en la planilla (1). Es la que alimenta las columnas AA–AG. */
-const RDV_HOJA_COMUNAS = 'Comunas';
 
 // ===================== STATUS REUNIÓN =====================
 

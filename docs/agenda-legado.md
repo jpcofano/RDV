@@ -306,6 +306,15 @@ Tiene un efecto que hay que entender antes de desarmarlo: **este circuito es lo 
 
 ## 5. Qué sobrevive al rediseño
 
+> ⏸ **PENDIENTE hasta la Fase 8a.** Lo que sigue es una **opinión formada leyendo el código, no
+> una decisión tomada.** Se confirma o se descarta con el análisis de patrones de mails en la
+> mano — sin saber cuántas variantes de formato hay, cualquier plan de rediseño de la ingesta es
+> una suposición.
+>
+> Agenda se movió al final del plan (CLAUDE.md, Fase 8) justamente por eso: no hay urgencia
+> —sólo el espejo tiene activador— y no hay material para decidir. `diagMuestrasMail()` lo junta
+> mientras el trabajo está en inscriptos.
+
 Opinión, con el motivo. Ordenado por lo que haría primero.
 
 ### Se rescata casi tal cual
@@ -329,7 +338,7 @@ la solapa `Agenda` hasta que se estampe el `RDV_UID`.
 
 ### Se adapta
 
-**`agenda_pushReadyToBaseFinal` → el upsert único.** Es el punto 3 de la Fase 5b y no cambia:
+**`agenda_pushReadyToBaseFinal` → el upsert único.** Es el punto 8c del plan y no cambia:
 en vez de escribir en `Para Revisar`, llama al upsert nuevo. Con dos cambios de fondo:
 
 - **toda escritura por `setSiDelSistema_`**, que además resuelve el `if (!cur)` del `STATUS` de

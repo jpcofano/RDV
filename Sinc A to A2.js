@@ -1,6 +1,6 @@
 function syncA_to_A2_upsert() {
   const DEBUG = true;
-  const SRC_SHEET = 'A';
+  const SRC_SHEET = 'Asistentes';  // era 'A'; la solapa se renombró (CLAUDE.md 3.1.a)
   const DST_SHEET = 'A2';
   const ID_SEPARATOR = ' - ';
   const DATE_FMT_ID = 'dd/MM/yyyy';
