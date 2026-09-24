@@ -759,6 +759,30 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   > resueltas y rotas. Todo dentro de la ventana de análisis (sección 3.5). El ancho definitivo
   > sale de esa curva, no de una estimación.
 
+  #### Hay una tercera fuente de fecha, y es externa
+
+  Las dos que veníamos discutiendo —el nombre del formulario y `fecha_fin`— salen las dos del
+  **mismo origen de inscriptos**, y las dos son poco confiables. Buscando otra cosa apareció una
+  tercera, en un lugar donde no la estábamos buscando: **el asunto de los mails de agenda lleva
+  el rango de la semana.**
+
+  ```
+  Agenda Encuentros de vecinos con {GRUPO} - Semana del 14/10 al 20/10
+  ```
+
+  Es una **restricción externa** sobre las fechas de los eventos de ese mail: no la genera el
+  formulario, no la toca quien carga inscriptos, y viene en el asunto y no en un texto libre que
+  alguien tipea. Un evento fechado fuera del rango de su propio asunto está mal parseado, y eso
+  se sabe **sin cruzarlo contra nada**.
+
+  → **Candidato a ancla de fecha para la Fase 8**, ya disponible en las columnas `semana_desde`
+  y `semana_hasta` de `DIAG_MAILS`.
+
+  Y el punto general, que vale más que el caso: **las fechas confiables existen, pero hay que
+  buscarlas fuera del origen de inscriptos.** Veníamos eligiendo entre dos campos malos del
+  mismo origen, cuando el problema era el origen. Antes de dar por buena una fuente de fecha,
+  conviene preguntarse si hay una tercera en otro lado.
+
   > **Sube de prioridad: ahora bloquea el matching.** Con `figura + fecha` como clave única
   > (sección 1.a), la fecha es **la mitad de la identidad**. Un error de parseo deja de ser "un
   > campo mal cargado que se corrige después" y pasa a ser **un error de identidad**: la fila no
@@ -1575,15 +1599,26 @@ Agenda **no se toca hasta acá**. Los motivos:
   nada, así que **el material se junta antes y se analiza después**;
 - **el flujo de inscriptos es el que tiene el hueco**, y es el que se cierra primero.
 
-**8a. Análisis de patrones de mails.** Primer paso, y el único que conviene empezar ya:
-`diagnostico/03_muestras_mail.js` vuelca a `DIAG_MAILS` el asunto, la fecha y el cuerpo crudo de
-todo el historial que devuelva Gmail. Sólo lectura, corre a mano, sin activador. Cuanto antes
-corra, más muestras hay cuando llegue el momento de decidir. Del análisis salen:
+**8a. Análisis de patrones de mails.** `diagnostico/03_muestras_mail.js`, sólo lectura, sin
+activador. **Corrió el 2026-09-24**: 376 mensajes en 374 hilos, de 2025-09 a 2026-09, volumen
+estable entre 24 y 43 por mes y sin cortes.
 
-- cuántas variantes de asunto hay y en qué mes aparece cada una — un cambio de asunto es un
-  corte silencioso de la ingesta;
-- cuántas variantes de estructura tiene el cuerpo;
-- si el parser actual cubre todas o sólo la que estaba vigente cuando se escribió.
+Lo que ya contestó (detalle en [docs/agenda-legado.md](docs/agenda-legado.md)):
+
+- **el asunto nunca cortó la ingesta.** Las 103 "variantes" son una sola plantilla con dos
+  campos: `Agenda Encuentros de vecinos con {GRUPO} - Semana del {DD/MM} al {DD/MM}`, con tres
+  valores de `{GRUPO}` y el rango cambiando cada semana. Si la ingesta no encuentra eventos, el
+  problema está en el cuerpo;
+- **el asunto trae el rango de la semana**, que es una restricción externa sobre las fechas de
+  los eventos. Ver 3.3.c.
+
+Lo que falta contestar:
+
+- cuántas variantes de estructura tiene el **cuerpo**, y si el parser cubre todas o sólo la que
+  estaba vigente cuando se escribió;
+- **si el último mensaje del hilo es el correcto.** Hay hilos de hasta 10 mensajes y el legado
+  se queda siempre con el último: si la corrección vino en uno del medio y después alguien
+  respondió algo trivial, está tomando el equivocado.
 
 **8b. Rediseño de la ingesta.** Con el análisis hecho. Mínimo: un activador (hoy no tiene) y una
 alerta cuando la query devuelve cero mensajes habiendo mails que matchean el asunto — hoy eso

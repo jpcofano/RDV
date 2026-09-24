@@ -58,15 +58,20 @@ function diagMuestrasMail() {
     return { hilos: 0, mensajes: 0 };
   }
 
-  const salida = [['hilo', 'msg_en_hilo', 'total_en_hilo', 'fecha', 'asunto', 'de',
+  const salida = [['hilo', 'msg_en_hilo', 'total_en_hilo', 'fecha', 'asunto',
+                   'plantilla', 'grupo', 'semana_desde', 'semana_hasta', 'de',
                    'largo_cuerpo', 'truncado', 'cuerpo']];
 
   const porMes = {};
-  const asuntos = {};
+  const plantillas = {};
+  const grupos = {};
+  const asuntosCrudos = {};
+  const porHilo = {};
   let mensajes = 0, truncados = 0;
 
   for (let h = 0; h < hilos.length; h++) {
     const msgs = hilos[h].getMessages();
+    porHilo[msgs.length] = (porHilo[msgs.length] || 0) + 1;
     for (let m = 0; m < msgs.length; m++) {
       const msg = msgs[m];
       const fecha = msg.getDate();
@@ -77,13 +82,19 @@ function diagMuestrasMail() {
 
       const mes = Utilities.formatDate(fecha, RDV_TZ, 'yyyy-MM');
       porMes[mes] = (porMes[mes] || 0) + 1;
-      const aNorm = _asuntoNormalizado_diag3(asunto);
-      asuntos[aNorm] = (asuntos[aNorm] || 0) + 1;
+
+      const plantilla = _plantillaAsunto_diag3(asunto);
+      plantillas[plantilla] = (plantillas[plantilla] || 0) + 1;
+      asuntosCrudos[_sinPrefijos_diag3(asunto)] = true;
+
+      const g = _grupoAsunto_diag3(asunto);
+      if (g) grupos[g] = (grupos[g] || 0) + 1;
+      const sem = _semanaAsunto_diag3(asunto);
 
       salida.push([
         h + 1, m + 1, msgs.length,
         Utilities.formatDate(fecha, RDV_TZ, 'yyyy-MM-dd HH:mm'),
-        asunto,
+        asunto, plantilla, g || '', sem.desde, sem.hasta,
         String(msg.getFrom() || ''),
         cuerpo.length,
         cortado ? 'TRUE' : 'FALSE',
@@ -105,17 +116,48 @@ function diagMuestrasMail() {
   });
 
   /*
-   * Las variantes de asunto son la primera señal de si el formato cambió. Si hay una sola
-   * variante en todo el historial, el asunto es estable y la query del legado sirve. Si hay
-   * varias, hay un momento en el que el parser dejó de encontrar mails.
+   * Se agrupa por PLANTILLA, no por asunto crudo.
+   *
+   * El asunto lleva el rango de la semana —"Semana del 14/10 al 20/10"— así que cambia todas
+   * las semanas, y contar asuntos crudos da más de cien "variantes" cuando en realidad hay una
+   * sola forma con dos campos. Ésa es una falsa alarma justo del tipo que este diagnóstico
+   * existe para evitar: reemplazar las fechas por un marcador deja ver la forma real.
    */
-  Logger.log('--- variantes de asunto (sin Re:/Fwd: ni espacios de más) ---');
-  const claves = Object.keys(asuntos).sort(function (a, b) { return asuntos[b] - asuntos[a]; });
-  claves.slice(0, 20).forEach(function (a) { Logger.log('  %s × "%s"', asuntos[a], a); });
-  if (claves.length > 20) Logger.log('  ... y %s variantes más', claves.length - 20);
-  if (claves.length > 1) {
-    Logger.log('  >>> Hay %s variantes de asunto. Mirar en qué mes aparece cada una: un cambio ' +
-               'de asunto es un corte silencioso de la ingesta.', claves.length);
+  const plClaves = Object.keys(plantillas).sort(function (a, b) {
+    return plantillas[b] - plantillas[a];
+  });
+  Logger.log('--- plantillas de asunto (fechas reemplazadas por {DD/MM}) ---');
+  plClaves.slice(0, 20).forEach(function (a) { Logger.log('  %s × "%s"', plantillas[a], a); });
+  if (plClaves.length > 20) Logger.log('  ... y %s plantillas más', plClaves.length - 20);
+  Logger.log('  (asuntos crudos distintos: %s — ese número NO es señal de nada por sí solo)',
+             Object.keys(asuntosCrudos).length);
+
+  const gClaves = Object.keys(grupos).sort(function (a, b) { return grupos[b] - grupos[a]; });
+  if (gClaves.length) {
+    Logger.log('--- valores del campo {GRUPO} del asunto ---');
+    gClaves.forEach(function (g) { Logger.log('  %s × "%s"', grupos[g], g); });
+  }
+
+  if (plClaves.length > 3) {
+    Logger.log('  >>> %s plantillas distintas. Mirar en qué mes aparece cada una: un cambio de ' +
+               'PLANTILLA sí sería un corte silencioso de la ingesta. Un cambio de {GRUPO} o ' +
+               'del rango semanal, no.', plClaves.length);
+  } else {
+    Logger.log('  La plantilla es estable: el asunto nunca cortó la ingesta.');
+  }
+
+  /*
+   * Mensajes por hilo. El legado se queda SIEMPRE con el último del hilo. Si hay hilos largos,
+   * esa elección hay que justificarla: la corrección puede venir en un mensaje del medio.
+   */
+  Logger.log('--- mensajes por hilo ---');
+  const hClaves = Object.keys(porHilo).map(Number).sort(function (a, b) { return a - b; });
+  hClaves.forEach(function (n) { Logger.log('  %s mensaje(s): %s hilos', n, porHilo[n]); });
+  const maxHilo = hClaves.length ? hClaves[hClaves.length - 1] : 0;
+  if (maxHilo > 1) {
+    Logger.log('  >>> Hay hilos de hasta %s mensajes y el legado se queda con el ÚLTIMO. ' +
+               'Verificar que sea el correcto: si la corrección vino en un mensaje del medio y ' +
+               'después alguien respondió algo trivial, el último es el equivocado.', maxHilo);
   }
 
   const masViejo = salida.length > 1 ? salida[1][3] : '-';
@@ -143,12 +185,46 @@ function _buscarHilos_diag3() {
   return todos;
 }
 
-/** El asunto sin `Re:` / `Fwd:` ni espacios de más, para poder agrupar variantes. */
-function _asuntoNormalizado_diag3(asunto) {
+/** El asunto sin `Re:` / `Fwd:` ni espacios de más. */
+function _sinPrefijos_diag3(asunto) {
   return String(asunto || '')
     .replace(/^((re|rv|fwd|fw)\s*:\s*)+/i, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * La **plantilla** del asunto: lo anterior con cada fecha reemplazada por un marcador.
+ *
+ * Es lo que permite ver que cien asuntos distintos son en realidad una sola forma con el rango
+ * de la semana variando. Contar asuntos crudos da una falsa alarma; contar plantillas, no.
+ */
+function _plantillaAsunto_diag3(asunto) {
+  return _sinPrefijos_diag3(asunto)
+    .replace(/\d{1,2}\/\d{1,2}(\/\d{2,4})?/g, '{DD/MM}')
+    .replace(/\b(19|20)\d{2}\b/g, '{AAAA}')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** El campo variable del asunto: `... con {GRUPO} - Semana del ...`. */
+function _grupoAsunto_diag3(asunto) {
+  const m = /\bcon\s+(.+?)\s*[-–]\s*semana\s+del\b/i.exec(_sinPrefijos_diag3(asunto));
+  return m ? m[1].trim() : '';
+}
+
+/**
+ * El rango de la semana que viene en el asunto: `Semana del 14/10 al 20/10`.
+ *
+ * Se extrae del **asunto**, no del cuerpo — este archivo sigue sin parsear cuerpos. Vale la
+ * pena tenerlo en columnas porque es una **restricción externa sobre las fechas de los
+ * eventos**, independiente del nombre del formulario y de `fecha_fin`, que son los dos campos
+ * que sabemos poco confiables (CLAUDE.md 3.3.c).
+ */
+function _semanaAsunto_diag3(asunto) {
+  const re = /semana\s+del\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+al\s+(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i;
+  const m = re.exec(_sinPrefijos_diag3(asunto));
+  return m ? { desde: m[1], hasta: m[2] } : { desde: '', hasta: '' };
 }
 
 /** El valor del legado, sólo para el mensaje del log. */

@@ -125,6 +125,61 @@ concentran en horarios donde alguien estaba trabajando en la planilla, es (1) o 
 
 ## 2. La entrada por Gmail
 
+### Lo que mostró el volcado: 376 mensajes, 374 hilos, 2025-09 → 2026-09
+
+`diagMuestrasMail()` corrió el 2026-09-24 sobre todo el historial que devuelve la query.
+Volumen **estable entre 24 y 43 mensajes por mes, sin cortes**. Es un flujo sano y regular, y
+eso ya descarta la hipótesis más fea: no hay un mes en el que los mails hayan dejado de llegar.
+
+#### a) Las 103 variantes de asunto son **una sola plantilla con dos campos**
+
+El log de la primera versión contaba asuntos crudos y reportaba 103 variantes, sugiriendo que el
+formato había cambiado muchas veces. **Era una falsa alarma.** La forma real es una:
+
+```
+Agenda Encuentros de vecinos con {GRUPO} - Semana del {DD/MM} al {DD/MM}
+```
+
+`{GRUPO}` toma **tres valores observados**: `CM y Ministros`, `CM, LA y Ministros`, `JM`. Y
+`{DD/MM}` cambia **todas las semanas**, que es de dónde salen las 103.
+
+> **El asunto nunca cortó la ingesta.** La query del legado —`subject:(Agenda Encuentros de
+> vecinos)`— matchea las tres formas, porque la parte fija está antes del campo variable. Si la
+> ingesta no encuentra eventos, el problema está en el cuerpo, no en el asunto.
+
+El diagnóstico se corrigió para agrupar por **plantilla** y no por asunto crudo, reemplazando
+las fechas por `{DD/MM}`. Contar 103 variantes cuando hay 3 formas reales es exactamente la
+clase de falsa alarma que un diagnóstico tiene que evitar: manda a investigar un problema que no
+existe y quema la confianza en los avisos que sí importan.
+
+#### b) El asunto lleva el rango de la semana, y eso vale oro
+
+`Semana del 14/10 al 20/10` es una **restricción externa sobre las fechas de los eventos del
+cuerpo** — y es independiente de las dos fuentes de fecha que ya sabemos poco confiables: el
+nombre del formulario y `fecha_fin`.
+
+Un evento que el parser ubique fuera del rango de su propio asunto está mal parseado, sin
+necesidad de cruzarlo contra nada. Es un **candidato a ancla de fecha** para la Fase 8, anotado
+en CLAUDE.md 3.3.c, y algo más general: **el precedente de que las fechas confiables existen, y
+de que hay que buscarlas fuera del origen de inscriptos.**
+
+`DIAG_MAILS` ya trae el rango en las columnas `semana_desde` y `semana_hasta`.
+
+#### c) Hasta 10 mensajes por hilo, y el legado se queda con el último
+
+```js
+const msg = msgs[msgs.length - 1]; // último del hilo (más actualizado)
+```
+
+El comentario asume que el último mensaje es el más actualizado. **Con hilos de hasta diez
+mensajes, eso hay que verificarlo, no suponerlo.** El caso que rompe la suposición: la
+corrección viene en un mensaje del medio, y después alguien responde `gracias` o reenvía el hilo
+a otra persona. El último mensaje es entonces el que **menos** información tiene, y el parser lo
+toma como si fuera la versión final.
+
+Es un ítem explícito de la Fase 8a: mirar los hilos largos de `DIAG_MAILS` y ver si el último
+mensaje contiene siempre la agenda completa.
+
 **La query:**
 
 ```js
