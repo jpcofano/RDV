@@ -184,9 +184,23 @@ ahora que el origen dejó de mandar el barrio (3.3.b).
 Consecuencia directa: **el error de parseo de fechas deja de ser un campo mal cargado y pasa a
 ser un error de identidad.** Si la fecha está mal, la clave está mal. Ver 3.3.c.
 
-`diagScores()` la verifica contra los datos antes de que el diseño se apoye en ella: cuenta los
-pares `figura + fecha` con más de una fila en el destino. Si no da cero, esas son las
-excepciones donde el matching fallaría en silencio.
+#### Los 8 pares repetidos no son excepciones: son desfase por reprogramación
+
+`diagScores()` contó **8 pares `figura + fecha` con más de una fila en el destino**. Parecían
+contraejemplos de la regla. No lo son.
+
+**La reunión se reprograma, y el formulario de inscripción conserva en su nombre la fecha
+vieja.** No son dos reuniones el mismo día: son **dos reuniones cuyos formularios quedaron
+nombrados con la misma fecha**. Y como la fecha del destino salió del nombre del formulario
+—ese es el bug de 3.3.c— las dos filas terminaron con la misma fecha aunque las reuniones
+ocurrieron en días distintos.
+
+Encaja con que exista el estado `Reprogramada` en `STATUS REUNIÓN` (3.4). `diagScores()` cruza
+los pares contra ese estado para confirmarlo.
+
+**La regla se sostiene. Lo que falla es la fecha, no la clave.** Y eso refuerza la conclusión de
+3.3.c: arreglar el parseo de fechas es lo primero, porque estos 8 pares son la misma falla
+manifestándose de otra forma.
 
 **b) La comuna del destino no es un dato propio: se deriva del barrio.** La columna `AA (Comuna)`
 es una de las once fórmulas de array (3.1.b):
@@ -592,6 +606,29 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   `diagAnclaFecha()` (en `diagnostico/02_corte_B_a_B2.js`) mide cuántas de las
   `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve esta regla, antes de escribirla en el parser.
 
+  > **Corrección: el ancla es MÁS confiable en los casos raros, no menos.**
+  >
+  > La primera lectura del `0 de 20` fue que el ancla no servía para esos casos. Es al revés.
+  >
+  > **`fecha_fin` se mueve con la reprogramación; el nombre del formulario no.** Cuando una
+  > reunión se reprograma, el formulario sigue llamándose con la fecha vieja y su `fecha_fin`
+  > pasa a ser la nueva. O sea que **el desvío grande entre las dos es la firma de una
+  > reprogramación**, y en esos casos `fecha_fin` es justamente el dato correcto — el único de
+  > los dos que se enteró del cambio.
+  >
+  > Eso explica el `0 de 20` sin culpar al ancla: **la ventana `[-2, +7]` está mal calibrada
+  > para reprogramaciones.** En `DIAG_ANCLA_FECHA` aparecen desvíos de **−8, +8 y +9 días**, que
+  > son candidatos a ser exactamente esto y que la ventana angosta rechaza por el motivo
+  > equivocado.
+  >
+  > Es la misma falla que produce los 8 pares repetidos de la sección 1.a: una reprogramación
+  > que el nombre del formulario no registró.
+  >
+  > `diagAnclaFecha()` lo mide de dos maneras: **cruza los desvíos fuera de la ventana contra
+  > `STATUS REUNIÓN = Reprogramada`**, y **barre anchos de ±1 a ±21 días** reportando la curva de
+  > resueltas y rotas. Todo dentro de la ventana de análisis (sección 3.5). El ancho definitivo
+  > sale de esa curva, no de una estimación.
+
   > **Sube de prioridad: ahora bloquea el matching.** Con `figura + fecha` como clave única
   > (sección 1.a), la fecha es **la mitad de la identidad**. Un error de parseo deja de ser "un
   > campo mal cargado que se corrige después" y pasa a ser **un error de identidad**: la fila no
@@ -685,6 +722,27 @@ caminos independientes, y el que alimenta la transición es el que hoy funciona.
 
 El flujo Agenda, además, evita pisarla a propósito
 ([Agenda push a base.js:387](Agenda%20push%20a%20base.js#L387)): `// NO tocar asistentes`.
+
+### 3.5 La ventana de análisis: últimos 6 meses
+
+**Todos los diagnósticos se calibran sólo sobre los últimos 6 meses.** En `00_Config.js` como
+`VENTANA_ANALISIS_MESES = 6`.
+
+**Por qué.** El formulario del origen cambió en **2025-10**: el barrio pasó de 0% ausente a 54%
+(3.3.b). Calibrar umbrales contra datos anteriores es **ajustar el sistema a un origen que ya no
+existe** — y en la dirección peligrosa, porque esos datos traían una señal que hoy no llega, así
+que todo saldría más optimista de lo que es.
+
+Qué cambia y qué no:
+
+| | |
+|---|---|
+| **veredicto y calibración** | salen **sólo** de la ventana |
+| **totales históricos** | se siguen reportando, aparte |
+| **las solapas `DIAG_*`** | traen todas las filas, con una columna `en_ventana` para filtrar |
+| **los repartos por mes** | van completos: son justamente para ver el cambio |
+
+La ventana se mide sobre la fecha de la reunión, contra el día de hoy.
 
 ---
 
@@ -830,7 +888,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    ```
 
    **Los dos números son provisorios y están puestos a ojo.** Se calibran corriendo en seco
-   contra las **103 filas de `DIAG_CORTE_B`** y mirando la distribución real de scores:
+   contra las filas de `DIAG_CORTE_B` **que caen dentro de la ventana de análisis** (3.5) —no
+   contra las 103 históricas— y mirando la distribución real de scores:
    `diagScores()` (en `diagnostico/02_corte_B_a_B2.js`) la vuelca sin escribir nada. Hasta que
    esa distribución exista, cualquier umbral es inventado.
 
@@ -1105,9 +1164,10 @@ justo ahí donde se manifestaría una ventana móvil del import. Medir sólo el 
 Suma `DIAG_DUP_B2` con las 14 claves duplicadas. Detalle en
 [docs/prompts/PROMPT-02-CORTE-B.md](docs/prompts/PROMPT-02-CORTE-B.md).
 
-`diagScores()` va aparte, y es el insumo de la decisión 2: calcula el score de las **103 filas**
-de la población contra todos los candidatos de `B` y vuelca la distribución en `DIAG_SCORES`,
-con un barrido de umbrales. **Es lo que convierte `UMBRAL_MATCH` y `MARGEN_MINIMO` de suposición
+`diagScores()` va aparte, y es el insumo de la decisión 2: calcula el score de la población
+contra todos los candidatos de `B` y vuelca la distribución en `DIAG_SCORES`, con un barrido de
+umbrales. **El veredicto y el barrido salen sólo de la ventana de análisis** (3.5); la solapa
+trae las 103 históricas con una columna `en_ventana`. **Es lo que convierte `UMBRAL_MATCH` y `MARGEN_MINIMO` de suposición
 en número medido.** Sólo lectura, y no estampa ningún `RDV_UID`.
 
 Además reporta **techo alcanzable** por fila: cuánto podría sumar como máximo ese par dadas las
@@ -1117,8 +1177,9 @@ umbral inalcanzable — y hay que verlo antes de fijar el número.
 
 Y las tres mediciones que sostienen el diseño:
 
-- **colisiones `figura + fecha`** en el destino → verifica la regla de negocio de la sección 1.a
-  antes de que el matching se apoye en ella. Si no da cero, lista las excepciones;
+- **pares `figura + fecha` repetidos** en el destino → los 8 encontrados son desfase por
+  reprogramación, no excepciones a la regla (1.a). Se cruzan contra `STATUS REUNIÓN` para
+  confirmarlo;
 - **barrio por mes en `B`** → desde cuándo el origen dejó de mandarlo (3.3.b);
 - **comuna en el texto** → de las 103, cuántas la traen y cuántas coinciden con la comuna que
   deriva del barrio del destino. Es la medida de si la comuna sirve de reemplazo.
@@ -1126,9 +1187,16 @@ Y las tres mediciones que sostienen el diseño:
 ### Fase 1c — Anclar la fecha  *(prioridad alta)*
 
 Subió de prioridad: con `figura + fecha` como clave, las 20 `fecha_mal_parseada` son errores de
-identidad, no campos sucios (3.3.c). `diagAnclaFecha()` mide cuántas resuelve el ancla; el
-arreglo va en `02_Parsing.js`, en la Fase 2. **Antes que calibrar el score**: no tiene sentido
-afinar umbrales sobre una clave que todavía tiene la mitad mal.
+identidad, no campos sucios (3.3.c). Y los 8 pares repetidos de la sección 1.a son la misma
+falla vista desde otro lado.
+
+`diagAnclaFecha()` da los dos números que faltan: cuántos de los desvíos fuera de ventana son
+reprogramaciones, y la **curva de resueltas y rotas por ancho de ventana** de ±1 a ±21 días. El
+ancho definitivo de `VENTANA_FECHA_TEXTO` sale de esa curva. El arreglo va en `02_Parsing.js`,
+en la Fase 2.
+
+**Antes que calibrar el score**: no tiene sentido afinar umbrales sobre una clave que todavía
+tiene la mitad mal.
 
 **La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
 eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser

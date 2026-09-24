@@ -51,6 +51,23 @@ const COLUMNAS_DERIVADAS = [
   'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'
 ];
 
+// ===================== Ventana de análisis =====================
+
+/**
+ * **Todo diagnóstico se calibra sólo sobre los últimos N meses.**
+ *
+ * El formulario del origen cambió en **2025-10**: el barrio pasó de 0% ausente a 54%
+ * (CLAUDE.md 3.3.b). Calibrar umbrales contra datos anteriores es **ajustar el sistema a un
+ * origen que ya no existe** — y peor, a uno que mandaba una señal que hoy no llega, así que los
+ * números saldrían optimistas.
+ *
+ * Los totales históricos se siguen reportando: sirven para ver el cambio. Lo que sale de la
+ * ventana es **el veredicto y la calibración**.
+ *
+ * Se mide sobre la fecha de la reunión, contra el día de hoy.
+ */
+const VENTANA_ANALISIS_MESES = 6;
+
 // ===================== Fechas =====================
 
 /**

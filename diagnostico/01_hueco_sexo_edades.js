@@ -17,7 +17,10 @@
  *
  * Todos los helpers llevan sufijo _diag para no colisionar con las nueve copias de
  * toDate_ / normalizeText_ / etc. que ya viven en el scope global (CLAUDE.md 3.1.c).
- * Este archivo no depende de ninguna función de los otros archivos del proyecto.
+ *
+ * Única dependencia: `00_Config.js`, por `VENTANA_ANALISIS_MESES`. El prefijo numérico del
+ * config garantiza que se evalúe primero, y de todos modos sólo se lee en tiempo de ejecución.
+ * Del legado no depende de nada.
  *
  * --- Los dos saltos ---
  * Entre B2 y el destino hay dos saltos, no uno (CLAUDE.md 2):
@@ -196,6 +199,8 @@ function leerDestino_diag() {
     Fecha:  findIdx_diag(hdrDest, ['fecha']),
     Ins:    findIdx_diag(hdrDest, ['inscriptos', 'inscritos']),
     Hora:   findIdx_diag(hdrDest, ['hora'], true),   // la usa el match por score (archivo 02)
+    Status: findIdx_diag(hdrDest, ['status reunión', 'status reunion',
+                                   'estado reunión', 'estado reunion'], true),
     Masc:   findIdx_diag(hdrDest, ['masculinos', 'masculino']),
     Fem:    findIdx_diag(hdrDest, ['femeninos', 'femenino']),
     edades: DIAG_RANGOS_ETARIOS.map(function (n) { return findIdx_diag(hdrDest, [n]); }),
@@ -898,6 +903,25 @@ function generarProcedencia_diag(cache) {
 }
 
 // ===================== Helpers (sufijo _diag, sin colisiones) =====================
+
+/**
+ * ¿La fecha cae dentro de la ventana de análisis (00_Config.js, VENTANA_ANALISIS_MESES)?
+ *
+ * Todo veredicto y toda calibración se computan sólo sobre esto. El formulario del origen
+ * cambió en 2025-10 y calibrar contra datos previos es ajustar a un origen que ya no existe
+ * (CLAUDE.md 3.3.b). Los totales históricos se reportan igual, aparte.
+ */
+function enVentanaAnalisis_diag(fecha) {
+  if (!fecha) return false;
+  return fecha >= inicioVentanaAnalisis_diag();
+}
+
+/** El primer día de la ventana: hoy menos VENTANA_ANALISIS_MESES, al mediodía. */
+function inicioVentanaAnalisis_diag() {
+  const hoy = new Date();
+  return new Date(hoy.getFullYear(), hoy.getMonth() - VENTANA_ANALISIS_MESES, hoy.getDate(),
+                  12, 0, 0);
+}
 
 /**
  * El criterio del hueco, definido en un solo lugar: `Inscriptos` cargado y las ocho columnas

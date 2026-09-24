@@ -230,14 +230,22 @@ function poblacionSinContraparte_diag2(cache) {
       barrio: f.barrio,
       fecha: f.fecha,
       hora: D.Hora != null ? f.valores[D.Hora] : '',
+      status: D.Status != null ? str_diag(f.valores[D.Status]) : '',
+      enVentana: enVentanaAnalisis_diag(f.fecha),
       origen: esHueco ? 'hueco' : 'sin_contraparte_B2'
     });
   }
+
+  const enVentana = filas.filter(function (f) { return f.enVentana; }).length;
 
   Logger.log('[diag2] población: %s filas del destino sin contraparte en B2 ' +
              '(%s del hueco + %s tapadas por carga manual) | con contraparte: %s | ' +
              'sin clave natural completa: %s',
              filas.length, enHueco, resto, conContraparte, claveIncompleta);
+  Logger.log('[diag2] ventana de análisis: desde %s (%s meses) → %s de %s filas adentro. ' +
+             'El veredicto y la calibración salen de esas; el resto se reporta como histórico.',
+             fmt_diag2(inicioVentanaAnalisis_diag()), VENTANA_ANALISIS_MESES, enVentana,
+             filas.length);
 
   return filas;
 }
@@ -563,13 +571,13 @@ function buscarCandidato_diag2(h, b) {
  * Con `usarAncla` y sin `fecha_fin` no hay ancla contra la cual validar, así que se acepta el
  * texto: es mejor que nada, y son pocas filas (el 99% de `B` tiene `fecha_fin`).
  */
-function resolverFecha_diag2(fb, usarAncla) {
+function resolverFecha_diag2(fb, usarAncla, ventana) {
   if (!usarAncla) return fb.fechaTexto || fb.fechaFin || null;
   if (!fb.fechaFin) return fb.fechaTexto || null;
   if (!fb.fechaTexto) return fb.fechaFin;
+  const v = ventana || VENTANA_FECHA_TEXTO;
   const d = diasEntre_diag2(fb.fechaTexto, fb.fechaFin);
-  const dentro = (d >= VENTANA_FECHA_TEXTO.min && d <= VENTANA_FECHA_TEXTO.max);
-  return dentro ? fb.fechaTexto : fb.fechaFin;
+  return (d >= v.min && d <= v.max) ? fb.fechaTexto : fb.fechaFin;
 }
 
 // ===================== DIAG_ANCLA_FECHA =====================
@@ -611,7 +619,8 @@ function diagAnclaFecha() {
   // ---------- 2. Reclasificar la población con las dos reglas ----------
   const salida = [['clave_destino', 'origen_fila', 'fila_B', 'nombre_evento_en_B',
                    'fecha_destino', 'fecha_fin_B', 'fecha_texto_B', 'desvio_dias',
-                   'fecha_legado', 'fecha_ancla', 'causa_legado', 'causa_ancla', 'efecto']];
+                   'fecha_legado', 'fecha_ancla', 'causa_legado', 'causa_ancla', 'efecto',
+                   'status_destino', 'en_ventana']];
 
   const efectos = { resuelta: 0, rota: 0, cambia: 0, sin_cambio: 0 };
   let malParseadaLegado = 0, malParseadaResueltas = 0, malParseadaSigueMal = 0;
@@ -629,12 +638,14 @@ function diagAnclaFecha() {
     else if (causaAncla === 'deberia_haber_entrado') efecto = 'resuelta';
     else if (causaLegado === 'deberia_haber_entrado') efecto = 'rota';
     else                                              efecto = 'cambia';
-    efectos[efecto]++;
-
-    if (causaLegado === 'fecha_mal_parseada') {
-      malParseadaLegado++;
-      if (efecto === 'resuelta') malParseadaResueltas++;
-      else malParseadaSigueMal++;
+    // Los contadores salen sólo de la ventana de análisis; la solapa trae todo.
+    if (h.enVentana) {
+      efectos[efecto]++;
+      if (causaLegado === 'fecha_mal_parseada') {
+        malParseadaLegado++;
+        if (efecto === 'resuelta') malParseadaResueltas++;
+        else malParseadaSigueMal++;
+      }
     }
 
     // Se listan los casos que cambian y, además, todas las fecha_mal_parseada aunque no cambien:
@@ -652,7 +663,8 @@ function diagAnclaFecha() {
                  elegido.fechaTexto ? fmt_diag2(elegido.fechaTexto) : '',
                  desvio,
                  fLeg ? fmt_diag2(fLeg) : '', fAnc ? fmt_diag2(fAnc) : '',
-                 causaLegado, causaAncla, efecto]);
+                 causaLegado, causaAncla, efecto,
+                 h.status || '', h.enVentana ? 'TRUE' : 'FALSE']);
   }
 
   escribirHoja_diag('DIAG_ANCLA_FECHA', salida);
@@ -686,7 +698,8 @@ function diagAnclaFecha() {
     Logger.log('  %s días | B fila %s | %s', x.d, x.fila, x.nombre);
   });
 
-  Logger.log('--- efecto sobre la población de DIAG_CORTE_B ---');
+  Logger.log('--- efecto sobre la población (sólo ventana de análisis, %s meses) ---',
+             VENTANA_ANALISIS_MESES);
   Logger.log('  fecha_mal_parseada con la regla del legado: %s', malParseadaLegado);
   Logger.log('  >>> de esas, RESUELTAS anclando a fecha_fin: %s (%s%%)', malParseadaResueltas,
              malParseadaLegado ? Math.round(malParseadaResueltas * 1000 / malParseadaLegado) / 10 : 0);
@@ -698,18 +711,120 @@ function diagAnclaFecha() {
   }
   Logger.log('  otros cambios de causa: %s | sin cambio: %s', efectos.cambia, efectos.sin_cambio);
 
+  medirDesviosVsReprogramada_diag2(poblacion, b);
+  barrerAnchosDeVentana_diag2(poblacion, b);
+
   return { desvios: desvios.length, dentroVentana: dentroVentana,
            malParseadaLegado: malParseadaLegado, malParseadaResueltas: malParseadaResueltas,
            malParseadaSigueMal: malParseadaSigueMal, rota: efectos.rota };
 }
 
+/**
+ * ¿Los desvíos grandes son reprogramaciones?
+ *
+ * `fecha_fin` **se mueve con la reprogramación; el nombre del formulario no** (CLAUDE.md 3.3.c).
+ * Eso invierte la lectura del ancla: no es menos confiable en los casos raros, es **más**
+ * confiable justo ahí. Si los desvíos de ±8 a ±21 días caen sobre filas en estado
+ * `Reprogramada`, la ventana angosta los está rechazando por el motivo equivocado.
+ */
+function medirDesviosVsReprogramada_diag2(poblacion, b) {
+  const filas = [];
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    if (!h.enVentana) continue;
+    const elegido = buscarCandidato_diag2(h, b).elegido;
+    if (!elegido || !elegido.fechaTexto || !elegido.fechaFin) continue;
+    const d = diasEntre_diag2(elegido.fechaTexto, elegido.fechaFin);
+    if (d >= VENTANA_FECHA_TEXTO.min && d <= VENTANA_FECHA_TEXTO.max) continue;  // ya se acepta
+    filas.push({ d: d, clave: h.clave, status: h.status, nombre: elegido.nombre });
+  }
+
+  const repro = filas.filter(function (x) {
+    return normalizeText_diag(x.status) === 'reprogramada';
+  });
+
+  Logger.log('--- desvíos fuera de la ventana: ¿son reprogramaciones? ---');
+  Logger.log('  (sólo dentro de la ventana de análisis de %s meses)', VENTANA_ANALISIS_MESES);
+  Logger.log('  filas con desvío fuera de [%s, +%s]: %s',
+             VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max, filas.length);
+  Logger.log('  de esas, en estado Reprogramada: %s', repro.length);
+  if (repro.length) {
+    Logger.log('  >>> fecha_fin se mueve con la reprogramación y el nombre del formulario no, ' +
+               'así que en estos casos el ancla es MÁS confiable, no menos. La ventana angosta ' +
+               'los rechaza por el motivo equivocado.');
+  }
+  filas.sort(function (x, y) { return Math.abs(y.d) - Math.abs(x.d); });
+  filas.slice(0, 20).forEach(function (x) {
+    Logger.log('    %s días | %s | %s | %s', x.d >= 0 ? '+' + x.d : x.d,
+               x.status || 'sin status', x.clave, x.nombre);
+  });
+  return { fuera: filas.length, reprogramadas: repro.length };
+}
+
+/**
+ * Curva de resueltas y rotas por ancho de ventana, de ±1 a ±21 días, **sólo dentro de la
+ * ventana de análisis**. Es lo que dice dónde poner `VENTANA_FECHA_TEXTO` sin adivinar: se
+ * busca el ancho donde `resueltas` deja de subir y `rotas` empieza.
+ */
+function barrerAnchosDeVentana_diag2(poblacion, b) {
+  // Se precalculan los candidatos una vez: el barrido prueba 22 ventanas sobre los mismos pares.
+  const pares = [];
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    if (!h.enVentana) continue;
+    const elegido = buscarCandidato_diag2(h, b).elegido;
+    if (elegido) pares.push({ h: h, e: elegido });
+  }
+
+  const evaluar = function (ventana) {
+    let resueltas = 0, rotas = 0, malParseada = 0;
+    for (let i = 0; i < pares.length; i++) {
+      const cl = causaConFecha_diag2(pares[i].h, pares[i].e, false, null);
+      const ca = causaConFecha_diag2(pares[i].h, pares[i].e, true, ventana);
+      if (cl === 'fecha_mal_parseada') malParseada++;
+      if (cl !== ca) {
+        if (ca === 'deberia_haber_entrado') resueltas++;
+        else if (cl === 'deberia_haber_entrado') rotas++;
+      }
+    }
+    return { resueltas: resueltas, rotas: rotas, malParseada: malParseada };
+  };
+
+  Logger.log('--- curva por ancho de ventana (sólo ventana de análisis, %s pares) ---',
+             pares.length);
+  const base = evaluar(VENTANA_FECHA_TEXTO);
+  Logger.log('  fecha_mal_parseada con la regla del legado: %s', base.malParseada);
+  Logger.log('  ventana            | resueltas | rotas | neto');
+  Logger.log('  [%s, +%s] (actual)  |     %s     |   %s   |  %s',
+             VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max,
+             base.resueltas, base.rotas, base.resueltas - base.rotas);
+
+  let mejorAncho = null, mejorNeto = base.resueltas - base.rotas;
+  for (let w = 1; w <= 21; w++) {
+    const r = evaluar({ min: -w, max: w });
+    const neto = r.resueltas - r.rotas;
+    Logger.log('  ±%s                 |     %s     |   %s   |  %s', w, r.resueltas, r.rotas, neto);
+    if (neto > mejorNeto) { mejorNeto = neto; mejorAncho = w; }
+  }
+
+  if (mejorAncho !== null) {
+    Logger.log('  >>> El mejor neto es ±%s días (%s). Ojo: "mejor neto" no es "correcto" — ' +
+               'mirar en DIAG_ANCLA_FECHA que las resueltas de más sean reprogramaciones y no ' +
+               'coincidencias de calendario.', mejorAncho, mejorNeto);
+  } else {
+    Logger.log('  >>> Ninguna ventana más ancha mejora el neto: ensanchar no alcanza y el ' +
+               'problema de las fecha_mal_parseada es otro.');
+  }
+  return { mejorAncho: mejorAncho, mejorNeto: mejorNeto };
+}
+
 /** La causa de una fila, con la resolución de fecha que se le pida. Misma precedencia que DIAG_CORTE_B. */
-function causaConFecha_diag2(h, elegido, usarAncla) {
+function causaConFecha_diag2(h, elegido, usarAncla, ventana) {
   const devPersona = detectPersona_diag2(elegido.nombre);
   if (devPersona === '') return 'persona_no_reconocida';
   const devBarrio = detectBarrio_diag2(elegido.nombre);
   if (devBarrio === '') return 'barrio_no_reconocido';
-  const fecha = resolverFecha_diag2(elegido, usarAncla);
+  const fecha = resolverFecha_diag2(elegido, usarAncla, ventana);
   if (!fecha) return 'fecha_no_parseable';
   if (!mismoDia_diag2(fecha, h.fecha)) return 'fecha_mal_parseada';
   return 'deberia_haber_entrado';
@@ -737,7 +852,7 @@ function diagScores() {
   const salida = [['clave_destino', 'origen_fila', 'score', 'score_absoluto', 'alcanzable',
                    'segundo_score', 'margen', 'veredicto', 'motivo', 'multi_figura',
                    'fila_B', 'nombre_evento_en_B', 'ubicacion', 'resto_sin_ubicacion',
-                   's_figura', 's_fecha', 's_ubicacion', 's_hora']];
+                   's_figura', 's_fecha', 's_ubicacion', 's_hora', 'en_ventana']];
 
   const veredictos = { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 };
   const motivos = { margen_chico: 0, multi_figura: 0, ubicacion_en_desacuerdo: 0,
@@ -749,9 +864,12 @@ function diagScores() {
   const porOrigen = { hueco: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 },
                       sin_contraparte_B2: { escribiria: 0, REVISAR_MATCH: 0, SIN_MATCH: 0 } };
   let sinNingunCandidato = 0, multiFigura = 0, descartadosPorBarrio = 0;
+  let totalHistorico = 0, totalEnVentana = 0;
 
   for (let i = 0; i < poblacion.length; i++) {
     const h = poblacion[i];
+    totalHistorico++;
+    if (h.enVentana) totalEnVentana++;
     const horaDestino = horaDesdeCelda_diag2(h.hora);
 
     /*
@@ -781,17 +899,17 @@ function diagScores() {
 
     if (!mejor) {
       sinNingunCandidato++;
-      veredictos.SIN_MATCH++;
-      porOrigen[h.origen].SIN_MATCH++;
-      histograma[0]++;
-      motivos.sin_candidatos++;
+      if (h.enVentana) { motivos.sin_candidatos++; veredictos.SIN_MATCH++;
+                         porOrigen[h.origen].SIN_MATCH++; histograma[0]++; }
       salida.push([h.clave, h.origen, 0, 0, 0, 0, 0, 'SIN_MATCH', 'sin_candidatos', 'FALSE',
-                   '', '', 'sin_candidato', 0, 0, 0, 0, 0]);
+                   '', '', 'sin_candidato', 0, 0, 0, 0, 0, h.enVentana ? 'TRUE' : 'FALSE']);
       continue;
     }
 
-    ubicaciones[mejor.ubicacion] = (ubicaciones[mejor.ubicacion] || 0) + 1;
-    techos[mejor.alcanzable] = (techos[mejor.alcanzable] || 0) + 1;
+    if (h.enVentana) {
+      ubicaciones[mejor.ubicacion] = (ubicaciones[mejor.ubicacion] || 0) + 1;
+      techos[mejor.alcanzable] = (techos[mejor.alcanzable] || 0) + 1;
+    }
 
     const scoreSegundo = segundo ? segundo.normalizado : 0;
     const margen = redondear_diag2(mejor.normalizado - scoreSegundo);
@@ -826,27 +944,37 @@ function diagScores() {
       veredicto = 'escribiria'; motivo = '';
     }
 
-    veredictos[veredicto]++;
-    porOrigen[h.origen][veredicto]++;
-    motivos[motivo]++;
-    histograma[Math.min(9, Math.floor(mejor.normalizado * 10))]++;
-    if (mejor.sFigura > 0) aportes.figura++;
-    if (mejor.sFecha > 0) aportes.fecha++;
-    if (mejor.sBarrio > 0) aportes.ubicacion++;
-    if (mejor.sHora > 0) aportes.hora++;
+    // El veredicto y la calibración salen SÓLO de la ventana de análisis: el formulario
+    // cambió en 2025-10 y calibrar contra lo anterior es ajustar a un origen que ya no existe.
+    if (h.enVentana) {
+      veredictos[veredicto]++;
+      porOrigen[h.origen][veredicto]++;
+      motivos[motivo]++;
+      histograma[Math.min(9, Math.floor(mejor.normalizado * 10))]++;
+      if (mejor.sFigura > 0) aportes.figura++;
+      if (mejor.sFecha > 0) aportes.fecha++;
+      if (mejor.sBarrio > 0) aportes.ubicacion++;
+      if (mejor.sHora > 0) aportes.hora++;
+    }
 
     salida.push([h.clave, h.origen, mejor.normalizado, mejor.total, mejor.alcanzable,
                  redondear_diag2(scoreSegundo), margen, veredicto, motivo,
                  esMulti ? 'TRUE' : 'FALSE', mejor.fb.fila, mejor.fb.nombre, mejor.ubicacion,
                  mejor.restoNormalizado,
-                 mejor.sFigura, mejor.sFecha, mejor.sBarrio, mejor.sHora]);
+                 mejor.sFigura, mejor.sFecha, mejor.sBarrio, mejor.sHora,
+                 h.enVentana ? 'TRUE' : 'FALSE']);
   }
 
   escribirHoja_diag('DIAG_SCORES', salida);
 
-  const total = salida.length - 1;
+  const total = totalEnVentana;
   Logger.log('=== DIAG_SCORES ===');
-  Logger.log('Población: %s filas | candidatos evaluados por fila: %s', total, b.filas.length);
+  Logger.log('Población histórica: %s filas | candidatos evaluados por fila: %s',
+             totalHistorico, b.filas.length);
+  Logger.log('VENTANA DE ANÁLISIS: desde %s (%s meses) → %s filas. **Todo lo que sigue sale de',
+             fmt_diag2(inicioVentanaAnalisis_diag()), VENTANA_ANALISIS_MESES, totalEnVentana);
+  Logger.log('esas filas.** La solapa trae las %s con la columna en_ventana para filtrar.',
+             totalHistorico);
   Logger.log('Pesos: figura %s | fecha %s/%s/%s | barrio %s, comuna-sin-barrio %s | hora %s',
              PESOS_MATCH.figura, PESOS_MATCH.fechaExacta, PESOS_MATCH.fecha1Dia,
              PESOS_MATCH.fecha3Dias, PESOS_MATCH.barrioIgual, PESOS_MATCH.comunaSinBarrio,
@@ -880,6 +1008,7 @@ function diagScores() {
     const umbral = u / 100;
     let esc = 0, rev = 0, sin = 0;
     for (let i = 1; i < salida.length; i++) {
+      if (salida[i][18] !== 'TRUE') continue;
       const mejorSc = Number(salida[i][2]), marg = Number(salida[i][6]);
       const multi = salida[i][9] === 'TRUE';
       const desac = String(salida[i][8]).indexOf('desacuerdo') !== -1;
@@ -939,11 +1068,17 @@ function diagScores() {
 }
 
 /**
- * **Verifica la regla de negocio antes de apoyarse en ella**: "una figura no tiene más de una
- * reunión por día" (CLAUDE.md 1). Si es cierta, `figura + fecha` es clave única y la ubicación
- * deja de ser identidad. Si no lo es, el matching falla en silencio en las excepciones.
+ * Los pares `figura + fecha` repetidos en el destino.
  *
- * Se mide sobre **todas** las filas del destino, no sólo sobre la población.
+ * **No son excepciones a la regla de negocio.** La regla —una figura no tiene más de una
+ * reunión por día— está confirmada (CLAUDE.md 1.a). Lo que estos pares muestran es un
+ * **desfase por reprogramación**: la reunión se movió de fecha, pero el formulario de
+ * inscripción conservó en su nombre la fecha vieja. No son dos reuniones el mismo día: son dos
+ * reuniones cuyos formularios quedaron nombrados con la misma fecha, y como la fecha del
+ * destino salió del nombre del formulario (3.3.c), las dos filas terminaron con la misma.
+ *
+ * Por eso se cruza contra `STATUS REUNIÓN`: si los pares son `Reprogramada`, la explicación
+ * queda confirmada y no hay nada que arreglar en la clave — hay que arreglar la fecha.
  */
 function medirColisionesFiguraFecha_diag2(cache) {
   const dest = cacheDestino_diag2(cache);
@@ -964,23 +1099,46 @@ function medirColisionesFiguraFecha_diag2(cache) {
     if (filas.length > 1) choques.push({ clave: k, filas: filas });
   });
 
-  Logger.log('--- ¿figura + fecha es clave única en el destino? ---');
-  Logger.log('  pares figura+fecha distintos: %s | filas con figura y fecha: %s',
-             porFiguraFecha.size, dest.filas.filter(function (f) { return f.figura && f.fecha; }).length);
+  const statusDe = function (f) {
+    return D.Status != null ? str_diag(f.valores[D.Status]) : '';
+  };
+
+  let conReprogramada = 0, enVentana = 0;
+  choques.forEach(function (c) {
+    if (c.filas.some(function (f) { return normalizeText_diag(statusDe(f)) === 'reprogramada'; })) {
+      conReprogramada++;
+    }
+    if (c.filas.some(function (f) { return enVentanaAnalisis_diag(f.fecha); })) enVentana++;
+  });
+
+  Logger.log('--- pares figura + fecha repetidos en el destino ---');
+  Logger.log('  pares distintos: %s | filas con figura y fecha: %s',
+             porFiguraFecha.size,
+             dest.filas.filter(function (f) { return f.figura && f.fecha; }).length);
   if (!choques.length) {
-    Logger.log('  >>> CERO colisiones. La regla de negocio se sostiene contra los datos: ' +
-               'figura + fecha alcanza como clave y la ubicación es sólo confirmación.');
-  } else {
-    Logger.log('  >>> %s pares figura+fecha con MÁS DE UNA fila. La regla NO se sostiene: ' +
-               'estas son las excepciones donde el matching fallaría en silencio.', choques.length);
-    choques.slice(0, 50).forEach(function (c) {
-      Logger.log('    · %s → %s filas: %s', c.clave, c.filas.length,
-                 c.filas.map(function (f) {
-                   return 'fila ' + f.fila + ' (' + (f.barrio || 'sin barrio') + ')';
-                 }).join(' | '));
-    });
-    if (choques.length > 50) Logger.log('    ... y %s más', choques.length - 50);
+    Logger.log('  CERO repetidos. figura + fecha es clave única también en los datos.');
+    return 0;
   }
+
+  Logger.log('  %s pares repetidos (%s dentro de la ventana de análisis).', choques.length, enVentana);
+  Logger.log('  de esos, %s tienen alguna fila en estado Reprogramada.', conReprogramada);
+  if (conReprogramada) {
+    Logger.log('  >>> Confirma el desfase por reprogramación: la reunión se movió, el formulario ' +
+               'conservó la fecha vieja en el nombre, y la fecha del destino salió de ahí. NO es ' +
+               'una excepción a la regla de negocio — es el bug de fechas (3.3.c) otra vez.');
+  } else {
+    Logger.log('  >>> Ninguno está marcado Reprogramada. La explicación de la reprogramación no ' +
+               'alcanza para estos casos: hay que mirarlos de a uno.');
+  }
+  choques.slice(0, 50).forEach(function (c) {
+    Logger.log('    · %s → %s filas: %s', c.clave, c.filas.length,
+               c.filas.map(function (f) {
+                 return 'fila ' + f.fila + ' [' + (statusDe(f) || 'sin status') + ', ' +
+                        (f.barrio || 'sin barrio') + ']';
+               }).join(' | '));
+  });
+  if (choques.length > 50) Logger.log('    ... y %s más', choques.length - 50);
+
   return choques.length;
 }
 
