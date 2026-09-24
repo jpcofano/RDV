@@ -157,7 +157,7 @@ function parseAgendaBody_(text, subject) {
 function upsertAgendaRows_(eventosFuturos) {
   const ss = SpreadsheetApp.openById(AGENDA_SS_ID);
   const sh = ss.getSheetByName(AGENDA_SHEET) || ss.insertSheet(AGENDA_SHEET);
-  ensureHeaders_(sh, agendaHeaders_());
+  legEnsureHeaders_(sh, agendaHeaders_());
 
   const hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   const I = agendaIdx_(hdr);
@@ -168,7 +168,7 @@ function upsertAgendaRows_(eventosFuturos) {
   if (rows > 0) {
     const v = sh.getRange(2,1,rows,sh.getLastColumn()).getValues();
     for (let i=0;i<v.length;i++) {
-      const id = str(v[i][I.ID]);
+      const id = legStr_(v[i][I.ID]);
       if (id) idToRow.set(id, 2+i);
     }
   }
@@ -225,8 +225,8 @@ function archivePastAgendaRows_() {
   const sh = ss.getSheetByName(AGENDA_SHEET);
   if (!sh) return;
   const shArch = ss.getSheetByName(AGENDA_ARCHIVE_SHEET) || ss.insertSheet(AGENDA_ARCHIVE_SHEET);
-  ensureHeaders_(sh,     agendaHeaders_());
-  ensureHeaders_(shArch, agendaHeaders_());
+  legEnsureHeaders_(sh,     agendaHeaders_());
+  legEnsureHeaders_(shArch, agendaHeaders_());
 
   const hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   const I = agendaIdx_(hdr);
@@ -252,7 +252,7 @@ function archivePastAgendaRows_() {
   const toMove = [];
   for (let i=0;i<vals.length;i++) {
     const row = vals[i];
-    const fechaEff = toDate_(row[I.F_MAN]) || toDate_(row[I.F_AUTO]);
+    const fechaEff = legToDate_(row[I.F_MAN]) || legToDate_(row[I.F_AUTO]);
     if (!fechaEff) continue;
 
     const eff = startOfDay_(fechaEff, tz);
@@ -284,7 +284,7 @@ function agenda_formatWeeks_() {
   const sh = ss.getSheetByName(AGENDA_SHEET);
   if (!sh) return;
 
-  ensureHeaders_(sh, agendaHeaders_());
+  legEnsureHeaders_(sh, agendaHeaders_());
   const hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   const I   = agendaIdx_(hdr);
 
@@ -311,7 +311,7 @@ function agenda_formatWeeks_() {
   const colors = [];
   for (let i=0; i<rows; i++) {
     const row = data[i];
-    const fechaEff = toDate_(row[I.F_MAN]) || toDate_(row[I.F_AUTO]);
+    const fechaEff = legToDate_(row[I.F_MAN]) || legToDate_(row[I.F_AUTO]);
     let color = null;
 
     if (fechaEff) {
@@ -384,7 +384,7 @@ function buildAgendaId_(persona, fecha, hora, tz) {
   if (!persona || !fecha || !hora) return '';
   const ymd  = Utilities.formatDate(fecha, tz || Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'yyyyMMdd');
   const hhmm = String(hora).trim();
-  return `${normalizeText_(persona)}|${ymd}|${hhmm}`;
+  return `${legNormalizeText_(persona)}|${ymd}|${hhmm}`;
 }
 
 /*********** HEADERS/ÍNDICES DE "AGENDA" ***********/
@@ -421,7 +421,7 @@ function agendaIdx_(hdr) {
 function ensureAgendaCheckboxes_() {
   const ss = SpreadsheetApp.openById(AGENDA_SS_ID);
   const sh = ss.getSheetByName(AGENDA_SHEET) || ss.insertSheet(AGENDA_SHEET);
-  ensureHeaders_(sh, agendaHeaders_());
+  legEnsureHeaders_(sh, agendaHeaders_());
 
   const hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
   const I   = agendaIdx_(hdr);

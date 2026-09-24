@@ -50,9 +50,9 @@ function esVacio_(v) {
  */
 function normalizeText_(s) {
   return String(s == null ? '' : s)
-    .replace(/[ ​‌‍﻿]/g, ' ')   // espacios invisibles
-    .replace(/[‒–—−]/g, '-')          // guiones tipográficos
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')   // espacios invisibles
+    .replace(/[\u2012\u2013\u2014\u2212]/g, '-')          // guiones tipográficos
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
@@ -60,7 +60,7 @@ function normalizeText_(s) {
 function normalizeHeader_(s) {
   return String(s == null ? '' : s)
     .replace(/["']/g, '').replace(/\n/g, ' ')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 

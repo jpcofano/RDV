@@ -8,7 +8,7 @@ function syncAgendaSheetInBaseFromAgenda_2() {
   const shA = ssA.getSheetByName(AGENDA_SHEET);
   if (!shA) throw new Error('No existe la hoja Agenda en el archivo de Agenda');
 
-  ensureHeaders_(shA, agendaHeaders_());
+  legEnsureHeaders_(shA, agendaHeaders_());
   const aHdr  = shA.getRange(1,1,1,shA.getLastColumn()).getValues()[0];
   const I     = agendaIdx_(aHdr);
   const nRows = Math.max(0, shA.getLastRow()-1);
@@ -35,21 +35,21 @@ function syncAgendaSheetInBaseFromAgenda_2() {
 
   const baseHdr1 = shBaseMain.getRange(1,1,1,Math.max(1, shBaseMain.getLastColumn())).getValues()[0];
   // Aseguramos que "Para Revisar" tenga las columnas mínimas
-  ensureColumnsExist_(shBaseMain, baseHdr1, [
+  legEnsureColumnsExist_(shBaseMain, baseHdr1, [
     'Figura','Barrio','FECHA','HORA','Dirección','STATUS REUNIÓN','Asistentes','ID',
     'Inscriptos','Mail','Call Center','IVR','RRSS','Difusión','Masculinos','Femeninos'
   ]);
   const baseHdr = shBaseMain.getRange(1,1,1,shBaseMain.getLastColumn()).getValues()[0];
 
   const D = {
-    Figura: findIdxOr_(baseHdr, ['figura','persona','nombre']),
-    Barrio: findIdxOr_(baseHdr, ['barrio']),
-    FECHA:  findIdxOr_(baseHdr, ['fecha']),
-    HORA:   findIdxOr_(baseHdr, ['hora'], true),
-    Dir:    findIdxOr_(baseHdr, ['direccion','dirección'], true),
-    Status: findIdxOr_(baseHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
-    Asis:   findIdxOr_(baseHdr, ['asistentes','asistente'], true),
-    ID:     findIdxOr_(baseHdr, ['id'], true),
+    Figura: legFindIdxOr_(baseHdr, ['figura','persona','nombre']),
+    Barrio: legFindIdxOr_(baseHdr, ['barrio']),
+    FECHA:  legFindIdxOr_(baseHdr, ['fecha']),
+    HORA:   legFindIdxOr_(baseHdr, ['hora'], true),
+    Dir:    legFindIdxOr_(baseHdr, ['direccion','dirección'], true),
+    Status: legFindIdxOr_(baseHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
+    Asis:   legFindIdxOr_(baseHdr, ['asistentes','asistente'], true),
+    ID:     legFindIdxOr_(baseHdr, ['id'], true),
   };
 
   // === Solapa "Agenda" dentro de la base ===
@@ -65,13 +65,13 @@ function syncAgendaSheetInBaseFromAgenda_2() {
   for (let i=0; i<nRows; i++) {
     const row = valsA[i];
 
-    const persona = str(row[I.P_MAN]) || str(row[I.P_AUTO]);
-    const bMan    = str(row[I.B_MAN]);
-    const bAuto   = str(row[I.B_AUTO]);
-    const bEst    = idxBEst !== -1 ? str(row[idxBEst]) : '';
-    const fecha   = toDate_(row[I.F_MAN]) || toDate_(row[I.F_AUTO]);
+    const persona = legStr_(row[I.P_MAN]) || legStr_(row[I.P_AUTO]);
+    const bMan    = legStr_(row[I.B_MAN]);
+    const bAuto   = legStr_(row[I.B_AUTO]);
+    const bEst    = idxBEst !== -1 ? legStr_(row[idxBEst]) : '';
+    const fecha   = legToDate_(row[I.F_MAN]) || legToDate_(row[I.F_AUTO]);
     const horaTxt = formatHoraTextSeconds_(row[I.H_MAN]) || formatHoraTextSeconds_(row[I.H_AUTO]);
-    const dir     = str(row[I.D_MAN]) || str(row[I.D_AUTO]);
+    const dir     = legStr_(row[I.D_MAN]) || legStr_(row[I.D_AUTO]);
 
     if (!persona || !fecha) {
       // sin figura o sin fecha no tiene sentido mostrarlo en la agenda de la base

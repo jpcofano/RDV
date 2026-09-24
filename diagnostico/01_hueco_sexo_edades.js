@@ -953,15 +953,15 @@ function num_diag(v) {
 function normalizeHeader_diag(s) {
   return String(s == null ? '' : s)
     .replace(/["']/g, '').replace(/\n/g, ' ')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function normalizeText_diag(s) {
   return String(s == null ? '' : s)
-    .replace(/[ ​‌‍﻿]/g, ' ')
-    .replace(/[‒–—−]/g, '-')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
+    .replace(/[\u2012\u2013\u2014\u2212]/g, '-')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 

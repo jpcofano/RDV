@@ -13,7 +13,7 @@ function agenda_pushReadyToBaseFinal() {
   const shA = ssA.getSheetByName(AGENDA_SHEET);
   if (!shA) throw new Error('No existe la hoja Agenda');
 
-  ensureHeaders_(shA, agendaHeaders_());
+  legEnsureHeaders_(shA, agendaHeaders_());
   const hdr = shA.getRange(1,1,1,shA.getLastColumn()).getValues()[0];
   const I   = agendaIdx_(hdr);
 
@@ -28,20 +28,20 @@ function agenda_pushReadyToBaseFinal() {
 
   // Aseguramos columnas base
   const dHdr1 = dest.getRange(1,1,1,Math.max(1, dest.getLastColumn())).getValues()[0];
-  ensureColumnsExist_(dest, dHdr1, [
+  legEnsureColumnsExist_(dest, dHdr1, [
     'Figura','Barrio','FECHA','HORA','Dirección','STATUS REUNIÓN','Asistentes','ID',
     'Inscriptos','Mail','Call Center','IVR','RRSS','Difusión','Masculinos','Femeninos'
   ]);
   const dHdr = dest.getRange(1,1,1,dest.getLastColumn()).getValues()[0];
   const D = {
-    Figura: findIdxOr_(dHdr, ['figura','persona','nombre']),
-    Barrio: findIdxOr_(dHdr, ['barrio']),
-    FECHA:  findIdxOr_(dHdr, ['fecha']),
-    HORA:   findIdxOr_(dHdr, ['hora'], true),
-    Dir:    findIdxOr_(dHdr, ['direccion','dirección'], true),
-    Status: findIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
-    Asis:   findIdxOr_(dHdr, ['asistentes','asistente'], true),
-    ID:     findIdxOr_(dHdr, ['id'], true),
+    Figura: legFindIdxOr_(dHdr, ['figura','persona','nombre']),
+    Barrio: legFindIdxOr_(dHdr, ['barrio']),
+    FECHA:  legFindIdxOr_(dHdr, ['fecha']),
+    HORA:   legFindIdxOr_(dHdr, ['hora'], true),
+    Dir:    legFindIdxOr_(dHdr, ['direccion','dirección'], true),
+    Status: legFindIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
+    Asis:   legFindIdxOr_(dHdr, ['asistentes','asistente'], true),
+    ID:     legFindIdxOr_(dHdr, ['id'], true),
   };
 
   // Índice clave → fila existente en destino
@@ -51,7 +51,7 @@ function agenda_pushReadyToBaseFinal() {
     const dVals = dest.getRange(2,1,destRows,dest.getLastColumn()).getValues();
     for (let i=0;i<dVals.length;i++) {
       const r = dVals[i];
-      const k = keyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
+      const k = legKeyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
       if (k) keyToRow.set(k, 2+i);
     }
   }
@@ -70,14 +70,14 @@ function agenda_pushReadyToBaseFinal() {
     }
 
     // Manual > Auto (trim) — barrio con prioridad manual
-    const persona       = str(row[I.P_MAN]) || str(row[I.P_AUTO]);
-    const barrioManual  = str(row[I.B_MAN]);
-    const barrioAuto    = str(row[I.B_AUTO]);
+    const persona       = legStr_(row[I.P_MAN]) || legStr_(row[I.P_AUTO]);
+    const barrioManual  = legStr_(row[I.B_MAN]);
+    const barrioAuto    = legStr_(row[I.B_AUTO]);
     const barrioRaw     = barrioManual !== '' ? barrioManual : barrioAuto;
 
-    const fecha         = toDate_(row[I.F_MAN]) || toDate_(row[I.F_AUTO]);
+    const fecha         = legToDate_(row[I.F_MAN]) || legToDate_(row[I.F_AUTO]);
     const horaTxt       = formatHoraTextSeconds_(row[I.H_MAN]) || formatHoraTextSeconds_(row[I.H_AUTO]); // "HH:mm:ss"
-    const dir           = str(row[I.D_MAN]) || str(row[I.D_AUTO]);
+    const dir           = legStr_(row[I.D_MAN]) || legStr_(row[I.D_AUTO]);
 
     if (DEBUG) {
       Logger.log(`F${rowNum}: persona="${persona}" | barrioMan="${barrioManual}" | barrioAuto="${barrioAuto}" | barrioRaw="${barrioRaw}" | fecha="${row[I.F_MAN]||row[I.F_AUTO]}" -> ${fecha} | horaIn="${row[I.H_MAN]||row[I.H_AUTO]}" -> "${horaTxt}" | dir="${dir}"`);
@@ -96,7 +96,7 @@ function agenda_pushReadyToBaseFinal() {
       Logger.log(`F${rowNum}: barrio elegido="${barrioRaw}" -> normalizado="${barrioN}"`);
     }
 
-    const key = keyFBF_(persona, barrioN, fecha);
+    const key = legKeyFBF_(persona, barrioN, fecha);
     if (!key) {
       if (DEBUG) Logger.log(`F${rowNum}: SKIP key vacía (persona="${persona}", barrioN="${barrioN}", fecha=${fecha})`);
       skipped++;
@@ -254,7 +254,7 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
   const shAgenda = ssAgenda.getSheetByName(AGENDA_SHEET);
   if (!shAgenda) throw new Error('No existe solapa "Agenda" en el archivo de Agenda');
 
-  ensureHeaders_(shAgenda, agendaHeaders_());
+  legEnsureHeaders_(shAgenda, agendaHeaders_());
   const aHdr = shAgenda.getRange(1,1,1,shAgenda.getLastColumn()).getValues()[0];
   const I = agendaIdx_(aHdr);
 
@@ -268,20 +268,20 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
 
   // Aseguro columnas mínimas en Base Final
   const dHdr1 = dest.getRange(1,1,1,Math.max(1, dest.getLastColumn())).getValues()[0];
-  ensureColumnsExist_(dest, dHdr1, [
+  legEnsureColumnsExist_(dest, dHdr1, [
     'Figura','Barrio','FECHA','HORA','Dirección','STATUS REUNIÓN','Asistentes','ID',
     'Inscriptos','Mail','Call Center','IVR','RRSS','Difusión','Masculinos','Femeninos'
   ]);
   const dHdr = dest.getRange(1,1,1,dest.getLastColumn()).getValues()[0];
   const D = {
-    Figura: findIdxOr_(dHdr, ['figura','persona','nombre']),
-    Barrio: findIdxOr_(dHdr, ['barrio']),
-    FECHA:  findIdxOr_(dHdr, ['fecha']),
-    HORA:   findIdxOr_(dHdr, ['hora'], true),
-    Dir:    findIdxOr_(dHdr, ['direccion','dirección'], true),
-    Status: findIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
-    Asis:   findIdxOr_(dHdr, ['asistentes','asistente'], true),
-    ID:     findIdxOr_(dHdr, ['id'], true),
+    Figura: legFindIdxOr_(dHdr, ['figura','persona','nombre']),
+    Barrio: legFindIdxOr_(dHdr, ['barrio']),
+    FECHA:  legFindIdxOr_(dHdr, ['fecha']),
+    HORA:   legFindIdxOr_(dHdr, ['hora'], true),
+    Dir:    legFindIdxOr_(dHdr, ['direccion','dirección'], true),
+    Status: legFindIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
+    Asis:   legFindIdxOr_(dHdr, ['asistentes','asistente'], true),
+    ID:     legFindIdxOr_(dHdr, ['id'], true),
   };
 
   // Índice clave → fila en Base Final
@@ -291,7 +291,7 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
     const dataD = dest.getRange(2,1,m,dest.getLastColumn()).getValues();
     for (let i=0;i<dataD.length;i++) {
       const r = dataD[i];
-      const k = keyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
+      const k = legKeyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
       if (k) keyToRow.set(k, 2+i);
     }
   }
@@ -309,18 +309,18 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
     if (!listo || enviado) continue;
 
     // Efectivos (manual > auto)
-    const personaEff = str(row[I.P_MAN]) || str(row[I.P_AUTO]);
-    const barrioRaw  = str(row[I.B_MAN]) || str(row[I.B_AUTO]);
-    const fechaEff   = toDate_(row[I.F_MAN]) || toDate_(row[I.F_AUTO]);
-    const horaEff    = str(row[I.H_MAN]) || str(row[I.H_AUTO]);
-    const dirEff     = str(row[I.D_MAN]) || str(row[I.D_AUTO]);
+    const personaEff = legStr_(row[I.P_MAN]) || legStr_(row[I.P_AUTO]);
+    const barrioRaw  = legStr_(row[I.B_MAN]) || legStr_(row[I.B_AUTO]);
+    const fechaEff   = legToDate_(row[I.F_MAN]) || legToDate_(row[I.F_AUTO]);
+    const horaEff    = legStr_(row[I.H_MAN]) || legStr_(row[I.H_AUTO]);
+    const dirEff     = legStr_(row[I.D_MAN]) || legStr_(row[I.D_AUTO]);
 
     // Auto (para fallback)
-    const personaAuto = str(row[I.P_AUTO]);
-    const barrioAuto  = str(row[I.B_AUTO]);
-    const fechaAuto   = toDate_(row[I.F_AUTO]);
+    const personaAuto = legStr_(row[I.P_AUTO]);
+    const barrioAuto  = legStr_(row[I.B_AUTO]);
+    const fechaAuto   = legToDate_(row[I.F_AUTO]);
     // hora auto no se usa para la clave, pero puede servir para ID
-    const horaAuto    = str(row[I.H_AUTO]);
+    const horaAuto    = legStr_(row[I.H_AUTO]);
 
     // Normalización de barrio (manual si hay, sino auto)
     const barrioNormEff = barrioRaw ? mapBarrioCanon_(barrioRaw) : '';
@@ -331,24 +331,24 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
 
     // Clave principal (manual-prioridad)
     let dRow = null;
-    let keyMain = keyFBF_(personaEff, barrioNormEff || barrioNormAuto, fechaEff);
+    let keyMain = legKeyFBF_(personaEff, barrioNormEff || barrioNormAuto, fechaEff);
     if (keyMain && keyToRow.has(keyMain)) {
       dRow = keyToRow.get(keyMain);
     } else {
       // Fallbacks para encontrar una fila previa y actualizarla:
       // 1) personaEff + barrioNormAuto + fechaEff
       if (!dRow && barrioNormAuto) {
-        const k = keyFBF_(personaEff, barrioNormAuto, fechaEff);
+        const k = legKeyFBF_(personaEff, barrioNormAuto, fechaEff);
         if (k && keyToRow.has(k)) dRow = keyToRow.get(k);
       }
       // 2) personaEff + (barrioNormEff || barrioNormAuto) + fechaAuto
       if (!dRow && fechaAuto) {
-        const k = keyFBF_(personaEff, (barrioNormEff || barrioNormAuto), fechaAuto);
+        const k = legKeyFBF_(personaEff, (barrioNormEff || barrioNormAuto), fechaAuto);
         if (k && keyToRow.has(k)) dRow = keyToRow.get(k);
       }
       // 3) personaAuto + barrioNormAuto + fechaAuto (última chance si persona cambió)
       if (!dRow && personaAuto && fechaAuto && barrioNormAuto) {
-        const k = keyFBF_((personaEff || personaAuto), barrioNormAuto, fechaAuto);
+        const k = legKeyFBF_((personaEff || personaAuto), barrioNormAuto, fechaAuto);
         if (k && keyToRow.has(k)) dRow = keyToRow.get(k);
       }
     }
@@ -373,7 +373,7 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
       updated++;
 
       // si cambió la clave (por barrio/fecha), refrescamos el índice
-      const newKey = keyFBF_(figuraOut, barrioOut, fechaOut);
+      const newKey = legKeyFBF_(figuraOut, barrioOut, fechaOut);
       if (newKey) keyToRow.set(newKey, dRow);
     } else {
       // INSERT en Base Final
@@ -392,7 +392,7 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
       dest.getRange(start, D.FECHA+1, 1, 1).setNumberFormat('dd/mm/yyyy');
 
       // index
-      const newKey = keyFBF_(figuraOut, barrioOut, fechaOut);
+      const newKey = legKeyFBF_(figuraOut, barrioOut, fechaOut);
       if (newKey) keyToRow.set(newKey, start);
 
       inserted++;
@@ -412,7 +412,7 @@ function buildIdFinal_(figura, barrio, fecha, tz) {
   // Mover a "Agenda ya incorporada" las filas archivables
   if (toArchive.length) {
     const shArch = ssAgenda.getSheetByName(AGENDA_ARCHIVE_SHEET) || ssAgenda.insertSheet(AGENDA_ARCHIVE_SHEET);
-    ensureHeaders_(shArch, agendaHeaders_());
+    legEnsureHeaders_(shArch, agendaHeaders_());
     const colCount = shAgenda.getLastColumn();
     const rowsCopy = toArchive.map(rr => shAgenda.getRange(rr,1,1,colCount).getValues()[0]);
     const start = shArch.getLastRow()+1;

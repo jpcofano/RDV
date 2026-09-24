@@ -12,9 +12,9 @@ function syncBarriosFromBaseToAjusteRDV() {
   const str = v => (v == null ? '' : String(v)).trim();
 
   function toDateLocal_(v) {
-    // usá tu toDate_ si ya lo tenés en el proyecto
+    // usá tu legToDate_ si ya lo tenés en el proyecto
     try {
-      if (typeof toDate_ === 'function') return toDate_(v);
+      if (typeof legToDate_ === 'function') return legToDate_(v);
     } catch (_) {}
     if (v instanceof Date) return new Date(v);
     if (!v) return null;
@@ -26,14 +26,14 @@ function syncBarriosFromBaseToAjusteRDV() {
 
   function keyPersonaFecha_(persona, fecha) {
     if (!persona || !fecha) return '';
-    let normPers = str(persona).toLowerCase()
+    let normPers = legStr_(persona).toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .replace(/\s+/g,' ').trim();
 
-    // si existe normalizeText_ en tu proyecto, reusalo
+    // si existe legNormalizeText_ en tu proyecto, reusalo
     try {
-      if (typeof normalizeText_ === 'function') {
-        const n2 = normalizeText_(persona);
+      if (typeof legNormalizeText_ === 'function') {
+        const n2 = legNormalizeText_(persona);
         if (n2) normPers = n2;
       }
     } catch (_) {}
@@ -71,9 +71,9 @@ function syncBarriosFromBaseToAjusteRDV() {
 
   for (let i = 0; i < valsBase.length; i++) {
     const row = valsBase[i];
-    const figura = str(row[colFiguraBase]);
+    const figura = legStr_(row[colFiguraBase]);
     const fecha  = toDateLocal_(row[colFechaBase]);
-    const barrio = str(row[colBarrioBase]);
+    const barrio = legStr_(row[colBarrioBase]);
 
     if (!figura || !fecha || !barrio) continue;
 
@@ -115,9 +115,9 @@ function syncBarriosFromBaseToAjusteRDV() {
 
   for (let i = 0; i < valsAj.length; i++) {
     const row = valsAj[i];
-    const persona = str(row[colPersonaAj]);
+    const persona = legStr_(row[colPersonaAj]);
     const fecha   = toDateLocal_(row[colFechaAj]);
-    const barrioActual = str(row[colBarrioAj]);
+    const barrioActual = legStr_(row[colBarrioAj]);
 
     let barrioNuevo = barrioActual;
 

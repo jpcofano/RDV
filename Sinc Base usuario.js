@@ -19,8 +19,8 @@ function syncBaseFinal_ParaRevisar_y_RVD() {
   const hdrPR   = shPR.getRange(1,1,1,shPR.getLastColumn()).getValues()[0];
   const hdrUser = shUser.getRange(1,1,1,shUser.getLastColumn()).getValues()[0];
 
-  const normPR   = hdrPR.map(normalizeHeader_);
-  const normUser = hdrUser.map(normalizeHeader_);
+  const normPR   = hdrPR.map(legNormalizeHeader_);
+  const normUser = hdrUser.map(legNormalizeHeader_);
 
   const idxMap = (normArr) => {
     const m = new Map();
@@ -33,7 +33,7 @@ function syncBaseFinal_ParaRevisar_y_RVD() {
   // === columnas a ignorar (derivadas / errores) ===
   // IMPORTANTE: ignoramos #REF! (aunque haya varias columnas iguales, la normalización las agrupa)
   const IGNORE_NORMS = new Set([
-    normalizeHeader_('#REF!')
+    legNormalizeHeader_('#REF!')
   ]);
 
   // ==========================================================
@@ -51,26 +51,26 @@ function syncBaseFinal_ParaRevisar_y_RVD() {
     '(km2)',
     '(hab/km2)',
     'Zona',
-  ].map(normalizeHeader_));
+  ].map(legNormalizeHeader_));
 
   // WHITELIST REAL: todas las columnas del usuario MENOS bloqueadas y menos ignoradas
   const ALLOWED_FILL_USER_NORMS = new Set(
     hdrUser
-      .map(normalizeHeader_)
+      .map(legNormalizeHeader_)
       .filter(n => n && !IGNORE_NORMS.has(n) && !BLOCK_FILL_USER_NORMS.has(n))
   );
   // ==========================================================
 
   // columnas clave (figura/persona/nombre, barrio, fecha)
   const idxKeyPR = {
-    fig: findIdxOr_(hdrPR,   ['figura','persona','nombre']),
-    bar: findIdxOr_(hdrPR,   ['barrio']),
-    fec: findIdxOr_(hdrPR,   ['fecha'])
+    fig: legFindIdxOr_(hdrPR,   ['figura','persona','nombre']),
+    bar: legFindIdxOr_(hdrPR,   ['barrio']),
+    fec: legFindIdxOr_(hdrPR,   ['fecha'])
   };
   const idxKeyUser = {
-    fig: findIdxOr_(hdrUser, ['figura','persona','nombre']),
-    bar: findIdxOr_(hdrUser, ['barrio']),
-    fec: findIdxOr_(hdrUser, ['fecha'])
+    fig: legFindIdxOr_(hdrUser, ['figura','persona','nombre']),
+    bar: legFindIdxOr_(hdrUser, ['barrio']),
+    fec: legFindIdxOr_(hdrUser, ['fecha'])
   };
 
   const rowsPR   = Math.max(0, shPR.getLastRow()-1);
@@ -87,13 +87,13 @@ function syncBaseFinal_ParaRevisar_y_RVD() {
   const keyToRowUser = new Map();
 
   function keyFromRow(row, idxKey) {
-    const figura = str(row[idxKey.fig]);
-    const barrio = str(row[idxKey.bar]);
-    const fec    = toDate_(row[idxKey.fec]);
+    const figura = legStr_(row[idxKey.fig]);
+    const barrio = legStr_(row[idxKey.bar]);
+    const fec    = legToDate_(row[idxKey.fec]);
     if (!figura || !barrio || !fec) return '';
     const ymd = Utilities.formatDate(fec, tz, 'yyyyMMdd');
-    const f = normalizeText_(figura);
-    const b = normalizeText_(barrio);
+    const f = legNormalizeText_(figura);
+    const b = legNormalizeText_(barrio);
     return `${f}|${b}|${ymd}`;
   }
 
@@ -233,8 +233,8 @@ function syncBaseFinal_ParaRevisar_y_RVD() {
       const vPR   = rowPR[cPR];
       const vUser = rowUser[cUser];
 
-      const sPR   = (vPR   instanceof Date) ? vPR   : str(vPR);
-      const sUser = (vUser instanceof Date) ? vUser : str(vUser);
+      const sPR   = (vPR   instanceof Date) ? vPR   : legStr_(vPR);
+      const sUser = (vUser instanceof Date) ? vUser : legStr_(vUser);
 
       const colNamePR   = hdrPR[cPR];
       const colNameUser = hdrUser[cUser];

@@ -102,7 +102,7 @@ function marcarRealizada_(rangoStatus, asistentes) {
 /** Comparación de estados sin acentos, sin mayúsculas y sin espacios de más. */
 function normStatus_(s) {
   return String(s == null ? '' : s)
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 

@@ -23,35 +23,35 @@ function upsertBaseFinal_A2_B2() {
 
     // Asegurar columnas mínimas en destino (incluye edades)
     const dHdr1 = dest.getRange(1,1,1,Math.max(1, dest.getLastColumn())).getValues()[0];
-    ensureColumnsExist_(dest, dHdr1, [
+    legEnsureColumnsExist_(dest, dHdr1, [
       'Figura','Barrio','FECHA','HORA','Dirección','STATUS REUNIÓN','Asistentes','ID',
       'Inscriptos','Mail','Call Center','IVR','RRSS','Difusión','Masculinos','Femeninos',
       '18-24','25-39','40-55','56-65','66+','Sin identificar'
     ]);
     const dHdr = dest.getRange(1,1,1,dest.getLastColumn()).getValues()[0];
     const D = {
-      Figura: findIdxOr_(dHdr, ['figura','persona','nombre']),
-      Barrio: findIdxOr_(dHdr, ['barrio']),
-      FECHA:  findIdxOr_(dHdr, ['fecha']),
-      HORA:   findIdxOr_(dHdr, ['hora'], true),
-      Dir:    findIdxOr_(dHdr, ['direccion','dirección'], true),
-      Status: findIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
-      Asis:   findIdxOr_(dHdr, ['asistentes','asistente'], true),
-      ID:     findIdxOr_(dHdr, ['id'], true),
-      Ins:    findIdxOr_(dHdr, ['inscriptos','inscritos'], true),
-      Mail:   findIdxOr_(dHdr, ['mail','mailing','email'], true),
-      Call:   findIdxOr_(dHdr, ['call center','callcenter'], true),
-      IVR:    findIdxOr_(dHdr, ['ivr'], true),
-      RRSS:   findIdxOr_(dHdr, ['rrss'], true),
-      Dif:    findIdxOr_(dHdr, ['difusión','difusion'], true),
-      Mac:    findIdxOr_(dHdr, ['Masculinos','masculinos','Masculino','masculino'], true),
-      Fem:    findIdxOr_(dHdr, ['femeninos','femenino'], true),
-      A18_24: findIdxOr_(dHdr, ['18-24'], true),
-      A25_39: findIdxOr_(dHdr, ['25-39'], true),
-      A40_55: findIdxOr_(dHdr, ['40-55'], true),
-      A56_65: findIdxOr_(dHdr, ['56-65'], true),
-      A66p:   findIdxOr_(dHdr, ['66+'], true),
-      ASinId: findIdxOr_(dHdr, ['sin identificar'], true),
+      Figura: legFindIdxOr_(dHdr, ['figura','persona','nombre']),
+      Barrio: legFindIdxOr_(dHdr, ['barrio']),
+      FECHA:  legFindIdxOr_(dHdr, ['fecha']),
+      HORA:   legFindIdxOr_(dHdr, ['hora'], true),
+      Dir:    legFindIdxOr_(dHdr, ['direccion','dirección'], true),
+      Status: legFindIdxOr_(dHdr, ['status reunión','status reunion','estado reunión','estado reunion'], true),
+      Asis:   legFindIdxOr_(dHdr, ['asistentes','asistente'], true),
+      ID:     legFindIdxOr_(dHdr, ['id'], true),
+      Ins:    legFindIdxOr_(dHdr, ['inscriptos','inscritos'], true),
+      Mail:   legFindIdxOr_(dHdr, ['mail','mailing','email'], true),
+      Call:   legFindIdxOr_(dHdr, ['call center','callcenter'], true),
+      IVR:    legFindIdxOr_(dHdr, ['ivr'], true),
+      RRSS:   legFindIdxOr_(dHdr, ['rrss'], true),
+      Dif:    legFindIdxOr_(dHdr, ['difusión','difusion'], true),
+      Mac:    legFindIdxOr_(dHdr, ['Masculinos','masculinos','Masculino','masculino'], true),
+      Fem:    legFindIdxOr_(dHdr, ['femeninos','femenino'], true),
+      A18_24: legFindIdxOr_(dHdr, ['18-24'], true),
+      A25_39: legFindIdxOr_(dHdr, ['25-39'], true),
+      A40_55: legFindIdxOr_(dHdr, ['40-55'], true),
+      A56_65: legFindIdxOr_(dHdr, ['56-65'], true),
+      A66p:   legFindIdxOr_(dHdr, ['66+'], true),
+      ASinId: legFindIdxOr_(dHdr, ['sin identificar'], true),
     };
     logDbg(DEBUG, `=== upsertBaseFinal_A2_B2 (A2 actualiza Asistentes y Status; B2 canales+edades) ===`);
 
@@ -62,7 +62,7 @@ function upsertBaseFinal_A2_B2() {
       const dataD = dest.getRange(2,1,destRows,dest.getLastColumn()).getValues();
       for (let i=0;i<dataD.length;i++) {
         const r = dataD[i];
-        const k = keyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
+        const k = legKeyFBF_(r[D.Figura], r[D.Barrio], r[D.FECHA]);
         if (k) keyToRow.set(k, 2+i);
       }
     }
@@ -70,11 +70,11 @@ function upsertBaseFinal_A2_B2() {
     /* === A2: SOLO Asistentes y Status→Realizada cuando sube Asistentes === */
     const aHdr = shA.getRange(1,1,1,shA.getLastColumn()).getValues()[0];
     const A = {
-      Figura: findIdxOr_(aHdr, ['figura','persona','nombre']),
-      Barrio: findIdxOr_(aHdr, ['barrion','barrio']),
-      FECHA:  findIdxOr_(aHdr, ['fecha']),
-      Asis:   findIdxOr_(aHdr, ['asistentes','asistente'], true),
-      Proc:   findIdxOr_(aHdr, ['procesado bf','procesado','procesado base final'], true),
+      Figura: legFindIdxOr_(aHdr, ['figura','persona','nombre']),
+      Barrio: legFindIdxOr_(aHdr, ['barrion','barrio']),
+      FECHA:  legFindIdxOr_(aHdr, ['fecha']),
+      Asis:   legFindIdxOr_(aHdr, ['asistentes','asistente'], true),
+      Proc:   legFindIdxOr_(aHdr, ['procesado bf','procesado','procesado base final'], true),
     };
     if (A.Proc == null) {
       const newCol = shA.getLastColumn()+1;
@@ -89,15 +89,15 @@ function upsertBaseFinal_A2_B2() {
 
     for (let i=0;i<dataA.length;i++) {
       const r = dataA[i];
-      const figura = str(r[A.Figura]);
-      const barrio = str(r[A.Barrio]);
-      const fec    = toDate_(r[A.FECHA]);
-      const asis   = (A.Asis!=null) ? num(r[A.Asis]) : 0;
+      const figura = legStr_(r[A.Figura]);
+      const barrio = legStr_(r[A.Barrio]);
+      const fec    = legToDate_(r[A.FECHA]);
+      const asis   = (A.Asis!=null) ? legNum_(r[A.Asis]) : 0;
 
       if (!figura || !barrio || !fec) { skippedA++; continue; }
       if (!(asis > 0)) { skippedA++; continue; }
 
-      const key  = keyFBF_(figura, barrio, fec);
+      const key  = legKeyFBF_(figura, barrio, fec);
       const dRow = keyToRow.get(key);
       if (!dRow) { skippedA++; continue; }
 
@@ -121,27 +121,27 @@ function upsertBaseFinal_A2_B2() {
     /* === B2: usa BarrioN; solo procesa filas con Procesado BF != TRUE; actualiza canales + edades === */
     const bHdr = shB.getRange(1,1,1,shB.getLastColumn()).getValues()[0];
     const B = {
-      Figura: findIdxOr_(bHdr, ['persona','figura','nombre']),
-      BarrioN: findIdxOr_(bHdr, ['barrion']), // "BarrioN" normaliza a "barrion"
-      Fecha:  findIdxOr_(bHdr, ['fecha']),
-      Ins:    findIdxOr_(bHdr, ['inscriptos','inscritos']),
-      Mail:   findIdxOr_(bHdr, ['mail','mailing','email']),
-      Call:   findIdxOr_(bHdr, ['call center','callcenter']),
-      IVR:    findIdxOr_(bHdr, ['ivr']),
-      RRSS:   findIdxOr_(bHdr, ['rrss'], true),
-      FB:     findIdxOr_(bHdr, ['facebook'], true),
-      GG:     findIdxOr_(bHdr, ['google'], true),
-      PR:     findIdxOr_(bHdr, ['programmatic'], true),
-      Dif:    findIdxOr_(bHdr, ['difusión','difusion']),
-      Mac:    findIdxOr_(bHdr, ['masculino','masculinos'], true),
-      Fem:    findIdxOr_(bHdr, ['femenino','femeninos'], true),
-      E18_24: findIdxOr_(bHdr, ['18-24'], true),
-      E25_39: findIdxOr_(bHdr, ['25-39'], true),
-      E40_55: findIdxOr_(bHdr, ['40-55'], true),
-      E56_65: findIdxOr_(bHdr, ['56-65'], true),
-      E66p:   findIdxOr_(bHdr, ['66+'], true),
-      ESinId: findIdxOr_(bHdr, ['sin identificar'], true),
-      Proc:   findIdxOr_(bHdr, ['procesado bf','procesado','procesado base final'], true)
+      Figura: legFindIdxOr_(bHdr, ['persona','figura','nombre']),
+      BarrioN: legFindIdxOr_(bHdr, ['barrion']), // "BarrioN" normaliza a "barrion"
+      Fecha:  legFindIdxOr_(bHdr, ['fecha']),
+      Ins:    legFindIdxOr_(bHdr, ['inscriptos','inscritos']),
+      Mail:   legFindIdxOr_(bHdr, ['mail','mailing','email']),
+      Call:   legFindIdxOr_(bHdr, ['call center','callcenter']),
+      IVR:    legFindIdxOr_(bHdr, ['ivr']),
+      RRSS:   legFindIdxOr_(bHdr, ['rrss'], true),
+      FB:     legFindIdxOr_(bHdr, ['facebook'], true),
+      GG:     legFindIdxOr_(bHdr, ['google'], true),
+      PR:     legFindIdxOr_(bHdr, ['programmatic'], true),
+      Dif:    legFindIdxOr_(bHdr, ['difusión','difusion']),
+      Mac:    legFindIdxOr_(bHdr, ['masculino','masculinos'], true),
+      Fem:    legFindIdxOr_(bHdr, ['femenino','femeninos'], true),
+      E18_24: legFindIdxOr_(bHdr, ['18-24'], true),
+      E25_39: legFindIdxOr_(bHdr, ['25-39'], true),
+      E40_55: legFindIdxOr_(bHdr, ['40-55'], true),
+      E56_65: legFindIdxOr_(bHdr, ['56-65'], true),
+      E66p:   legFindIdxOr_(bHdr, ['66+'], true),
+      ESinId: legFindIdxOr_(bHdr, ['sin identificar'], true),
+      Proc:   legFindIdxOr_(bHdr, ['procesado bf','procesado','procesado base final'], true)
     };
     if (B.Proc == null) {
       const newCol = shB.getLastColumn()+1;
@@ -165,35 +165,35 @@ function upsertBaseFinal_A2_B2() {
         if (isProcessed) { skippedB++; SKIP_CAUSES.processedTrue++; continue; }
       }
 
-      const figura = str(r[B.Figura]);
+      const figura = legStr_(r[B.Figura]);
       if (!figura) { skippedB++; SKIP_CAUSES.noFigura++; continue; }
 
-      const barrioN = str(r[B.BarrioN]);
+      const barrioN = legStr_(r[B.BarrioN]);
       if (!barrioN) { skippedB++; SKIP_CAUSES.noBarrioN++; continue; }
 
-      const fec = toDate_(r[B.Fecha]);
+      const fec = legToDate_(r[B.Fecha]);
       if (!fec) { skippedB++; SKIP_CAUSES.noFecha++; continue; }
 
-      const key  = keyFBF_(figura, barrioN, fec);
+      const key  = legKeyFBF_(figura, barrioN, fec);
       const dRow = keyToRow.get(key);
       if (!dRow) { skippedB++; SKIP_CAUSES.noKeyDest++; continue; }
 
-      const ins  = num(r[B.Ins]);
-      const mail = num(r[B.Mail]);
-      const call = num(r[B.Call]);
-      const ivr  = num(r[B.IVR]);
-      const rrss = (B.RRSS!=null && r[B.RRSS] !== '') ? num(r[B.RRSS]) :
-                   (num(B.FB!=null? r[B.FB]:0) + num(B.GG!=null? r[B.GG]:0) + num(B.PR!=null? r[B.PR]:0));
-      const dif  = num(r[B.Dif]);
-      const mac  = (B.Mac!=null) ? num(r[B.Mac]) : 0;
-      const fem  = (B.Fem!=null) ? num(r[B.Fem]) : 0;
+      const ins  = legNum_(r[B.Ins]);
+      const mail = legNum_(r[B.Mail]);
+      const call = legNum_(r[B.Call]);
+      const ivr  = legNum_(r[B.IVR]);
+      const rrss = (B.RRSS!=null && r[B.RRSS] !== '') ? legNum_(r[B.RRSS]) :
+                   (legNum_(B.FB!=null? r[B.FB]:0) + legNum_(B.GG!=null? r[B.GG]:0) + legNum_(B.PR!=null? r[B.PR]:0));
+      const dif  = legNum_(r[B.Dif]);
+      const mac  = (B.Mac!=null) ? legNum_(r[B.Mac]) : 0;
+      const fem  = (B.Fem!=null) ? legNum_(r[B.Fem]) : 0;
 
-      const a18_24 = (B.E18_24!=null) ? num(r[B.E18_24]) : 0;
-      const a25_39 = (B.E25_39!=null) ? num(r[B.E25_39]) : 0;
-      const a40_55 = (B.E40_55!=null) ? num(r[B.E40_55]) : 0;
-      const a56_65 = (B.E56_65!=null) ? num(r[B.E56_65]) : 0;
-      const a66p   = (B.E66p  !=null) ? num(r[B.E66p])   : 0;
-      const aSinId = (B.ESinId!=null) ? num(r[B.ESinId]) : 0;
+      const a18_24 = (B.E18_24!=null) ? legNum_(r[B.E18_24]) : 0;
+      const a25_39 = (B.E25_39!=null) ? legNum_(r[B.E25_39]) : 0;
+      const a40_55 = (B.E40_55!=null) ? legNum_(r[B.E40_55]) : 0;
+      const a56_65 = (B.E56_65!=null) ? legNum_(r[B.E56_65]) : 0;
+      const a66p   = (B.E66p  !=null) ? legNum_(r[B.E66p])   : 0;
+      const aSinId = (B.ESinId!=null) ? legNum_(r[B.ESinId]) : 0;
 
       setIfIndex_(dest, dRow, D.Ins,  ins);
       setIfIndex_(dest, dRow, D.Mail, mail);
@@ -241,41 +241,41 @@ function logDbg(enabled, ...args) {
   if (!enabled) return;
   Logger.log(args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '));
 }
-function ensureColumnsExist_(sheet, currentHeaders, neededNames) {
+function legEnsureColumnsExist_(sheet, currentHeaders, neededNames) {
   const have = currentHeaders.slice();
   for (const name of neededNames) {
-    const exists = have.some(h => normalizeHeader_(h) === normalizeHeader_(name));
+    const exists = have.some(h => legNormalizeHeader_(h) === legNormalizeHeader_(name));
     if (!exists) {
       sheet.getRange(1, sheet.getLastColumn()+1, 1, 1).setValues([[name]]);
       have.push(name);
     }
   }
 }
-function findIdxOr_(headers, candidates, optional=false) {
-  const norm = headers.map(h => normalizeHeader_(h));
+function legFindIdxOr_(headers, candidates, optional=false) {
+  const norm = headers.map(h => legNormalizeHeader_(h));
   for (const c of candidates) {
-    const i = norm.indexOf(normalizeHeader_(c));
+    const i = norm.indexOf(legNormalizeHeader_(c));
     if (i !== -1) return i;
   }
   if (optional) return null;
   throw new Error('No se encontró alguna de estas columnas: ' + candidates.join(' | ')
     + '\nDisponibles: ' + norm.join(' | '));
 }
-function normalizeHeader_(s) {
+function legNormalizeHeader_(s) {
   return String(s || '')
     .replace(/["']/g,'').replace(/\n/g,' ')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
 }
-function keyFBF_(figura, barrio, fecha) {
-  const f = normalizeText_(str(figura));
-  const b = normalizeText_(str(barrio));
-  const d = toDate_(fecha);
+function legKeyFBF_(figura, barrio, fecha) {
+  const f = legNormalizeText_(legStr_(figura));
+  const b = legNormalizeText_(legStr_(barrio));
+  const d = legToDate_(fecha);
   if (!f || !b || !d) return '';
   const ymd = Utilities.formatDate(d, Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'yyyyMMdd');
   return `${f}|${b}|${ymd}`;
 }
-function toDate_(v) {
+function legToDate_(v) {
   if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12, 0, 0);
   if (v === '' || v == null) return null;
   const m = /^\s*(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s*$/.exec(String(v));
@@ -292,15 +292,15 @@ function toDate_(v) {
   }
   return null;
 }
-function normalizeText_(s) {
+function legNormalizeText_(s) {
   return (s || '')
     .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
-    .replace(/[‒–—−]/g, '-')
+    .replace(/[\u2012\u2013\u2014\u2212]/g, '-')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
-function num(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
-function str(v){ return v==null ? '' : String(v).trim(); }
+function legNum_(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
+function legStr_(v){ return v==null ? '' : String(v).trim(); }
 function setIfIndex_(sheet, row, idx0, value) {
   if (idx0 == null) return;
   sheet.getRange(row, idx0+1).setValue(value);
@@ -359,8 +359,8 @@ function normalizeBarrioCanonicalX_(raw) {
   return _toTitleX_(n);
 }
 function ensureColX_(sheet, headers, name) {
-  const norm = headers.map(h => normalizeHeader_(h));
-  const idx = norm.indexOf(normalizeHeader_(name));
+  const norm = headers.map(h => legNormalizeHeader_(h));
+  const idx = norm.indexOf(legNormalizeHeader_(name));
   if (idx !== -1) return idx;
   const col = sheet.getLastColumn() + 1;
   sheet.getRange(1, col, 1, 1).setValues([[name]]);
@@ -382,8 +382,8 @@ function fillBarrioNFromSources_B2_X() {
 
   const hdr = shB.getRange(1,1,1,shB.getLastColumn()).getValues()[0];
 
-  const idxBarrioManual = findIdxOr_(hdr, ['barrio (manual)'], true);
-  const idxBarrio       = findIdxOr_(hdr, ['barrio'], true);
+  const idxBarrioManual = legFindIdxOr_(hdr, ['barrio (manual)'], true);
+  const idxBarrio       = legFindIdxOr_(hdr, ['barrio'], true);
   const idxBarrioN      = ensureColX_(shB, hdr, 'BarrioN');
 
   const rows = lastRow - 1;

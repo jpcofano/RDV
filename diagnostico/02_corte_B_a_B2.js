@@ -15,6 +15,8 @@
  *   diagScores()    → DIAG_SCORES. Calibra UMBRAL_MATCH y MARGEN_MINIMO (CLAUDE.md decisión 2)
  *                    con la distribución real de scores. Va suelto: es más caro que los otros
  *                    dos (población × todas las filas de B) y no hace falta en cada corrida.
+ *   diagFechaFin()  → DIAG_FECHA_FIN. ¿fecha_fin tiene error sistemático o es confiable?
+ *                    De la respuesta salen dos diseños incompatibles de detectFecha_.
  *   diagAnclaFecha() → DIAG_ANCLA_FECHA. Cuántas fecha_mal_parseada resuelve anclar la fecha a
  *                    fecha_fin, antes de escribir esa regla en 02_Parsing.js (CLAUDE.md 3.3).
  *
@@ -830,6 +832,154 @@ function causaConFecha_diag2(h, elegido, usarAncla, ventana) {
   return 'deberia_haber_entrado';
 }
 
+// ===================== DIAG_FECHA_FIN: ¿es confiable el ancla? =====================
+
+/**
+ * ¿`fecha_fin` tiene error sistemático o es confiable?
+ *
+ * Sólo lectura, restringido a la ventana de análisis. Toma las filas del destino que **sí**
+ * matchean contra B2 —o sea, las que sabemos bien emparejadas— y compara la `fecha_fin` de `B`
+ * contra la `FECHA` del destino.
+ *
+ * --- Por qué importa tanto ---
+ * De la respuesta salen **dos diseños distintos de `detectFecha_`**, y son incompatibles:
+ *
+ *   `fecha_fin` confiable  →  el ancla resuelve, y la fecha sigue siendo **parte dura de la
+ *                             clave**: `figura|fecha` identifica y punto.
+ *   `fecha_fin` falla      →  la fecha no puede ser clave. Pasa a ser **una señal más del
+ *                             score**, con tolerancia, y la identidad se apoya en otra cosa.
+ *
+ * Escribir el equivocado cuesta rehacer el upsert entero, así que se mide antes.
+ *
+ * --- Cómo se llega de una fila del destino a su `fecha_fin` ---
+ * destino → B2 por clave natural → `B` por el `Nombre` del evento. **No se usa ninguna fecha
+ * parseada en el camino**, que es lo que se está poniendo a prueba.
+ */
+function diagFechaFin() {
+  const cache = nuevoCache2_diag2();
+  const dest = cacheDestino_diag2(cache);
+  const b2 = cacheB2_diag2(cache);
+  const b = cacheB_diag2(cache);
+  const D = dest.D;
+
+  // Nombre del evento → fila de B. Es el puente B2 → B.
+  const porNombre = new Map();
+  for (let i = 0; i < b.filas.length; i++) {
+    const k = b.filas[i].nombreNorm;
+    if (k && !porNombre.has(k)) porNombre.set(k, b.filas[i]);
+  }
+
+  const salida = [['clave', 'figura', 'fecha_destino', 'fecha_fin_B', 'desvio_dias',
+                   'status_destino', 'nombre_evento_en_B']];
+
+  const hist = {};
+  const statusPorDesvio = {};
+  let conB2 = 0, comparables = 0, sinNombreEnB = 0, fueraDeVentana = 0;
+  let cero = 0, masUno = 0, dentro3 = 0, grandes = 0, grandesRepro = 0;
+
+  for (let i = 0; i < dest.filas.length; i++) {
+    const f = dest.filas[i];
+    if (!f.clave) continue;
+    const reg = b2.porClave.get(f.clave);
+    if (!reg) continue;                       // sin contraparte: no es este diagnóstico
+    conB2++;
+    if (!enVentanaAnalisis_diag(f.fecha)) { fueraDeVentana++; continue; }
+
+    const fb = reg.nombre ? porNombre.get(normalizeText_diag(reg.nombre)) : null;
+    if (!fb || !fb.fechaFin) { sinNombreEnB++; continue; }
+
+    const d = diasEntre_diag2(fb.fechaFin, f.fecha);   // + = fecha_fin posterior a la reunión
+    comparables++;
+    hist[d] = (hist[d] || 0) + 1;
+
+    if (d === 0) cero++;
+    if (d === 1) masUno++;
+    if (Math.abs(d) <= 3) dentro3++;
+
+    const status = D.Status != null ? str_diag(f.valores[D.Status]) : '';
+    const esRepro = normalizeText_diag(status) === 'reprogramada';
+    if (Math.abs(d) > 7) {
+      grandes++;
+      if (esRepro) grandesRepro++;
+    }
+    const cubo = Math.abs(d) > 7 ? 'grande' : 'chico';
+    if (!statusPorDesvio[cubo]) statusPorDesvio[cubo] = {};
+    const st = status || '(vacío)';
+    statusPorDesvio[cubo][st] = (statusPorDesvio[cubo][st] || 0) + 1;
+
+    salida.push([f.clave, f.figura, fmt_diag2(f.fecha), fmt_diag2(fb.fechaFin), d,
+                 status, fb.nombre]);
+  }
+
+  escribirHoja_diag('DIAG_FECHA_FIN', salida);
+
+  const pct = function (n) { return comparables ? Math.round(n * 1000 / comparables) / 10 : 0; };
+
+  Logger.log('=== DIAG_FECHA_FIN ===');
+  Logger.log('Filas del destino con contraparte en B2: %s', conB2);
+  Logger.log('  fuera de la ventana de análisis (%s meses): %s', VENTANA_ANALISIS_MESES, fueraDeVentana);
+  Logger.log('  sin poder llegar a B por el Nombre del evento: %s', sinNombreEnB);
+  Logger.log('  COMPARABLES: %s', comparables);
+  if (!comparables) { Logger.log('Sin filas comparables: no se puede concluir nada.'); return null; }
+
+  Logger.log('--- distribución del desvío (fecha_fin − FECHA del destino, en días) ---');
+  const claves = Object.keys(hist).map(Number).sort(function (x, y) { return x - y; });
+  claves.forEach(function (d) {
+    Logger.log('  %s%s días : %s  (%s%%) %s', d >= 0 ? '+' : '', d, hist[d], pct(hist[d]),
+               barra_diag2(hist[d], comparables));
+  });
+
+  Logger.log('--- LOS DOS NÚMEROS QUE DECIDEN ---');
+  Logger.log('1) desvío 0 o +1: %s de %s  → **%s%%**', cero + masUno, comparables, pct(cero + masUno));
+  Logger.log('   (0 días: %s | +1 día: %s | dentro de ±3: %s = %s%%)',
+             cero, masUno, dentro3, pct(dentro3));
+  Logger.log('2) desvíos grandes (|d| > 7): %s | de esos, en estado Reprogramada: %s',
+             grandes, grandesRepro);
+
+  Logger.log('--- status por tamaño de desvío ---');
+  ['chico', 'grande'].forEach(function (cubo) {
+    if (!statusPorDesvio[cubo]) return;
+    const partes = Object.keys(statusPorDesvio[cubo]).map(function (st) {
+      return st + '=' + statusPorDesvio[cubo][st];
+    });
+    Logger.log('  |d| %s 7: %s', cubo === 'chico' ? '<=' : '>', partes.join(' | '));
+  });
+
+  /*
+   * La lectura, escrita acá para que el veredicto no dependa de quién mire el log.
+   * El corte de 90% es una convención: con menos de eso, una clave dura basada en fecha va a
+   * fallar en más de una de cada diez filas, y eso ya no es un caso borde.
+   */
+  Logger.log('--- lectura ---');
+  const p01 = pct(cero + masUno);
+  if (p01 >= 90) {
+    Logger.log('  >>> fecha_fin es CONFIABLE (%s%% en 0 o +1). El ancla resuelve y la fecha ' +
+               'sigue siendo parte dura de la clave: figura|fecha identifica.', p01);
+  } else if (p01 >= 70) {
+    Logger.log('  >>> fecha_fin es MAYORITARIAMENTE confiable (%s%%) pero no alcanza para una ' +
+               'clave dura: %s%% de las filas fallarían. Mirar si lo que falla se explica por ' +
+               'Reprogramada; si sí, el ancla sirve con una ventana más ancha.', p01, 100 - p01);
+  } else {
+    Logger.log('  >>> fecha_fin NO es confiable (%s%% en 0 o +1). La fecha no puede ser clave: ' +
+               'pasa a ser una señal del score con tolerancia, y la identidad se apoya en ' +
+               'RDV_UID lo antes posible.', p01);
+  }
+  if (grandes) {
+    const pr = Math.round(grandesRepro * 1000 / grandes) / 10;
+    if (pr >= 50) {
+      Logger.log('  >>> El %s%% de los desvíos grandes son Reprogramada: NO es error sistemático ' +
+                 'de fecha_fin, es el dato moviéndose porque la reunión se movió. fecha_fin ' +
+                 'tiene razón y el nombre del formulario es el que quedó viejo.', pr);
+    } else {
+      Logger.log('  >>> Sólo el %s%% de los desvíos grandes son Reprogramada. El resto no tiene ' +
+                 'explicación todavía: mirarlos de a uno en la solapa.', pr);
+    }
+  }
+
+  return { comparables: comparables, pct01: p01, cero: cero, masUno: masUno,
+           grandes: grandes, grandesRepro: grandesRepro };
+}
+
 // ===================== DIAG_SCORES: calibrar el umbral =====================
 
 /**
@@ -1513,7 +1663,7 @@ function detectFecha_diag2(s, defaultYear) {
 }
 
 function normalize_diag2(s) {
-  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036F]/g, '').toLowerCase();
 }
 
 function escapeRegExp_diag2(str) {

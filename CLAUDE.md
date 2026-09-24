@@ -783,6 +783,28 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   mismo origen, cuando el problema era el origen. Antes de dar por buena una fuente de fecha,
   conviene preguntarse si hay una tercera en otro lado.
 
+  #### Y da la primera validación que no necesita un segundo origen
+
+  Esto es lo más importante que salió del análisis de mails, y conviene decirlo aparte:
+
+  > **Un evento fechado fuera del rango de su propio asunto está mal parseado. Punto. Sin
+  > cruzarlo contra nada.**
+
+  **Todo lo demás que armamos en esta migración compara A contra B**: el destino contra B2, el
+  texto libre contra `fecha_fin`, el barrio del origen contra el del destino, `Para Revisar`
+  contra el destino. Y toda comparación de dos fuentes tiene el mismo techo: **cuando difieren,
+  no sabemos cuál está mal.** Por eso `DIAG_TOTAL_DIVERGENTE` mide 72 filas y no puede decir
+  cuál de los dos números corregir; por eso el desacuerdo de ubicación va a `REVISAR_MATCH` y no
+  a descarte.
+
+  El rango del asunto es distinto en especie: **es una restricción interna al propio dato.** El
+  mail dice de qué semana es y después lista sus eventos; si un evento cae fuera de esa semana,
+  el error está adentro del mail y no hace falta una segunda opinión para verlo.
+
+  Vale la pena buscar más validaciones de esta forma antes de agregar otra comparación de dos
+  fuentes. Una restricción interna que se cumple sola es más barata de mantener y más fácil de
+  creer que un cruce que hay que interpretar.
+
   > **Sube de prioridad: ahora bloquea el matching.** Con `figura + fecha` como clave única
   > (sección 1.a), la fecha es **la mitad de la identidad**. Un error de parseo deja de ser "un
   > campo mal cargado que se corrige después" y pasa a ser **un error de identidad**: la fila no
@@ -1683,6 +1705,35 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.
+
+### Un diagnóstico que grita por algo que no existe es peor que no avisar
+
+**Una falsa alarma no es un costo cero: quema la confianza en los avisos que sí importan.**
+Después de dos o tres, nadie mira el log, y el aviso bueno pasa desapercibido junto con los
+otros.
+
+Nos pasó **tres veces** en esta migración, y las tres con la misma forma — un número grande y
+alarmante que en realidad no medía lo que parecía:
+
+| el aviso decía | la realidad |
+|---|---|
+| el **staging** pierde datos entre B2 y el destino | cero cortes en los pasos 4 y 5. `Para Revisar` es un espejo exacto (3.2) |
+| el **barrio** falla por lista incompleta de `detectBarrio_` | el dato no viene. Ninguna lista lo arregla (3.3.b) |
+| el **asunto** de los mails cambió 103 veces | una sola plantilla con dos campos. Nunca cortó nada (docs/agenda-legado.md) |
+
+Las tres mandaron a investigar un problema inexistente, y las tres tenían el mismo defecto de
+diseño: **contaban una cosa y la presentaban como si midiera otra.**
+
+Reglas que salen de eso, para cualquier diagnóstico nuevo:
+
+1. **Agrupar por la forma, no por el valor.** 103 asuntos crudos son 3 plantillas. Antes de
+   contar variantes, normalizar lo que se sabe que varía.
+2. **Un conteo alto no es una conclusión.** Si el número no viene con una hipótesis de qué lo
+   causa, es ruido con formato de dato.
+3. **Decir explícitamente qué NO es señal.** El log de `diagMuestrasMail` reporta los asuntos
+   crudos con la aclaración "ese número NO es señal de nada por sí solo". Cuesta una línea.
+4. **Preferir la validación interna** a la comparación de dos fuentes, cuando exista: no
+   necesita interpretación y no puede dar un falso positivo por desacuerdo (3.3.c).
 - Toda escritura al destino pasa por el upsert, y dentro del upsert por `setSiDelSistema_`
   (sección 0). Nada de `setValue` / `setValues` sueltos.
 

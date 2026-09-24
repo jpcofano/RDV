@@ -244,15 +244,15 @@ function numero_alerta(v) {
 
 function normTexto_alerta(s) {
   return String(s == null ? '' : s)
-    .replace(/[ ​‌‍﻿]/g, ' ')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function normHeader_alerta(s) {
   return String(s == null ? '' : s)
     .replace(/["']/g, '').replace(/\n/g, ' ')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 

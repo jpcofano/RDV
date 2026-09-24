@@ -12,7 +12,7 @@ function syncA_to_A2_upsert() {
   if (!src) throw new Error('No existe la hoja "A".');
 
   const DEST_HEADERS = ['ID','Figura','Barrio','FECHA','HORA','Dirección','Asistentes','STATUS REUNIÓN'];
-  ensureHeaders_(dst, DEST_HEADERS);
+  legEnsureHeaders_(dst, DEST_HEADERS);
 
   // ---- Map headers fuente (A) ----
   const hdr = src.getRange(1,1,1,src.getLastColumn()).getValues()[0];
@@ -56,8 +56,8 @@ function syncA_to_A2_upsert() {
     // Primero mapear exactos y recolectar por par (figura+fecha)
     const pairBuckets = new Map();
     for (let i = 0; i < vals.length; i++) {
-      const figuraSan = sanitizeFigura_(str(vals[i][colFIG-1]));
-      const fechaD    = toDate_(vals[i][colFEC-1]);
+      const figuraSan = sanitizeFigura_(legStr_(vals[i][colFIG-1]));
+      const fechaD    = legToDate_(vals[i][colFEC-1]);
       const horaObj   = toTime_(vals[i][colHORA-1]);
       const horaKey   = horaObj ? Utilities.formatDate(horaObj, tz, 'HH:mm') : '';
       const kExact    = normKeyA_(figuraSan, fechaD, horaKey);
@@ -81,14 +81,14 @@ function syncA_to_A2_upsert() {
 
   for (let r = 0; r < data.length; r++) {
     const row        = data[r];
-    const figuraSan  = sanitizeFigura_(str(row[iFigura]));            // corta en & (toma primera persona)
+    const figuraSan  = sanitizeFigura_(legStr_(row[iFigura]));            // corta en & (toma primera persona)
     const barrio     = sanitizeBarrio_(row[iBarrio]);                 // limpio espacios
-    const fechaD     = toDate_(row[iFecha]);                          // fecha normalizada (12:00)
+    const fechaD     = legToDate_(row[iFecha]);                          // fecha normalizada (12:00)
     const horaObj    = toTime_(row[iHora]);                           // Date time-only o null
     const horaKey    = horaObj ? Utilities.formatDate(horaObj, tz, 'HH:mm') : '';
-    const dir        = str(row[iDir]);
-    const asis       = num(row[iAsis]);
-    const stat       = str(row[iStat]);
+    const dir        = legStr_(row[iDir]);
+    const asis       = legNum_(row[iAsis]);
+    const stat       = legStr_(row[iStat]);
 
     const keyExact = normKeyA_(figuraSan, fechaD, horaKey);
     if (!keyExact || seenInRun.has(keyExact)) {
@@ -164,21 +164,21 @@ function syncA_to_A2_upsert() {
 
 // Par clave sin hora
 function normPairKey_(figura, fecha) {
-  const f = normalizeText_(figura);
+  const f = legNormalizeText_(figura);
   const ymd = fecha ? Utilities.formatDate(fecha, Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'yyyyMMdd') : '';
   return `${f}|${ymd}`;
 }
 
 // Igual que antes (ya la tenías)
 function sanitizeFigura_(s) {
-  const t = str(s);
+  const t = legStr_(s);
   const pos = t.indexOf('&');
   return (pos >= 0 ? t.slice(0, pos).trim() : t);
 }
-function sanitizeBarrio_(s) { return str(s).replace(/\s+/g, ' ').trim(); }
+function sanitizeBarrio_(s) { return legStr_(s).replace(/\s+/g, ' ').trim(); }
 function toTime_(v) {
   if (v instanceof Date) return v;
-  const t = str(v);
+  const t = legStr_(v);
   if (!t) return null;
   const m1 = /^\s*(\d{1,2}):(\d{2})\s*(AM|PM)?\s*$/i.exec(t);
   if (m1) {
@@ -198,8 +198,8 @@ function buildIdA2_(figura, barrio, fecha, tz, sep, fmt) {
   return parts.join(sep);
 }
 function normKeyA_(figura, fecha, horaHHmm) {
-  const f = normalizeText_(figura);
-  const h = normalizeText_(horaHHmm);
+  const f = legNormalizeText_(figura);
+  const h = legNormalizeText_(horaHHmm);
   const ymd = fecha ? Utilities.formatDate(fecha, Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires', 'yyyyMMdd') : '';
   return `${f}|${ymd}|${h}`;
 }
@@ -210,37 +210,37 @@ function isRealizada_(status) {
 function normalizeStatus_(s) {
   return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 }
-function ensureHeaders_(sheet, headers) {
+function legEnsureHeaders_(sheet, headers) {
   const firstRow = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0];
   let needs = false;
   for (let i = 0; i < headers.length; i++) if (firstRow[i] !== headers[i]) { needs = true; break; }
   if (needs) sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
 }
 function indexByNames_(headers, names) {
-  const norm = headers.map(h => normalizeHeader_(h));
+  const norm = headers.map(h => legNormalizeHeader_(h));
   for (const n of names) {
-    const i = norm.indexOf(normalizeHeader_(n));
+    const i = norm.indexOf(legNormalizeHeader_(n));
     if (i !== -1) return i;
   }
   throw new Error('No se encontró alguna de estas columnas: ' + names.join(' | '));
 }
-function normalizeHeader_(s) {
+function legNormalizeHeader_(s) {
   return String(s || '')
     .replace(/["']/g,'')
     .replace(/\n/g,' ')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
 }
-function normalizeText_(s) {
+function legNormalizeText_(s) {
   return (s || '')
     .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
-    .replace(/[‒–—−]/g, '-')
+    .replace(/[\u2012\u2013\u2014\u2212]/g, '-')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
 }
-function num(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
-function str(v){ return v==null ? '' : String(v).trim(); }
-function toDate_(v) {
+function legNum_(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
+function legStr_(v){ return v==null ? '' : String(v).trim(); }
+function legToDate_(v) {
   if (v instanceof Date) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12, 0, 0);
   if (v === '' || v == null) return null;
   const m = /^\s*(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\s*$/.exec(String(v));
@@ -258,9 +258,9 @@ function toDate_(v) {
   return null;
 }
 function findIdxOrOptional_(headers, names) {
-  const norm = headers.map(h => normalizeHeader_(h));
+  const norm = headers.map(h => legNormalizeHeader_(h));
   for (const n of names) {
-    const i = norm.indexOf(normalizeHeader_(n));
+    const i = norm.indexOf(legNormalizeHeader_(n));
     if (i !== -1) return i;
   }
   return -1;

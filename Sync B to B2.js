@@ -17,7 +17,7 @@ function syncB_to_B2() {
       'Persona (manual)','Barrio (manual)','Fecha (manual)',
       '18-24','25-39','40-55','56-65','66+','Sin identificar'
     ];
-    ensureHeaders_(dst, DEST_HEADERS);
+    legEnsureHeaders_(dst, DEST_HEADERS);
 
     // === Mapeo columnas fuente B ===
     const srcHeaders = src.getRange(1, 1, 1, src.getLastColumn()).getValues()[0];
@@ -90,8 +90,8 @@ function syncB_to_B2() {
     if (dstRows > 0) {
       const cur = dst.getRange(2, 1, dstRows, Math.max(dst.getLastColumn(), DEST_HEADERS.length)).getValues();
       for (let i = 0; i < cur.length; i++) {
-        const nomCell = str(cur[i][colNOM - 1]);
-        const insVal  = num(cur[i][colINS - 1]);
+        const nomCell = legStr_(cur[i][colNOM - 1]);
+        const insVal  = legNum_(cur[i][colINS - 1]);
         const k       = buildKeyByNombreInscriptos_(nomCell, insVal);
         if (k) existingByKey.set(k, 2 + i);
       }
@@ -107,25 +107,25 @@ function syncB_to_B2() {
 
     for (let r = 0; r < srcData.length; r++) {
       const row = srcData[r];
-      const nombre   = str(row[iNombre]);
+      const nombre   = legStr_(row[iNombre]);
       const fechaFin = row[iFechaFin];
-      const ins      = num(row[iInscriptos]);
-      const unique   = num(row[iUnique]);
-      const nM       = num(row[iM]);
-      const nF       = num(row[iF]);
+      const ins      = legNum_(row[iInscriptos]);
+      const unique   = legNum_(row[iUnique]);
+      const nM       = legNum_(row[iM]);
+      const nF       = legNum_(row[iF]);
 
-      const mail     = num(row[iMailing]);
-      const callc    = num(row[iCallCenter]);
-      const ivr      = num(row[iIVR]);
-      const rrss     = num(row[iFacebook]) + num(row[iGoogle]) + num(row[iProgram]);
-      const difu     = num(row[iDifusion]) + num(row[iOtros]);
+      const mail     = legNum_(row[iMailing]);
+      const callc    = legNum_(row[iCallCenter]);
+      const ivr      = legNum_(row[iIVR]);
+      const rrss     = legNum_(row[iFacebook]) + legNum_(row[iGoogle]) + legNum_(row[iProgram]);
+      const difu     = legNum_(row[iDifusion]) + legNum_(row[iOtros]);
 
       // Rangos etarios desde B
-      const e18  = num(row[iE18_24]);
-      const e25  = num(row[iE25_39]);
-      const e40  = num(row[iE40_55]);
-      const e56  = num(row[iE56_65]);
-      const e66  = num(row[iE66P]);
+      const e18  = legNum_(row[iE18_24]);
+      const e25  = legNum_(row[iE25_39]);
+      const e40  = legNum_(row[iE40_55]);
+      const e56  = legNum_(row[iE56_65]);
+      const e66  = legNum_(row[iE66P]);
       const sinI = Math.max(0, ins - (e18 + e25 + e40 + e56 + e66));
 
       const key    = buildKeyByNombreInscriptos_(nombre, ins);
@@ -156,11 +156,11 @@ function syncB_to_B2() {
       }
 
       // Si NO existe → INSERT fila completa nueva
-      const defaultYear = (toDate_(fechaFin)?.getFullYear()) || new Date().getFullYear();
+      const defaultYear = (legToDate_(fechaFin)?.getFullYear()) || new Date().getFullYear();
       const persona = (typeof detectPersona_ === 'function') ? detectPersona_(nombre) : '';
       const barrio  = (typeof detectBarrio_  === 'function') ? detectBarrio_(nombre) : '';
       let fecha     = (typeof detectFecha_   === 'function') ? detectFecha_(nombre, defaultYear) : null;
-      if (!fecha && fechaFin) fecha = toDate_(fechaFin);
+      if (!fecha && fechaFin) fecha = legToDate_(fechaFin);
 
       // Distribución aproximada de M/F como antes
       let masculino = 0, femenino = 0;
@@ -222,19 +222,19 @@ function syncB_to_B2() {
 
 /* ================== helpers ================== */
 function buildKeyByNombreInscriptos_(nombre, inscriptos) {
-  const nom = normalizeText_(nombre);
-  const ins = num(inscriptos);
+  const nom = legNormalizeText_(nombre);
+  const ins = legNum_(inscriptos);
   if (!nom) return '';
   return `${nom}|${ins}`;
 }
 function buildId_(nombre, fechaFin, tz) {
   const zone = tz || Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires';
-  const d = toDate_(fechaFin);
+  const d = legToDate_(fechaFin);
   const dTxt = d ? Utilities.formatDate(d, zone, 'dd/MM/yyyy') : '';
   const nom = (nombre == null ? '' : String(nombre)).trim();
   return (nom && dTxt) ? `${nom} - ${dTxt}` : (nom || dTxt);
 }
-function toDate_(val) {
+function legToDate_(val) {
   if (!val) return null;
   if (Object.prototype.toString.call(val) === '[object Date]') {
     return isNaN(val.getTime()) ? null : val;
@@ -245,12 +245,12 @@ function toDate_(val) {
   }
   return null;
 }
-function normalizeText_(s) {
+function legNormalizeText_(s) {
   return (s || '')
     .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')
-    .replace(/[‒–—−]/g, '-')
+    .replace(/[\u2012\u2013\u2014\u2212]/g, '-')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/\s+/g,' ').trim();
 }
-function num(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
-function str(v){ return v==null ? '' : String(v).trim(); }
+function legNum_(v){ if (v===''||v==null) return 0; if (typeof v==='number') return v; const n=Number(String(v).replace(',','.')); return isNaN(n)?0:n; }
+function legStr_(v){ return v==null ? '' : String(v).trim(); }
