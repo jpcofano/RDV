@@ -47,6 +47,25 @@ const COLUMNAS_DERIVADAS = [
   'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'
 ];
 
+// ===================== Fechas =====================
+
+/**
+ * Ventana de aceptación de la fecha sacada del texto libre, **relativa a `fecha_fin`**, que es
+ * el ancla (CLAUDE.md 3.3).
+ *
+ * El legado tiene la prioridad al revés ([Sync B to B2.js:162-163](Sync%20B%20to%20B2.js#L162)):
+ * `detectFecha_(nombre)` va primero y `fecha_fin` queda de fallback. Como el regex casi nunca
+ * falla, la columna estructurada —disponible en el 99% de las filas— prácticamente no se usa.
+ *
+ * Medido sobre las 1.000 filas de `B`: 743 traen fecha en el texto y el **96,1%** cae dentro de
+ * ±3 días de `fecha_fin`. La moda es 0 días (444 casos) y le sigue +1 (236): la reunión es el
+ * día que cierra el formulario, o el siguiente. De ahí el sesgo hacia adelante de la ventana.
+ *
+ * Regla: se acepta la fecha del texto **sólo si** cae en
+ * `[fecha_fin + min, fecha_fin + max]`. Si no, se usa `fecha_fin` y **se marca la fila**.
+ */
+const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
+
 // ===================== Match por score =====================
 
 /**

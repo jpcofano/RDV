@@ -15,6 +15,8 @@
  *   diagScores()    → DIAG_SCORES. Calibra UMBRAL_MATCH y MARGEN_MINIMO (CLAUDE.md decisión 2)
  *                    con la distribución real de scores. Va suelto: es más caro que los otros
  *                    dos (población × todas las filas de B) y no hace falta en cada corrida.
+ *   diagAnclaFecha() → DIAG_ANCLA_FECHA. Cuántas fecha_mal_parseada resuelve anclar la fecha a
+ *                    fecha_fin, antes de escribir esa regla en 02_Parsing.js (CLAUDE.md 3.3).
  *
  * Depende de `diagnostico/01_hueco_sexo_edades.js`, que está en el mismo proyecto y comparte
  * scope: usa sus lectores (`leerDestino_diag`, `indexarB2_diag`), sus helpers `_diag` y el
@@ -294,51 +296,14 @@ function generarCorteB_diag2(cache) {
     const figuraNorm = normalizeText_diag(h.figura);
 
     // --- buscar candidatos en B ---
-    let elegido = null, comoMatcheo = 'FALSE', candidatos = 0;
+    let elegido, comoMatcheo, candidatos;
 
-    if (figuraNorm && h.fecha) {
-      const porNombre = b.filas.filter(function (fb) {
-        return figuraNorm !== '' && fb.nombreNorm.indexOf(figuraNorm) !== -1;
-      });
-
-      const exactos = porNombre.filter(function (fb) {
-        return fb.fechaEfectiva && mismoDia_diag2(fb.fechaEfectiva, h.fecha);
-      });
-      if (exactos.length) {
-        elegido = exactos[0];
-        comoMatcheo = 'TRUE';
-        candidatos = exactos.length;
-        matchExacto++;
-      } else {
-        const aprox = porNombre.filter(function (fb) {
-          const ref = fb.fechaFin || fb.fechaEfectiva;
-          return ref && Math.abs(diasEntre_diag2(ref, h.fecha)) <= DIAG2_TOLERANCIA_DIAS;
-        });
-        if (aprox.length) {
-          aprox.sort(function (x, y) {
-            const rx = x.fechaFin || x.fechaEfectiva, ry = y.fechaFin || y.fechaEfectiva;
-            return Math.abs(diasEntre_diag2(rx, h.fecha)) - Math.abs(diasEntre_diag2(ry, h.fecha));
-          });
-          elegido = aprox[0];
-          comoMatcheo = 'TRUE_fecha_aprox';
-          candidatos = aprox.length;
-          matchAprox++;
-        } else {
-          // Último recurso: filas de B sin ninguna fecha resoluble. Sólo si el nombre las
-          // identifica sin ambigüedad.
-          const sinFecha = porNombre.filter(function (fb) {
-            return !fb.fechaEfectiva && !fb.fechaFin;
-          });
-          if (sinFecha.length === 1) {
-            elegido = sinFecha[0];
-            comoMatcheo = 'TRUE_sin_fecha';
-            candidatos = 1;
-            matchSinFecha++;
-          }
-        }
-      }
-      if (candidatos > 1) multiples++;
-    }
+    const cand = buscarCandidato_diag2(h, b);
+    elegido = cand.elegido; comoMatcheo = cand.comoMatcheo; candidatos = cand.candidatos;
+    if (comoMatcheo === 'TRUE') matchExacto++;
+    else if (comoMatcheo === 'TRUE_fecha_aprox') matchAprox++;
+    else if (comoMatcheo === 'TRUE_sin_fecha') matchSinFecha++;
+    if (candidatos > 1) multiples++;
 
     // --- clasificar ---
     let causa, nombreEvento = '', devPersona = '', devBarrio = '', devFecha = '';
@@ -358,8 +323,8 @@ function generarCorteB_diag2(cache) {
       const fechaDetectada = detectFecha_diag2(elegido.nombre, anioPorDefecto);
       devFecha = fechaDetectada ? fmt_diag2(fechaDetectada) : '';
 
-      // syncB_to_B2 cae a Fecha_Fin si el texto libre no trae fecha.
-      const fechaEfectiva = fechaDetectada || elegido.fechaFin || null;
+      // La regla del legado: el texto libre gana, Fecha_Fin es fallback.
+      const fechaEfectiva = resolverFecha_diag2(elegido, false);
 
       let problemas = 0;
       if (devPersona === '') problemas++;
@@ -539,6 +504,214 @@ function generarDupB2_diag2(cache) {
 
   return { claves: claves.length, filas: filasListadas,
            soloDifiereInscriptos: soloDifiereInscriptos, incompletas: b2.incompletas };
+}
+
+// ===================== Búsqueda de candidato y resolución de fecha =====================
+
+/**
+ * Busca el candidato de `B` para una fila del destino. Extraído para que `DIAG_CORTE_B` y
+ * `DIAG_ANCLA_FECHA` usen exactamente el mismo criterio: si se escribiera dos veces, la
+ * comparación entre la regla vieja y la nueva mediría también la diferencia entre dos búsquedas.
+ */
+function buscarCandidato_diag2(h, b) {
+  const figuraNorm = normalizeText_diag(h.figura);
+  const vacio = { elegido: null, comoMatcheo: 'FALSE', candidatos: 0 };
+  if (!figuraNorm || !h.fecha) return vacio;
+
+  const porNombre = b.filas.filter(function (fb) {
+    return fb.nombreNorm.indexOf(figuraNorm) !== -1;
+  });
+
+  const exactos = porNombre.filter(function (fb) {
+    return fb.fechaEfectiva && mismoDia_diag2(fb.fechaEfectiva, h.fecha);
+  });
+  if (exactos.length) {
+    return { elegido: exactos[0], comoMatcheo: 'TRUE', candidatos: exactos.length };
+  }
+
+  const aprox = porNombre.filter(function (fb) {
+    const ref = fb.fechaFin || fb.fechaEfectiva;
+    return ref && Math.abs(diasEntre_diag2(ref, h.fecha)) <= DIAG2_TOLERANCIA_DIAS;
+  });
+  if (aprox.length) {
+    aprox.sort(function (x, y) {
+      const rx = x.fechaFin || x.fechaEfectiva, ry = y.fechaFin || y.fechaEfectiva;
+      return Math.abs(diasEntre_diag2(rx, h.fecha)) - Math.abs(diasEntre_diag2(ry, h.fecha));
+    });
+    return { elegido: aprox[0], comoMatcheo: 'TRUE_fecha_aprox', candidatos: aprox.length };
+  }
+
+  // Último recurso: filas de B sin ninguna fecha resoluble, sólo si el nombre no es ambiguo.
+  const sinFecha = porNombre.filter(function (fb) {
+    return !fb.fechaEfectiva && !fb.fechaFin;
+  });
+  if (sinFecha.length === 1) {
+    return { elegido: sinFecha[0], comoMatcheo: 'TRUE_sin_fecha', candidatos: 1 };
+  }
+  return vacio;
+}
+
+/**
+ * La fecha efectiva de una fila de `B`, bajo una de las dos reglas.
+ *
+ *   usarAncla = false → **legado**: el texto libre gana, `fecha_fin` es fallback
+ *                       (Sync B to B2.js:162-163).
+ *   usarAncla = true  → **propuesta**: `fecha_fin` es el ancla. La fecha del texto se acepta
+ *                       sólo si cae en [fecha_fin + min, fecha_fin + max]; si no, `fecha_fin`.
+ *
+ * Con `usarAncla` y sin `fecha_fin` no hay ancla contra la cual validar, así que se acepta el
+ * texto: es mejor que nada, y son pocas filas (el 99% de `B` tiene `fecha_fin`).
+ */
+function resolverFecha_diag2(fb, usarAncla) {
+  if (!usarAncla) return fb.fechaTexto || fb.fechaFin || null;
+  if (!fb.fechaFin) return fb.fechaTexto || null;
+  if (!fb.fechaTexto) return fb.fechaFin;
+  const d = diasEntre_diag2(fb.fechaTexto, fb.fechaFin);
+  const dentro = (d >= VENTANA_FECHA_TEXTO.min && d <= VENTANA_FECHA_TEXTO.max);
+  return dentro ? fb.fechaTexto : fb.fechaFin;
+}
+
+// ===================== DIAG_ANCLA_FECHA =====================
+
+/**
+ * ¿Cuántas de las `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve anclar la fecha a `fecha_fin`?
+ *
+ * Sólo lectura, y **no cambia el parser**: compara las dos reglas sobre los mismos datos y el
+ * mismo candidato, para poder decidir con un número antes de tocar `02_Parsing.js`.
+ *
+ * Usa el mismo candidato bajo las dos reglas a propósito. Cambiar la resolución de fecha también
+ * podría cambiar qué candidato gana, pero mezclar las dos cosas haría imposible saber cuánto
+ * aportó la regla nueva. Acá se aísla el efecto de la fecha.
+ */
+function diagAnclaFecha() {
+  const cache = nuevoCache2_diag2();
+  const b = cacheB_diag2(cache);
+  const poblacion = poblacionSinContraparte_diag2(cache);
+
+  // ---------- 1. Distribución del desvío texto vs fecha_fin, sobre TODO B ----------
+  const desvios = [];
+  let conTexto = 0, sinTexto = 0, conFechaFin = 0;
+  const moda = {};
+  for (let i = 0; i < b.filas.length; i++) {
+    const fb = b.filas[i];
+    if (fb.fechaFin) conFechaFin++;
+    if (!fb.fechaTexto) { sinTexto++; continue; }
+    conTexto++;
+    if (!fb.fechaFin) continue;
+    const d = diasEntre_diag2(fb.fechaTexto, fb.fechaFin);
+    desvios.push({ d: d, fila: fb.fila, nombre: fb.nombre });
+    moda[d] = (moda[d] || 0) + 1;
+  }
+  const dentroVentana = desvios.filter(function (x) {
+    return x.d >= VENTANA_FECHA_TEXTO.min && x.d <= VENTANA_FECHA_TEXTO.max;
+  }).length;
+  const dentro3 = desvios.filter(function (x) { return Math.abs(x.d) <= 3; }).length;
+
+  // ---------- 2. Reclasificar la población con las dos reglas ----------
+  const salida = [['clave_destino', 'origen_fila', 'fila_B', 'nombre_evento_en_B',
+                   'fecha_destino', 'fecha_fin_B', 'fecha_texto_B', 'desvio_dias',
+                   'fecha_legado', 'fecha_ancla', 'causa_legado', 'causa_ancla', 'efecto']];
+
+  const efectos = { resuelta: 0, rota: 0, cambia: 0, sin_cambio: 0 };
+  let malParseadaLegado = 0, malParseadaResueltas = 0, malParseadaSigueMal = 0;
+
+  for (let i = 0; i < poblacion.length; i++) {
+    const h = poblacion[i];
+    const elegido = buscarCandidato_diag2(h, b).elegido;
+    if (!elegido) continue;
+
+    const causaLegado = causaConFecha_diag2(h, elegido, false);
+    const causaAncla  = causaConFecha_diag2(h, elegido, true);
+
+    let efecto;
+    if (causaLegado === causaAncla)                  efecto = 'sin_cambio';
+    else if (causaAncla === 'deberia_haber_entrado') efecto = 'resuelta';
+    else if (causaLegado === 'deberia_haber_entrado') efecto = 'rota';
+    else                                              efecto = 'cambia';
+    efectos[efecto]++;
+
+    if (causaLegado === 'fecha_mal_parseada') {
+      malParseadaLegado++;
+      if (efecto === 'resuelta') malParseadaResueltas++;
+      else malParseadaSigueMal++;
+    }
+
+    // Se listan los casos que cambian y, además, todas las fecha_mal_parseada aunque no cambien:
+    // son justamente las que hay que poder mirar de a una.
+    if (efecto === 'sin_cambio' && causaLegado !== 'fecha_mal_parseada') continue;
+
+    const fLeg = resolverFecha_diag2(elegido, false);
+    const fAnc = resolverFecha_diag2(elegido, true);
+    const desvio = (elegido.fechaTexto && elegido.fechaFin)
+      ? diasEntre_diag2(elegido.fechaTexto, elegido.fechaFin) : '';
+
+    salida.push([h.clave, h.origen, elegido.fila, elegido.nombre,
+                 h.fecha ? fmt_diag2(h.fecha) : '',
+                 elegido.fechaFin ? fmt_diag2(elegido.fechaFin) : '',
+                 elegido.fechaTexto ? fmt_diag2(elegido.fechaTexto) : '',
+                 desvio,
+                 fLeg ? fmt_diag2(fLeg) : '', fAnc ? fmt_diag2(fAnc) : '',
+                 causaLegado, causaAncla, efecto]);
+  }
+
+  escribirHoja_diag('DIAG_ANCLA_FECHA', salida);
+
+  // ---------- 3. Log ----------
+  Logger.log('=== DIAG_ANCLA_FECHA ===');
+  Logger.log('Ventana propuesta: [fecha_fin %s, fecha_fin +%s]',
+             VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max);
+
+  Logger.log('--- desvío del texto libre contra fecha_fin, sobre todo B ---');
+  Logger.log('Filas de B: %s | con fecha en el texto: %s | sin fecha en el texto: %s | ' +
+             'con fecha_fin: %s', b.filas.length, conTexto, sinTexto, conFechaFin);
+  Logger.log('Comparables (texto y fecha_fin): %s', desvios.length);
+  Logger.log('  dentro de ±3 días: %s (%s%%)', dentro3,
+             desvios.length ? Math.round(dentro3 * 1000 / desvios.length) / 10 : 0);
+  Logger.log('  dentro de la ventana propuesta: %s (%s%%)  ← las que la regla ACEPTA',
+             dentroVentana,
+             desvios.length ? Math.round(dentroVentana * 1000 / desvios.length) / 10 : 0);
+  Logger.log('  fuera de la ventana: %s  ← las que pasan a usar fecha_fin y se marcan',
+             desvios.length - dentroVentana);
+
+  Logger.log('--- desvíos más frecuentes ---');
+  Object.keys(moda).map(Number).sort(function (x, y) { return moda[y] - moda[x]; })
+    .slice(0, 8).forEach(function (d) {
+      Logger.log('  %s días: %s %s', d >= 0 ? '+' + d : d, moda[d], barra_diag2(moda[d], desvios.length));
+    });
+
+  desvios.sort(function (x, y) { return Math.abs(y.d) - Math.abs(x.d); });
+  Logger.log('--- los peores outliers ---');
+  desvios.slice(0, 6).forEach(function (x) {
+    Logger.log('  %s días | B fila %s | %s', x.d, x.fila, x.nombre);
+  });
+
+  Logger.log('--- efecto sobre la población de DIAG_CORTE_B ---');
+  Logger.log('  fecha_mal_parseada con la regla del legado: %s', malParseadaLegado);
+  Logger.log('  >>> de esas, RESUELTAS anclando a fecha_fin: %s (%s%%)', malParseadaResueltas,
+             malParseadaLegado ? Math.round(malParseadaResueltas * 1000 / malParseadaLegado) / 10 : 0);
+  Logger.log('  siguen mal: %s', malParseadaSigueMal);
+  Logger.log('  casos que la regla nueva ROMPE (andaban y dejan de andar): %s', efectos.rota);
+  if (efectos.rota > 0) {
+    Logger.log('  >>> Mirar esas filas en la solapa antes de escribir la regla en 02_Parsing.js: ' +
+               'puede que la ventana esté mal calibrada.');
+  }
+  Logger.log('  otros cambios de causa: %s | sin cambio: %s', efectos.cambia, efectos.sin_cambio);
+
+  return { desvios: desvios.length, dentroVentana: dentroVentana,
+           malParseadaLegado: malParseadaLegado, malParseadaResueltas: malParseadaResueltas,
+           malParseadaSigueMal: malParseadaSigueMal, rota: efectos.rota };
+}
+
+/** La causa de una fila, con la resolución de fecha que se le pida. Misma precedencia que DIAG_CORTE_B. */
+function causaConFecha_diag2(h, elegido, usarAncla) {
+  const devPersona = detectPersona_diag2(elegido.nombre);
+  if (devPersona === '') return 'persona_no_reconocida';
+  const devBarrio = detectBarrio_diag2(elegido.nombre);
+  if (devBarrio === '') return 'barrio_no_reconocido';
+  const fecha = resolverFecha_diag2(elegido, usarAncla);
+  if (!fecha) return 'fecha_no_parseable';
+  if (!mismoDia_diag2(fecha, h.fecha)) return 'fecha_mal_parseada';
+  return 'deberia_haber_entrado';
 }
 
 // ===================== DIAG_SCORES: calibrar el umbral =====================

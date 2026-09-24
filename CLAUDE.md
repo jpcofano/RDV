@@ -453,8 +453,42 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   IMPORTRANGE intenta expandirse a S y todo el bloque tira `#REF!`. Esas derivadas se mudan a B2.
 - IMPORTRANGE se recalcula asincrónico. El script puede leer `B` mientras muestra `Loading...`
   y procesar filas vacías creyendo que no hay datos.
-- `detectFecha_` toma el primer `d/m` del texto libre: `"Reunión 10-12 hs"` devuelve
-  **10 de diciembre**, y pasa la validación. Hay que exigir contexto de fecha.
+- **El bug de fechas es una inversión de prioridad, no un regex flojo.**
+  [Sync B to B2.js:162-163](Sync%20B%20to%20B2.js#L162):
+
+  ```js
+  let fecha = detectFecha_(nombre, defaultYear);        // texto libre, primero
+  if (!fecha && fechaFin) fecha = toDate_(fechaFin);    // columna estructurada, de fallback
+  ```
+
+  El texto libre gana y `fecha_fin` sólo entra si el regex falla. **Y el regex casi nunca
+  falla**, así que una columna de fecha estructurada, disponible en el **99%** de las filas,
+  prácticamente no se usa. Que `detectFecha_` lea `"Reunión 10-12 hs"` como *10 de diciembre*
+  es el síntoma; la causa es que ese resultado le gana a un dato confiable que ya estaba ahí.
+
+  Medido sobre las **1.000 filas de `B`**:
+
+  | | |
+  |---|---|
+  | filas con fecha en el texto | **743** |
+  | dentro de ±3 días de `fecha_fin` | **96,1%** |
+  | moda: 0 días | 444 casos |
+  | +1 día | 236 casos |
+
+  O sea: **la reunión es el día que cierra el formulario, o el siguiente.** El texto libre no
+  aporta información que `fecha_fin` no tenga — sólo aporta ruido. Los outliers incluyen dos de
+  **+303 días**: `fecha_fin` 2026-02-11 → texto 2026-12-11, y 2026-02-18 → 2026-12-18. Eventos
+  de febrero leídos como diciembre. Son los que estiraban el rango efectivo de `B` hasta el
+  18/12/2026 y ensuciaban el cálculo de la ventana del import.
+
+  → **Arreglo en `02_Parsing.js`: `fecha_fin` es el ancla.** Se acepta la fecha del texto sólo
+  si cae dentro de `[fecha_fin − 2, fecha_fin + 7]`; si no, se usa `fecha_fin` y **se marca la
+  fila** para poder auditar cuántas veces pasó. La ventana va en `00_Config.js` como
+  `VENTANA_FECHA_TEXTO = {min: -2, max: 7}`, calibrable: es asimétrica a propósito, por el
+  sesgo hacia adelante que muestran los 236 casos de +1 día.
+
+  `diagAnclaFecha()` (en `diagnostico/02_corte_B_a_B2.js`) mide cuántas de las
+  `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve esta regla, antes de escribirla en el parser.
 - `detectPersona_` y `detectBarrio_` son listas fijas. Nombre fuera de lista → `''` → la fila se
   descarta en el upsert como `noFigura` / `noBarrioN`.
 - `DEFAULT_YEAR = 2025` hardcodeado en `Código.js`.
