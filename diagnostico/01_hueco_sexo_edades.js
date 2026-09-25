@@ -499,7 +499,8 @@ function generarHueco_diag(cache) {
   escribirHoja_diag('DIAG_HUECO', salida);
 
   const total = salida.length - 1;
-  Logger.log('=== DIAG_HUECO ===');
+  const enVent = ctx.filas.filter(function (x) { return enVentanaAnalisis_diag(x.fecha); }).length;
+  cabeceraVentana_diag('DIAG_HUECO', enVent, ctx.filas.length, 'filas del destino con datos');
   Logger.log('Filas con datos en el destino: %s', ctx.filas.length);
   Logger.log('  con Inscriptos cargado: %s | sin Inscriptos: %s', conInscriptos, sinInscriptos);
   Logger.log('  sexo Y edades vacíos (el hueco): %s', sexoYEdadesVacias);
@@ -600,7 +601,9 @@ function generarPisado_diag(cache) {
 
   escribirHoja_diag('DIAG_PISADO', salida);
 
-  Logger.log('=== DIAG_PISADO ===');
+  cabeceraVentana_diag('DIAG_PISADO',
+    ctx.filas.filter(function (x) { return enVentanaAnalisis_diag(x.fecha); }).length,
+    ctx.filas.length, 'filas del destino con datos');
   Logger.log('Filas del destino recorridas: %s (sin match en B2: %s)',
              res.filasComparadas, res.filasSinMatch);
   Logger.log('Celdas comparadas: %s | coinciden: %s | difieren: %s',
@@ -710,7 +713,9 @@ function generarAtomicidad_diag(cache) {
   escribirHoja_diag('DIAG_ATOMICIDAD', salida);
 
   const total = salida.length - 1;
-  Logger.log('=== DIAG_ATOMICIDAD ===');
+  cabeceraVentana_diag('DIAG_ATOMICIDAD',
+    ctx.filas.filter(function (x) { return enVentanaAnalisis_diag(x.fecha); }).length,
+    ctx.filas.length, 'filas del destino con datos');
   Logger.log('Filas del destino: %s', total);
   Object.keys(conteo).forEach(function (k) {
     const n = conteo[k];
@@ -799,7 +804,9 @@ function generarTotalDivergente_diag(cache) {
 
   escribirHoja_diag('DIAG_TOTAL_DIVERGENTE', salida);
 
-  Logger.log('=== DIAG_TOTAL_DIVERGENTE ===');
+  cabeceraVentana_diag('DIAG_TOTAL_DIVERGENTE',
+    ctx.filas.filter(function (x) { return enVentanaAnalisis_diag(x.fecha); }).length,
+    ctx.filas.length, 'filas del destino con datos');
   Logger.log('Filas emitidas: %s | comparables: %s | sin contraparte en B2: %s',
              salida.length - 1, comparadas, sinMatch);
   Logger.log('  de las sin contraparte, con desagregado ya escrito: %s', sinMatchConDesagregado);
@@ -882,7 +889,9 @@ function generarProcedencia_diag(cache) {
 
   escribirHoja_diag('DIAG_PROCEDENCIA', salida);
 
-  Logger.log('=== DIAG_PROCEDENCIA ===');
+  cabeceraVentana_diag('DIAG_PROCEDENCIA',
+    ctx.filas.filter(function (x) { return enVentanaAnalisis_diag(x.fecha); }).length,
+    ctx.filas.length, 'filas del destino con datos');
   Logger.log('Columnas manuales: %s', DIAG_COLUMNAS_MANUALES.join(', '));
   for (let i = 1; i < salida.length; i++) {
     Logger.log('  %s: con valor %s | azul (sistema) %s | a mano %s | aporte del sistema %s%% | ' +
@@ -921,6 +930,32 @@ function inicioVentanaAnalisis_diag() {
   const hoy = new Date();
   return new Date(hoy.getFullYear(), hoy.getMonth() - VENTANA_ANALISIS_MESES, hoy.getDate(),
                   12, 0, 0);
+}
+
+/**
+ * **La primera línea de todo reporte.** Obligatoria.
+ *
+ * Un porcentaje sin denominador explícito es una falsa alarma esperando (CLAUDE.md,
+ * Convenciones). Ya nos pasó tres veces. Esta línea deja el denominador a la vista antes de
+ * cualquier número, y cada porcentaje del reporte tiene que decir sobre cuál de los dos se
+ * calcula.
+ *
+ * @param {string} reporte   cómo se llama la solapa
+ * @param {number} enVentana filas dentro de la ventana de análisis
+ * @param {number} totales   filas consideradas en total
+ * @param {string} base      qué se está contando, en una palabra
+ */
+function cabeceraVentana_diag(reporte, enVentana, totales, base) {
+  Logger.log('=== %s ===', reporte);
+  Logger.log('VENTANA: %s en ventana / %s totales | corte: %s (%s meses) | base: %s',
+             enVentana, totales, Utilities.formatDate(inicioVentanaAnalisis_diag(), DIAG_TZ,
+                                                      'dd/MM/yyyy'),
+             VENTANA_ANALISIS_MESES, base || 'filas del destino');
+  if (enVentana === totales) {
+    Logger.log('  (todo cae dentro de la ventana: los %% de abajo son sobre %s)', totales);
+  } else {
+    Logger.log('  Cada %% de abajo dice sobre cuál de los dos se calcula. Si no lo dice, es un bug.');
+  }
 }
 
 /**

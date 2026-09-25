@@ -524,6 +524,31 @@ descendente antes de borrar. Es la misma operación resuelta bien a diez líneas
 
 ### 3.2 Calidad de datos, medida
 
+> ## 🔴 No hay clave natural
+>
+> No es un riesgo a futuro ni una fragilidad: **es el estado del proyecto hoy.** Los tres campos
+> con los que el código arma la clave están rotos o ausentes, y el cuarto nunca alcanzó solo.
+>
+> | campo | estado |
+> |---|---|
+> | **barrio** | ausente en `B` desde 2025-10 — 0% → 54% → 93% → **97%** |
+> | **fecha del nombre del formulario** | no confiable: 20 `fecha_mal_parseada`, rango inflado hasta el 18/12/2026 |
+> | **`fecha_fin`** | no confiable: 56,5% en 0 o +1, y el error está en el medio (3.3.c) |
+> | **figura sola** | no identifica |
+>
+> **Esto explica todo lo demás.** No son tres problemas sueltos que fuimos encontrando: son un
+> solo problema visto desde tres lados.
+>
+> - las **79 filas** sin sexo ni edades → no hay con qué emparejarlas;
+> - las **14 claves duplicadas** en B2 → la clave que usa no distingue;
+> - el **hueco que crece mes a mes** → cada formulario nuevo trae menos con qué identificarse.
+>
+> **Consecuencia para el plan: `RDV_UID` deja de ser la mejor opción y pasa a ser la única.**
+> No hay un plan B que consista en arreglar la clave natural, porque los campos que la formaban
+> no van a volver. Ver la decisión 2 y la Fase 4.
+
+
+
 Destino `RVD JM-CM - ES`, 802 filas con datos, fechas 05/07/2025 → 24/09/2026:
 
 - clave natural `Figura|Barrio|Fecha` completa: **793** (faltan 9, todas por Barrio vacío)
@@ -758,6 +783,38 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   > `STATUS REUNIÓN = Reprogramada`**, y **barre anchos de ±1 a ±21 días** reportando la curva de
   > resueltas y rotas. Todo dentro de la ventana de análisis (sección 3.5). El ancho definitivo
   > sale de esa curva, no de una estimación.
+
+  #### 🔴 CERRADO: el ancla de fechas queda DESCARTADA
+
+  `diagFechaFin()` corrió el 2026-09-25 y cerró la pregunta. **`fecha_fin` no es confiable.**
+
+  ```
+  VENTANA: 223 comparables / 699 con contraparte en B2 | corte 6 meses
+  desvío 0 o +1 ............ 56,5%  (de 223)
+  desvíos grandes (|d| > 7)      4  ·  de esos, Reprogramada: 0
+  |d| <= 7 : Realizada 213 | Suspendida 5 | Reprogramada 1
+  |d| >  7 : Suspendida 2  | Realizada 2
+  ```
+
+  **Lo decisivo no es el 56,5%: es dónde está el error.** Con sólo **4** desvíos grandes, casi
+  todo el 43,5% restante vive en **desvíos de 2 a 7 días**. Y ahí ninguna ventana sirve:
+
+  > Una ventana que acepte ±7 acepta también **cualquier otra reunión de esa figura en esa
+  > semana**. **Ninguna ventana discrimina.** El problema no está en los extremos —donde una
+  > ventana recorta bien— sino en el medio, donde recortar no separa señal de ruido.
+
+  Y **la hipótesis de la reprogramación no explica nada**: cero de los cuatro desvíos grandes
+  están en `Reprogramada`. La corrección que habíamos anotado arriba —que el desvío grande era
+  la firma de una reprogramación— **no se sostiene contra los datos**. Los desvíos grandes son
+  dos `Suspendida` y dos `Realizada`.
+
+  → **`VENTANA_FECHA_TEXTO` deja de ser una regla de parseo.** `detectFecha_` no elige entre el
+  texto y `fecha_fin`: **devuelve las dos** y el matching las usa como señal con tolerancia
+  (decisión 2). Se acabó la idea de resolver la fecha antes de matchear.
+
+  **Un sesgo que hay que tener presente al leer el 56,5%:** las 223 comparables salen de las 699
+  filas que **sí** matchean contra B2, o sea justamente aquellas donde la clave natural funcionó.
+  Es una muestra sesgada hacia el caso bueno. **El número real es peor, no mejor.**
 
   #### Hay una tercera fuente de fecha, y es externa
 
@@ -1027,7 +1084,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    nueva al final (`AP`). El upsert busca por `RDV_UID`; si está vacío cae a `figura + fecha` y
    **estampa el uuid**. Después de una corrida casi todo entra por uuid.
 
-   > **No es una mejora: es la única identidad estable que podemos tener.**
+   > **No es una mejora ni la mejor opción: es la ÚNICA.**
+   >
+   > Cuando esto se escribió, la clave natural todavía parecía un plan B razonable. **Ya no lo
+   > es**: no hay clave natural (3.2). Los tres campos que la formaban están rotos o ausentes y
+   > ninguno va a volver. No queda alternativa que evaluar.
    >
    > Mientras la clave dependa de campos que manda el origen, **cada cambio del formulario
    > rompe el matching de nuevo**. No es hipotético: **ya pasó, con el barrio.** El origen dejó
@@ -1456,19 +1517,19 @@ Y las tres mediciones que sostienen el diseño:
 - **comuna en el texto** → de las 103, cuántas la traen y cuántas coinciden con la comuna que
   deriva del barrio del destino. Es la medida de si la comuna sirve de reemplazo.
 
-### Fase 1c — Anclar la fecha  *(prioridad alta)*
+### Fase 1c — Anclar la fecha  *(CERRADA: descartada)*
 
-Subió de prioridad: con `figura + fecha` como clave, las 20 `fecha_mal_parseada` son errores de
-identidad, no campos sucios (3.3.c). Y los 8 pares repetidos de la sección 1.a son la misma
-falla vista desde otro lado.
+> **No se hace.** `diagFechaFin()` mostró que `fecha_fin` no es confiable y, sobre todo, que el
+> error está **en el medio y no en los extremos**: casi todo el desvío vive entre 2 y 7 días, y
+> ahí ninguna ventana discrimina. Detalle en 3.3.c.
+>
+> La fase existía para elegir el ancho de `VENTANA_FECHA_TEXTO`. Ese ancho no existe.
+>
+> **Lo que la reemplaza:** la fecha deja de ser componente de la clave y pasa a ser **una señal
+> del score con tolerancia** (decisión 2). Y la identidad se resuelve por otro lado —
+> `RDV_UID`, adelantado a la **Fase 2b**.
 
-`diagAnclaFecha()` da los dos números que faltan: cuántos de los desvíos fuera de ventana son
-reprogramaciones, y la **curva de resueltas y rotas por ancho de ventana** de ±1 a ±21 días. El
-ancho definitivo de `VENTANA_FECHA_TEXTO` sale de esa curva. El arreglo va en `02_Parsing.js`,
-en la Fase 2.
-
-**Antes que calibrar el score**: no tiene sentido afinar umbrales sobre una clave que todavía
-tiene la mitad mal.
+`diagAnclaFecha()` queda en el repo como registro de la medición. No hay que volver a correrlo.
 
 **La pregunta que decide el arreglo:** si `B` es una ventana móvil del origen que deja caer
 eventos viejos, ampliar las listas de nombres y barrios no alcanza y **B2 tiene que pasar a ser
@@ -1555,6 +1616,36 @@ Queda entonces `Solapa agenda base final.js`, que cae en la **Fase 8**.
 puede dar 1. Mantenerla en la Fase 2 era pedirle a la fase que resolviera algo que depende de
 dos fases posteriores.
 
+### Fase 2b — Estampar `RDV_UID` ya  *(adelantada: era Fase 4)*
+
+**Se adelanta todo lo que el plan permite.** El motivo es simple y urgente:
+
+> **Cada día sin uuids, más filas se vuelven inidentificables.** No hay clave natural (3.2) y el
+> origen sigue mandando formularios con menos información que el mes pasado. Las filas que
+> **hoy** todavía matchean son las que vamos a poder anclar; las que entren mañana, no.
+
+Se puede hacer ahora, antes de la Fase 3, porque **no choca con nada**:
+
+- `RDV_UID` va como **columna nueva al final** (`AP`). Las once fórmulas de array viven en `D`,
+  `W`, `X`, `Y` y `AA`–`AG`: todas antes. Agregar al final no las toca (3.1.b);
+- cada escritura es sobre una **celda vacía**, así que `setSiDelSistema_` alcanza y ya está
+  escrito (Fase 2);
+- **no necesita el score.** Esta fase estampa **sólo lo que ya matchea sin ambigüedad**.
+
+Qué hace, y qué deja para después:
+
+1. agregar `RDV_UID` al final del destino, de A2 y de B2;
+2. **estampar las filas que hoy matchean por clave natural** — las ~699. Sin score, sin
+   umbrales, sin decisiones: donde hay una correspondencia inequívoca, se ancla;
+3. **no tocar el residuo.** Las ~103 sin contraparte quedan para la Fase 5, que es donde está
+   la maquinaria de score.
+
+Verificación: contar los uuids estampados y que ninguna fila tenga dos.
+
+> Lo que se gana es irreversible en el buen sentido: una vez estampado, **el origen puede
+> cambiar lo que quiera** y esa fila sigue siendo encontrable. Es la única parte del plan que
+> se vuelve más barata cuanto antes se haga, y más cara cada semana que pasa.
+
 ### Fase 3 — Derivadas a valores
 
 **Es prerrequisito duro de la Fase 9.** No se saca el staging con las fórmulas de array
@@ -1571,10 +1662,10 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - Verificar que ninguna quedó con fórmula:
   `getRange(1,1,1,ultimaCol).getFormulas()[0].filter(String)` tiene que dar vacío.
 
-### Fase 4 — Lectura directa y UID
+### Fase 4 — Lectura directa
 - `10_LeerOrigenes.js` con `openById`.
-- Agregar `RDV_UID` a A2, B2 y al destino (columna nueva al final, no intercalada).
-- Primera corrida: matchea por clave natural y estampa uuids. Verificar que se estamparon 793.
+- **El `RDV_UID` ya está**: se adelantó a la Fase 2b. Acá sólo hay que asegurarse de que la
+  lectura nueva lo propague y de que las filas nuevas de A2/B2 nazcan con uuid.
 
 ### Fase 5 — Upsert nuevo
 - `20_UpsertDestino.js` con match uuid → natural → `SIN_MATCH`.

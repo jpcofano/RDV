@@ -107,6 +107,8 @@ function diagMuestrasMail() {
   escribirHoja_diag(DIAG3_SALIDA, salida);
 
   Logger.log('=== DIAG_MAILS ===');
+  Logger.log('VENTANA: no aplica — se vuelca TODO el historial de Gmail a propósito. Los %% de');
+  Logger.log('abajo son sobre los %s mensajes encontrados.', mensajes);
   Logger.log('Hilos: %s | mensajes: %s | truncados a %s caracteres: %s',
              hilos.length, mensajes, DIAG3_MAX_CUERPO, truncados);
 

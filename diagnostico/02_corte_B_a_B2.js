@@ -367,8 +367,10 @@ function generarCorteB_diag2(cache) {
   escribirHoja_diag(DIAG2_SALIDA_CORTE, salida);
 
   const total = salida.length - 1;
-  Logger.log('=== DIAG_CORTE_B ===');
-  Logger.log('Población: %s filas del destino sin contraparte en B2', total);
+  const enVentanaPob = poblacion.filter(function (x) { return x.enVentana; }).length;
+  cabeceraVentana_diag('DIAG_CORTE_B', enVentanaPob, total,
+                       'filas del destino sin contraparte en B2');
+  Logger.log('Población: %s filas del destino sin contraparte en B2 (TOTAL histórico)', total);
   Logger.log('  del hueco (el pipeline falló a la vista): %s', totalPorOrigen.hueco);
   Logger.log('  tapadas por carga manual (sin_contraparte_B2): %s', totalPorOrigen.sin_contraparte_B2);
   const encontradas = matchExacto + matchAprox + matchSinFecha;
@@ -503,7 +505,8 @@ function generarDupB2_diag2(cache) {
 
   escribirHoja_diag(DIAG2_SALIDA_DUP, salida);
 
-  Logger.log('=== DIAG_DUP_B2 ===');
+  cabeceraVentana_diag('DIAG_DUP_B2', claves.length, claves.length, 'claves de B2 repetidas');
+  Logger.log('  (B2 no tiene ventana propia: se listan todas las claves repetidas)');
   Logger.log('Claves naturales repetidas: %s | filas de B2 involucradas: %s',
              claves.length, filasListadas);
   Logger.log('  de esas claves, %s tienen el mismo nombre de evento y distinto Inscriptos:',
@@ -672,7 +675,9 @@ function diagAnclaFecha() {
   escribirHoja_diag('DIAG_ANCLA_FECHA', salida);
 
   // ---------- 3. Log ----------
-  Logger.log('=== DIAG_ANCLA_FECHA ===');
+  cabeceraVentana_diag('DIAG_ANCLA_FECHA',
+    poblacion.filter(function (x) { return x.enVentana; }).length, poblacion.length,
+    'filas del destino sin contraparte en B2');
   Logger.log('Ventana propuesta: [fecha_fin %s, fecha_fin +%s]',
              VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max);
 
@@ -915,7 +920,8 @@ function diagFechaFin() {
 
   const pct = function (n) { return comparables ? Math.round(n * 1000 / comparables) / 10 : 0; };
 
-  Logger.log('=== DIAG_FECHA_FIN ===');
+  cabeceraVentana_diag('DIAG_FECHA_FIN', comparables, conB2,
+    'filas del destino CON contraparte en B2');
   Logger.log('Filas del destino con contraparte en B2: %s', conB2);
   Logger.log('  fuera de la ventana de análisis (%s meses): %s', VENTANA_ANALISIS_MESES, fueraDeVentana);
   Logger.log('  sin poder llegar a B por el Nombre del evento: %s', sinNombreEnB);
@@ -1118,7 +1124,8 @@ function diagScores() {
   escribirHoja_diag('DIAG_SCORES', salida);
 
   const total = totalEnVentana;
-  Logger.log('=== DIAG_SCORES ===');
+  cabeceraVentana_diag('DIAG_SCORES', totalEnVentana, totalHistorico,
+    'filas del destino sin contraparte en B2');
   Logger.log('Población histórica: %s filas | candidatos evaluados por fila: %s',
              totalHistorico, b.filas.length);
   Logger.log('VENTANA DE ANÁLISIS: desde %s (%s meses) → %s filas. **Todo lo que sigue sale de',
