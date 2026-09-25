@@ -1973,22 +1973,39 @@ es finita: cada una tiene algo concreto que mirar.
 
 #### La autopsia del grupo bajo, y cuanto aporta la comuna
 
-Saber que 82 filas dieron 0,65 no alcanza: **hace falta que senal les falto**, porque de eso
-depende si el arreglo es de datos, de parser o de umbral. Y hay una hipotesis concreta que vale
-la pena confirmar o tirar:
+Saber que 82 filas dieron 0,65 no alcanza: hace falta saber **qué les costó score**. Y ahí hay
+una trampa que conviene tener clara antes de leer cualquier número.
 
-> **La diferencia entre 0,90 y 0,65 es casi exactamente el peso del barrio (0,25).** Si el grupo
-> de abajo resulta ser "todo bien salvo el barrio", **no es un problema de matching: es la
-> huella del cambio de formulario** (3.3.b), y no se arregla con el umbral.
+> ### ⚠️ Bajo normalización, una señal ausente es GRATIS
+>
+> El score es `obtenido / alcanzable`, y una señal que no se puede evaluar **sale de los dos
+> lados**. O sea:
+>
+> **una fila a la que sólo le faltara el barrio puntuaría 1,00 y ni siquiera estaría en el
+> grupo bajo.**
+>
+> La hipótesis de que el grupo de 0,65 es "todo bien salvo el barrio" —porque 0,90 − 0,65 ≈ 0,25,
+> que es el peso del barrio— **es aritméticamente imposible.** La resta engaña: el peso del
+> barrio no se resta del numerador, desaparece del cálculo.
 
-`logResumen_` desglosa ahora el grupo bajo en cuatro:
+Qué produce realmente un 0,65, calculado sobre los pesos vigentes:
 
-| | qué significa |
+| combinación | score |
 |---|---|
-| sólo le faltó el **barrio** | el formulario no lo trae. Huella del cambio de formulario |
-| sólo le faltó la **fecha** | no hay fecha comparable, o cae fuera de la última banda |
-| le faltaron **las dos** | el peor caso |
-| **tenía las dos** y aun así no llegó | eso **no** lo explica el formulario: hay que mirarlo de a uno |
+| figura + fecha exacta, sin ubicación evaluable | **1,00** |
+| figura + fecha ±1, sin ubicación | 0,91 |
+| figura + fecha ±3, sin ubicación | 0,77 |
+| **figura + fecha ±7, sin ubicación** | **0,63** ← esto |
+| **figura + fecha mala + comuna coincidente** | **0,63** ← o esto |
+| figura + fecha ±7 + comuna coincidente | 0,70 |
+
+> **El grupo bajo es un problema de FECHA, no de barrio.** Y la consecuencia práctica invierte
+> lo que esperábamos: **agregar la comuna no los rescata.** `figura + fecha±7 + comuna` da 0,70,
+> que sigue debajo de 0,88. La comuna sube el numerador **y** el denominador.
+
+Por eso `logResumen_` clasifica por **déficit**, no por ausencia: cuánto peso perdió cada señal
+**evaluable** que no coincidió del todo. Y reporta aparte la **banda de fecha** dentro del grupo
+bajo, que es el número accionable — si domina `±7`, el trabajo está en 3.3.c y no en la comuna.
 
 Y en el mismo paso mide **la comuna**, que es la señal que viene a reemplazar al barrio:
 
@@ -1998,10 +2015,13 @@ Y en el mismo paso mide **la comuna**, que es la señal que viene a reemplazar a
 - y **los casos que difieren, listados uno por uno** — con diez o quince se ve si lo que falla
   es el parser o es el dato.
 
-> **Si la comuna cubre buena parte de las 82, el grupo bajo se disuelve solo** y las 103 dejan de
-> ser trabajo de revisión manual. **El peso de 0,15 no se toca hasta tener ese número**: la
-> medición anterior (35 filas, 21 coincidían, 10 diferían) fue sobre otra población y con el
-> parser viejo, así que no dice nada sobre el estado actual.
+> **La comuna sólo rescata a las filas cuyo déficit NO era la fecha.** Si el bloque 2b muestra
+> que domina `±7`, la comuna puede tener cobertura perfecta y aun así no mover a casi nadie por
+> encima de 0,88. Hay que mirar los dos bloques juntos, no uno solo.
+>
+> **El peso de 0,15 no se toca hasta tener esos números.** La medición anterior (35 filas, 21
+> coincidían, 10 diferían) fue sobre otra población y con el parser viejo: no dice nada sobre el
+> estado actual.
 
 #### La densidad de `EMPAREJAR_MANUAL`, y por que la puerta usa Y
 

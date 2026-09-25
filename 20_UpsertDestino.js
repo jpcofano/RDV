@@ -165,7 +165,9 @@ function calcularPlan_(enSeco) {
    * si cubre buena parte de esas filas, el grupo bajo se disuelve solo.
    */
   const bajo = { total: 0, banda6a7: 0,
-                 sinBarrio: 0, sinFecha: 0, sinNinguna: 0, conLasDos: 0,
+                 porFecha: 0, porUbic: 0, porFigura: 0, porHora: 0, sinDeficitClaro: 0,
+                 fechaNoEvaluable: 0, fecha0: 0, fecha1: 0, fecha3: 0, fecha7: 0, fechaLejos: 0,
+                 sinUbicEvaluable: 0, sinHoraEvaluable: 0,
                  conComuna: 0, comunaCoincide: 0, comunaDifiere: 0, destinoSinComuna: 0 };
   const comunaDifieren = [];
   const filasRevisar = [], filasSinMatch = [], decisiones = [];
@@ -250,18 +252,37 @@ function _autopsia_(bajo, difieren, f, mejor, comunas) {
   if (mejor.score >= 0.6 && mejor.score < 0.7) bajo.banda6a7++;
 
   const c = mejor.c;
-  const bandaMax = BANDAS_FECHA[BANDAS_FECHA.length - 1].dias;
+  const pe = mejor.perdido;
 
-  // "Sin barrio" es del lado del ORIGEN: el formulario no trae barrio reconocible. Es la
-  // hipótesis del cambio de formulario (3.3.b).
-  const sinBarrio = !normalizeText_(c.barrio);
-  // "Sin fecha útil" = no hay fecha comparable, o la que hay cae fuera de la última banda.
-  const sinFecha = (mejor.dist === null) || (mejor.dist > bandaMax);
+  /*
+   * Se clasifica por **qué costó score**, no por qué falta.
+   *
+   * La primera versión contaba "le faltó el barrio" y concluía que el grupo bajo era la huella
+   * del cambio de formulario. Estaba mal: bajo normalización un barrio ausente **no cuesta
+   * nada** —sale del denominador— así que una fila a la que sólo le faltara el barrio
+   * puntuaría 1,00 y ni siquiera estaría en este grupo.
+   *
+   * Lo que sí cuesta es una señal evaluable que no coincidió: una fecha que da ±7 en vez de
+   * exacta, una hora que no coincide. Eso es lo que se mide acá.
+   */
+  const mayor = Math.max(pe.figura, pe.fecha, pe.ubic, pe.hora);
+  if (mayor <= 0) bajo.sinDeficitClaro++;
+  else if (pe.fecha === mayor)  bajo.porFecha++;
+  else if (pe.ubic === mayor)   bajo.porUbic++;
+  else if (pe.figura === mayor) bajo.porFigura++;
+  else                          bajo.porHora++;
 
-  if (sinBarrio && sinFecha) bajo.sinNinguna++;
-  else if (sinBarrio) bajo.sinBarrio++;
-  else if (sinFecha) bajo.sinFecha++;
-  else bajo.conLasDos++;
+  // Distribución de la banda de fecha dentro del grupo bajo: es el número accionable.
+  if (mejor.dist === null) bajo.fechaNoEvaluable++;
+  else if (mejor.dist === 0) bajo.fecha0++;
+  else if (mejor.dist <= 1) bajo.fecha1++;
+  else if (mejor.dist <= 3) bajo.fecha3++;
+  else if (mejor.dist <= 7) bajo.fecha7++;
+  else bajo.fechaLejos++;
+
+  // Qué señales había disponibles: dice si el techo de esa fila era alcanzable.
+  if (!mejor.evaluables.ubic) bajo.sinUbicEvaluable++;
+  if (!mejor.evaluables.hora) bajo.sinHoraEvaluable++;
 
   // La comuna, que es la señal que reemplaza al barrio.
   if (c.comuna == null) return;
@@ -333,25 +354,32 @@ function logResumen_(plan) {
   const e = plan.emp;
   const b = plan.bajo;
   if (b.total) {
-    Logger.log('--- 2b. QUÉ LE FALTÓ AL GRUPO DE SCORE BAJO (%s filas bajo el umbral, %s en ' +
+    Logger.log('--- 2b. QUÉ LE COSTÓ SCORE AL GRUPO BAJO (%s filas bajo el umbral, %s en ' +
                '0,6-0,7) ---', b.total, b.banda6a7);
-    Logger.log('  sólo le faltó el BARRIO ....... %s  (%s%% de %s)',
-               b.sinBarrio, _pct_(b.sinBarrio, b.total), b.total);
-    Logger.log('  sólo le faltó la FECHA ........ %s  (%s%%)', b.sinFecha, _pct_(b.sinFecha, b.total));
-    Logger.log('  le faltaron las dos ........... %s  (%s%%)', b.sinNinguna, _pct_(b.sinNinguna, b.total));
-    Logger.log('  tenía las dos y aun así no llegó %s  (%s%%)', b.conLasDos, _pct_(b.conLasDos, b.total));
     /*
-     * La lectura que decide el trabajo: si domina "sólo le faltó el barrio", el grupo bajo es
-     * la marca del cambio de formulario y no un problema de matching. Si domina "tenía las dos",
-     * el score está mal calibrado y hay que mirarlo.
+     * Se mide qué COSTÓ, no qué falta. Bajo normalización una señal ausente sale del
+     * denominador y no cuesta nada: una fila a la que sólo le faltara el barrio puntuaría 1,00
+     * y no estaría acá. Contar ausencias mandaba el trabajo en la dirección equivocada.
      */
-    if (b.sinBarrio > b.total / 2) {
-      Logger.log('  >>> Domina la falta de BARRIO: el grupo bajo es la huella del cambio de');
-      Logger.log('      formulario (3.3.b), no un problema de matching. No se arregla con el');
-      Logger.log('      umbral: se arregla con la comuna, o no se arregla.');
-    } else if (b.conLasDos > b.total / 3) {
-      Logger.log('  >>> %s filas tenían barrio Y fecha y aun así no llegaron. Eso NO se explica');
-      Logger.log('      por el cambio de formulario: mirarlas de a una.', b.conLasDos);
+    Logger.log('  el déficit principal fue la FECHA .... %s  (%s%% de %s)',
+               b.porFecha, _pct_(b.porFecha, b.total), b.total);
+    Logger.log('  el déficit principal fue la UBICACIÓN %s  (%s%%)', b.porUbic, _pct_(b.porUbic, b.total));
+    Logger.log('  el déficit principal fue la FIGURA ... %s  (%s%%)', b.porFigura, _pct_(b.porFigura, b.total));
+    Logger.log('  el déficit principal fue la HORA ..... %s  (%s%%)', b.porHora, _pct_(b.porHora, b.total));
+
+    Logger.log('  --- banda de fecha dentro del grupo bajo ---');
+    Logger.log('    exacta %s | ±1 %s | ±3 %s | ±7 %s | más lejos %s | no evaluable %s',
+               b.fecha0, b.fecha1, b.fecha3, b.fecha7, b.fechaLejos, b.fechaNoEvaluable);
+    Logger.log('  señales que ni siquiera eran evaluables: ubicación %s | hora %s',
+               b.sinUbicEvaluable, b.sinHoraEvaluable);
+
+    if (b.porFecha > b.total / 2) {
+      Logger.log('  >>> Domina el déficit de FECHA. El grupo bajo NO es el cambio de formulario:');
+      Logger.log('      es el parseo de fechas (3.3.c). Y ojo — agregar la comuna NO los rescata:');
+      Logger.log('      figura + fecha±7 + comuna da 0,70, sigue debajo de %s.', UMBRAL_MATCH);
+    } else if (b.porUbic > b.total / 2) {
+      Logger.log('  >>> Domina el déficit de UBICACIÓN, o sea que el barrio o la comuna estaban');
+      Logger.log('      y NO coincidían. Eso es desacuerdo de dato, no ausencia: mirar los casos.');
     }
 
     Logger.log('--- 2c. ¿CUÁNTO APORTA LA COMUNA? (la señal que reemplaza al barrio) ---');
@@ -364,14 +392,8 @@ function logResumen_(plan) {
                b.comunaCoincide, _pct_(b.comunaCoincide, b.conComuna), b.conComuna);
     Logger.log('    difiere: %s | el destino no tiene barrio del cual derivarla: %s',
                b.comunaDifiere, b.destinoSinComuna);
-    if (b.conComuna && b.comunaCoincide / b.conComuna >= 0.9) {
-      Logger.log('  >>> La comuna es confiable y cubre %s de las %s: **el grupo bajo se disuelve',
-                 b.comunaCoincide, b.total);
-      Logger.log('      solo** si se la deja puntuar. Recién ahí tiene sentido discutir el 0,15.');
-    } else if (b.conComuna) {
-      Logger.log('  >>> Coincide en menos del 90%%. Antes de tocar el peso hay que ver si lo que');
-      Logger.log('      falla es detectComuna_ o el dato. Los casos van listados abajo.');
-    }
+    Logger.log('  OJO con la aritmética: la comuna sube el numerador Y el denominador. Sólo');
+    Logger.log('  rescata a una fila si su déficit NO era la fecha. Ver el bloque 2b.');
     if (plan.comunaDifieren.length) {
       Logger.log('  --- los %s primeros casos donde la comuna DIFIERE ---',
                  plan.comunaDifieren.length);
@@ -595,9 +617,31 @@ function puntuar_(f, c, comunas) {
   const alcSinUbic = alcanzable - (sUbic > 0 || desacuerdo
     ? (bCand ? PESOS_MATCH.barrioIgual : PESOS_MATCH.comunaSinBarrio) : 0);
 
+  /*
+   * El desglose por señal, para poder saber **qué costó score** y no sólo qué faltó.
+   *
+   * Bajo normalización una señal ausente es gratis: sale del numerador y del denominador. Lo
+   * que cuesta es una señal **evaluable que no coincidió del todo**. Confundir las dos cosas
+   * manda el trabajo en la dirección equivocada.
+   */
+  const pesoUbic = (bCand && bDest) ? PESOS_MATCH.barrioIgual
+                 : ((c.comuna != null && bDest && comunas.get(bDest) != null)
+                     ? PESOS_MATCH.comunaSinBarrio : 0);
+
   return {
     c: c,
     score: redondear_(alcanzable > 0 ? obtenido / alcanzable : 0),
+    perdido: {
+      figura: redondear_(PESOS_MATCH.figura - sFig),
+      fecha:  dist === null ? 0 : redondear_(PESOS_MATCH.fechaExacta - sFecha),
+      ubic:   redondear_(pesoUbic - sUbic),
+      hora:   (f.horaMin !== null && c.horaMin !== null) ? redondear_(PESOS_MATCH.hora - sHora) : 0
+    },
+    evaluables: {
+      fecha: dist !== null,
+      ubic: pesoUbic > 0,
+      hora: (f.horaMin !== null && c.horaMin !== null)
+    },
     resto: redondear_(alcSinUbic > 0 ? (obtenido - sUbic) / alcSinUbic : 0),
     absoluto: redondear_(obtenido),
     alcanzable: redondear_(alcanzable),
