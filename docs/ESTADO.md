@@ -14,8 +14,13 @@ Rama: **`migracion`**. `main` queda intacto como referencia.
 commiteado; el proyecto de Apps Script **no está actualizado**.
 
 ```
+clasp show-file-status   # sólo appsscript.json, los .js de la raíz y diagnostico/ (ver .claspignore)
 clasp push
 ```
+
+El push **reemplaza el proyecto entero**: lo que está en `_archivo/` sale del scope global, que
+es lo buscado. El único activador vivo (`syncAgendaSheetInBaseFromAgenda_2`) está en
+`Solapa agenda base final.js`, que sí sube.
 
 Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en este orden:
 

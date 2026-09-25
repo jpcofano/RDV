@@ -2455,6 +2455,13 @@ la red que atrapa lo que el upsert nuevo deje pasar.
   `node_modules/`.
 - Un `const` top-level por nombre en todo el proyecto. Antes de `clasp push`, verificar
   que no hay duplicados en el scope global.
+- **`.claspignore` decide qué entra al scope global.** Deja afuera `_archivo/`, cualquier clon
+  anidado del repo, `docs/`, `fixtures/` y los `.md`. Sin él, `clasp push` sube `_archivo/` y
+  el código archivado vuelve a competir por nombre (3.1.c). Antes de cada push:
+  `clasp show-file-status` — tienen que aparecer sólo `appsscript.json`, los `.js` de la raíz y
+  los de `diagnostico/`. Un archivo que se archiva sale del proyecto de Apps Script en el push
+  siguiente, porque `clasp push` reemplaza el proyecto entero: **cotejar antes contra
+  [docs/triggers-legado.md](docs/triggers-legado.md)** que no tenga activador vivo.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.

@@ -1,0 +1,25 @@
+# Qué NO sube `clasp push` al proyecto de Apps Script.
+#
+# Apps Script comparte un único scope global entre todos los archivos (CLAUDE.md 3.1.c): todo lo
+# que sube compite por nombre con lo demás. Por eso esto no es prolijidad, es parte del arreglo.
+#
+# Verificar antes de cada push:   clasp show-file-status
+# Tienen que aparecer sólo appsscript.json, los .js de la raíz y los de diagnostico/.
+
+# Código archivado: está en git, pero tiene que quedar FUERA del scope global. Subirlo
+# reintroduce las copias duplicadas de toDate_, normalizeHeader_, mapBarrioCanon_, etc.
+_archivo/**
+
+# Clones o copias anidadas del repo (ej. RDV/): duplicarían cada función del proyecto.
+RDV/**
+**/.git/**
+
+# Documentación y fixtures: no son código.
+docs/**
+fixtures/**
+**/*.md
+**/*.csv
+
+# Ruido
+node_modules/**
+**/.*
