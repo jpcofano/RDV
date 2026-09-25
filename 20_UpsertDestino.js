@@ -154,6 +154,20 @@ function calcularPlan_(enSeco) {
   const res = { porUid: 0, escribiria: 0, revisar: 0, sinMatch: 0, futuras: 0,
                 escritas: 0, uidsEstampados: 0 };
   const motivos = {};
+
+  /*
+   * Autopsia del grupo de score bajo. La diferencia entre 0,90 y 0,65 es casi exactamente el
+   * peso del barrio (0,25), así que hay una hipótesis concreta a confirmar o tirar: **que el
+   * grupo de abajo sea "todo bien salvo el barrio"**, o sea la marca del cambio de formulario
+   * (3.3.b) y no un problema de matching.
+   *
+   * Y como la comuna es la señal que viene a reemplazar al barrio, se mide en el mismo paso:
+   * si cubre buena parte de esas filas, el grupo bajo se disuelve solo.
+   */
+  const bajo = { total: 0, banda6a7: 0,
+                 sinBarrio: 0, sinFecha: 0, sinNinguna: 0, conLasDos: 0,
+                 conComuna: 0, comunaCoincide: 0, comunaDifiere: 0, destinoSinComuna: 0 };
+  const comunaDifieren = [];
   const filasRevisar = [], filasSinMatch = [], decisiones = [];
   const usados = {};
   const hist = [0,0,0,0,0,0,0,0,0,0];
@@ -177,7 +191,12 @@ function calcularPlan_(enSeco) {
     }
 
     const ev = evaluarCandidatos_(f, cands.vivos, comunas);
-    if (ev.mejor) hist[Math.min(9, Math.floor(ev.mejor.score * 10))]++;
+    if (ev.mejor) {
+      hist[Math.min(9, Math.floor(ev.mejor.score * 10))]++;
+      if (ev.mejor.score < UMBRAL_MATCH) {
+        _autopsia_(bajo, comunaDifieren, f, ev.mejor, comunas);
+      }
+    }
 
     if (!ev.mejor) {
       res.sinMatch++; cuenta('sin_candidatos');
@@ -210,9 +229,54 @@ function calcularPlan_(enSeco) {
   decisiones.forEach(function (d) { if (!d.noEscribir) resueltas[d.fila.fila] = true; });
   const emp = calcularEmparejar_(dest, cands, comunas, usados, resueltas);
 
+  // Cobertura general de detectComuna_ sobre TODOS los formularios, no sólo los del grupo bajo.
+  let formsConComuna = 0;
+  for (let i = 0; i < cands.vivos.length; i++) if (cands.vivos[i].comuna != null) formsConComuna++;
+
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist,
+           bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            filasRevisar: filasRevisar, filasSinMatch: filasSinMatch,
            decisiones: decisiones, emp: emp };
+}
+
+/**
+ * Qué le faltó a una fila que no llegó al umbral.
+ *
+ * No alcanza con saber que 82 filas dieron 0,65: hace falta **qué señal les faltó**, porque de
+ * eso depende si el arreglo es de datos, de parser o de umbral.
+ */
+function _autopsia_(bajo, difieren, f, mejor, comunas) {
+  bajo.total++;
+  if (mejor.score >= 0.6 && mejor.score < 0.7) bajo.banda6a7++;
+
+  const c = mejor.c;
+  const bandaMax = BANDAS_FECHA[BANDAS_FECHA.length - 1].dias;
+
+  // "Sin barrio" es del lado del ORIGEN: el formulario no trae barrio reconocible. Es la
+  // hipótesis del cambio de formulario (3.3.b).
+  const sinBarrio = !normalizeText_(c.barrio);
+  // "Sin fecha útil" = no hay fecha comparable, o la que hay cae fuera de la última banda.
+  const sinFecha = (mejor.dist === null) || (mejor.dist > bandaMax);
+
+  if (sinBarrio && sinFecha) bajo.sinNinguna++;
+  else if (sinBarrio) bajo.sinBarrio++;
+  else if (sinFecha) bajo.sinFecha++;
+  else bajo.conLasDos++;
+
+  // La comuna, que es la señal que reemplaza al barrio.
+  if (c.comuna == null) return;
+  bajo.conComuna++;
+  const bDest = normalizeText_(f.barrio);
+  const cDest = bDest ? comunas.get(bDest) : null;
+  if (cDest == null) { bajo.destinoSinComuna++; return; }
+  if (cDest === c.comuna) bajo.comunaCoincide++;
+  else {
+    bajo.comunaDifiere++;
+    if (difieren.length < 20) {
+      difieren.push({ figura: f.figura, barrio: f.barrio, cDest: cDest,
+                      cForm: c.comuna, nombre: c.nombre });
+    }
+  }
 }
 
 // ===================== Log =====================
@@ -267,6 +331,57 @@ function logResumen_(plan) {
   Logger.log('  corte es arbitrario y conviene quedarse alto y mandar el resto a revisión.');
 
   const e = plan.emp;
+  const b = plan.bajo;
+  if (b.total) {
+    Logger.log('--- 2b. QUÉ LE FALTÓ AL GRUPO DE SCORE BAJO (%s filas bajo el umbral, %s en ' +
+               '0,6-0,7) ---', b.total, b.banda6a7);
+    Logger.log('  sólo le faltó el BARRIO ....... %s  (%s%% de %s)',
+               b.sinBarrio, _pct_(b.sinBarrio, b.total), b.total);
+    Logger.log('  sólo le faltó la FECHA ........ %s  (%s%%)', b.sinFecha, _pct_(b.sinFecha, b.total));
+    Logger.log('  le faltaron las dos ........... %s  (%s%%)', b.sinNinguna, _pct_(b.sinNinguna, b.total));
+    Logger.log('  tenía las dos y aun así no llegó %s  (%s%%)', b.conLasDos, _pct_(b.conLasDos, b.total));
+    /*
+     * La lectura que decide el trabajo: si domina "sólo le faltó el barrio", el grupo bajo es
+     * la marca del cambio de formulario y no un problema de matching. Si domina "tenía las dos",
+     * el score está mal calibrado y hay que mirarlo.
+     */
+    if (b.sinBarrio > b.total / 2) {
+      Logger.log('  >>> Domina la falta de BARRIO: el grupo bajo es la huella del cambio de');
+      Logger.log('      formulario (3.3.b), no un problema de matching. No se arregla con el');
+      Logger.log('      umbral: se arregla con la comuna, o no se arregla.');
+    } else if (b.conLasDos > b.total / 3) {
+      Logger.log('  >>> %s filas tenían barrio Y fecha y aun así no llegaron. Eso NO se explica');
+      Logger.log('      por el cambio de formulario: mirarlas de a una.', b.conLasDos);
+    }
+
+    Logger.log('--- 2c. ¿CUÁNTO APORTA LA COMUNA? (la señal que reemplaza al barrio) ---');
+    Logger.log('  cobertura general de detectComuna_: %s de %s formularios (%s%%)',
+               plan.formsConComuna, plan.cands.vivos.length,
+               _pct_(plan.formsConComuna, plan.cands.vivos.length));
+    Logger.log('  en el grupo bajo: %s de %s tienen comuna en el nombre (%s%%)',
+               b.conComuna, b.total, _pct_(b.conComuna, b.total));
+    Logger.log('    de esas, coincide con la comuna del barrio del destino: %s (%s%% de %s)',
+               b.comunaCoincide, _pct_(b.comunaCoincide, b.conComuna), b.conComuna);
+    Logger.log('    difiere: %s | el destino no tiene barrio del cual derivarla: %s',
+               b.comunaDifiere, b.destinoSinComuna);
+    if (b.conComuna && b.comunaCoincide / b.conComuna >= 0.9) {
+      Logger.log('  >>> La comuna es confiable y cubre %s de las %s: **el grupo bajo se disuelve',
+                 b.comunaCoincide, b.total);
+      Logger.log('      solo** si se la deja puntuar. Recién ahí tiene sentido discutir el 0,15.');
+    } else if (b.conComuna) {
+      Logger.log('  >>> Coincide en menos del 90%%. Antes de tocar el peso hay que ver si lo que');
+      Logger.log('      falla es detectComuna_ o el dato. Los casos van listados abajo.');
+    }
+    if (plan.comunaDifieren.length) {
+      Logger.log('  --- los %s primeros casos donde la comuna DIFIERE ---',
+                 plan.comunaDifieren.length);
+      plan.comunaDifieren.forEach(function (d) {
+        Logger.log('    destino: %s / %s (comuna %s)  vs  form: comuna %s | %s',
+                   d.figura, d.barrio || 'sin barrio', d.cDest, d.cForm, d.nombre);
+      });
+    }
+  }
+
   Logger.log('--- 3. EMPAREJAR_MANUAL ---');
   Logger.log('  pares propuestos ............ %s', e.pares);
   /*

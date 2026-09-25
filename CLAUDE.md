@@ -1971,6 +1971,38 @@ tienen barrio y tienen la fecha rota.
 Esas 103 van a `EMPAREJAR_MANUAL`, que existe para eso. Y con **cero sin-candidato**, la revision
 es finita: cada una tiene algo concreto que mirar.
 
+#### La autopsia del grupo bajo, y cuanto aporta la comuna
+
+Saber que 82 filas dieron 0,65 no alcanza: **hace falta que senal les falto**, porque de eso
+depende si el arreglo es de datos, de parser o de umbral. Y hay una hipotesis concreta que vale
+la pena confirmar o tirar:
+
+> **La diferencia entre 0,90 y 0,65 es casi exactamente el peso del barrio (0,25).** Si el grupo
+> de abajo resulta ser "todo bien salvo el barrio", **no es un problema de matching: es la
+> huella del cambio de formulario** (3.3.b), y no se arregla con el umbral.
+
+`logResumen_` desglosa ahora el grupo bajo en cuatro:
+
+| | qué significa |
+|---|---|
+| sólo le faltó el **barrio** | el formulario no lo trae. Huella del cambio de formulario |
+| sólo le faltó la **fecha** | no hay fecha comparable, o cae fuera de la última banda |
+| le faltaron **las dos** | el peor caso |
+| **tenía las dos** y aun así no llegó | eso **no** lo explica el formulario: hay que mirarlo de a uno |
+
+Y en el mismo paso mide **la comuna**, que es la señal que viene a reemplazar al barrio:
+
+- **cobertura general** de `detectComuna_` sobre los 776 formularios;
+- **cobertura en el grupo bajo**: cuántas de esas filas tienen comuna en el nombre;
+- de esas, en cuántas **coincide** con la comuna que deriva del barrio del destino;
+- y **los casos que difieren, listados uno por uno** — con diez o quince se ve si lo que falla
+  es el parser o es el dato.
+
+> **Si la comuna cubre buena parte de las 82, el grupo bajo se disuelve solo** y las 103 dejan de
+> ser trabajo de revisión manual. **El peso de 0,15 no se toca hasta tener ese número**: la
+> medición anterior (35 filas, 21 coincidían, 10 diferían) fue sobre otra población y con el
+> parser viejo, así que no dice nada sobre el estado actual.
+
 #### La densidad de `EMPAREJAR_MANUAL`, y por que la puerta usa Y
 
 La primera version proponia un par si compartia figura **o** caia dentro de +-21 dias. Resultado:
