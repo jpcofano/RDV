@@ -17,13 +17,16 @@ commiteado; el proyecto de Apps Script **no está actualizado**.
 clasp push
 ```
 
-Y después, en el editor, en este orden:
+Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en este orden:
 
-| # | qué correr | qué hace | escribe? |
-|---|---|---|---|
-| 1 | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados |
-| 2 | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
-| 3 | `diagCorteB()` | mide la regla del mes contra las `fecha_mal_parseada` | no, sólo lectura |
+| # | qué correr | llama a | qué hace | escribe? |
+|---|---|---|---|---|
+| 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
+| 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide la regla del mes contra las `fecha_mal_parseada` | no toca el destino; escribe `DIAG_CORTE_B` |
+
+Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
+`paso2_rehacer_emparejarManual()` o `paso2_rehacer_sinMatch()`, que rehacen sólo ése.
 
 **`DRY_RUN = true` en [20_UpsertDestino.js](../20_UpsertDestino.js).** No se cambia hasta haber
 leído los números de la corrida en seco.
@@ -130,6 +133,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -140,6 +144,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/02_corte_B_a_B2.js](../diagnostico/02_corte_B_a_B2.js) | `diagCorteB()`, `diagDupB2()`, `diagFechaFin()`, `diagScores()`, `diagAnclaFecha()` |
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
 
+Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
 `diagAnclaFecha()` queda como registro de una medición cerrada. **No hace falta volver a
 correrlo**: el ancla está descartada (3.3.c).
 
@@ -199,5 +204,5 @@ en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
 > **Si el próximo commit de código invalida algo que dice `CLAUDE.md`, el documento se corrige en
 > ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-En esta migración cambiamos de premisa seis veces. Entre la medición y la actualización, el
+En esta migración cambiamos de premisa siete veces. Entre la medición y la actualización, el
 documento decía algo falso — y ése es justo el momento en que alguien lo abre para decidir.

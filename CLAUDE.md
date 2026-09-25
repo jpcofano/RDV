@@ -1761,6 +1761,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
+99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú
 diagnostico/       reportes de sólo lectura de las Fases 1 y 1b                 ← ya escrito
 _archivo/          código muerto, fuera del scope global
@@ -2457,6 +2458,26 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.
+
+### `99_Correr.js`: el único lugar que se abre para correr algo
+
+Todo lo que hay que ejecutar a mano desde el editor tiene un wrapper en
+[99_Correr.js](99_Correr.js), nombrado para que el desplegable se lea como una secuencia
+(`paso1_…`, `paso2_…`, `paso3_…`; y abajo `rehacer_…` para los diagnósticos ya corridos). El
+encabezado del archivo dice la secuencia completa y el estado de `DRY_RUN`, así quien lo abre
+sabe dónde está parado sin leer `docs/ESTADO.md`.
+
+Dos reglas:
+
+- **Nada de lógica propia.** Cada wrapper llama a una función y loguea qué hace, si escribe y
+  dónde deja la salida. Un wrapper que calcula algo deja de ser un índice y pasa a ser un lugar
+  más donde el criterio se puede desincronizar — la forma del bug de `mapBarrioCanon_` (3.1.h).
+- **Se actualiza en el mismo commit en que cambia qué hay que correr**, igual que este
+  documento y `docs/ESTADO.md`. Un índice que manda a correr lo que ya no corresponde es peor
+  que no tener índice.
+
+El prefijo `99_` es a propósito: carga último y no define nada que otro archivo use, así que no
+puede pisar nada.
 
 ### Documentar a medida, no al final
 
