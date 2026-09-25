@@ -166,7 +166,21 @@ const BANDAS_FECHA = [
 ];
 
 /**
- * **PROVISORIOS.** Puestos a ojo, no medidos.
+ * `UMBRAL_MATCH` ya **no es provisorio: sale de un valle medido**, no de una elección.
+ *
+ * La corrida en seco del 2026-09-25 mostró dos poblaciones separadas y un hueco limpio entre
+ * ellas:
+ *
+ *     >= 0.90   690 filas   ← los matches buenos
+ *     0.80-0.90   2 filas   ← el valle
+ *     ~0.65      82 filas   ← a las que les falta una señal entera
+ *
+ * Con 0.75 los 16 casos de la zona 0.70-0.80 entraban **sin razón clara**, que es exactamente la
+ * zona gris que un umbral tiene que evitar. En 0.88 el corte cae adentro del valle: mueve el
+ * resultado lo mínimo posible ante un cambio chico del umbral, que es la propiedad que uno
+ * quiere de un corte.
+ *
+ * `MARGEN_MINIMO` sigue puesto a ojo.
  *
  * Se calibran corriendo `diagScores()` (diagnostico/02_corte_B_a_B2.js) contra las 103 filas de
  * DIAG_CORTE_B y mirando la distribución real: cuántas superarían el umbral, con qué margen, y
@@ -182,7 +196,7 @@ const BANDAS_FECHA = [
  * Decide el umbral **más el margen contra el segundo candidato**, no la unicidad: que haya un
  * solo candidato no lo vuelve correcto, y que haya varios no vuelve al mejor incorrecto.
  */
-const UMBRAL_MATCH  = 0.75;
+const UMBRAL_MATCH  = 0.88;
 const MARGEN_MINIMO = 0.15;
 
 /** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */

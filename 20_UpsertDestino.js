@@ -266,11 +266,36 @@ function logResumen_(plan) {
   Logger.log('  Buscar un valle en la distribución: ahí va el umbral. Si es continua, cualquier');
   Logger.log('  corte es arbitrario y conviene quedarse alto y mandar el resto a revisión.');
 
+  const e = plan.emp;
   Logger.log('--- 3. EMPAREJAR_MANUAL ---');
-  Logger.log('  pares propuestos ............ %s', plan.emp.pares);
-  Logger.log('  formularios sin candidato ... %s', plan.emp.formulariosHuerfanos);
-  Logger.log('  filas del destino sin ninguno %s', plan.emp.filasHuerfanas);
+  Logger.log('  pares propuestos ............ %s', e.pares);
+  /*
+   * La densidad es la métrica que faltaba. 1.883 pares sonaba a "mucho trabajo"; 18 por fila
+   * dice que la lista es inutilizable. El objetivo es 2 a 4.
+   */
+  const porFila = e.filasConPropuesta ? Math.round(e.pares * 10 / e.filasConPropuesta) / 10 : 0;
+  const porForm = e.formulariosConPropuesta
+    ? Math.round(e.pares * 10 / e.formulariosConPropuesta) / 10 : 0;
+  Logger.log('  DENSIDAD: %s pares por fila del destino (%s filas con propuesta)',
+             porFila, e.filasConPropuesta);
+  Logger.log('            %s pares por formulario (%s formularios con propuesta)',
+             porForm, e.formulariosConPropuesta);
+  if (porFila > 5) {
+    Logger.log('  >>> Más de 5 por fila: la lista no se puede trabajar. La puerta está demasiado');
+    Logger.log('      laxa — revisar `proponible` en puntuar_(). El objetivo es 2 a 4.');
+  }
+  Logger.log('  formularios sin candidato ... %s', e.formulariosHuerfanos);
+  Logger.log('  filas del destino sin ninguno %s', e.filasHuerfanas);
   Logger.log('  Esos dos últimos son lo que el sistema no puede resolver NI con ayuda humana.');
+
+  // Con pocos casos se puede entender qué les pasa, así que se listan enteros.
+  if (e.huerfanos && e.huerfanos.length && e.huerfanos.length <= 40) {
+    Logger.log('  --- los %s formularios huérfanos, uno por uno ---', e.huerfanos.length);
+    e.huerfanos.forEach(function (c) {
+      Logger.log('    %s | ins=%s | %s', fmtFecha_(c.det.mejor) || 'sin fecha',
+                 c.inscriptos, c.nombre);
+    });
+  }
 }
 
 function _pct_(n, d) {
@@ -438,7 +463,18 @@ function puntuar_(f, c, comunas) {
    */
   const bandaMax = BANDAS_FECHA[BANDAS_FECHA.length - 1].dias;
   const relevante  = (sFig > 0) || (dist !== null && dist <= bandaMax);
-  const proponible = (sFig > 0) || (dist !== null && dist <= VENTANA_EMPAREJAR_DIAS);
+
+  /*
+   * `proponible` usa **Y**, no O. La primera versión proponía un par si compartía figura **o**
+   * caía en ±21 días, y con eso entraba cualquier reunión de la misma figura del último año:
+   * 1.883 pares para 103 filas, o sea 18 por fila. Una lista así no la mira nadie, y una lista
+   * que nadie mira es peor que no tenerla — ocupa el lugar de la que sí serviría.
+   *
+   * Con **Y** el número baja a un orden trabajable. Y si alguna fila se queda sin par
+   * propuesto, aparece en el bloque de huérfanas: **es información honesta**, a diferencia de
+   * 18 pares falsos.
+   */
+  const proponible = (sFig > 0) && (dist !== null && dist <= VENTANA_EMPAREJAR_DIAS);
 
   const obtenido = sFig + sFecha + sUbic + sHora;
   const alcSinUbic = alcanzable - (sUbic > 0 || desacuerdo
@@ -485,7 +521,6 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   });
 
   const grupos = [];
-  let formulariosHuerfanos = 0;
 
   for (let i = 0; i < cands.vivos.length; i++) {
     const c = cands.vivos[i];
@@ -500,7 +535,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
       props.push({ f: f, sc: sc });
     }
 
-    if (!props.length) { formulariosHuerfanos++; continue; }
+    if (!props.length) continue;
     props.sort(function (a, b) { return b.sc.score - a.sc.score; });
     grupos.push({ c: c, props: props, mejor: props[0].sc.score });
   }
@@ -522,6 +557,15 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   grupos.forEach(function (g) { g.props.forEach(function (p) { conPropuesta[p.f.fila] = true; }); });
   const filasHuerfanas = librosDestino.filter(function (f) { return !conPropuesta[f.fila]; });
 
+  // Los formularios que no matchean con nada. Es el único conjunto verdaderamente
+  // irresoluble, y por eso se listan enteros: con pocos casos se puede entender qué les pasa.
+  const huerfanos = [];
+  for (let i = 0; i < cands.vivos.length; i++) {
+    const c = cands.vivos[i];
+    if (usados[c.fila]) continue;
+    if (!grupos.some(function (g) { return g.c.fila === c.fila; })) huerfanos.push(c);
+  }
+
   /*
    * Los dos bloques del final son la medida de lo que el sistema NO puede resolver ni con
    * ayuda humana. Si son grandes, falta información que no está en ninguno de los dos lados —
@@ -532,14 +576,11 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   filas.forEach(function (r) { salida.push(r); });
 
   salida.push(['', '', '', '', '', '', '', '']);
-  salida.push(['--- FORMULARIOS SIN NINGÚN CANDIDATO (' + formulariosHuerfanos + ') ---',
+  salida.push(['--- FORMULARIOS SIN NINGÚN CANDIDATO (' + huerfanos.length + ') ---',
                '', '', '', '', '', '', '']);
-  for (let i = 0; i < cands.vivos.length; i++) {
-    const c = cands.vivos[i];
-    if (usados[c.fila]) continue;
-    const tieneGrupo = grupos.some(function (g) { return g.c.fila === c.fila; });
-    if (!tieneGrupo) salida.push([c.nombre, c.inscriptos, '', '', '', '', '', '']);
-  }
+  huerfanos.forEach(function (c) {
+    salida.push([c.nombre, c.inscriptos, '', '', fmtFecha_(c.det.mejor), '', '', '']);
+  });
 
   salida.push(['', '', '', '', '', '', '', '']);
   salida.push(['--- FILAS DEL DESTINO SIN NINGÚN CANDIDATO (' + filasHuerfanas.length + ') ---',
@@ -549,7 +590,10 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   });
 
   // Sólo calcula. La escritura la hace escribirReportes_, para poder reintentarla sola.
-  return { matriz: salida, pares: filas.length, formulariosHuerfanos: formulariosHuerfanos,
+  return { matriz: salida, pares: filas.length, huerfanos: huerfanos,
+           formulariosHuerfanos: huerfanos.length,
+           filasConPropuesta: Object.keys(conPropuesta).length,
+           formulariosConPropuesta: grupos.length,
            filasHuerfanas: filasHuerfanas.length };
 }
 

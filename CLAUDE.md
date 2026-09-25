@@ -724,6 +724,14 @@ quedan **descartadas**: ninguna fila del hueco llegó a B2 con datos.
 > `barrio_no_reconocido` (llegó pero no se pudo indexar). La primera es la que crece con el
 > pipeline caído.
 
+> **Ninguna fila del destino es irrecuperable.** La corrida en seco del 25/09 dio
+> **`0 sin_candidatos`**: para las 802 filas el sistema puede proponer al menos un candidato.
+> Las 103 que no se escriben solas **tienen candidato y lo rechaza el umbral** (Fase 5).
+>
+> Lo irresoluble son **11 formularios huerfanos** — del lado del origen, no de la base. Es un
+> conjunto chico y enumerable, y el log los lista uno por uno con fecha, inscriptos y nombre.
+> Eso es una conversacion con quien carga los formularios, no un problema de codigo.
+
 **`Para Revisar` es un espejo del destino**, no un reservorio: 802 claves, las mismas, cero
 duplicadas. No tiene filas que el destino no tenga, así que **no sirve como fuente del backfill**
 — hay que ir a `B` y, si hace falta, al origen.
@@ -1826,13 +1834,23 @@ Se puede hacer ahora, antes de la Fase 3, porque **no choca con nada**:
 
 Qué hace, y qué deja para después:
 
-1. agregar `RDV_UID` al final del destino, de A2 y de B2;
-2. **estampar las filas que hoy matchean por clave natural** — las ~699. Sin score, sin
-   umbrales, sin decisiones: donde hay una correspondencia inequívoca, se ancla;
-3. **no tocar el residuo.** Las ~103 sin contraparte quedan para la Fase 5, que es donde está
-   la maquinaria de score.
+**`correrFase2b()`, en `05_Escritura.js`.** Agrega las cinco columnas de `COLUMNAS_TRAZA` que
+falten, **solo el encabezado, en la primera columna libre al final**. Nunca
+`insertColumnBefore`: desplazar una columna correria los fondos respecto de sus filas (seccion
+6). Es idempotente — volver a correrlo no hace nada.
 
-Verificación: contar los uuids estampados y que ninguna fila tenga dos.
+> **Cambio respecto de la version anterior de esta fase: el estampado ya no va aca.**
+>
+> Estaba planteado como "estampar las ~699 que matchean por clave natural, sin score". Con la
+> corrida en seco hecha, eso seria un **segundo mecanismo de estampado** al lado del que ya
+> tiene el upsert, decidiendo con un criterio distinto sobre el mismo conjunto. Dos caminos que
+> escriben la misma columna con reglas diferentes es exactamente lo que produjo los dos
+> `mapBarrioCanon_` (3.1.h).
+>
+> **El estampado lo hace la primera corrida del upsert con `DRY_RUN = false`**, que es el unico
+> lugar que decide que matchea. Esta fase solo prepara el lugar donde escribir.
+
+Verificacion: correr `correrEnSeco()` despues, y que el aviso de columnas faltantes desaparezca.
 
 > Lo que se gana es irreversible en el buen sentido: una vez estampado, **el origen puede
 > cambiar lo que quiera** y esa fila sigue siendo encontrable. Es la única parte del plan que
@@ -1899,6 +1917,75 @@ Dos detalles que no son cosméticos:
 **La lección, que vale más allá de este archivo:** cuando un cálculo caro alimenta una escritura
 frágil, el resultado se loguea antes de escribirlo. Si no, una falla de infraestructura se lleva
 puesto trabajo que ya estaba hecho y era correcto.
+
+#### El resultado de la corrida en seco (2026-09-25)
+
+```
+base: 802 filas del destino · candidatos en B: 776 (3 anulados por NO USAR)
+
+escribiría   654   81,5%
+a revisar     45    5,6%    40 margen_chico + 5 multi_figura
+sin match    103   12,8%    103 score_bajo · 0 sin_candidatos
+                            ^ ninguna es irrecuperable
+
+formularios sin candidato: 11 | filas del destino sin ninguno: 0
+```
+
+> **`0 sin_candidatos` es el numero que mas cambia el panorama.** El sistema **puede proponer
+> algo para el 100% de las filas del destino**. Lo que queda verdaderamente irresoluble son
+> **11 formularios huerfanos** — no filas de la base.
+>
+> Da vuelta la hipotesis con la que veniamos: esperabamos que las 103 no tuvieran con que
+> emparejarse. Tienen candidato; lo rechaza el umbral. El problema no era falta de informacion,
+> era el corte.
+
+#### El umbral sale de un valle medido: 0,88
+
+La distribucion de scores tiene **dos poblaciones separadas por un hueco limpio**:
+
+| score | filas | |
+|---|---|---|
+| >= 0,90 | **690** | los matches buenos |
+| 0,80-0,90 | **2** | el valle |
+| ~0,65 | **82** | les falta una senal entera |
+
+`UMBRAL_MATCH` pasa de **0,75 a 0,88**. Con 0,75 los 16 casos de la zona 0,70-0,80 entraban
+**sin razon clara**, que es exactamente la zona gris que un umbral deberia evitar. En 0,88 el
+corte cae **adentro del valle**, o sea donde mover el umbral un poco no cambia el resultado —
+que es la propiedad que uno quiere de un corte.
+
+**No es una eleccion: es una medicion.** Y por eso `UMBRAL_MATCH` deja de estar marcado como
+provisorio. `MARGEN_MINIMO` sigue a ojo.
+
+#### Por que NO se baja el umbral para capturar las 103
+
+Es la tentacion obvia y hay que nombrarla para descartarla:
+
+> **Un score de 0,65 no es "casi bien": es una fila a la que le falta una senal entera.**
+
+Con la normalizacion, 0,65 sobre las senales disponibles significa que **una de las que habia no
+coincidio**. Bajar el corte para incluirlas es **escribir con menos evidencia justo donde
+sabemos que los datos estan mal** — las 103 son precisamente las filas del hueco, las que no
+tienen barrio y tienen la fecha rota.
+
+Esas 103 van a `EMPAREJAR_MANUAL`, que existe para eso. Y con **cero sin-candidato**, la revision
+es finita: cada una tiene algo concreto que mirar.
+
+#### La densidad de `EMPAREJAR_MANUAL`, y por que la puerta usa Y
+
+La primera version proponia un par si compartia figura **o** caia dentro de +-21 dias. Resultado:
+**1.883 pares para 103 filas, o sea 18 por fila.** Con ese criterio entra cualquier reunion de la
+misma figura del ultimo ano.
+
+> **Una lista que nadie mira es peor que no tenerla: ocupa el lugar de la que si serviria.**
+
+La puerta pasa a **Y**: misma figura **y** dentro de +-21 dias. Y si alguna fila se queda sin par
+propuesto, aparece en el bloque de huerfanas — **es informacion honesta**, a diferencia de 18
+pares falsos.
+
+El log reporta ahora la **densidad** (pares por fila y por formulario) y avisa si pasa de 5. Era
+la metrica que faltaba: *1.883* sonaba a "mucho trabajo", *18 por fila* dice que la lista es
+inutilizable. El objetivo es **2 a 4**.
 
 #### Lo que dio la corrida parcial del 25/09
 

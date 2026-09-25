@@ -99,6 +99,55 @@ function marcarRealizada_(rangoStatus, asistentes) {
   return true;
 }
 
+// ===================== Fase 2b: las columnas de traza =====================
+
+/**
+ * Agrega al destino las cinco columnas de `COLUMNAS_TRAZA` que falten. **Correr una sola vez.**
+ *
+ * Es idempotente: las que ya están no se tocan, y volver a correrlo no hace nada.
+ *
+ * --- Por qué es seguro, y por qué igual vive acá ---
+ * Escribe **sólo el encabezado, en la primera columna libre al final**. Nunca
+ * `insertColumnBefore` ni nada que desplace: las once fórmulas de array viven en `D`, `W`, `X`,
+ * `Y` y `AA`–`AG`, todas antes, y **desplazar una columna correría los fondos respecto de sus
+ * filas** (CLAUDE.md 6). Agregar al final no mueve una sola celda existente.
+ *
+ * Vive en `05_Escritura.js` aunque no use `setSiDelSistema_` porque **es una escritura al
+ * destino**, y la regla es que todas estén en este archivo para poder auditarlas de un grep.
+ * No pasa por el helper porque no escribe datos: escribe estructura, una vez.
+ *
+ * Después de esto, la próxima corrida del upsert ya tiene dónde estampar.
+ */
+function correrFase2b() {
+  const sh = SpreadsheetApp.openById(RDV_SS_DESTINO).getSheetByName(RDV_HOJA_DESTINO);
+  if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');
+
+  const nCols = sh.getLastColumn();
+  const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0];
+  const presentes = {};
+  hdr.forEach(function (h) { presentes[normalizeHeader_(h)] = true; });
+
+  const faltan = COLUMNAS_TRAZA.filter(function (c) { return !presentes[normalizeHeader_(c)]; });
+
+  Logger.log('=== Fase 2b: columnas de traza ===');
+  Logger.log('El destino tiene %s columnas. De las %s de traza, faltan %s.',
+             nCols, COLUMNAS_TRAZA.length, faltan.length);
+
+  if (!faltan.length) {
+    Logger.log('>>> Nada que hacer: las cinco ya están.');
+    return { agregadas: 0 };
+  }
+
+  sh.getRange(1, nCols + 1, 1, faltan.length).setValues([faltan]);
+  SpreadsheetApp.flush();
+
+  Logger.log('>>> Agregadas al final, a partir de la columna %s: %s', nCols + 1, faltan.join(', '));
+  Logger.log('No se movió ninguna celda existente: sólo encabezados en columnas libres.');
+  Logger.log('El estampado de los uuids NO lo hace esta función — lo hace la primera corrida');
+  Logger.log('del upsert con DRY_RUN = false, que es el único lugar que decide qué matchea.');
+  return { agregadas: faltan.length, columnas: faltan };
+}
+
 /** Comparación de estados sin acentos, sin mayúsculas y sin espacios de más. */
 function normStatus_(s) {
   return String(s == null ? '' : s)
