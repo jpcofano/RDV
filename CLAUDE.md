@@ -1873,6 +1873,56 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 > justamente las filas que no pudo indexar (3.1.f), así que buscar ahí sería heredar el problema
 > que venimos a resolver.
 
+#### Calcular, loguear, escribir — en ese orden
+
+La primera corrida en seco (25/09) murió con `Service Spreadsheets timed out` **escribiendo el
+segundo reporte**, y se llevó puestos los tres números que hacían falta, que ya estaban
+calculados. Es la segunda vez que pasa: la misma excepción tiró `diagFase1()` el 22/09.
+
+La estructura que quedó:
+
+1. **`calcularPlan_()`** hace todo el trabajo caro —802 × 776 evaluaciones— **en memoria**, sin
+   tocar una celda;
+2. **`logResumen_()`** imprime los tres números **antes de escribir nada**. Si después se cae el
+   servicio, la corrida sirvió igual;
+3. **`escribirReportes_()`** escribe cada solapa **aislada en su try/catch**, con reintento y
+   espera. Una caída no se lleva a las otras, y el log dice cuál rehacer.
+
+Dos detalles que no son cosméticos:
+
+- **`SIN_MATCH` va último.** Es el que más filas escribe (103 en la corrida real), así que es el
+  más probable que falle. Antes iba primero y arrastraba a los otros dos.
+- **Un entry point por reporte** —`soloRevisarMatch()`, `soloEmparejarManual()`,
+  `soloSinMatch()`— para rehacer uno sin recalcular los otros. Recalcular cuesta segundos, pero
+  volver a jugarse a que el servicio ande, no.
+
+**La lección, que vale más allá de este archivo:** cuando un cálculo caro alimenta una escritura
+frágil, el resultado se loguea antes de escribirlo. Si no, una falla de infraestructura se lleva
+puesto trabajo que ya estaba hecho y era correcto.
+
+#### Lo que dio la corrida parcial del 25/09
+
+Alcanzó a calcular todo antes de caerse:
+
+```
+Destino: 802 filas con datos | candidatos en B: 776 (3 anulados por "NO USAR")
+SIN_MATCH: 103 filas
+```
+
+**103 es exactamente la población de `DIAG_CORTE_B`** — las filas del destino sin contraparte en
+B2. Con los umbrales provisorios, **el score no recuperó ninguna**.
+
+Hay dos lecturas y todavía no sabemos cuál es:
+
+| si | entonces |
+|---|---|
+| esas 103 salieron por **`score_bajo`** | tienen candidato y lo rechaza el 0,75. Bajar el umbral las recupera |
+| salieron por **`sin_candidatos`** | no hay con qué emparejarlas y **ningún umbral las salva** |
+
+Por eso `logResumen_` ahora desglosa `SIN_MATCH` por motivo y dice explícitamente cuál de las
+dos es. Es la diferencia entre "el umbral está mal calibrado" y "falta información en el
+origen", que llevan a trabajos completamente distintos.
+
 - `20_UpsertDestino.js` con match uuid → score → `SIN_MATCH`.
 - **Toda escritura por `setSiDelSistema_`. Cero `setValue` sueltos.** Revisar el diff con
   `grep -rn "setValue\|setValues" 20_UpsertDestino.js` — tiene que dar cero.

@@ -32,6 +32,25 @@
  * Depende de `00_Config.js`, `01_Utils.js`, `02_Parsing.js` y `05_Escritura.js`.
  */
 
+/*
+ * Handles de planilla, abiertos una sola vez por ejecución.
+ *
+ * `openById()` es una llamada al servicio, y la corrida del 25/09 se cayó con
+ * `Service Spreadsheets timed out` después de abrir la intermedia cinco veces en la misma
+ * ejecución. Menos aperturas, menos superficie para que el servicio falle.
+ */
+var _ssDestino_ = null, _ssIntermedia_ = null;
+
+function ssDestino_() {
+  if (!_ssDestino_) _ssDestino_ = SpreadsheetApp.openById(RDV_SS_DESTINO);
+  return _ssDestino_;
+}
+
+function ssIntermedia_() {
+  if (!_ssIntermedia_) _ssIntermedia_ = SpreadsheetApp.openById(RDV_SS_INTERMEDIA);
+  return _ssIntermedia_;
+}
+
 /**
  * **Poner en `false` recién cuando los números de la corrida en seco estén revisados.**
  * Mientras esté en `true`, no hay forma de que este archivo toque el destino.
@@ -40,22 +59,85 @@ const DRY_RUN = true;
 
 // ===================== Puntos de entrada =====================
 
-/** Corre el upsert. Respeta `DRY_RUN`. */
+/** Corre el upsert entero. Respeta `DRY_RUN`. */
 function upsertDestino() {
   return _correrUpsert_(DRY_RUN);
 }
 
-/** Corrida en seco explícita, sin importar cómo esté `DRY_RUN`. Para calibrar. */
+/** Corrida en seco explícita, sin importar cómo esté `DRY_RUN`. Es la que calibra. */
 function correrEnSeco() {
   return _correrUpsert_(true);
 }
 
+/*
+ * Un entry point por reporte. Recalculan y escriben **sólo el suyo**.
+ *
+ * Existen porque una escritura que falla no tiene por qué obligar a rehacer las otras dos. El
+ * cálculo tarda 4 segundos y es determinista; lo frágil es el servicio de Sheets.
+ */
+function soloRevisarMatch()    { return _soloUno_(RDV_HOJA_REVISAR); }
+function soloEmparejarManual() { return _soloUno_(RDV_HOJA_EMPAREJAR); }
+function soloSinMatch()        { return _soloUno_(RDV_HOJA_SIN_MATCH); }
+
+function _soloUno_(cual) {
+  const plan = calcularPlan_(true);
+  logResumen_(plan);
+  const fallaron = [];
+  escribirReportes_(plan, fallaron, [cual]);
+  if (fallaron.length) throw new Error('No se pudo escribir ' + cual);
+  return plan.res;
+}
+
 // ===================== El upsert =====================
 
+/**
+ * Orquestador. **Calcula primero, loguea después, escribe al final** — en ese orden y no en
+ * otro.
+ *
+ * La corrida del 25/09 murió escribiendo el segundo reporte y se llevó puestos los tres
+ * números que hacían falta, que ya estaban calculados. No pasa más: para cuando se toca la
+ * primera solapa, el log ya tiene todo.
+ */
 function _correrUpsert_(enSeco) {
   const t0 = new Date();
   Logger.log('=== upsertDestino (%s) ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL');
 
+  const plan = calcularPlan_(enSeco);
+  logResumen_(plan);                 // ← ANTES de escribir nada
+
+  if (!enSeco) {
+    const w = aplicarDecisiones_(plan.dest, plan.decisiones);
+    plan.res.escritas = w.celdas;
+    plan.res.uidsEstampados = w.uids;
+    Logger.log('>>> Escritas %s celdas en el destino, %s uuids estampados.', w.celdas, w.uids);
+  } else {
+    Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones calculadas y no ' +
+               'aplicadas.', plan.decisiones.length);
+  }
+
+  const fallaron = [];
+  escribirReportes_(plan, fallaron, null);
+  if (fallaron.length) {
+    Logger.log('>>> NO se pudieron escribir: %s. Los demás reportes SÍ quedaron escritos, y los',
+               fallaron.join(', '));
+    Logger.log('    números de arriba son válidos igual. Para rehacer sólo uno: %s',
+               'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
+  }
+
+  Logger.log('%s ms', new Date() - t0);
+  return plan.res;
+}
+
+// ===================== Cálculo =====================
+
+/**
+ * Todo el trabajo caro, en memoria. **No escribe una sola celda.**
+ *
+ * Son 802 × 776 evaluaciones y tarda unos segundos; separarlo de la escritura es lo que permite
+ * reintentar una solapa sin volver a calcular, y lo que permite loguear los resultados aunque
+ * después falle el servicio de Sheets.
+ */
+function calcularPlan_(enSeco) {
   const dest = leerDestino_();
   const cands = leerCandidatos_();
   const comunas = leerComunasMap_();
@@ -63,20 +145,20 @@ function _correrUpsert_(enSeco) {
   Logger.log('Destino: %s filas con datos | candidatos en B: %s (%s anulados por "%s")',
              dest.filas.length, cands.vivos.length, cands.anulados, MARCA_ANULADO);
 
-  // --- confirmaciones pendientes de EMPAREJAR_MANUAL ---
   const confirmados = leerConfirmaciones_();
   if (confirmados.size) {
-    Logger.log('Confirmaciones a mano encontradas en %s: %s', RDV_HOJA_EMPAREJAR, confirmados.size);
+    Logger.log('Confirmaciones a mano en %s: %s', RDV_HOJA_EMPAREJAR, confirmados.size);
     if (enSeco) Logger.log('  (DRY_RUN: se cuentan pero no se estampan)');
   }
 
-  const res = {
-    porUid: 0, escribiria: 0, revisar: 0, sinMatch: 0, futuras: 0,
-    escritas: 0, uidsEstampados: 0
-  };
+  const res = { porUid: 0, escribiria: 0, revisar: 0, sinMatch: 0, futuras: 0,
+                escritas: 0, uidsEstampados: 0 };
+  const motivos = {};
   const filasRevisar = [], filasSinMatch = [], decisiones = [];
-  const usados = {};          // fila de B → ya asignada a una fila del destino
+  const usados = {};
   const hist = [0,0,0,0,0,0,0,0,0,0];
+
+  const cuenta = function (m) { motivos[m] = (motivos[m] || 0) + 1; };
 
   for (let i = 0; i < dest.filas.length; i++) {
     const f = dest.filas[i];
@@ -84,7 +166,6 @@ function _correrUpsert_(enSeco) {
     // Reuniones futuras: no son hueco, todavía no corresponde completarlas.
     if (f.fecha && f.fecha > _hoy_()) { res.futuras++; continue; }
 
-    // --- 1. ya estampada ---
     if (f.uid) {
       const porUid = cands.porUid.get(f.uid);
       res.porUid++;
@@ -95,12 +176,11 @@ function _correrUpsert_(enSeco) {
       continue;
     }
 
-    // --- 2. score ---
     const ev = evaluarCandidatos_(f, cands.vivos, comunas);
     if (ev.mejor) hist[Math.min(9, Math.floor(ev.mejor.score * 10))]++;
 
     if (!ev.mejor) {
-      res.sinMatch++;
+      res.sinMatch++; cuenta('sin_candidatos');
       filasSinMatch.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha), 'sin_candidatos', '', '']);
       continue;
     }
@@ -111,15 +191,14 @@ function _correrUpsert_(enSeco) {
                         nivel: ev.mejor.nivel, dist: ev.mejor.dist });
       usados[ev.mejor.c.fila] = true;
     } else if (ev.veredicto === 'REVISAR_MATCH') {
-      res.revisar++;
+      res.revisar++; cuenta(ev.motivo);
       filasRevisar.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha),
                          ev.mejor.c.nombre, ev.mejor.score, ev.segundoScore, ev.margen,
                          ev.motivo, ev.mejor.nivel]);
-      // También se anota la traza del descartado: ver COLUMNAS_TRAZA.
       decisiones.push({ fila: f, cand: ev.mejor.c, score: ev.mejor.score,
                         nivel: 'descartado:' + ev.motivo, dist: ev.mejor.dist, noEscribir: true });
     } else {
-      res.sinMatch++;
+      res.sinMatch++; cuenta(ev.motivo);
       filasSinMatch.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha), ev.motivo,
                           ev.mejor.c.nombre, ev.mejor.score]);
       decisiones.push({ fila: f, cand: ev.mejor.c, score: ev.mejor.score,
@@ -127,50 +206,119 @@ function _correrUpsert_(enSeco) {
     }
   }
 
-  // --- escribir, si no es en seco ---
-  if (!enSeco) {
-    const w = aplicarDecisiones_(dest, decisiones);
-    res.escritas = w.celdas;
-    res.uidsEstampados = w.uids;
-  }
-
-  // --- reportes ---
-  escribirReporte_(RDV_HOJA_SIN_MATCH,
-    ['clave', 'figura', 'barrio', 'fecha', 'motivo', 'mejor_descartado', 'score'], filasSinMatch);
-  escribirReporte_(RDV_HOJA_REVISAR,
-    ['clave', 'figura', 'barrio', 'fecha', 'form_origen', 'score', 'segundo', 'margen',
-     'motivo', 'senales'], filasRevisar);
   const resueltas = {};
   decisiones.forEach(function (d) { if (!d.noEscribir) resueltas[d.fila.fila] = true; });
-  const emp = generarEmparejarManual_(dest, cands, comunas, usados, resueltas);
+  const emp = calcularEmparejar_(dest, cands, comunas, usados, resueltas);
 
-  // --- log ---
-  Logger.log('--- veredictos (base: %s filas del destino, sin las %s futuras) ---',
-             dest.filas.length - res.futuras, res.futuras);
-  Logger.log('  por RDV_UID (ya estampadas): %s', res.porUid);
-  Logger.log('  escribiría: %s | a revisar: %s | sin match: %s',
-             res.escribiria, res.revisar, res.sinMatch);
-  Logger.log('--- distribución del score normalizado ---');
+  return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist,
+           filasRevisar: filasRevisar, filasSinMatch: filasSinMatch,
+           decisiones: decisiones, emp: emp };
+}
+
+// ===================== Log =====================
+
+/**
+ * Los tres números que hacen falta, **antes de tocar ninguna solapa**.
+ *
+ * Si la escritura se cae —y ya se cayó dos veces— la corrida sirve igual. Es la diferencia
+ * entre perder una corrida y perder sólo una solapa que se puede rehacer en cuatro segundos.
+ */
+function logResumen_(plan) {
+  const r = plan.res;
+  const base = plan.dest.filas.length - r.futuras;
+
+  Logger.log('--- 1. VEREDICTOS (base: %s filas del destino, sin las %s futuras) ---',
+             base, r.futuras);
+  Logger.log('  por RDV_UID (ya estampadas): %s', r.porUid);
+  Logger.log('  escribiría .......... %s  (%s%% de %s)', r.escribiria, _pct_(r.escribiria, base), base);
+  Logger.log('  a revisar ........... %s  (%s%%)', r.revisar, _pct_(r.revisar, base));
+  Logger.log('  sin match ........... %s  (%s%%)', r.sinMatch, _pct_(r.sinMatch, base));
+  Logger.log('  --- por motivo ---');
+  Object.keys(plan.motivos).sort().forEach(function (m) {
+    Logger.log('    %s: %s', m, plan.motivos[m]);
+  });
+  /*
+   * `sin_candidatos` contra `score_bajo` es la distinción que decide el umbral:
+   * el primero es "no hay con qué", el segundo es "hay, pero 0.75 lo rechaza".
+   */
+  const sinCand = plan.motivos['sin_candidatos'] || 0;
+  const bajo = plan.motivos['score_bajo'] || 0;
+  if (bajo > 0) {
+    Logger.log('  >>> %s filas TIENEN candidato y lo rechaza el umbral. Bajar UMBRAL_MATCH las ' +
+               'recupera. Las otras %s no tienen con qué y ningún umbral las salva.',
+               bajo, sinCand);
+  } else if (sinCand > 0) {
+    Logger.log('  >>> Las %s de sin match NO tienen candidato: el umbral no es el problema. ' +
+               'Bajarlo no recupera ninguna.', sinCand);
+  }
+
+  Logger.log('--- 2. DISTRIBUCIÓN DEL SCORE NORMALIZADO (sólo filas con candidato) ---');
+  let conCand = 0;
+  for (let k = 0; k < 10; k++) conCand += plan.hist[k];
   for (let k = 9; k >= 0; k--) {
-    if (!hist[k]) continue;
-    Logger.log('  %s–%s : %s', (k / 10).toFixed(1), ((k + 1) / 10).toFixed(1), hist[k]);
+    if (!plan.hist[k]) continue;
+    Logger.log('  %s–%s : %s  (%s%% de %s con candidato) %s',
+               (k / 10).toFixed(1), ((k + 1) / 10).toFixed(1), plan.hist[k],
+               _pct_(plan.hist[k], conCand), conCand, _barra_(plan.hist[k], conCand));
   }
-  Logger.log('--- umbrales en uso (PROVISORIOS) ---');
-  Logger.log('  UMBRAL_MATCH=%s  MARGEN_MINIMO=%s', UMBRAL_MATCH, MARGEN_MINIMO);
-  Logger.log('  Barrido: mover el umbral y volver a correr en seco. Los números de arriba son');
-  Logger.log('  los que lo fijan — no hay forma de elegirlo sin esta corrida.');
-  Logger.log('--- EMPAREJAR_MANUAL ---');
-  Logger.log('  pares propuestos: %s | formularios sin candidato: %s | filas sin candidato: %s',
-             emp.pares, emp.formulariosHuerfanos, emp.filasHuerfanas);
+  Logger.log('  umbrales en uso (PROVISORIOS): UMBRAL_MATCH=%s  MARGEN_MINIMO=%s',
+             UMBRAL_MATCH, MARGEN_MINIMO);
+  Logger.log('  Buscar un valle en la distribución: ahí va el umbral. Si es continua, cualquier');
+  Logger.log('  corte es arbitrario y conviene quedarse alto y mandar el resto a revisión.');
 
-  if (enSeco) {
-    Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones quedaron ' +
-               'calculadas y no aplicadas.', decisiones.length);
-  } else {
-    Logger.log('>>> Escritas %s celdas, %s uuids estampados.', res.escritas, res.uidsEstampados);
+  Logger.log('--- 3. EMPAREJAR_MANUAL ---');
+  Logger.log('  pares propuestos ............ %s', plan.emp.pares);
+  Logger.log('  formularios sin candidato ... %s', plan.emp.formulariosHuerfanos);
+  Logger.log('  filas del destino sin ninguno %s', plan.emp.filasHuerfanas);
+  Logger.log('  Esos dos últimos son lo que el sistema no puede resolver NI con ayuda humana.');
+}
+
+function _pct_(n, d) {
+  return d ? Math.round(n * 1000 / d) / 10 : 0;
+}
+
+function _barra_(n, total) {
+  if (!total || !n) return '';
+  return new Array(Math.max(1, Math.round(n * 40 / total)) + 1).join('#');
+}
+
+// ===================== Escritura de reportes =====================
+
+/**
+ * Escribe los reportes, **cada uno aislado**. Una caída no se lleva a los otros.
+ *
+ * Orden por volumen ascendente: `SIN_MATCH` es el que más filas escribe, así que va **último**.
+ * Si el servicio se va a caer, que se caiga después de haber escrito los dos chicos.
+ */
+function escribirReportes_(plan, fallaron, soloEstos) {
+  const quiere = function (n) { return !soloEstos || soloEstos.indexOf(n) !== -1; };
+
+  if (quiere(RDV_HOJA_REVISAR)) {
+    _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
+      escribirReporte_(RDV_HOJA_REVISAR,
+        ['clave', 'figura', 'barrio', 'fecha', 'form_origen', 'score', 'segundo', 'margen',
+         'motivo', 'senales'], plan.filasRevisar);
+    });
   }
-  Logger.log('%s ms', new Date() - t0);
-  return res;
+  if (quiere(RDV_HOJA_EMPAREJAR)) {
+    _intentar_(fallaron, RDV_HOJA_EMPAREJAR, function () {
+      escribirHoja_(RDV_HOJA_EMPAREJAR, plan.emp.matriz);
+      Logger.log('[upsert] %s: %s filas', RDV_HOJA_EMPAREJAR, plan.emp.matriz.length - 1);
+    });
+  }
+  if (quiere(RDV_HOJA_SIN_MATCH)) {
+    _intentar_(fallaron, RDV_HOJA_SIN_MATCH, function () {
+      escribirReporte_(RDV_HOJA_SIN_MATCH,
+        ['clave', 'figura', 'barrio', 'fecha', 'motivo', 'mejor_descartado', 'score'],
+        plan.filasSinMatch);
+    });
+  }
+}
+
+/** Corre `fn` y, si se cae, lo anota en `fallaron` en vez de tirar la corrida entera. */
+function _intentar_(fallaron, nombre, fn) {
+  try { fn(); }
+  catch (err) { fallaron.push(nombre); Logger.log('[upsert] %s FALLÓ: %s', nombre, err); }
 }
 
 // ===================== Evaluación =====================
@@ -328,7 +476,7 @@ function puntuar_(f, c, comunas) {
  * se trabaja una lista así. Y los candidatos de un mismo formulario van **juntos y seguidos**,
  * para poder elegir entre ellos sin buscarlos.
  */
-function generarEmparejarManual_(dest, cands, comunas, usados, resueltas) {
+function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   const librosDestino = dest.filas.filter(function (f) {
     if (f.uid) return false;                        // ya identificada
     if (resueltas && resueltas[f.fila]) return false; // ya se resolvió en esta corrida
@@ -400,8 +548,8 @@ function generarEmparejarManual_(dest, cands, comunas, usados, resueltas) {
     salida.push(['', '', f.figura, f.barrio, fmtFecha_(f.fecha), '', '', '']);
   });
 
-  escribirHoja_(RDV_HOJA_EMPAREJAR, salida);
-  return { pares: filas.length, formulariosHuerfanos: formulariosHuerfanos,
+  // Sólo calcula. La escritura la hace escribirReportes_, para poder reintentarla sola.
+  return { matriz: salida, pares: filas.length, formulariosHuerfanos: formulariosHuerfanos,
            filasHuerfanas: filasHuerfanas.length };
 }
 
@@ -413,7 +561,7 @@ function generarEmparejarManual_(dest, cands, comunas, usados, resueltas) {
  */
 function leerConfirmaciones_() {
   const out = new Map();
-  const sh = SpreadsheetApp.openById(RDV_SS_INTERMEDIA).getSheetByName(RDV_HOJA_EMPAREJAR);
+  const sh = ssIntermedia_().getSheetByName(RDV_HOJA_EMPAREJAR);
   if (!sh || sh.getLastRow() < 2) return out;
 
   const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues();
@@ -487,7 +635,7 @@ const CAMPOS_DATO_ = ['Masculinos', 'Femeninos',
 // ===================== Lecturas =====================
 
 function leerDestino_() {
-  const sh = SpreadsheetApp.openById(RDV_SS_DESTINO).getSheetByName(RDV_HOJA_DESTINO);
+  const sh = ssDestino_().getSheetByName(RDV_HOJA_DESTINO);
   if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const bloque = sh.getRange(1, 1, nFilas, nCols).getValues();
@@ -505,10 +653,17 @@ function leerDestino_() {
     nivel:      findIdxOr_(hdr, ['form_nivel'], true),
     fechaMatch: findIdxOr_(hdr, ['form_fecha_match'], true)
   };
-  if (T.uid == null) {
-    Logger.log('AVISO: el destino todavía no tiene las columnas de traza (%s). Se calculan los ' +
-               'scores igual, pero no hay dónde estamparlos. Ver Fase 2b.',
-               COLUMNAS_TRAZA.join(', '));
+  const faltan = [];
+  if (T.uid == null)        faltan.push('RDV_UID');
+  if (T.origen == null)     faltan.push('form_origen');
+  if (T.score == null)      faltan.push('form_score');
+  if (T.nivel == null)      faltan.push('form_nivel');
+  if (T.fechaMatch == null) faltan.push('form_fecha_match');
+  if (faltan.length) {
+    Logger.log('AVISO: faltan columnas de traza en el destino: %s. Los scores se calculan igual, ' +
+               'pero no hay dónde estampar eso. Ver Fase 2b.', faltan.join(', '));
+  } else {
+    Logger.log('Columnas de traza: las cinco presentes.');
   }
 
   const filas = [];
@@ -530,7 +685,7 @@ function leerDestino_() {
 
 /** Candidatos desde `B`, el import crudo. Los `NO USAR` quedan afuera del todo. */
 function leerCandidatos_() {
-  const sh = SpreadsheetApp.openById(RDV_SS_INTERMEDIA).getSheetByName(RDV_HOJA_B);
+  const sh = ssIntermedia_().getSheetByName(RDV_HOJA_B);
   if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_B + '".');
   const nFilas = sh.getLastRow();
   const bloque = sh.getRange(1, 1, nFilas, sh.getLastColumn()).getValues();
@@ -590,7 +745,7 @@ function leerCandidatos_() {
 
 function leerComunasMap_() {
   const mapa = new Map();
-  const sh = SpreadsheetApp.openById(RDV_SS_DESTINO).getSheetByName(RDV_HOJA_COMUNAS);
+  const sh = ssDestino_().getSheetByName(RDV_HOJA_COMUNAS);
   if (!sh || sh.getLastRow() < 2) return mapa;
   const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
   for (let i = 0; i < vals.length; i++) {
@@ -612,13 +767,29 @@ function escribirReporte_(nombre, encabezado, filas) {
 
 /** Escribe una solapa de reporte en la intermedia. `clearContents`, nunca `clear` (sección 6). */
 function escribirHoja_(nombre, matriz) {
-  const ss = SpreadsheetApp.openById(RDV_SS_INTERMEDIA);
-  let sh = ss.getSheetByName(nombre);
-  if (!sh) sh = ss.insertSheet(nombre);
-  else sh.clearContents();
-  sh.getRange(1, 1, matriz.length, matriz[0].length).setValues(matriz);
-  sh.setFrozenRows(1);
-  return sh;
+  /*
+   * Un reintento con espera. `Service Spreadsheets timed out` es transitorio y ya tiró dos
+   * corridas: `diagFase1()` el 22/09 y `correrEnSeco()` el 25/09. La escritura es idempotente
+   * —limpia y reescribe todo— así que repetirla no puede dejar media solapa.
+   */
+  let ultimoError = null;
+  for (let intento = 1; intento <= 2; intento++) {
+    try {
+      const ss = ssIntermedia_();
+      let sh = ss.getSheetByName(nombre);
+      if (!sh) sh = ss.insertSheet(nombre);
+      else sh.clearContents();
+      sh.getRange(1, 1, matriz.length, matriz[0].length).setValues(matriz);
+      sh.setFrozenRows(1);
+      SpreadsheetApp.flush();
+      return sh;
+    } catch (err) {
+      ultimoError = err;
+      Logger.log('[upsert] %s: falló la escritura (intento %s): %s', nombre, intento, err);
+      if (intento === 1) { Utilities.sleep(5000); _ssIntermedia_ = null; }
+    }
+  }
+  throw ultimoError;
 }
 
 function _hoy_() {
