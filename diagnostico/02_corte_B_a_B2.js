@@ -292,6 +292,8 @@ function generarCorteB_diag2(cache) {
   const totalPorOrigen = { hueco: 0, sin_contraparte_B2: 0 };
   let matchExacto = 0, matchAprox = 0, matchSinFecha = 0, multiples = 0, conVariosProblemas = 0;
   const deberianHaberEntrado = [];
+  // Los casos de fecha, guardados para medir contra ellos la regla del mes (CLAUDE.md 1.c).
+  const casosFecha = [];
 
   // Nombres de evento que B2 guardó con clave incompleta: sirve para confirmar que la fila
   // del import sí entró a B2, sólo que sin Persona/BarrioN.
@@ -347,6 +349,12 @@ function generarCorteB_diag2(cache) {
       else if (devBarrio === '')                 causa = 'barrio_no_reconocido';
       else if (!fechaEfectiva)                   causa = 'fecha_no_parseable';
       else if (!mismoDia_diag2(fechaEfectiva, h.fecha)) causa = 'fecha_mal_parseada';
+
+      if (causa === 'fecha_no_parseable' || causa === 'fecha_mal_parseada') {
+        casosFecha.push({ clave: h.clave, destino: h.fecha, nombre: elegido.nombre,
+                          fechaFin: elegido.fechaFin, legado: fechaEfectiva, causa: causa,
+                          enVentana: h.enVentana });
+      }
       else {
         causa = 'deberia_haber_entrado';
         deberianHaberEntrado.push(h.clave + '  ← B fila ' + elegido.fila + ': ' + elegido.nombre);
@@ -413,6 +421,7 @@ function generarCorteB_diag2(cache) {
              'confirmadas contra las %s claves incompletas de B2: %s coinciden por nombre)',
              b2.incompletas, confirmadasEnB2SinClave);
   Logger.log('  arreglar el parseo de fechas (barato): %s filas', fechas);
+  _reglaDelMes_diag2(casosFecha);
   Logger.log('  >>> B2 acumulativo, rehacer syncB_to_B2 (caro): %s filas', acumulativo);
   Logger.log('  sin explicación: %s filas', conteo.deberia_haber_entrado);
   deberianHaberEntrado.forEach(function (s) { Logger.log('    · %s', s); });
@@ -576,6 +585,84 @@ function buscarCandidato_diag2(h, b) {
  * Con `usarAncla` y sin `fecha_fin` no hay ancla contra la cual validar, así que se acepta el
  * texto: es mejor que nada, y son pocas filas (el 99% de `B` tiene `fecha_fin`).
  */
+/**
+ * ¿Cuántas de las `fecha_mal_parseada` resuelve **la regla del mes**?
+ *
+ * La regla (CLAUDE.md 1.c): del formulario, **el año y el mes de `fecha_fin` siempre vienen
+ * bien y sólo el día puede estar corrido**. El `detectFecha_` nuevo la aplica — descarta del
+ * texto toda ocurrencia cuyo mes no sea el de `fecha_fin` ni el siguiente, y sigue buscando.
+ *
+ * Esto mide el efecto sobre la población donde duele, comparando el parser **nuevo**
+ * (`02_Parsing.js`) contra el **legado** (`detectFecha_diag2`, verbatim de `Código.js`) sobre
+ * las mismas filas. Se aísla la regla usando la precedencia del legado —texto primero,
+ * `fecha_fin` de fallback— porque si no estaríamos midiendo dos cambios a la vez.
+ */
+function _reglaDelMes_diag2(casos) {
+  Logger.log('--- LA REGLA DEL MES: el año y el mes salen de fecha_fin, el día del texto ---');
+  if (!casos.length) {
+    Logger.log('  No hay casos de fecha en esta población. Nada que medir.');
+    return;
+  }
+
+  let resueltas = 0, resueltasVent = 0, siguenMal = 0, conRechazo = 0, algunaCoincide = 0;
+  const sinResolver = [];
+
+  casos.forEach(function (c) {
+    const det = detectFecha_(c.nombre, c.fechaFin);
+    if (det.rechazadas && det.rechazadas.length) conRechazo++;
+
+    // Misma precedencia que el legado: el texto gana, fecha_fin es el fallback.
+    const nueva = det.texto || det.fechaFin || null;
+    const ok = nueva && mismoDia_diag2(nueva, c.destino);
+    if (ok) {
+      resueltas++;
+      if (c.enVentana) resueltasVent++;
+    } else {
+      siguenMal++;
+      if (sinResolver.length < 15) {
+        sinResolver.push({ c: c, det: det, nueva: nueva });
+      }
+    }
+
+    // Lo que de verdad usa el matching: compara contra LAS DOS fechas, no contra una.
+    if ((det.texto && mismoDia_diag2(det.texto, c.destino)) ||
+        (det.fechaFin && mismoDia_diag2(det.fechaFin, c.destino))) algunaCoincide++;
+  });
+
+  Logger.log('  casos de fecha en la población: %s  (%s en ventana)',
+             casos.length, casos.filter(function (c) { return c.enVentana; }).length);
+  Logger.log('  el texto traía una ocurrencia con mes imposible: %s', conRechazo);
+  Logger.log('  RESUELTAS por la regla ..... %s  (%s en ventana)  %s%%',
+             resueltas, resueltasVent,
+             casos.length ? Math.round(resueltas * 1000 / casos.length) / 10 : 0);
+  Logger.log('  siguen sin coincidir ....... %s', siguenMal);
+  /*
+   * El número de arriba usa la precedencia del legado, para aislar el efecto de la regla. El
+   * upsert no elige una fecha: compara contra las dos (`distanciaFecha_`), así que éste es el
+   * que dice cuánto matchea de verdad.
+   */
+  Logger.log('  alguna de las dos fechas coincide con el destino: %s  (es lo que usa el match)',
+             algunaCoincide);
+
+  if (resueltas >= casos.length * 0.8) {
+    Logger.log('  >>> La regla resuelve casi todo. El parseo de fechas deja de ser una causa.');
+  } else if (resueltas === 0) {
+    Logger.log('  >>> La regla NO resuelve ninguna. Estos casos no son de mes: mirar los de abajo');
+    Logger.log('      antes de darla por buena — puede que el día del texto también esté mal.');
+  }
+
+  if (sinResolver.length) {
+    Logger.log('  --- los %s primeros que la regla NO resuelve ---', sinResolver.length);
+    sinResolver.forEach(function (x) {
+      Logger.log('    destino %s | fecha_fin %s | texto %s | rech %s',
+                 fmt_diag2(x.c.destino), x.c.fechaFin ? fmt_diag2(x.c.fechaFin) : '-',
+                 x.det.texto ? fmt_diag2(x.det.texto) : '-',
+                 JSON.stringify(x.det.rechazadas || []));
+      Logger.log('      %s', x.c.nombre);
+    });
+  }
+}
+
 function resolverFecha_diag2(fb, usarAncla, ventana) {
   if (!usarAncla) return fb.fechaTexto || fb.fechaFin || null;
   if (!fb.fechaFin) return fb.fechaTexto || null;

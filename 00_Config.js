@@ -245,6 +245,18 @@ const BANDAS_FECHA = [
 const UMBRAL_MATCH  = 0.88;
 const MARGEN_MINIMO = 0.15;
 
+/**
+ * **El mes del texto sólo vale si es el de `fecha_fin` o el siguiente.**
+ *
+ * Regla de negocio confirmada (CLAUDE.md 1.c): en el formulario **el año y el mes de
+ * `fecha_fin` siempre vienen bien; sólo el día puede estar corrido**. El nombre del formulario
+ * aporta el día y nada más.
+ *
+ * El "o el siguiente" cubre el formulario que cierra a fin de mes con la reunión los primeros
+ * días del mes que viene. Más de uno no tiene caso: no hay reuniones a dos meses del cierre.
+ */
+const MESES_ADELANTE_TEXTO = 1;
+
 /** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */
 const TOLERANCIA_HORA_MIN = 30;
 

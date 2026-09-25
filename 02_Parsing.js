@@ -273,13 +273,17 @@ function detectComuna_(texto) {
  */
 function detectFecha_(texto, fechaFin) {
   const porFechaFin = toDate_(fechaFin);
-  const porTexto = _fechaDelTexto_(texto, porFechaFin);
+  const oc = _ocurrenciasFecha_(texto, porFechaFin);
+  const porTexto = oc.aceptada;
   const desvio = (porTexto && porFechaFin) ? diasEntre_(porTexto, porFechaFin) : null;
 
   return {
     texto: porTexto,
     fechaFin: porFechaFin,
     desvio: desvio,
+    // Las ocurrencias que la regla de mes tiró. Sirven para medir cuánto filtró y para
+    // entender un caso raro sin volver a parsear a mano.
+    rechazadas: oc.rechazadas,
     // `mejor` es sólo para mostrar y para las filas que necesitan **una** fecha. No decide
     // ningún match: para eso está `distanciaFecha_`, que compara contra las dos.
     mejor: porFechaFin || porTexto || null,
@@ -321,24 +325,79 @@ function puntajeFecha_(dias) {
 }
 
 /**
- * La primera `d/m[/a]` del texto libre. El año, si no viene, sale del ancla y no del año en
- * curso: una agenda de diciembre que menciona el 3 de enero es de enero del año siguiente.
+ * La fecha del texto libre, **filtrada por el mes de `fecha_fin`**.
+ *
+ * Reemplaza a la versión que se quedaba con la primera `d/m` que encontrara. La regla de
+ * negocio (CLAUDE.md 1.c) dice que **el año y el mes de `fecha_fin` siempre vienen bien y sólo
+ * el día puede estar corrido**, así que el texto aporta el día y nada más:
+ *
+ *   - el **año** sale de `fecha_fin`, nunca del texto — ni siquiera cuando el texto lo trae;
+ *   - el **mes** del texto se acepta sólo si es el de `fecha_fin` o el siguiente;
+ *   - si no cumple, **esa ocurrencia se descarta y se busca otra en el texto**;
+ *   - el **día** sale del texto.
+ *
+ * Eso resuelve los dos problemas que veníamos arrastrando **sin ventana ni tolerancia**:
+ *
+ *   `"Reunión 10-12 hs"` en un formulario de abril leía *10 de diciembre*. Ahora el mes 12 es
+ *   imposible contra un `fecha_fin` de abril, se descarta, y **la ambigüedad entre una fecha y
+ *   un horario se resuelve sin tener que distinguirlos**: no hace falta saber que "10-12" es
+ *   un rango horario, alcanza con que el mes no pueda ser ése.
+ *
+ *   Los dos outliers de **+303 días** (`fecha_fin` 2026-02-11 → texto mes 12) caen igual.
+ *
+ * Sin ancla la regla no se puede aplicar y se cae al comportamiento viejo: la primera
+ * ocurrencia válida, con el año del texto o el actual.
  */
-function _fechaDelTexto_(texto, ancla) {
+function _ocurrenciasFecha_(texto, ancla) {
   const s = String(texto == null ? '' : texto);
-  const m = /(^|[^\d])(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?([^\d]|$)/.exec(s);
-  if (!m) return null;
+  // Lookahead al final en vez de grupo: consumir el carácter de cierre se comía la ocurrencia
+  // siguiente cuando venían pegadas ("10/12,14/05").
+  const re = /(?:^|[^\d])(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?(?![\d])/g;
+  const rechazadas = [];
+  let aceptada = null, m;
 
-  const d = parseInt(m[2], 10);
-  const mo = parseInt(m[3], 10);
-  let y;
-  if (m[4]) {
-    y = parseInt(m[4], 10);
-    if (y < 100) y += 2000;
-  } else {
-    y = ancla ? ancla.getFullYear() : new Date().getFullYear();
+  while ((m = re.exec(s)) !== null) {
+    const d = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10);
+    let yTexto = null;
+    if (m[3]) { yTexto = parseInt(m[3], 10); if (yTexto < 100) yTexto += 2000; }
+
+    if (!ancla) {
+      if (!aceptada) aceptada = alMediodia_(yTexto || new Date().getFullYear(), mo, d);
+      continue;
+    }
+
+    const anio = _anioSiMesAceptable_(mo, ancla);
+    if (anio === null) {
+      rechazadas.push({ dia: d, mes: mo, motivo: 'mes_imposible' });
+      continue;
+    }
+    const f = alMediodia_(anio, mo, d);
+    if (!f) { rechazadas.push({ dia: d, mes: mo, motivo: 'dia_inexistente' }); continue; }
+    if (!aceptada) aceptada = f;
   }
-  return alMediodia_(y, mo, d);
+  return { aceptada: aceptada, rechazadas: rechazadas };
+}
+
+/**
+ * El año que le corresponde a un mes del texto, o `null` si ese mes es imposible.
+ *
+ * El año nunca sale del texto: sale del ancla, corrigiendo el salto de diciembre a enero —
+ * un formulario que cierra en diciembre con la reunión en enero es del año siguiente.
+ */
+function _anioSiMesAceptable_(mes, ancla) {
+  const mesAncla = ancla.getMonth() + 1;
+  const anioAncla = ancla.getFullYear();
+  for (let k = 0; k <= MESES_ADELANTE_TEXTO; k++) {
+    const m = ((mesAncla - 1 + k) % 12) + 1;
+    if (mes === m) return anioAncla + Math.floor((mesAncla - 1 + k) / 12);
+  }
+  return null;
+}
+
+/** La fecha del texto, sin el detalle de lo que se descartó. */
+function _fechaDelTexto_(texto, ancla) {
+  return _ocurrenciasFecha_(texto, ancla).aceptada;
 }
 
 // ===================== Interno =====================

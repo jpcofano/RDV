@@ -7,6 +7,11 @@ Reuniones de Vecinos en una planilla única de reporte.
 Este documento describe lo que hay, por qué falla y hacia dónde vamos. Leelo entero antes
 de tocar nada.
 
+> **¿Retomando después de un rato, o en otra máquina?** Empezá por
+> [docs/ESTADO.md](docs/ESTADO.md): dice dónde quedamos, qué hay que correr y qué decisiones
+> están esperando un número. Este documento sigue siendo la fuente de verdad sobre **qué hace el
+> sistema y por qué**; aquél dice **dónde estamos parados**.
+
 ---
 
 ## 0. El invariante
@@ -217,7 +222,41 @@ las filas que fallan por barrio. Si el barrio del destino está vacío, la comun
 Y en la otra dirección tampoco sirve: **de la comuna no se deduce el barrio.** Cada comuna tiene
 entre 2 y 6 barrios. La comuna confirma, nunca identifica.
 
-**c) No todas las reuniones tienen lugar: hay reuniones temáticas.**
+**c) Del formulario, el año y el mes de `fecha_fin` siempre vienen bien. Sólo el día puede
+estar corrido.** Confirmado con el equipo.
+
+Es la regla que **resuelve el parser sin ventana ni tolerancia**, y va acá arriba porque cambia
+lo que `detectFecha_` puede afirmar:
+
+| campo | de dónde sale |
+|---|---|
+| **año** | de `fecha_fin`. **Nunca del texto**, ni siquiera cuando el texto lo trae |
+| **mes** | del texto, **sólo si es el de `fecha_fin` o el siguiente**. Si no, esa ocurrencia se descarta y se busca otra |
+| **día** | del texto. Es lo único que el nombre del formulario aporta de verdad |
+
+El *"o el siguiente"* cubre el formulario que cierra a fin de mes con la reunión los primeros
+días del mes que viene. Va en `00_Config.js` como `MESES_ADELANTE_TEXTO = 1`.
+
+> **Lo que la hace valiosa es que no es una tolerancia: es una imposibilidad.**
+>
+> Veníamos buscando un ancho de ventana que separara la fecha buena de la mala, y 3.3.c cerró
+> con que **ese ancho no existe** — el error vive entre 2 y 7 días, donde recortar no separa
+> nada. Esta regla no recorta por distancia: **descarta lo que no puede ser.** Un mes 12 contra
+> un `fecha_fin` de abril no es improbable, es imposible, y eso no depende de calibrar nada.
+>
+> Es la misma forma que el rango del asunto de los mails (3.3.c): **una restricción, no una
+> comparación de dos fuentes.** No hay que interpretar cuál de las dos está mal.
+
+**Y resuelve de arriba un problema que parecía otro:** la ambigüedad entre una fecha y un
+horario. `"Reunión 10-12 hs"` leía *10 de diciembre* y era el ejemplo canónico del parser roto.
+Con la regla, en un formulario de abril el mes 12 se descarta **sin tener que distinguir un
+rango horario de una fecha**. No hace falta enseñarle al parser qué es un horario: alcanza con
+que ese mes no pueda ser ése.
+
+Los dos outliers de **+303 días** caen igual: `fecha_fin` 2026-02-11 con texto que da mes 12 es
+imposible.
+
+**d) No todas las reuniones tienen lugar: hay reuniones temáticas.**
 
 Es una **categoría propia**, y aparece así en el destino:
 
@@ -231,7 +270,7 @@ estas filas **la ubicación no existe como concepto**.
 > **No confundirla con el barrio ausente de 3.3.b.** Son dos cosas distintas y llevan a arreglos
 > distintos:
 >
-> | | 3.3.b — barrio ausente | 1.c — reunión temática |
+> | | 3.3.b — barrio ausente | 1.d — reunión temática |
 > |---|---|---|
 > | el dato | **existía y desapareció** cuando cambió el formulario | **nunca existió**: no hay lugar que mandar |
 > | el arreglo | conseguir otra señal de lugar — la comuna | no hay lugar que conseguir; **hay tema** |
@@ -245,7 +284,7 @@ Probablemente expliquen dos números que quedaron sin explicación en la corrida
 huérfanos**. Las dos cosas se miden en el bloque **2d** del log antes de darle peso a nada
 (decisión 2).
 
-**d) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
+**e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
 negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
 
@@ -771,7 +810,7 @@ la que ya estaba. Se listan en `DIAG_DUP_B2`.
 
 > #### Las 14 duplicadas y las 23 incompletas no se arreglan: dejan de poder existir
 >
-> **B2 se reconstruye entera en cada corrida desde `B`, sin upsert y sin claves** (sección 1.d).
+> **B2 se reconstruye entera en cada corrida desde `B`, sin upsert y sin claves** (sección 1.e).
 > Y eso mata las dos cosas **por construcción**, no por una corrección:
 >
 > - **no hay clave contra la cual duplicar.** Una fila de `B` es una fila de B2. Si `Inscriptos`
@@ -964,6 +1003,47 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   **Un sesgo que hay que tener presente al leer el 56,5%:** las 223 comparables salen de las 699
   filas que **sí** matchean contra B2, o sea justamente aquellas donde la clave natural funcionó.
   Es una muestra sesgada hacia el caso bueno. **El número real es peor, no mejor.**
+
+  #### ✅ La solución: la regla del mes (sección 1.c)
+
+  El ancla quedó descartada, pero **el parser igual había que arreglarlo** — 20
+  `fecha_mal_parseada` son 20 filas que el matching no puede resolver. Lo que faltaba era una
+  regla que no dependiera de calibrar una distancia, y apareció del lado del negocio:
+
+  > **Del formulario, el año y el mes de `fecha_fin` siempre vienen bien. Sólo el día puede
+  > estar corrido.**
+
+  Lo que cambia en `_ocurrenciasFecha_` (`02_Parsing.js`):
+
+  | antes | ahora |
+  |---|---|
+  | la **primera** `d/m` del texto, sea la que sea | se recorren **todas** las ocurrencias |
+  | el año del texto si venía, si no el del ancla | el año sale **siempre** de `fecha_fin` |
+  | el mes, el del texto | el mes vale sólo si es el de `fecha_fin` **o el siguiente** |
+  | una ocurrencia mala arruinaba la fila | una ocurrencia mala **se descarta y se sigue buscando** |
+
+  **Por qué esto sí y la ventana no.** La ventana preguntaba *¿está lo bastante cerca?*, y la
+  respuesta no discrimina porque el error vive en el medio. La regla del mes pregunta *¿puede
+  ser?*, y eso **no depende de ningún umbral**. Es la diferencia entre una tolerancia calibrada
+  y una imposibilidad.
+
+  Los dos casos que teníamos anotados como los peores caen solos:
+
+  ```
+  "Reunión 10-12 hs"  con fecha_fin de abril  → mes 12 imposible → se descarta
+  fecha_fin 2026-02-11 con texto que da mes 12 → imposible       → se descarta
+  ```
+
+  El primero es el que más importa, porque **resuelve la ambigüedad entre una fecha y un
+  horario sin tener que distinguirlas**. No hay que enseñarle al parser qué es "10-12 hs":
+  alcanza con que ese mes no pueda ser ése en ese formulario.
+
+  **Y se mide, no se supone.** `diagCorteB()` recalcula los casos de fecha con el parser nuevo
+  y reporta cuántas de las `fecha_mal_parseada` quedan resueltas, en ventana y en total, más
+  las que siguen sin coincidir listadas una por una. Si ese número no es casi todas, la regla
+  no es la explicación y hay que mirar esos casos antes de darla por buena.
+
+  `VENTANA_FECHA_TEXTO` queda obsoleta y sin usar: era el ancho que esta regla vuelve innecesario.
 
   #### Hay una tercera fuente de fecha, y es externa
 
@@ -1332,7 +1412,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    #### `EVENTO`: la ubicación de las reuniones temáticas
 
-   Las reuniones temáticas (sección 1.c) no tienen lugar, tienen **tema**, y el tema está en la
+   Las reuniones temáticas (sección 1.d) no tienen lugar, tienen **tema**, y el tema está en la
    columna `EVENTO` del destino y repetido en el nombre del formulario. Eso alcanza para
    confirmar un candidato.
 
@@ -1795,9 +1875,18 @@ Y las tres mediciones que sostienen el diseño:
 >
 > La fase existía para elegir el ancho de `VENTANA_FECHA_TEXTO`. Ese ancho no existe.
 >
-> **Lo que la reemplaza:** la fecha deja de ser componente de la clave y pasa a ser **una señal
-> del score con tolerancia** (decisión 2). Y la identidad se resuelve por otro lado —
-> `RDV_UID`, adelantado a la **Fase 2b**.
+> **Lo que la reemplaza, en dos frentes:**
+>
+> 1. la fecha deja de ser componente de la clave y pasa a ser **una señal del score con
+>    tolerancia** (decisión 2), y la identidad se resuelve por `RDV_UID` (**Fase 2b**);
+> 2. el parser **sí** se arregló, pero por otro camino: **la regla del mes** (1.c), que no
+>    calibra una distancia sino que descarta lo imposible. Llegó del lado del negocio, no de la
+>    medición — y es la lección de la fase: veníamos buscando el ancho correcto de una ventana
+>    cuando lo que faltaba era una restricción.
+
+> **Y ojo con el orden en que se hicieron las cosas.** El ancla se midió durante semanas y se
+> descartó; la regla del mes la contestó el equipo en una frase. Antes de calibrar un umbral
+> contra los datos, conviene preguntar si alguien ya sabe la respuesta.
 
 `diagAnclaFecha()` queda en el repo como registro de la medición. No hay que volver a correrlo.
 
@@ -1814,7 +1903,10 @@ lo esperable es encontrarlas mezcladas.
 >
 > **La verificación de duplicados NO pasa todavía**, y no es un descuido: es un conflicto de
 > orden. Ver "Por qué la Fase 2 no cierra", abajo.
-- **Primero `detectFecha_` con ancla** (3.3.c): es lo que desbloquea el matching.
+- **`detectFecha_` con la regla del mes** (1.c / 3.3.c). Reemplaza al ancla, que quedó
+  descartada: el año y el mes salen de `fecha_fin`, el día del texto, y una ocurrencia con un
+  mes imposible se descarta en vez de arruinar la fila. `diagCorteB()` mide cuántas
+  `fecha_mal_parseada` resuelve.
 - `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
   `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y el ancla de fecha) y
   `05_Escritura.js`.
@@ -2114,7 +2206,7 @@ sin ningún candidato de **0 a 56**. Es un salto grande y vale entenderlo antes 
 > entraba por compartir figura **aunque la fecha estuviera a un año**. Con la figura ya
 > obligatoria, ensanchar la ventana **no puede** reintroducir el producto cartesiano.
 
-Pero el `Y` de dos términos dejaba afuera un caso entero: **las reuniones temáticas** (1.c) y las
+Pero el `Y` de dos términos dejaba afuera un caso entero: **las reuniones temáticas** (1.d) y las
 filas con la **fecha rota** (3.3.c) no tienen cómo pasar la única vía que quedaba. Quedaban fuera
 de la propuesta manual **por no tener ubicación**, que es justamente lo que hay que resolverles.
 

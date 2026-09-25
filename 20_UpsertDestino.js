@@ -282,8 +282,15 @@ function calcularPlan_(enSeco) {
   const emp = calcularEmparejar_(dest, cands, comunas, usados, resueltas);
 
   // Cobertura general de detectComuna_ sobre TODOS los formularios, no sólo los del grupo bajo.
-  let formsConComuna = 0;
-  for (let i = 0; i < cands.vivos.length; i++) if (cands.vivos[i].comuna != null) formsConComuna++;
+  let formsConComuna = 0, formsConRechazo = 0, formsSinFechaTexto = 0;
+  for (let i = 0; i < cands.vivos.length; i++) {
+    const c = cands.vivos[i];
+    if (c.comuna != null) formsConComuna++;
+    // La regla del mes (CLAUDE.md 1.c): cuántos formularios traían en el texto una ocurrencia
+    // con un mes imposible contra su fecha_fin. Es la medida de cuánto ruido filtró.
+    if (c.det && c.det.rechazadas && c.det.rechazadas.length) formsConRechazo++;
+    if (c.det && !c.det.texto) formsSinFechaTexto++;
+  }
 
   // Cuántas filas del destino traen EVENTO, contadas sobre la base entera y no sólo sobre las
   // que llegaron a evaluarse. Es el denominador honesto de la cobertura.
@@ -294,6 +301,7 @@ function calcularPlan_(enSeco) {
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
+           formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
            evStats: evStats, evBase: evBase, ejemplosEvento: ejemplosEvento,
            scoresVentana: scoresVentana, scoresTotal: scoresTotal,
            filasRevisar: filasRevisar, filasSinMatch: filasSinMatch,
@@ -464,6 +472,18 @@ function logResumen_(plan) {
     Logger.log('    n/e    %s', _dc_(b.fechaNoEvaluable));
     Logger.log('  señales que ni siquiera eran evaluables: ubicación %s | hora %s',
                _dc_(b.sinUbicEvaluable), _dc_(b.sinHoraEvaluable));
+
+    /*
+     * La regla del mes (CLAUDE.md 1.c) descarta del texto toda ocurrencia cuyo mes no sea el de
+     * `fecha_fin` ni el siguiente. Acá se ve cuánto filtró: un `"Reunion 10-12 hs"` que antes
+     * devolvía *10 de diciembre* ahora no devuelve nada, y la fila se apoya sólo en `fecha_fin`.
+     * Cuántas de las `fecha_mal_parseada` resuelve lo mide `diagCorteB()`, que tiene la
+     * población correcta.
+     */
+    Logger.log('  --- la regla del mes, sobre los %s formularios ---', plan.cands.vivos.length);
+    Logger.log('    con una ocurrencia de mes imposible descartada: %s', plan.formsConRechazo);
+    Logger.log('    sin ninguna fecha utilizable en el texto: %s (usan sólo fecha_fin)',
+               plan.formsSinFechaTexto);
 
     /*
      * El veredicto se saca de la VENTANA, no del total. Es la corrección de fondo de este
