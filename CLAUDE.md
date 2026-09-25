@@ -2127,18 +2127,27 @@ nada**:
 
 **Corrección a lo que se venía diciendo: `legToDate_` sí se usa hoy.** Además de los tres pasos
 apagados, la llama el **único activador vivo**: `syncAgendaSheetInBaseFromAgenda_2`
-(`Solapa agenda base final.js:72`), para la fecha que escribe en la solapa espejo `Agenda` de la
-intermedia, la que entra en el ID (`buildIdFinal_`) y la que ordena. También la usan los dos
+(`Solapa agenda base final.js:72`), para la fecha que escribe en la solapa espejo `Agenda` del
+**workbook del destino (1)** (`DEST_SS_ID`, no la intermedia), la que entra en el ID
+(`buildIdFinal_`) y la que ordena. También la usan los dos
 archivos de Agenda que corren a mano y `Barrio desde Base.js` (apagado).
 
-Qué tan grave es, **sin verificar**:
+Qué tan grave es:
 
-- si gana la copia de A2 o de Upset (las dos iguales), no pasa nada. En el `clasp push` del
-  25/09 los archivos subieron en orden alfabético, con `Upset Base FInal.js` último, y eso
-  **sugiere** que gana esa. Pero el orden de carga del proyecto no está fijado en el repo
-  (`filePushOrder` vacío) y **no se comprobó** en el editor;
-- si gana la de B2, el daño depende de qué hay en las celdas: un `Date` pasa casi igual (sin las
-  12:00), un texto `dd/mm` sale con el mes corrido. Eso **no se midió** sobre la solapa `Agenda`.
+- **verificado sobre el código** (las tres copias corridas en Node, zona de Buenos Aires): con
+  un `Date` las tres dan **el mismo día**; sólo cambia la hora (A2/Upset fijan las 12:00, B2
+  deja la original). Lo que la línea 72 hace después —formatear `dd/MM/yyyy` para el ID,
+  escribir en la solapa espejo, ordenar— no depende de la hora. **Con `Date`, no importa qué
+  copia gane.** Con `string` sí: B2 lee `03/04` como 4 de marzo, da `null` para `13/04` y corre
+  `2026-04-03` al día anterior;
+- **verificado sobre el código:** `Fecha (auto)` la escribe la ingesta como `Date` con formato
+  `dd/mm/yyyy` (`Agenda traer datos del mail.js:190-204`). `Fecha (manual)` la tipea una
+  persona, y puede ser `Date` o `string` según cómo la reconozca Sheets;
+- **sin verificar:** qué copia gana, y cuántos `string` le llegan de verdad. En el
+  `clasp push` del 25/09 `Upset Base FInal.js` subió último, lo que *sugiere* que gana esa, pero
+  el orden de carga no está fijado (`filePushOrder` vacío). Lo mide `diagLegToDate()`
+  (`diagnostico/04_legado_fechas.js`, `paso5_verificarLegToDate()`): le pregunta a la función
+  por `'03/04/2026'` y cuenta los tipos que llegan a la línea 72.
 
 **Qué hacer, antes de encender `runFullPipelineWithDelays`** (y no antes, porque no hay
 urgencia medida): dejar una sola `legToDate_`, o renombrar la de `Sync B to B2.js` para que no

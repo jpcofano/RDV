@@ -43,6 +43,11 @@
  *                                                en el prefijo y otra distinta en el cuerpo?
  *                                                Decide si limpiarPrefijos_ se saca, se acota o
  *                                                se conserva (HANDOFF-2026-09-25, sección 3).
+ *   paso5_verificarLegToDate() → diagLegToDate()   NO escribe en ninguna planilla: sólo log.
+ *                                                ¿Qué copia de legToDate_ gana, y qué le llega
+ *                                                a la línea 72 del activador de Agenda (Date o
+ *                                                string, cuántos ambiguos)? Pendiente de CLAUDE.md
+ *                                                "los leg*_ duplicados".
  *
  *  Qué mirar en cada log y qué decide cada número: docs/ESTADO.md, sección 2.
  *
@@ -100,6 +105,14 @@ function paso4_medirFiguraEnPrefijo() {
              'sólo el log: formularios que PIERDEN la figura con la limpieza contra los que ' +
              'EVITAN multi_figura, agrupados por par prefijo → cuerpo');
   return medirFiguraEnPrefijo();
+}
+
+function paso5_verificarLegToDate() {
+  _anunciar_('paso 5 — qué legToDate_ gana y qué le llega', 'diagLegToDate()  [diagnostico/04_legado_fechas.js]',
+             'NO escribe en ninguna planilla (lee la solapa Agenda del archivo (4))',
+             'sólo el log: la respuesta de legToDate_ a \'03/04/2026\' (dice qué copia gana) y el ' +
+             'conteo de Date / string / ambiguos en Fecha (manual) y Fecha (auto)');
+  return diagLegToDate();
 }
 
 // =============================================================================================

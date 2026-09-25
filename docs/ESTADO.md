@@ -30,6 +30,7 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 4 | `paso4_medirFiguraEnPrefijo()` | `medirFiguraEnPrefijo()` | cuántos formularios tienen una figura en el prefijo y otra distinta en el cuerpo | **no escribe en ninguna planilla**; sólo log |
+| 5 | `paso5_verificarLegToDate()` | `diagLegToDate()` | qué copia de `legToDate_` gana y qué le llega a la línea 72 del activador de Agenda | **no escribe en ninguna planilla**; sólo log |
 
 Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
 `paso2_rehacer_emparejarManual()` o `paso2_rehacer_sinMatch()`, que rehacen sólo ése.
@@ -148,6 +149,35 @@ grupo bajo: este log cuenta formularios, no matches. **Hipótesis, sin medir:** 
 bajo baje. Lo que sí está medido es que el 37,3% del 2f es `figura_no_reconocida`, no cuánto
 de eso es por el prefijo.
 
+### j) ¿La copia de `legToDate_` que gana afecta al activador de Agenda?
+
+Log de **`paso5_verificarLegToDate()`**. Contexto en CLAUDE.md, *"Pendiente: los `leg*_`
+duplicados"*. Dos puntos:
+
+1. **Qué copia gana**, preguntándole a la función: `'03/04/2026'` → `03/04` es una copia día
+   primero (A2 o Upset, idénticas); → `04/03` es la de `Sync B to B2.js`. El `Date` de prueba lo
+   confirma por la hora: `12:00` es A2/Upset, `15:30` es B2.
+2. **Qué le llega a la línea 72**: Date / string / número en `Fecha (manual)`, en `Fecha (auto)`
+   y en lo que efectivamente usa la línea (la manual si tiene algo, si no la auto), con los
+   string ambiguos (día y mes ≤ 12) y hasta 5 ejemplos.
+
+Cómo decide, **ya verificado sobre el código** (las tres copias corridas en Node con zona
+horaria de Buenos Aires):
+
+- con un `Date`, las tres dan **el mismo día**; sólo cambia la hora (A2/Upset fijan las 12:00,
+  B2 deja la original). Después de la línea 72 la fecha se formatea `dd/MM/yyyy` para el ID
+  (`buildIdFinal_`), se escribe en la solapa espejo y ordena: con `Date`, **da igual qué copia
+  gane**;
+- `Fecha (auto)` la escribe la ingesta como `Date` con formato `dd/mm/yyyy`
+  (`Agenda traer datos del mail.js:190-204`), así que ahí llega `Date`. `Fecha (manual)` la
+  tipea una persona: **eso es lo que hay que medir**;
+- con `string` sí difieren: B2 lee `03/04` como 4 de marzo, da `null` para `13/04`, y corre
+  `2026-04-03` al día anterior.
+
+Si el punto 1 da día primero, o si no llega ningún string: **no afecta hoy**, y el pendiente
+queda para antes de encender el pipeline. Si gana B2 **y** llegan strings ambiguos con día ≠
+mes, la solapa espejo `Agenda` tiene fechas corridas hoy.
+
 ---
 
 ## 3. Cómo leer los logs nuevos
@@ -202,7 +232,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso4_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso5_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -212,6 +242,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/01_hueco_sexo_edades.js](../diagnostico/01_hueco_sexo_edades.js) | `diagFase1()` y uno por reporte |
 | [diagnostico/02_corte_B_a_B2.js](../diagnostico/02_corte_B_a_B2.js) | `diagCorteB()`, `diagDupB2()`, `diagFechaFin()`, `diagScores()`, `diagAnclaFecha()` |
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
+| [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (paso 5) |
 
 Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
 `diagAnclaFecha()` queda como registro de una medición cerrada. **No hace falta volver a
