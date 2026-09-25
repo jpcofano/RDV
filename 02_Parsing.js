@@ -220,7 +220,15 @@ function esFormularioAnulado_(texto) {
  * Limpia los prefijos administrativos antes de buscar.
  */
 function figurasEnTexto_(texto) {
-  const t = normalizeText_(limpiarPrefijos_(texto));
+  return _figurasEnNormalizado_(normalizeText_(limpiarPrefijos_(texto)));
+}
+
+/**
+ * El matcheo de figuras propiamente dicho, sobre un texto **ya normalizado**. Es el único lugar
+ * donde se decide si una figura "aparece": `figurasEnTexto_` y `compararLimpiezaPrefijo_` lo
+ * comparten para que la medición y el upsert no puedan divergir en el criterio (3.1.h).
+ */
+function _figurasEnNormalizado_(t) {
   if (!t) return [];
   const out = [];
   const figuras = _listas_().figuras;
@@ -228,6 +236,53 @@ function figurasEnTexto_(texto) {
     if (_contienePalabra_(t, figuras[i].norm)) out.push(figuras[i].canon);
   }
   return out;
+}
+
+/**
+ * Qué cambia `limpiarPrefijos_` en las figuras de **un** formulario. Sólo lectura; lo usa
+ * `medirFiguraEnPrefijo()` para decidir si la limpieza se queda (docs/HANDOFF-2026-09-25.md, §3).
+ *
+ * Compara lo que ve el upsert hoy (`figurasEnTexto_`, con limpieza) contra lo que veía el legado
+ * (el texto completo, sin limpiar). La `clase`:
+ *
+ *   sin_prefijo       la limpieza no sacó nada
+ *   prefijo_neutro    sacó algo, y las figuras son las mismas con y sin limpieza
+ *   pierde_figura     sin limpieza había figura; con limpieza, ninguna        ← el COSTO
+ *   evita_multi       sin limpieza, 2+ figuras; con limpieza, 1                ← el BENEFICIO
+ *   sigue_multi       2+ figuras con y sin limpieza (sacó una, quedan varias)
+ *   otro              cualquier otra combinación, o un recorte desalineado. No debería pasar:
+ *                     borrar texto sólo puede quitar figuras. Si aparece, hay que mirar el caso.
+ */
+function compararLimpiezaPrefijo_(texto) {
+  const original = str(texto);
+  const cuerpo = limpiarPrefijos_(original);
+  // `limpiarPrefijos_` corta el original con el largo de la versión normalizada. Si normalizar
+  // cambió el largo (dos espacios seguidos en el prefijo, un espacio invisible), el corte cae
+  // corrido: se come letras del cuerpo o deja el separador. Ese caso se reporta como `otro` en
+  // vez de medirse con un prefijo mal recortado.
+  const nO = normalizeText_(original), nC = normalizeText_(cuerpo);
+  const k = nO.length - nC.length;
+  const alineado = nO.slice(k) === nC && !/^[-:]/.test(nC) &&
+                   (k === 0 || !/[a-z0-9]/.test(nO.charAt(k - 1)));
+  const prefijo = original.substring(0, original.length - cuerpo.length).trim();
+
+  const sin = _figurasEnNormalizado_(nO);
+  const con = _figurasEnNormalizado_(nC);
+  const enPrefijo = _figurasEnNormalizado_(normalizeText_(prefijo));
+
+  const mismas = sin.length === con.length &&
+                 sin.every(function (x) { return con.indexOf(x) !== -1; });
+
+  let clase;
+  if (!alineado)                                 clase = 'otro';
+  else if (!prefijo)                             clase = 'sin_prefijo';
+  else if (mismas)                               clase = 'prefijo_neutro';
+  else if (sin.length && !con.length)            clase = 'pierde_figura';
+  else if (sin.length >= 2 && con.length === 1)  clase = 'evita_multi';
+  else if (sin.length >= 2 && con.length >= 2)   clase = 'sigue_multi';
+  else                                           clase = 'otro';
+
+  return { clase: clase, prefijo: prefijo, enPrefijo: enPrefijo, sin: sin, con: con };
 }
 
 /** El barrio mencionado, en la grafía de `Comunas`. `''` si no reconoce ninguno. */

@@ -88,6 +88,106 @@ function _soloUno_(cual) {
   return plan.res;
 }
 
+// ===================== Medición: la figura en el prefijo =====================
+
+/**
+ * **Sólo lectura.** Mide qué compra y qué cuesta `limpiarPrefijos_` sobre los formularios de `B`
+ * (docs/HANDOFF-2026-09-25.md, sección 3). No escribe en ninguna planilla: todo va al log.
+ *
+ * La pregunta: ¿cuántos formularios tienen **una figura en el prefijo y otra distinta en el
+ * cuerpo**? Es el único caso en que limpiar el prefijo cambia algo a favor. Si da cero o casi
+ * cero, la limpieza no compra nada y sale.
+ *
+ * Usa `leerCandidatos_()` —la misma población que puntúa el upsert, sin los anulados— y
+ * `compararLimpiezaPrefijo_()`, que comparte el matcheo con `figurasEnTexto_`. Un formulario está
+ * en la ventana si su fecha detectada lo está (el mismo criterio que el resto del log).
+ */
+function medirFiguraEnPrefijo() {
+  const cands = leerCandidatos_();
+  const clases = ['sin_prefijo', 'prefijo_neutro', 'pierde_figura', 'evita_multi',
+                  'sigue_multi', 'otro'];
+  const cnt = {}, grupos = {};
+  clases.forEach(function (k) { cnt[k] = contador_(); grupos[k] = new Map(); });
+  const base = contador_();
+  let sinFecha = 0;
+
+  cands.vivos.forEach(function (c) {
+    const ev = enVentanaAnalisis_(c.det && c.det.mejor);
+    if (!(c.det && c.det.mejor)) sinFecha++;
+    sumar_(base, ev);
+    const r = compararLimpiezaPrefijo_(c.nombre);
+    sumar_(cnt[r.clase], ev);
+    if (r.clase === 'sin_prefijo') return;
+
+    /*
+     * Agrupar por la forma, no por el valor (CLAUDE.md §6): la clave es qué figura había en el
+     * prefijo y cuál queda en el cuerpo, no el nombre crudo del formulario.
+     */
+    const clave = (r.enPrefijo.join(' + ') || '(prefijo sin figura: ' + normalizeText_(r.prefijo) + ')') +
+                  '  →  ' + (r.con.join(' + ') || '(ninguna)');
+    const g = grupos[r.clase];
+    if (!g.has(clave)) g.set(clave, { n: contador_(), ejemplos: [] });
+    const x = g.get(clave);
+    sumar_(x.n, ev);
+    if (x.ejemplos.length < 3) x.ejemplos.push({ ev: ev, fila: c.fila, nombre: c.nombre });
+  });
+
+  Logger.log('=== medirFiguraEnPrefijo — sólo lectura, no escribe nada ===');
+  Logger.log('VENTANA: %s en ventana / %s formularios vivos de B | corte: %s (últimos %s meses)',
+             base.v, base.t, fmtFecha_(inicioVentanaAnalisis_()), VENTANA_ANALISIS_MESES);
+  Logger.log('  %s formularios sin fecha detectable: cuentan sólo en el total.', sinFecha);
+  Logger.log('  PREFIJOS_EVENTO = %s', JSON.stringify(PREFIJOS_EVENTO));
+  Logger.log('  Se lee [ventana | total]. Decide la ventana.');
+
+  Logger.log('--- qué cambia la limpieza, por formulario ---');
+  Logger.log('  sin prefijo (no toca nada) .... %s', _dcp_(cnt.sin_prefijo, base));
+  Logger.log('  prefijo, mismas figuras ....... %s', _dcp_(cnt.prefijo_neutro, base));
+  Logger.log('  PIERDE la figura (costo) ...... %s', _dcp_(cnt.pierde_figura, base));
+  Logger.log('  EVITA multi_figura (benef.) ... %s', _dcp_(cnt.evita_multi, base));
+  Logger.log('  sigue multi_figura ............ %s', _dcp_(cnt.sigue_multi, base));
+  Logger.log('  otro (no debería existir) ..... %s', _dcp_(cnt.otro, base));
+
+  /*
+   * Decir explícitamente qué NO es señal (CLAUDE.md §6, regla 3). Las dos líneas de abajo salen
+   * del código, no de una suposición: `evaluarCandidatos_` manda `multi_figura` a REVISAR_MATCH
+   * antes de mirar el margen, así que sin la limpieza esos formularios no se escribirían mal.
+   */
+  Logger.log('  Qué NO dice esto:');
+  Logger.log('   - Cuenta FORMULARIOS, no filas del destino ni matches. Cuánto se mueve el');
+  Logger.log('     resultado del upsert lo dice volver a correr paso2_upsertEnSeco().');
+  Logger.log('   - EVITA multi_figura no evita una escritura errónea: sin la limpieza esos casos');
+  Logger.log('     irían a REVISAR_MATCH (evaluarCandidatos_, motivo multi_figura), no al destino.');
+  Logger.log('     El beneficio es menos revisión a mano. El costo, PIERDE la figura, es un');
+  Logger.log('     formulario que deja de puntuar figura y puede perder contra uno lejano (2b).');
+
+  if (cnt.evita_multi.v === 0) {
+    Logger.log('  >>> En la ventana NINGÚN formulario tiene una figura en el prefijo y otra distinta');
+    Logger.log('      en el cuerpo. La limpieza no compra nada en el período que calibra.');
+  } else {
+    Logger.log('  >>> En la ventana: %s formularios evitan multi_figura y %s pierden la figura.',
+               cnt.evita_multi.v, cnt.pierde_figura.v);
+    Logger.log('      Mirar los grupos de abajo antes de decidir: el número solo no alcanza.');
+  }
+
+  ['evita_multi', 'pierde_figura', 'sigue_multi', 'otro', 'prefijo_neutro'].forEach(function (k) {
+    const g = grupos[k];
+    if (!g.size) return;
+    Logger.log('--- %s: %s formas distintas ---', k, g.size);
+    const orden = Array.from(g.entries())
+      .sort(function (a, b) { return b[1].n.t - a[1].n.t; });
+    const tope = (k === 'prefijo_neutro') ? 5 : 30;
+    orden.slice(0, tope).forEach(function (e) {
+      Logger.log('  %s  %s', _dc_(e[1].n), e[0]);
+      e[1].ejemplos.forEach(function (x) {
+        Logger.log('       [%s] B fila %s | %s', x.ev ? 'ventana' : 'histor.', x.fila, x.nombre);
+      });
+    });
+    if (orden.length > tope) Logger.log('  (%s formas más, no listadas)', orden.length - tope);
+  });
+
+  return { base: base, clases: cnt };
+}
+
 // ===================== El upsert =====================
 
 /**

@@ -38,6 +38,11 @@
  *                                                al log, y ahí se confirma que las 20
  *                                                desfase_reprogramacion son el destino corrido
  *                                                1-3 días y no un error del parser.
+ *   paso4_medirFiguraEnPrefijo() → medirFiguraEnPrefijo()   NO escribe en ninguna planilla:
+ *                                                sólo log. ¿Cuántos formularios tienen una figura
+ *                                                en el prefijo y otra distinta en el cuerpo?
+ *                                                Decide si limpiarPrefijos_ se saca, se acota o
+ *                                                se conserva (HANDOFF-2026-09-25, sección 3).
  *
  *  Qué mirar en cada log y qué decide cada número: docs/ESTADO.md, sección 2.
  *
@@ -87,6 +92,14 @@ function paso3_medirReglaDelMes() {
              'NO en el destino (sólo lectura)',
              'solapa DIAG_CORTE_B en la intermedia + bloque "LA REGLA DEL MES" en el log');
   return diagCorteB();
+}
+
+function paso4_medirFiguraEnPrefijo() {
+  _anunciar_('paso 4 — medir la figura en el prefijo', 'medirFiguraEnPrefijo()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (sólo lectura de B y de la columna Figura)',
+             'sólo el log: formularios que PIERDEN la figura con la limpieza contra los que ' +
+             'EVITAN multi_figura, agrupados por par prefijo → cuerpo');
+  return medirFiguraEnPrefijo();
 }
 
 // =============================================================================================

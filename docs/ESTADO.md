@@ -29,6 +29,7 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados |
 | 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide la regla del mes contra las `fecha_mal_parseada` | no toca el destino; escribe `DIAG_CORTE_B` |
+| 4 | `paso4_medirFiguraEnPrefijo()` | `medirFiguraEnPrefijo()` | cuántos formularios tienen una figura en el prefijo y otra distinta en el cuerpo | **no escribe en ninguna planilla**; sólo log |
 
 Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
 `paso2_rehacer_emparejarManual()` o `paso2_rehacer_sinMatch()`, que rehacen sólo ése.
@@ -116,6 +117,25 @@ Bloque **2e**, punto c). Para cada formulario temático, si hay **alguna** fila 
 peso de ubicación los salva. El caso a mirar primero es **B fila 730** (Eje Sur, 14/08), cuyos
 cuatro candidatos están a 7, 7, 11 y 13 días.
 
+### i) ¿`limpiarPrefijos_` se saca, se acota o se conserva?
+
+Log de **`paso4_medirFiguraEnPrefijo()`**. Clasifica cada formulario vivo de `B` según qué le
+cambia la limpieza, comparando las figuras con y sin ella (`compararLimpiezaPrefijo_`, que
+comparte el matcheo con `figurasEnTexto_`):
+
+- **`PIERDE la figura`** → el costo. **Hipótesis, sin medir:** que explique buena parte del
+  37,3% de `figura_no_reconocida` del bloque 2f. Cuánto, lo dice el paso 2 re-corrido, no esto;
+- **`EVITA multi_figura`** → el beneficio, y el único caso en que la limpieza compra algo. Ojo:
+  sin la limpieza esos formularios irían a `REVISAR_MATCH` por `multi_figura`
+  (`evaluarCandidatos_`), no a una escritura errónea. El beneficio es menos revisión a mano;
+- **`otro`** → no debería existir. Incluye los recortes desalineados de `limpiarPrefijos_`
+  (dos espacios en el prefijo y nada después del guion). Si aparece, mirar el caso.
+
+Si `EVITA` da cero o casi cero en la ventana, la función sale y `figurasEnTexto_` vuelve a
+correr sobre el texto completo, como el legado. Si no, los grupos *prefijo → cuerpo* dicen si
+alcanza con acotarla. En los dos casos, **volver a correr el paso 2** y ver cuánto se mueve el
+grupo bajo: este log cuenta formularios, no matches.
+
 ---
 
 ## 3. Cómo leer los logs nuevos
@@ -170,7 +190,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso4_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
