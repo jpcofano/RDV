@@ -10,9 +10,9 @@
  * `UMBRAL_MATCH` y `MARGEN_MINIMO`, que hoy están puestos a ojo.
  *
  * --- El diseño, en una línea ---
- * **No hay clave natural** (CLAUDE.md 3.2): el barrio no viene, las dos fechas no son
- * confiables y la figura sola no identifica. Así que el upsert **no intenta identificar**: le
- * pone un score a cada candidato, escribe lo que está por encima del umbral y **deja registrado
+ * **No hay clave natural** (CLAUDE.md 3.2): el barrio no viene, el día del nombre del
+ * formulario puede venir corrido y la figura sola no identifica. Así que el upsert **no intenta
+ * identificar**: le pone un score a cada candidato, escribe lo que está por encima del umbral y **deja registrado
  * todo lo demás** en vez de descartarlo en silencio, que es lo que hacía el legado (3.1.d).
  *
  * No hay bootstrap manual previo. Nadie resuelve 103 filas antes de arrancar: el pipeline hace

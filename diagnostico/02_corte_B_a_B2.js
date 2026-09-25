@@ -595,7 +595,7 @@ function buscarCandidato_diag2(h, b) {
  * Esto mide el efecto sobre la población donde duele, comparando el parser **nuevo**
  * (`02_Parsing.js`) contra el **legado** (`detectFecha_diag2`, verbatim de `Código.js`) sobre
  * las mismas filas. Se aísla la regla usando la precedencia del legado —texto primero,
- * `fecha_fin` de fallback— porque si no estaríamos midiendo dos cambios a la vez.
+ * `fecha_fin` de fallback—, que es además la misma que usa el upsert nuevo.
  */
 function _reglaDelMes_diag2(casos) {
   Logger.log('--- LA REGLA DEL MES: el año y el mes salen de fecha_fin, el día del texto ---');
@@ -624,7 +624,8 @@ function _reglaDelMes_diag2(casos) {
       }
     }
 
-    // Lo que de verdad usa el matching: compara contra LAS DOS fechas, no contra una.
+    // Referencia: cuántas se salvarían si además se aceptara coincidir con fecha_fin. NO es lo
+    // que hace el matching — `distanciaFecha_` mide sólo contra `det.mejor` (= `nueva`).
     if ((det.texto && mismoDia_diag2(det.texto, c.destino)) ||
         (det.fechaFin && mismoDia_diag2(det.fechaFin, c.destino))) algunaCoincide++;
   });
@@ -637,11 +638,12 @@ function _reglaDelMes_diag2(casos) {
              casos.length ? Math.round(resueltas * 1000 / casos.length) / 10 : 0);
   Logger.log('  siguen sin coincidir ....... %s', siguenMal);
   /*
-   * El número de arriba usa la precedencia del legado, para aislar el efecto de la regla. El
-   * upsert no elige una fecha: compara contra las dos (`distanciaFecha_`), así que éste es el
-   * que dice cuánto matchea de verdad.
+   * El número de RESUELTAS usa texto primero y `fecha_fin` de respaldo, que es también lo que
+   * hace el upsert (`detectFecha_().mejor` → `distanciaFecha_`): ése es el que dice cuánto
+   * matchea. El de abajo es sólo referencia — `fecha_fin` es el cierre del formulario, no la
+   * reunión, y una coincidencia contra él no la toma el matching.
    */
-  Logger.log('  alguna de las dos fechas coincide con el destino: %s  (es lo que usa el match)',
+  Logger.log('  alguna de las dos fechas coincide con el destino: %s  (referencia, NO lo usa el match)',
              algunaCoincide);
 
   if (resueltas >= casos.length * 0.8) {

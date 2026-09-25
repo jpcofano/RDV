@@ -155,8 +155,9 @@ existe y quema la confianza en los avisos que sí importan.
 #### b) El asunto lleva el rango de la semana, y eso vale oro
 
 `Semana del 14/10 al 20/10` es una **restricción externa sobre las fechas de los eventos del
-cuerpo** — y es independiente de las dos fuentes de fecha que ya sabemos poco confiables: el
-nombre del formulario y `fecha_fin`.
+cuerpo** — y es independiente del origen de inscriptos: no sale ni del nombre del formulario ni
+de `fecha_fin` (que además es el cierre del formulario, no la fecha de la reunión — CLAUDE.md
+3.3.c).
 
 Un evento que el parser ubique fuera del rango de su propio asunto está mal parseado, sin
 necesidad de cruzarlo contra nada. Es un **candidato a ancla de fecha** para la Fase 8, anotado

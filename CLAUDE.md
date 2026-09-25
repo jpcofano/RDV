@@ -693,8 +693,8 @@ descendente antes de borrar. Es la misma operación resuelta bien a diez líneas
 > | campo | estado |
 > |---|---|
 > | **barrio** | ausente en `B` desde 2025-10 — 0% → 54% → 93% → **97%** |
-> | **fecha del nombre del formulario** | no confiable: 20 `fecha_mal_parseada`, rango inflado hasta el 18/12/2026 |
-> | **`fecha_fin`** | no confiable: 56,5% en 0 o +1, y el error está en el medio (3.3.c) |
+> | **fecha del nombre del formulario** | era no confiable: 20 `fecha_mal_parseada`, rango inflado hasta el 18/12/2026. **Con la regla del mes (1.c) es la fuente**; el día todavía puede venir corrido |
+> | **`fecha_fin`** | no es la fecha de la reunión: es **el cierre del formulario**, otra magnitud (3.3.c). Da año y mes, y es respaldo |
 > | **figura sola** | no identifica |
 >
 > **Esto explica todo lo demás.** No son tres problemas sueltos que fuimos encontrando: son un
@@ -974,7 +974,9 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
   #### 🔴 CERRADO: el ancla de fechas queda DESCARTADA
 
-  `diagFechaFin()` corrió el 2026-09-25 y cerró la pregunta. **`fecha_fin` no es confiable.**
+  `diagFechaFin()` corrió el 2026-09-25 y cerró la pregunta: **`fecha_fin` no sirve de ancla.**
+  (La primera lectura fue "`fecha_fin` no es confiable"; está corregida más abajo — es el cierre
+  del formulario, no una fecha de reunión mal cargada.)
 
   ```
   VENTANA: 223 comparables / 699 con contraparte en B2 | corte 6 meses
@@ -996,9 +998,32 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   la firma de una reprogramación— **no se sostiene contra los datos**. Los desvíos grandes son
   dos `Suspendida` y dos `Realizada`.
 
-  → **`VENTANA_FECHA_TEXTO` deja de ser una regla de parseo.** `detectFecha_` no elige entre el
-  texto y `fecha_fin`: **devuelve las dos** y el matching las usa como señal con tolerancia
-  (decisión 2). Se acabó la idea de resolver la fecha antes de matchear.
+  → **`VENTANA_FECHA_TEXTO` deja de ser una regla de parseo.** Se acabó la idea de anclar la
+  fecha a `fecha_fin`.
+
+  > **Corrección (2026-09-25): "`fecha_fin` no es confiable" era la lectura equivocada.**
+  >
+  > `fecha_fin` no es una fuente poco confiable **de la fecha de la reunión**: es **el cierre
+  > del formulario**, otra magnitud. El 56,5% no mide un error de `fecha_fin`; mide cuánto
+  > tarda en ocurrir la reunión después de que cierra la inscripción. Tratar las dos como dos
+  > estimaciones rivales del mismo dato fue el error de fondo, y de ahí salió la idea de
+  > comparar contra las dos quedándose con la más cercana.
+  >
+  > **La fecha del nombre del formulario es la fuente, y es siempre la más cercana a la
+  > reunión.** Lo que la volvía inservible era que el parser aceptaba cualquier ocurrencia
+  > (`"10-12 hs"` → 10 de diciembre); con la regla del mes filtrando los meses imposibles, ese
+  > argumento ya no aplica.
+  >
+  > Lo que queda en el código (`02_Parsing.js`):
+  >
+  > | | |
+  > |---|---|
+  > | `detectFecha_().mejor` / `fuente` | **primero el texto** (ya validado por la regla del mes); `fecha_fin` **sólo** si no hubo ninguna ocurrencia aceptada |
+  > | `distanciaFecha_` | mide **contra esa fecha**, no contra la más cercana de las dos |
+  > | `fecha_fin` | aporta año y mes a la regla del mes, y es **respaldo** |
+  >
+  > La fecha sigue siendo **señal con tolerancia** en el score (decisión 2): la regla del mes
+  > garantiza año y mes, no el día.
 
   **Un sesgo que hay que tener presente al leer el 56,5%:** las 223 comparables salen de las 699
   filas que **sí** matchean contra B2, o sea justamente aquellas donde la clave natural funcionó.
@@ -1048,7 +1073,8 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   #### Hay una tercera fuente de fecha, y es externa
 
   Las dos que veníamos discutiendo —el nombre del formulario y `fecha_fin`— salen las dos del
-  **mismo origen de inscriptos**, y las dos son poco confiables. Buscando otra cosa apareció una
+  **mismo origen de inscriptos** (y `fecha_fin` ni siquiera es una fecha de reunión: es el cierre
+  del formulario). Buscando otra cosa apareció una
   tercera, en un lugar donde no la estábamos buscando: **el asunto de los mails de agenda lleva
   el rango de la semana.**
 
@@ -1382,9 +1408,10 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    tienen |d| > 7. Darle 0,06 reconoce que "la misma semana" aporta algo sin que alcance para
    decidir nada solo.
 
-   Y `distanciaFecha_` compara contra **las dos** fechas candidatas —la del texto y `fecha_fin`—
-   quedándose con la más cercana. Como ninguna de las dos es confiable, elegir una sola sería
-   elegir cuál equivocarse.
+   Y `distanciaFecha_` mide contra **la fecha del texto**, ya validada por la regla del mes
+   (1.c). `fecha_fin` entra **sólo como respaldo**, cuando el texto no dio ninguna ocurrencia
+   aceptable. No se compara contra las dos quedándose con la más cercana: `fecha_fin` es el
+   cierre del formulario, no la reunión, y coincidir con él no es evidencia (3.3.c, corrección).
 
    #### Dos puertas de relevancia, con anchos distintos
 
@@ -1869,7 +1896,8 @@ Y las tres mediciones que sostienen el diseño:
 
 ### Fase 1c — Anclar la fecha  *(CERRADA: descartada)*
 
-> **No se hace.** `diagFechaFin()` mostró que `fecha_fin` no es confiable y, sobre todo, que el
+> **No se hace.** `diagFechaFin()` mostró que `fecha_fin` no sirve de ancla —es el cierre del
+> formulario, no la fecha de la reunión— y, sobre todo, que el
 > error está **en el medio y no en los extremos**: casi todo el desvío vive entre 2 y 7 días, y
 > ahí ninguna ventana discrimina. Detalle en 3.3.c.
 >
@@ -2435,7 +2463,7 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 **Si el próximo commit de código invalida algo que dice este documento, el documento se corrige
 en ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-No es prolijidad. En esta migración cambiamos de premisa **seis veces**:
+No es prolijidad. En esta migración cambiamos de premisa **siete veces**:
 
 | lo que decía el documento | lo que medimos después |
 |---|---|
@@ -2444,6 +2472,7 @@ No es prolijidad. En esta migración cambiamos de premisa **seis veces**:
 | los 8 pares repetidos rompen la regla de una reunión por día | la regla se sostiene: es desfase por reprogramación |
 | el desvío grande es la firma de una reprogramación | cero de los desvíos grandes son `Reprogramada` |
 | `fecha_fin` sirve de ancla | no discrimina; el ancla queda descartada |
+| `fecha_fin` y el texto son dos fuentes poco confiables, se compara contra las dos | `fecha_fin` es el cierre del formulario; el texto, con la regla del mes, es la fuente |
 | la clave natural es el plan B | no hay clave natural |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.

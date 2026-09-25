@@ -254,22 +254,23 @@ function detectComuna_(texto) {
 }
 
 /**
- * La fecha de la reunión, **anclada a `fecha_fin`** (CLAUDE.md 3.3.c).
+ * La fecha de la reunión: **la del nombre del formulario**, validada por la regla del mes
+ * (CLAUDE.md 1.c y 3.3.c).
  *
- * El legado tiene la prioridad al revés: el texto libre gana y `fecha_fin` queda de fallback,
- * y como el regex casi nunca falla, la columna estructurada —disponible en el 99% de las
- * filas— prácticamente no se usa. Un `"Reunión 10-12 hs"` se lee como 10 de diciembre.
+ * `fecha_fin` no es una segunda estimación de la fecha de la reunión: es **el cierre del
+ * formulario**, otra magnitud. Sirve para dos cosas y ninguna es competir con el texto:
+ *   - da el año y el mes contra los que se filtran las ocurrencias del texto;
+ *   - es **respaldo** cuando el texto no dio ninguna ocurrencia aceptable.
  *
- * Acá `fecha_fin` es el ancla: la fecha del texto se acepta **sólo si** cae dentro de
- * `VENTANA_FECHA_TEXTO` respecto de ella. Si no, gana `fecha_fin`.
+ * Que el legado le diera prioridad al texto no era el bug: el bug era aceptar la primera
+ * ocurrencia sin validarla (`"Reunión 10-12 hs"` → 10 de diciembre). La regla del mes descarta
+ * lo imposible, y lo que sobrevive es la fuente más cercana a la reunión.
  *
- * Devuelve `{ fecha, fuente, desvio }`:
- *   fuente: 'texto' | 'fecha_fin' | 'texto_sin_ancla' | ''
- *   desvio: días entre la fecha del texto y `fecha_fin`, o `null`
- *
- * El campo `fuente` importa: `'fecha_fin'` con un `desvio` grande es la firma de una
- * **reprogramación** —el formulario conserva la fecha vieja en el nombre y `fecha_fin` se
- * movió— y esas filas hay que poder listarlas.
+ * Devuelve `{ texto, fechaFin, desvio, rechazadas, mejor, fuente }`:
+ *   mejor:  la del texto si hubo una aceptada; si no, `fecha_fin`; si no, `null`
+ *   fuente: 'texto' | 'fecha_fin' | ''
+ *   desvio: días entre la fecha del texto y `fecha_fin`, o `null`. Es la distancia entre el
+ *           cierre del formulario y la reunión, no un error de ninguna de las dos
  */
 function detectFecha_(texto, fechaFin) {
   const porFechaFin = toDate_(fechaFin);
@@ -284,29 +285,26 @@ function detectFecha_(texto, fechaFin) {
     // Las ocurrencias que la regla de mes tiró. Sirven para medir cuánto filtró y para
     // entender un caso raro sin volver a parsear a mano.
     rechazadas: oc.rechazadas,
-    // `mejor` es sólo para mostrar y para las filas que necesitan **una** fecha. No decide
-    // ningún match: para eso está `distanciaFecha_`, que compara contra las dos.
-    mejor: porFechaFin || porTexto || null,
-    fuente: porFechaFin ? 'fecha_fin' : (porTexto ? 'texto' : '')
+    // Primero el texto, ya filtrado por la regla del mes. `fecha_fin` sólo si no hubo ninguna.
+    mejor: porTexto || porFechaFin || null,
+    fuente: porTexto ? 'texto' : (porFechaFin ? 'fecha_fin' : '')
   };
 }
 
 /**
- * Distancia en días entre la fecha del destino y la **más cercana** de las dos candidatas.
+ * Distancia en días entre la fecha del destino y la fecha de la reunión según el formulario:
+ * la del texto, o `fecha_fin` **sólo** si el texto no dio ninguna ocurrencia aceptable.
  *
- * Ésta es la función que usa el matching, y compara contra las dos a propósito: como ninguna de
- * las dos fuentes es confiable (3.3.c), quedarse con una sola sería elegir cuál equivocarse.
+ * No compara contra las dos quedándose con la más cercana. Eso se justificaba cuando el texto
+ * no era confiable; con la regla del mes filtrando los meses imposibles, sí lo es, y medir
+ * también contra `fecha_fin` —el cierre del formulario— premiaría coincidencias con un día que
+ * no es el de la reunión.
+ *
  * Devuelve `null` si no hay con qué comparar.
  */
 function distanciaFecha_(fechaDestino, det) {
-  if (!fechaDestino || !det) return null;
-  let mejor = null;
-  [det.texto, det.fechaFin].forEach(function (f) {
-    if (!f) return;
-    const d = Math.abs(diasEntre_(f, fechaDestino));
-    if (mejor === null || d < mejor) mejor = d;
-  });
-  return mejor;
+  if (!fechaDestino || !det || !det.mejor) return null;
+  return Math.abs(diasEntre_(det.mejor, fechaDestino));
 }
 
 /**

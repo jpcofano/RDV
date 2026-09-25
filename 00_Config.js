@@ -85,8 +85,8 @@ const VENTANA_ANALISIS_MESES = 6;
 
 /**
  * ⚠️ **OBSOLETA desde 2026-09-25: el ancla de fechas quedó descartada** (CLAUDE.md 3.3.c).
- * `detectFecha_` ya no la usa — devuelve las dos fechas y el matching las puntúa con tolerancia
- * (`BANDAS_FECHA`). Se conserva porque `diagAnclaFecha()` la referencia como registro de la
+ * `detectFecha_` ya no la usa — toma la fecha del texto validada por la regla del mes, con
+ * `fecha_fin` sólo de respaldo, y el matching la puntúa con tolerancia (`BANDAS_FECHA`). Se conserva porque `diagAnclaFecha()` la referencia como registro de la
  * medición que llevó a descartarla. **No usarla en código nuevo.**
  *
  * Ventana de aceptación de la fecha sacada del texto libre, **relativa a `fecha_fin`**, que es
@@ -197,8 +197,9 @@ const PALABRAS_VACIAS_EVENTO = [
 
 /**
  * **La fecha es señal, no clave.** Escala decreciente y **ninguna banda descarta por sí sola**:
- * un desvío de 9 días puntúa 0 pero no elimina al candidato, porque la fecha no es confiable ni
- * en el origen ni en el destino (CLAUDE.md 3.3.c).
+ * un desvío de 9 días puntúa 0 pero no elimina al candidato. La regla del mes garantiza el año
+ * y el mes, no el día: el día del nombre del formulario puede venir corrido, y la fecha del
+ * destino la carga una persona (CLAUDE.md 1.c y 3.3.c).
  *
  * El escalón de ±7 existe porque ahí vive casi todo el error medido: de los 223 comparables de
  * `diagFechaFin()`, sólo 4 tienen |d| > 7. Darle 0.06 en vez de 0 reconoce que "la misma semana"
