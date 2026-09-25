@@ -452,6 +452,10 @@ Cuesta nada y ahorra mucho.
 > andaba. Queda **pendiente de evaluar**, no dado de baja — ver
 > [docs/triggers-legado.md](docs/triggers-legado.md).
 >
+> ⚠️ **Antes de encender `runFullPipelineWithDelays`:** hay tres copias de `legToDate_` con
+> comportamientos distintos entre los archivos del pipeline, y cuál corre depende del orden de
+> carga. Ver *"Pendiente: los `leg*_` duplicados"* en la Fase 2.
+>
 > Lo que sigue describe el pipeline **como está escrito**, no como está corriendo.
 
 `runFullPipelineWithDelays()` en `Completo.js`, cinco pasos con `Utilities.sleep()` entre medio:
@@ -2104,6 +2108,43 @@ copia los rompería de una forma nueva.
 > confiables.** El prefijo `01_` hace que carguen **primero**, así que las copias del legado los
 > **pisan**. No cambian el comportamiento del legado, y tampoco son las versiones que corren. Es
 > inerte y engañoso a la vez, y está avisado en el encabezado de los dos archivos.
+
+#### Pendiente: los `leg*_` duplicados entre los tres archivos del legado
+
+El rename de la Fase 2 (`077cada`) les puso prefijo `leg` a los helpers del legado para
+separarlos de `01_Utils.js`, pero **entre los tres archivos del legado siguen duplicados**, y
+en Apps Script gana la última copia que carga (3.1.c). Son los **7 duplicados top-level** que
+quedan en el scope que sube clasp. Relevado el 2026-09-25, **sin cambiar
+nada**:
+
+| helper | copias | ¿cuerpos distintos? |
+|---|---|---|
+| `legNormalizeText_` | `Sinc A to A2.js`, `Sync B to B2.js`, `Upset Base FInal.js` | sólo en espacios: **mismo comportamiento** |
+| `legNormalizeHeader_` | `Sinc A to A2.js`, `Upset Base FInal.js` | sólo en espacios: **mismo comportamiento** |
+| `legStr_`, `legNum_` | los tres | idénticos |
+| `agendaHeaders_`, `agendaIdx_` | `Agenda push a base.js`, `Agenda traer datos del mail.js` | idénticos (mismo hash) |
+| **`legToDate_`** | los tres | **sí.** A2 y Upset: día primero (`03/04` = 3 de abril) y fijan las 12:00. **B2: `new Date(string)`** (`03/04` = 4 de marzo) y devuelve el `Date` sin fijar hora |
+
+**Corrección a lo que se venía diciendo: `legToDate_` sí se usa hoy.** Además de los tres pasos
+apagados, la llama el **único activador vivo**: `syncAgendaSheetInBaseFromAgenda_2`
+(`Solapa agenda base final.js:72`), para la fecha que escribe en la solapa espejo `Agenda` de la
+intermedia, la que entra en el ID (`buildIdFinal_`) y la que ordena. También la usan los dos
+archivos de Agenda que corren a mano y `Barrio desde Base.js` (apagado).
+
+Qué tan grave es, **sin verificar**:
+
+- si gana la copia de A2 o de Upset (las dos iguales), no pasa nada. En el `clasp push` del
+  25/09 los archivos subieron en orden alfabético, con `Upset Base FInal.js` último, y eso
+  **sugiere** que gana esa. Pero el orden de carga del proyecto no está fijado en el repo
+  (`filePushOrder` vacío) y **no se comprobó** en el editor;
+- si gana la de B2, el daño depende de qué hay en las celdas: un `Date` pasa casi igual (sin las
+  12:00), un texto `dd/mm` sale con el mes corrido. Eso **no se midió** sobre la solapa `Agenda`.
+
+**Qué hacer, antes de encender `runFullPipelineWithDelays`** (y no antes, porque no hay
+urgencia medida): dejar una sola `legToDate_`, o renombrar la de `Sync B to B2.js` para que no
+compita. No se hace ahora: el pedido fue anotarlo, y tocar el legado sin corrida que lo
+verifique es lo que el plan evita. Se resuelve solo cuando las Fases 4 y 5 se lleven esos
+archivos (abajo), **salvo** el uso en `Solapa agenda base final.js`, que llega hasta la Fase 8.
 
 **Cuándo cierra.** Cuando los tres archivos dejen de existir, y eso pasa solo:
 

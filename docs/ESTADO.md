@@ -28,7 +28,7 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados |
 | 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
-| 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide la regla del mes contra las `fecha_mal_parseada` | no toca el destino; escribe `DIAG_CORTE_B` |
+| 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 4 | `paso4_medirFiguraEnPrefijo()` | `medirFiguraEnPrefijo()` | cuántos formularios tienen una figura en el prefijo y otra distinta en el cuerpo | **no escribe en ninguna planilla**; sólo log |
 
 Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
@@ -125,16 +125,28 @@ comparte el matcheo con `figurasEnTexto_`):
 
 - **`PIERDE la figura`** → el costo. **Hipótesis, sin medir:** que explique buena parte del
   37,3% de `figura_no_reconocida` del bloque 2f. Cuánto, lo dice el paso 2 re-corrido, no esto;
-- **`EVITA multi_figura`** → el beneficio, y el único caso en que la limpieza compra algo. Ojo:
-  sin la limpieza esos formularios irían a `REVISAR_MATCH` por `multi_figura`
-  (`evaluarCandidatos_`), no a una escritura errónea. El beneficio es menos revisión a mano;
-- **`otro`** → no debería existir. Incluye los recortes desalineados de `limpiarPrefijos_`
-  (dos espacios en el prefijo y nada después del guion). Si aparece, mirar el caso.
+- **`EVITA multi_figura`** → el beneficio. Es el único caso posible **por construcción**:
+  borrar texto sólo puede quitar figuras, así que la limpieza sólo ayuda cuando baja de 2+ a 1.
+  Ojo: sin la limpieza esos formularios **no se escribirían mal**. `evaluarCandidatos_`
+  (`20_UpsertDestino.js`, el bloque de veredicto) manda un score bajo a `SIN_MATCH` y un
+  `multi_figura` a `REVISAR_MATCH`, en ese orden y antes del margen. El beneficio es menos
+  revisión a mano;
+- **`otro`** → **sólo** debería aparecer por recortes desalineados de `limpiarPrefijos_`: si
+  normalizar acorta el prefijo (dos espacios, una tilde descompuesta) y no hay espacio después
+  del separador, el corte deja restos (`-Palermo`, `I-Palermo`). Cualquier otra cosa en `otro`
+  es un caso para mirar.
 
-Si `EVITA` da cero o casi cero en la ventana, la función sale y `figurasEnTexto_` vuelve a
+**Lo que esta medición no cubre:** `limpiarPrefijos_` también recorta el texto del que
+`leerCandidatos_` saca barrio, comuna, eje, hora y fecha (`const limpio = limpiarPrefijos_(nombre)`),
+y `diagScores()` la usa para la fecha. Sacarla de `figurasEnTexto_` no toca esos usos; sacarla
+del todo sí, y eso no está medido.
+
+Si `EVITA` da cero o casi cero en la ventana, `figurasEnTexto_` deja de limpiar y vuelve a
 correr sobre el texto completo, como el legado. Si no, los grupos *prefijo → cuerpo* dicen si
 alcanza con acotarla. En los dos casos, **volver a correr el paso 2** y ver cuánto se mueve el
-grupo bajo: este log cuenta formularios, no matches.
+grupo bajo: este log cuenta formularios, no matches. **Hipótesis, sin medir:** que el grupo
+bajo baje. Lo que sí está medido es que el 37,3% del 2f es `figura_no_reconocida`, no cuánto
+de eso es por el prefijo.
 
 ---
 
