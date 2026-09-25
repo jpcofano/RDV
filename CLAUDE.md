@@ -165,7 +165,9 @@ Solapas que importan:
 - **(1) `RVD JM-CM - ES`** → destino final, 41 columnas, 802 filas con datos. **Es el único destino.**
 - **(1) `RDV CONJUNTO`** → origen de asistentes (12 col).
 - **(1) `Comunas`** → tabla de lookup, A:H. Estable, no cambia.
-- **(1) `Para Revisar`** → destino del flujo Agenda.
+- **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
+  (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
+  El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
 - **(2) `B`** → IMPORTRANGE de (3) `Hoja1!A1:R` + `Hoja1!S1:AC`.
 - **(2) `Asistentes`** → IMPORTRANGE de (1) `RDV CONJUNTO!A:L`. Antes se llamaba `A`.
 - **(2) `A2`, `B2`** → versiones transformadas. `B2` tiene 27 columnas.
@@ -264,8 +266,9 @@ Es una **categoría propia**, y aparece así en el destino:
 JORGE MACRI - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte - 16/07/2026
 ```
 
-`Eje Norte` no es un barrio ni una comuna, y `Orden Público / Seguridad` es **el tema**. Para
-estas filas **la ubicación no existe como concepto**.
+`Eje Norte` no es un barrio ni una comuna, y `Orden Público / Seguridad` es **el tema**. ~~Para
+estas filas **la ubicación no existe como concepto**.~~ *[Corregido: el eje sí acota la
+geografía, pero el mapeo eje → comunas no existe en el proyecto. Ver más abajo.]*
 
 > **No confundirla con el barrio ausente de 3.3.b.** Son dos cosas distintas y llevan a arreglos
 > distintos:
@@ -273,8 +276,8 @@ estas filas **la ubicación no existe como concepto**.
 > | | 3.3.b — barrio ausente | 1.d — reunión temática |
 > |---|---|---|
 > | el dato | **existía y desapareció** cuando cambió el formulario | **nunca existió**: no hay lugar que mandar |
-> | el arreglo | conseguir otra señal de lugar — la comuna | no hay lugar que conseguir; **hay tema** |
-> | qué queda | una fila sin ubicación, esperando la comuna | una fila con **otra clase** de confirmación |
+> | el arreglo | conseguir otra señal de lugar — la comuna | el eje, si aparece el mapeo; el tema está en el nombre del formulario, **no en `EVENTO`** |
+> | qué queda | una fila sin ubicación, esperando la comuna | una fila con figura + fecha como única evidencia, hasta que haya mapeo de ejes |
 
 ~~**Lo que sí tienen es la columna `EVENTO` del destino, y el nombre del formulario repite el
 tema.**~~
@@ -287,10 +290,10 @@ tema.**~~
 > Lo que distingue a una temática está en el **nombre del formulario** —`Temática Salud`,
 > `Eje Sur`— no en la columna `EVENTO` del destino (`esFormularioTematico_`, `detectEje_`).
 
-Probablemente expliquen dos números que quedaron sin explicación en la corrida del 25/09: las
-**14 filas que "tenían las dos señales y aun así no llegaron"** y parte de los **formularios
-huérfanos**. Las dos cosas se miden en el bloque **2d** del log antes de darle peso a nada
-(decisión 2).
+*[Hipótesis sin verificar:]* probablemente expliquen dos números que quedaron sin explicación
+en la corrida del 25/09: las **14 filas que "tenían las dos señales y aun así no llegaron"** y
+parte de los **formularios huérfanos**. El bloque 2d se pensó para medirlo por `EVENTO`, y
+`EVENTO` resultó no discriminar (abajo), así que esta hipótesis sigue sin medir.
 
 **Y muchas traen un eje geográfico, que es ubicación de verdad.**
 
@@ -308,9 +311,13 @@ Hasta ahora los cuatro competían igual.
   centro, y tratarlas como Eje Norte descartaría candidatos buenos. Las lee `detectComuna_`
   como **comuna 1**, descartando el sufijo; `Comuna 1N` antes no la tomaba ninguna regex.
 - **La correspondencia eje → comunas no estaba escrita en ningún lado del proyecto.** La
-  candidata es la columna `Zona` de `Comunas` (la 8, la que lee la fórmula de `AG`). No sabemos
-  todavía si `Zona` es el eje: el bloque **2e** del log la vuelca con sus barrios y cruza cada
-  formulario con eje contra los barrios del destino con los que se emparejaría.
+  candidata era la columna `Zona` de `Comunas` (la 8, la que lee la fórmula de `AG`).
+  **Medido (bloque 2e, 25/09): `Zona` no es el eje.** Tiene tres valores —`Centro`
+  (comunas 1,3,5,6,7,10,11,15), `Norte` (1,2,12,13,14), `Sur` (4,8,9)— y **no tiene `Oeste`**,
+  aunque 6 formularios dicen `Eje Oeste` (cruce: `Oeste × Centro 29 · × Norte 13 · × Sur 12`);
+  un formulario dice `Eje Este`, que tampoco está. Encendido, el eje descartaría el **82,5%** de
+  los pares de la ventana, incluidos candidatos a 0 días. **Queda descartado por falta de
+  mapeo** hasta que el equipo pase uno (docs/HANDOFF-2026-09-25.md, sección 4).
 - Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
   contiene varias comunas, y **descalifica** si el barrio del destino es de otro eje, igual que
   `comuna_distinta`. Detrás de `EJE_COMO_UBICACION = false` hasta confirmar el mapeo.
@@ -607,6 +614,12 @@ pesa cada una antes de elegir por dónde empezar.
 |---|---|---|
 | **Ampliar las listas fijas** de `detectPersona_` (20 nombres) y `detectBarrio_`, o derivar la figura de otro lado en vez de adivinarla del texto libre | la fila **sí está** en B2, sólo que sin `Persona`/`BarrioN` | **bajo**: es data, no arquitectura. Se puede hacer hoy |
 | **Rehacer `syncB_to_B2` como acumulativo** | la fila **no está** en B2 porque ya no está en `B`, y B2 es un espejo del import, no un acumulado | **alto**: cambia el modelo de la solapa y hay que rellenarla hacia atrás |
+
+> **Corrección para el barrio: ampliar `detectBarrio_` no arregla nada.** Las
+> `barrio_no_reconocido` son **todas** ausentes: el barrio no viene en `B` desde 2025-10 (3.3.b).
+> No hay texto que reconocer. La rama "ampliar listas" sólo aplica a la **figura**, y ahí el
+> problema medido es otro: `limpiarPrefijos_` y las variantes de grafía
+> (docs/HANDOFF-2026-09-25.md, sección 3).
 
 `DIAG_CORTE_B` (Fase 1b) mide el reparto. **Las 23 claves incompletas no alcanzan a explicar 72
 filas**, así que hay que esperar las dos causas mezcladas y dimensionar cada una, no elegir la
@@ -953,6 +966,14 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 - **El bug de fechas es una inversión de prioridad, no un regex flojo.**
   [Sync B to B2.js:162-163](Sync%20B%20to%20B2.js#L162):
 
+  > ⚠️ **Lo que sigue, hasta *"CERRADO: el ancla de fechas queda DESCARTADA"*, es la historia de
+  > una hipótesis refutada, no el estado actual.** La premisa —`fecha_fin` es la fecha confiable
+  > de la reunión y el texto sólo aporta ruido— es **falsa**: `fecha_fin` es el cierre del
+  > formulario, otra magnitud; la fuente es el texto, validado por la regla del mes. Tampoco era
+  > una "inversión de prioridad": el orden texto → `fecha_fin` del legado era el correcto; lo que
+  > fallaba era aceptar la primera ocurrencia sin validarla. Se conserva como registro
+  > (docs/HANDOFF-2026-09-25.md, sección 5).
+
   ```js
   let fecha = detectFecha_(nombre, defaultYear);        // texto libre, primero
   if (!fecha && fechaFin) fecha = toDate_(fechaFin);    // columna estructurada, de fallback
@@ -962,6 +983,7 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   falla**, así que una columna de fecha estructurada, disponible en el **99%** de las filas,
   prácticamente no se usa. Que `detectFecha_` lea `"Reunión 10-12 hs"` como *10 de diciembre*
   es el síntoma; la causa es que ese resultado le gana a un dato confiable que ya estaba ahí.
+  *[Falso: `fecha_fin` no es la fecha de la reunión. Ver el aviso de arriba.]*
 
   Medido sobre las **1.000 filas de `B`**:
 
@@ -973,12 +995,14 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   | +1 día | 236 casos |
 
   O sea: **la reunión es el día que cierra el formulario, o el siguiente.** El texto libre no
-  aporta información que `fecha_fin` no tenga — sólo aporta ruido. Los outliers incluyen dos de
+  aporta información que `fecha_fin` no tenga — sólo aporta ruido. *[Falso: la cercanía entre
+  las dos no convierte al cierre en la fecha de la reunión; el texto es la fuente.]* Los outliers incluyen dos de
   **+303 días**: `fecha_fin` 2026-02-11 → texto 2026-12-11, y 2026-02-18 → 2026-12-18. Eventos
   de febrero leídos como diciembre. Son los que estiraban el rango efectivo de `B` hasta el
   18/12/2026 y ensuciaban el cálculo de la ventana del import.
 
-  → **Arreglo en `02_Parsing.js`: `fecha_fin` es el ancla.** Se acepta la fecha del texto sólo
+  → ~~**Arreglo en `02_Parsing.js`: `fecha_fin` es el ancla.**~~ *[Descartado; nunca se
+  implementó así.]* Se acepta la fecha del texto sólo
   si cae dentro de `[fecha_fin − 2, fecha_fin + 7]`; si no, se usa `fecha_fin` y **se marca la
   fila** para poder auditar cuántas veces pasó. La ventana va en `00_Config.js` como
   `VENTANA_FECHA_TEXTO = {min: -2, max: 7}`, calibrable: es asimétrica a propósito, por el
@@ -987,7 +1011,9 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   `diagAnclaFecha()` (en `diagnostico/02_corte_B_a_B2.js`) mide cuántas de las
   `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve esta regla, antes de escribirla en el parser.
 
-  > **Corrección: el ancla es MÁS confiable en los casos raros, no menos.**
+  > ~~**Corrección: el ancla es MÁS confiable en los casos raros, no menos.**~~ *[Refutado:
+  > cero de los desvíos grandes eran `Reprogramada`, y `fecha_fin` no es la fecha de la reunión.
+  > Ver "CERRADO", abajo.]*
   >
   > La primera lectura del `0 de 20` fue que el ancla no servía para esos casos. Es al revés.
   >
@@ -1510,7 +1536,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | barrio presente y **igual** | **+0,25** |
    | barrio **ausente**, comuna presente y coincide | **+0,15** |
    | sin barrio ni comuna, **eje** del formulario = eje del barrio del destino | **+0,10** (detrás de `EJE_COMO_UBICACION`, ver 1.d) |
-   | sin barrio, comuna ni eje, **`EVENTO` del destino en el nombre del formulario** | **+0,25** |
+   | ~~sin barrio, comuna ni eje, **`EVENTO` del destino en el nombre del formulario**~~ | ~~+0,25~~ **descartado**: `EVENTO` es una categoría (718/802), flag en `false` |
    | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
    | ni barrio, ni comuna, ni eje, ni evento | **no puntúa ni cuenta para el denominador** |
 
@@ -2022,8 +2048,8 @@ lo esperable es encontrarlas mezcladas.
   ninguna de las 20 que se llamaban `fecha_mal_parseada` — porque no eran de mes: son
   `desfase_reprogramacion`, y las cubre la tolerancia de ±3 del score (3.3.c).
 - `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
-  `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y el ancla de fecha) y
-  `05_Escritura.js`.
+  `VENTANA_ALERTA_DIAS`). `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y la regla del
+  mes; el ancla de fecha quedó descartada) y `05_Escritura.js` también están escritos.
 - Al escribir `01_Utils.js`, reemplazar los helpers `_alerta` provisorios de `40_Alertas.js`.
 - `setSiDelSistema_` escrito y probado **antes** que cualquier cosa que escriba en el destino.
 - `num()` deja de convertir vacío en cero: vacío se propaga como vacío (sección 0.a).
@@ -2612,7 +2638,7 @@ puede pisar nada.
 **Si el próximo commit de código invalida algo que dice este documento, el documento se corrige
 en ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-No es prolijidad. En esta migración cambiamos de premisa **nueve veces**:
+No es prolijidad. En esta migración cambiamos de premisa **once veces**:
 
 | lo que decía el documento | lo que medimos después |
 |---|---|
@@ -2625,6 +2651,8 @@ No es prolijidad. En esta migración cambiamos de premisa **nueve veces**:
 | la clave natural es el plan B | no hay clave natural |
 | las 20 `fecha_mal_parseada` son errores del parser | texto y `fecha_fin` coinciden; el destino está corrido 1-3 días. Es reprogramación, y se arregla en la escala del score |
 | `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
+| `Para Revisar` es el destino del flujo Agenda | es el staging del pipeline principal (`Upset Base FInal.js:7`); Agenda también escribe ahí |
+| un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. La función cuesta el 37,3% de `figura_no_reconocida` (2f) y su beneficio no se midió |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

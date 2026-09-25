@@ -405,9 +405,13 @@ const COLUMNAS_B2 = [
 // ===================== Texto libre del origen =====================
 
 /**
- * Prefijos administrativos que el origen antepone al nombre del evento y que hay que sacar
- * **antes** de buscar la figura. Si no, `VINCULO CIUDADANO - Clara Muzzio ...` puede matchear
- * contra una figura equivocada, o no matchear.
+ * Prefijos administrativos que el origen antepone al nombre del evento, y que `limpiarPrefijos_`
+ * saca **antes** de buscar la figura.
+ *
+ * ⚠️ **Lista sin medir.** Se propuso en la migración por razonamiento, no por un caso observado,
+ * y cuesta: la figura que aparece sólo en el prefijo (`JORGE MACRI - Encuentro con vecinos ...`)
+ * deja de puntuar. Ver el encabezado de `limpiarPrefijos_` en `02_Parsing.js` y
+ * docs/HANDOFF-2026-09-25.md, sección 3.
  *
  * Se comparan normalizados y sólo al principio del texto.
  */

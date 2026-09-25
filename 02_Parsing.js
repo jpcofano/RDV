@@ -160,11 +160,22 @@ function detectPersona_(texto) {
 /**
  * Saca los prefijos administrativos del nombre del evento (`PREFIJOS_EVENTO`).
  *
- * `VINCULO CIUDADANO - Clara Muzzio, Palermo` → `Clara Muzzio, Palermo`. Hay que hacerlo
- * **antes** de buscar la figura: un prefijo que contiene un nombre propio —`JORGE MACRI -`—
- * matchea como figura y se lleva puesta a la figura real del evento.
+ * ⚠️ **HIPÓTESIS SIN MEDIR — no es un caso observado.** La justificación de abajo es un
+ * razonamiento que se escribió al diseñar esto, no algo que se haya visto en los datos. El
+ * ejemplo `POST - JORGE MACRI - ...` que figuraba acá **no existe** en el origen
+ * (docs/HANDOFF-2026-09-25.md, sección 5). El legado no limpiaba nada: `detectPersona_` corría
+ * sobre el texto completo.
  *
- * Saca prefijos repetidos: `POST - JORGE MACRI - ...` queda limpio en una sola pasada.
+ * Lo que sí está medido es el costo: en la corrida del 25/09 el bloque 2f atribuye el **37,3%**
+ * de las no-entradas con comuna coincidente a `figura_no_reconocida_en_el_formulario`, con casos
+ * como `JORGE MACRI - Encuentro con vecinos - Palermo 05/07`, donde la figura aparece **sólo en
+ * el prefijo** y al borrarlo deja de puntuar.
+ *
+ * El razonamiento, para evaluarlo contra el número: *un prefijo con un nombre propio
+ * —`JORGE MACRI -`— matchearía como figura y se llevaría puesta a la figura real del evento*
+ * (`JORGE MACRI - Clara Muzzio, Palermo`). Eso sólo pasa si hay formularios con **una figura en
+ * el prefijo y otra distinta en el cuerpo**. **Ese número no se midió.** Si da cero o casi
+ * cero, esta función no compra nada y sale.
  */
 function limpiarPrefijos_(texto) {
   let t = str(texto);

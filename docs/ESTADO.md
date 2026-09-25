@@ -241,5 +241,5 @@ en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
 > **Si el próximo commit de código invalida algo que dice `CLAUDE.md`, el documento se corrige en
 > ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-En esta migración cambiamos de premisa nueve veces. Entre la medición y la actualización, el
+En esta migración cambiamos de premisa once veces. Entre la medición y la actualización, el
 documento decía algo falso — y ése es justo el momento en que alguien lo abre para decidir.
