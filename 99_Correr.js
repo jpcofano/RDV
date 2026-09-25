@@ -96,7 +96,7 @@ function paso3_medirReglaDelMes() {
 
 function paso4_medirFiguraEnPrefijo() {
   _anunciar_('paso 4 — medir la figura en el prefijo', 'medirFiguraEnPrefijo()  [20_UpsertDestino.js]',
-             'NO escribe en ninguna planilla (sólo lectura de B y de la columna Figura)',
+             'NO escribe en ninguna planilla (lee B, la columna Figura del destino y Comunas)',
              'sólo el log: formularios que PIERDEN la figura con la limpieza contra los que ' +
              'EVITAN multi_figura, agrupados por par prefijo → cuerpo');
   return medirFiguraEnPrefijo();

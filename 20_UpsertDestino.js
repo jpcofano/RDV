@@ -145,20 +145,23 @@ function medirFiguraEnPrefijo() {
   Logger.log('  PIERDE la figura (costo) ...... %s', _dcp_(cnt.pierde_figura, base));
   Logger.log('  EVITA multi_figura (benef.) ... %s', _dcp_(cnt.evita_multi, base));
   Logger.log('  sigue multi_figura ............ %s', _dcp_(cnt.sigue_multi, base));
-  Logger.log('  otro (no debería existir) ..... %s', _dcp_(cnt.otro, base));
+  Logger.log('  otro (recorte desalineado) .... %s', _dcp_(cnt.otro, base));
 
   /*
-   * Decir explícitamente qué NO es señal (CLAUDE.md §6, regla 3). Las dos líneas de abajo salen
-   * del código, no de una suposición: `evaluarCandidatos_` manda `multi_figura` a REVISAR_MATCH
-   * antes de mirar el margen, así que sin la limpieza esos formularios no se escribirían mal.
+   * Decir explícitamente qué NO es señal (CLAUDE.md §6, regla 3). Las líneas de abajo salen del
+   * código, no de una suposición: `evaluarCandidatos_` decide primero el umbral (score bajo →
+   * SIN_MATCH) y después `multi_figura` (→ REVISAR_MATCH), antes del margen. En ningún caso un
+   * formulario con 2+ figuras se escribe solo.
    */
   Logger.log('  Qué NO dice esto:');
   Logger.log('   - Cuenta FORMULARIOS, no filas del destino ni matches. Cuánto se mueve el');
   Logger.log('     resultado del upsert lo dice volver a correr paso2_upsertEnSeco().');
   Logger.log('   - EVITA multi_figura no evita una escritura errónea: sin la limpieza esos casos');
-  Logger.log('     irían a REVISAR_MATCH (evaluarCandidatos_, motivo multi_figura), no al destino.');
-  Logger.log('     El beneficio es menos revisión a mano. El costo, PIERDE la figura, es un');
-  Logger.log('     formulario que deja de puntuar figura y puede perder contra uno lejano (2b).');
+  Logger.log('     irían a REVISAR_MATCH si pasan el umbral, o a SIN_MATCH si no (evaluarCandidatos_).');
+  Logger.log('     Nunca al destino. El beneficio es menos revisión a mano. El costo, PIERDE la');
+  Logger.log('     figura, es un formulario que deja de puntuar figura y puede perder contra uno lejano.');
+  Logger.log('   - Mide sólo la figura. limpiarPrefijos_ también recorta el texto del que salen');
+  Logger.log('     barrio, comuna, eje, hora y fecha (leerCandidatos_); ese efecto no se mide acá.');
 
   if (cnt.evita_multi.v === 0) {
     Logger.log('  >>> En la ventana NINGÚN formulario tiene una figura en el prefijo y otra distinta');

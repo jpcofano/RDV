@@ -257,9 +257,10 @@ function compararLimpiezaPrefijo_(texto) {
   const original = str(texto);
   const cuerpo = limpiarPrefijos_(original);
   // `limpiarPrefijos_` corta el original con el largo de la versión normalizada. Si normalizar
-  // cambió el largo (dos espacios seguidos en el prefijo, un espacio invisible), el corte cae
-  // corrido: se come letras del cuerpo o deja el separador. Ese caso se reporta como `otro` en
-  // vez de medirse con un prefijo mal recortado.
+  // acortó el prefijo (dos espacios seguidos, una tilde descompuesta), el corte cae **antes** de
+  // tiempo y deja restos del prefijo al principio del cuerpo: el separador (`-Palermo`) o una
+  // letra (`I-Palermo`). Nunca se come el cuerpo, porque `normalizeText_` no alarga. Ese caso se
+  // reporta como `otro` en vez de medirse con un prefijo mal recortado.
   const nO = normalizeText_(original), nC = normalizeText_(cuerpo);
   const k = nO.length - nC.length;
   const alineado = nO.slice(k) === nC && !/^[-:]/.test(nC) &&
