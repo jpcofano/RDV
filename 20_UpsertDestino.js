@@ -182,6 +182,27 @@ function calcularPlan_(enSeco) {
   const comunaDifieren = [];
 
   /*
+   * El desvío REAL del grupo bajo, día por día — no las bandas agregadas.
+   *
+   * Si el desfase típico es de 1 a 3 días (reprogramación, CLAUDE.md 3.3.c), las filas del grupo
+   * bajo no deberían estar "lejos". Si están, o `distanciaFecha_` no mide contra lo que creemos
+   * o hay **dos poblaciones mezcladas**. Por eso, además del desvío del mejor candidato, se
+   * mira si había algún formulario a ±`TOLERANCIA_REPROGRAMACION_DIAS`: con la figura
+   * reconocida, sin ninguna figura reconocida, o nada.
+   */
+  const desvio = { porDia: {}, cercaConFigura: contador_(), cercaSinFigura: contador_(),
+                   nadaCerca: contador_(), ejemplosSinFigura: [], ejemplosConFigura: [] };
+
+  // Cuántas escribiría gracias a la tolerancia de ±3 (antes caían debajo del umbral).
+  const porTolerancia = contador_();
+
+  /*
+   * Las filas con un formulario de **comuna coincidente** que no entran: por qué. Con figura +
+   * comuna deberían llegar alto aun con la fecha corrida (punto C).
+   */
+  const comunaCaso = { total: contador_(), escribiria: contador_(), motivos: {}, ejemplos: [] };
+
+  /*
    * Cobertura de `EVENTO`, la señal de las reuniones temáticas (CLAUDE.md 1.c).
    *
    * **Se mide antes de darle peso.** `EVENTO_COMO_UBICACION` arranca apagado justamente para
@@ -246,8 +267,12 @@ function calcularPlan_(enSeco) {
       if (ev) scoresVentana.push(r.mejor.score);
       if (r.mejor.score < UMBRAL_MATCH) {
         _autopsia_(bajo, comunaDifieren, f, r.mejor, comunas, ev);
+        _desvioBajo_(desvio, f, r.mejor, cands.vivos, ev);
       }
+      if (r.veredicto === 'escribiria' && r.mejor.dist !== null && r.mejor.dist >= 1 &&
+          r.mejor.dist <= TOLERANCIA_REPROGRAMACION_DIAS) sumar_(porTolerancia, ev);
     }
+    _casoComuna_(comunaCaso, f, r, cands.vivos, comunas, ev);
 
     if (!r.mejor) {
       sumar_(res.sinMatch, ev); cuenta('sin_candidatos', ev);
@@ -302,6 +327,7 @@ function calcularPlan_(enSeco) {
   const ejes = medirEjes_(dest, cands, comunas);
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
+           desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
            evStats: evStats, evBase: evBase, ejemplosEvento: ejemplosEvento,
@@ -415,6 +441,9 @@ function logResumen_(plan) {
   Logger.log('  escribiría .......... %s', _dcp_(r.escribiria, base));
   Logger.log('  a revisar ........... %s', _dcp_(r.revisar, base));
   Logger.log('  sin match ........... %s', _dcp_(r.sinMatch, base));
+  Logger.log('  de las que escribiría, a 1-%s días (entran por la tolerancia de reprogramación; ' +
+             'con la escala vieja quedaban abajo): %s', TOLERANCIA_REPROGRAMACION_DIAS,
+             _dc_(plan.porTolerancia));
   Logger.log('  --- por motivo ---');
   Object.keys(plan.motivos).sort().forEach(function (m) {
     Logger.log('    %s: %s', m, _dc_(plan.motivos[m]));
@@ -465,7 +494,8 @@ function logResumen_(plan) {
     Logger.log('  el déficit principal fue la FIGURA ... %s', _dcp_(b.porFigura, b.total));
     Logger.log('  el déficit principal fue la HORA ..... %s', _dcp_(b.porHora, b.total));
 
-    Logger.log('  --- banda de fecha dentro del grupo bajo ---');
+    Logger.log('  --- banda de fecha dentro del grupo bajo (hasta ±%s puntúa pleno) ---',
+               TOLERANCIA_REPROGRAMACION_DIAS);
     Logger.log('    exacta %s', _dc_(b.fecha0));
     Logger.log('    ±1     %s', _dc_(b.fecha1));
     Logger.log('    ±3     %s', _dc_(b.fecha3));
@@ -474,13 +504,14 @@ function logResumen_(plan) {
     Logger.log('    n/e    %s', _dc_(b.fechaNoEvaluable));
     Logger.log('  señales que ni siquiera eran evaluables: ubicación %s | hora %s',
                _dc_(b.sinUbicEvaluable), _dc_(b.sinHoraEvaluable));
+    _logDesvioBajo_(plan);
 
     /*
      * La regla del mes (CLAUDE.md 1.c) descarta del texto toda ocurrencia cuyo mes no sea el de
      * `fecha_fin` ni el siguiente. Acá se ve cuánto filtró: un `"Reunion 10-12 hs"` que antes
      * devolvía *10 de diciembre* ahora no devuelve nada, y la fila se apoya sólo en `fecha_fin`.
-     * Cuántas de las `fecha_mal_parseada` resuelve lo mide `diagCorteB()`, que tiene la
-     * población correcta.
+     * Ojo: las 20 que `diagCorteB()` llama `desfase_reprogramacion` NO son de esto — ahí no hay
+     * ningún mes mal, es el destino corrido 1-3 días (lo cubre `TOLERANCIA_REPROGRAMACION_DIAS`).
      */
     Logger.log('  --- la regla del mes, sobre los %s formularios ---', plan.cands.vivos.length);
     Logger.log('    con una ocurrencia de mes imposible descartada: %s', plan.formsConRechazo);
@@ -496,11 +527,11 @@ function logResumen_(plan) {
       Logger.log('  >>> En la ventana NO hay filas bajo el umbral. El grupo bajo es histórico:');
       Logger.log('      describe el formulario viejo y no dice nada del problema de hoy.');
     } else if (b.porFecha.v > b.total.v / 2) {
-      Logger.log('  >>> En la ventana domina el déficit de FECHA (%s de %s). El grupo bajo NO es',
+      Logger.log('  >>> En la ventana domina el déficit de FECHA (%s de %s). Con la tolerancia de',
                  b.porFecha.v, b.total.v);
-      Logger.log('      el cambio de formulario: es el parseo de fechas (3.3.c). Y ojo — agregar');
-      Logger.log('      la comuna NO los rescata: figura + fecha±7 + comuna da 0,70, debajo de %s.',
-                 UMBRAL_MATCH);
+      Logger.log('      ±%s ya no puede ser reprogramación: el desvío es MAYOR. Mirar el bloque de',
+                 TOLERANCIA_REPROGRAMACION_DIAS);
+      Logger.log('      poblaciones de arriba antes de tocar un peso.');
     } else if (b.porUbic.v > b.total.v / 2) {
       Logger.log('  >>> En la ventana domina el déficit de UBICACIÓN: el barrio o la comuna');
       Logger.log('      estaban y NO coincidían. Eso es desacuerdo de dato, no ausencia.');
@@ -533,6 +564,7 @@ function logResumen_(plan) {
 
   _logEvento_(plan, b, e);
   _logEjes_(plan.ejes);
+  _logComuna_(plan.comunaCaso);
 
   Logger.log('--- 3. EMPAREJAR_MANUAL ---');
   Logger.log('  pares propuestos ............ %s', _dc_(e.pares));
@@ -657,7 +689,7 @@ function medirEjes_(dest, cands, comunas) {
   const pares = { total: contador_(), coincide: contador_(), descarta: contador_(),
                   noEvaluable: contador_() };
   const detalle = [];
-  const conEje = contador_(), orientadas = contador_(), desconocidos = [];
+  const conEje = contador_(), desconocidos = [];
 
   // --- c) temáticos ---
   const tem = { total: contador_(), conCercana: contador_(), huerfanos: [] };
@@ -672,13 +704,12 @@ function medirEjes_(dest, cands, comunas) {
       if (!porForma[k]) porForma[k] = contador_();
       sumar_(porForma[k], ev);
       if (e.tipo === 'eje') sumar_(conEje, ev);
-      if (e.tipo === 'comuna_orientada') sumar_(orientadas, ev);
       if (e.tipo === 'eje_desconocido' && desconocidos.length < 15) {
         desconocidos.push({ forma: e.forma, nombre: c.nombre });
       }
     }
 
-    if (e && (e.tipo === 'eje' || e.tipo === 'comuna_orientada')) {
+    if (e && e.tipo === 'eje') {
       const filas = [];
       for (let j = 0; j < dest.filas.length; j++) {
         const f = dest.filas[j];
@@ -721,8 +752,79 @@ function medirEjes_(dest, cands, comunas) {
   }
 
   return { encabezadoZona: encabezadoZonaComunas_(), porZona: porZona, porForma: porForma,
-           conEje: conEje, orientadas: orientadas, desconocidos: desconocidos,
+           conEje: conEje, desconocidos: desconocidos,
            pares: pares, cruce: cruce, detalle: detalle, tem: tem };
+}
+
+/** Dentro del 2b: el desvío real del grupo bajo, día por día, y las tres poblaciones. */
+function _logDesvioBajo_(plan) {
+  const d = plan.desvio;
+  Logger.log('  --- desvío REAL del mejor candidato, en días (no bandas) ---');
+  const claves = Object.keys(d.porDia).sort(function (a, b) {
+    const n = function (k) { return k === 'sin fecha' ? 999 : (k === '>21' ? 998 : Number(k)); };
+    return n(a) - n(b);
+  });
+  claves.forEach(function (k) {
+    Logger.log('    %s  %s', _pad_(k, 9), _dc_(d.porDia[k]));
+  });
+
+  const tot = { v: d.cercaConFigura.v + d.cercaSinFigura.v + d.nadaCerca.v,
+                t: d.cercaConFigura.t + d.cercaSinFigura.t + d.nadaCerca.t };
+  Logger.log('  --- ¿había algún formulario a ±%s días? (separa las poblaciones) ---',
+             TOLERANCIA_REPROGRAMACION_DIAS);
+  Logger.log('    sí, con su figura reconocida ....... %s', _dcp_(d.cercaConFigura, tot));
+  Logger.log('    sí, pero SIN ninguna figura reconocida %s', _dcp_(d.cercaSinFigura, tot));
+  Logger.log('    no, ninguno ........................ %s', _dcp_(d.nadaCerca, tot));
+  Logger.log('    Si "lejos" es grande y "sin figura" también: el formulario correcto existe, no');
+  Logger.log('    se reconoció la figura, y uno lejano que sí la nombra le ganó el lugar. Si');
+  Logger.log('    domina "ninguno": el formulario no está en B con esa fecha — otra población.');
+
+  if (d.ejemplosSinFigura.length) {
+    Logger.log('    --- casos "sin figura": el formulario cercano, y el que ganó ---');
+    d.ejemplosSinFigura.forEach(function (x) {
+      Logger.log('      [%s] %s %s | %s', x.ev ? 'ventana' : 'histor.', x.f.figura,
+                 fmtFecha_(x.f.fecha), x.f.barrio || 'sin barrio');
+      Logger.log('         cercano (%s días, sin figura): %s', x.x, x.c.nombre);
+      Logger.log('         ganó (%s días, score %s): %s', x.mejor.dist, x.mejor.score,
+                 x.mejor.c.nombre);
+    });
+  }
+  if (d.ejemplosConFigura.length) {
+    Logger.log('    --- casos "con figura" que igual quedaron abajo (no es la fecha) ---');
+    d.ejemplosConFigura.forEach(function (x) {
+      Logger.log('      [%s] %s %s | %s → form a %s días: %s | mejor: %s (%s)',
+                 x.ev ? 'ventana' : 'histor.', x.f.figura, fmtFecha_(x.f.fecha),
+                 x.f.barrio || 'sin barrio', x.x, x.c.nombre, x.mejor.score, x.mejor.nivel);
+    });
+  }
+}
+
+/** El bloque 2f: las filas con un formulario de comuna coincidente, y por qué no entran. */
+function _logComuna_(cc) {
+  Logger.log('--- 2f. FILAS CON UN FORMULARIO DE COMUNA COINCIDENTE ---');
+  Logger.log('  filas con algún formulario relevante de su misma comuna: %s', _dc_(cc.total));
+  Logger.log('    entran (escribiría, con ese formulario) ............ %s',
+             _dcp_(cc.escribiria, cc.total));
+  Logger.log('    no entran, por motivo del mejor de esos formularios:');
+  Object.keys(cc.motivos).sort().forEach(function (m) {
+    Logger.log('      %s: %s', m, _dcp_(cc.motivos[m], cc.total));
+  });
+  Logger.log('  Con figura + comuna y la fecha a ±%s, el score es 1,00. Si no entran, el motivo',
+             TOLERANCIA_REPROGRAMACION_DIAS);
+  Logger.log('  de arriba dice cuál de las tres cosas falta: figura, fecha u otro candidato.');
+  if (cc.ejemplos.length) {
+    Logger.log('  --- los %s primeros ---', cc.ejemplos.length);
+    cc.ejemplos.forEach(function (x) {
+      Logger.log('    [%s] %s ← %s', x.ev ? 'ventana' : 'histor.', x.f.clave, x.sc.c.nombre);
+      Logger.log('        %s | %s días | score %s (%s) | fila: %s%s', x.motivo,
+                 x.sc.dist === null ? '-' : x.sc.dist, x.sc.score, x.sc.nivel, x.veredicto,
+                 x.rmotivo ? ' / ' + x.rmotivo : '');
+      if (x.ganador) {
+        Logger.log('        le ganó (score %s, %s días): %s', x.ganador.score, x.ganador.dist,
+                   x.ganador.c.nombre);
+      }
+    });
+  }
 }
 
 /** El bloque 2e del log. Ver `medirEjes_`. */
@@ -756,8 +858,6 @@ function _logEjes_(m) {
 
   // b) formularios con eje
   Logger.log('  b) formularios con eje ............ %s', _dc_(m.conEje));
-  Logger.log('     con "Comuna N Norte/Sur" ....... %s  (NO se usan como eje: ver detectEje_)',
-             _dc_(m.orientadas));
   Object.keys(m.porForma).sort().forEach(function (k) {
     Logger.log('       %s: %s', k, _dc_(m.porForma[k]));
   });
@@ -958,6 +1058,99 @@ function _intentar_(fallaron, nombre, fn) {
  * señales que se pudieron evaluar. Sin eso, una fila que acertó todo lo que había para acertar
  * puntuaría bajo por campos que el origen ya no manda (CLAUDE.md, decisión 2).
  */
+/**
+ * Una fila del grupo bajo: su desvío real en días, y **qué población es**.
+ *
+ *   cerca_con_figura   hay un formulario de su figura a ±tolerancia. Si igual quedó abajo, lo
+ *                      que falla no es la fecha: mirar ubicación u hora.
+ *   cerca_sin_figura   el único formulario cercano es uno **donde no se reconoció ninguna
+ *                      figura**. Hipótesis: es el suyo, y `figurasEnTexto_` no encontró el
+ *                      nombre (variante de escritura, sólo el apellido). Sin figura, un
+ *                      formulario lejano que sí la nombra le gana el lugar de mejor candidato.
+ *   nada_cerca         no hay ningún formulario a ±tolerancia. Es la otra población: el
+ *                      formulario no está en `B`, o está con una fecha que no es la suya.
+ */
+function _desvioBajo_(d, f, mejor, vivos, ev) {
+  const k = mejor.dist === null ? 'sin fecha' : (mejor.dist > 21 ? '>21' : String(mejor.dist));
+  if (!d.porDia[k]) d.porDia[k] = contador_();
+  sumar_(d.porDia[k], ev);
+
+  const tol = TOLERANCIA_REPROGRAMACION_DIAS;
+  const figNorm = normalizeText_(f.figura);
+  let conFig = null, sinFig = null;
+  for (let j = 0; j < vivos.length; j++) {
+    const c = vivos[j];
+    const x = distanciaFecha_(f.fecha, c.det);
+    if (x === null || x > tol) continue;
+    if (c.figurasNorm.indexOf(figNorm) !== -1) {
+      if (!conFig || x < conFig.x) conFig = { c: c, x: x };
+    } else if (!c.figurasNorm.length) {
+      if (!sinFig || x < sinFig.x) sinFig = { c: c, x: x };
+    }
+  }
+
+  if (conFig) {
+    sumar_(d.cercaConFigura, ev);
+    if (d.ejemplosConFigura.length < 10) {
+      d.ejemplosConFigura.push({ f: f, c: conFig.c, x: conFig.x, mejor: mejor, ev: ev });
+    }
+  } else if (sinFig) {
+    sumar_(d.cercaSinFigura, ev);
+    if (d.ejemplosSinFigura.length < 15) {
+      d.ejemplosSinFigura.push({ f: f, c: sinFig.c, x: sinFig.x, mejor: mejor, ev: ev });
+    }
+  } else {
+    sumar_(d.nadaCerca, ev);
+  }
+}
+
+/**
+ * Filas del destino con algún formulario **de comuna coincidente** (comuna del texto == comuna
+ * del barrio del destino) que además sea relevante: misma figura o a ±7 días. ¿Entró? Si no,
+ * por qué.
+ *
+ * Se clasifica el de esos formularios **más cercano en fecha**, no el de mejor score: el de
+ * mejor score puede ser uno lejano que sí nombra la figura, y entonces el motivo diría "fecha
+ * lejos" cuando lo que pasó es que el cercano —probablemente el suyo— no tenía la figura.
+ */
+function _casoComuna_(cc, f, r, vivos, comunas, ev) {
+  const bDest = normalizeText_(f.barrio);
+  const cDest = bDest ? comunas.get(bDest) : null;
+  if (cDest == null) return;
+
+  let best = null;
+  for (let j = 0; j < vivos.length; j++) {
+    const c = vivos[j];
+    if (c.comuna == null || c.comuna !== cDest) continue;
+    const sc = puntuar_(f, c, comunas);
+    if (!sc.relevante) continue;
+    const d = sc.dist === null ? Infinity : sc.dist;
+    const dBest = best ? (best.dist === null ? Infinity : best.dist) : Infinity;
+    if (!best || d < dBest || (d === dBest && sc.score > best.score)) best = sc;
+  }
+  if (!best) return;
+
+  sumar_(cc.total, ev);
+  const entro = r.veredicto === 'escribiria' && r.mejor && r.mejor.c === best.c;
+  if (entro) { sumar_(cc.escribiria, ev); return; }
+
+  let motivo;
+  if (best.perdido.figura > 0) motivo = 'figura_no_reconocida_en_el_formulario';
+  else if (best.dist === null) motivo = 'formulario_sin_fecha';
+  else if (best.dist > TOLERANCIA_REPROGRAMACION_DIAS) {
+    motivo = best.dist <= 7 ? 'fecha_a_4_7_dias' : 'fecha_a_mas_de_7_dias';
+  } else if (r.mejor && r.mejor.c !== best.c) motivo = 'gano_otro_candidato';
+  else motivo = r.motivo || 'otro';
+
+  if (!cc.motivos[motivo]) cc.motivos[motivo] = contador_();
+  sumar_(cc.motivos[motivo], ev);
+  if (cc.ejemplos.length < 25) {
+    cc.ejemplos.push({ f: f, sc: best, motivo: motivo, ev: ev,
+                       ganador: (r.mejor && r.mejor.c !== best.c) ? r.mejor : null,
+                       veredicto: r.veredicto, rmotivo: r.motivo });
+  }
+}
+
 function evaluarCandidatos_(f, candidatos, comunas) {
   let mejor = null, segundo = null, mejorDes = null;
 
@@ -1061,8 +1254,7 @@ function puntuar_(f, c, comunas) {
      * distinto **descalifica** igual que una comuna distinta. `Eje Sur` contra un barrio del
      * norte no es evidencia débil: es otra reunión. Ver `EJE_COMO_UBICACION` en 00_Config.js.
      *
-     * Sólo `tipo === 'eje'`. `Comuna 1 Norte` (`comuna_orientada`) no entra: no sabemos si es el
-     * eje o la mitad norte de la comuna (ver `detectEje_`).
+     * Sólo `tipo === 'eje'`. Un `Eje <algo>` que no está en `EJES_CONOCIDOS` no entra.
      */
     pesoUbic = PESOS_MATCH.ejeSinComuna;
     alcanzable += pesoUbic;
@@ -1122,19 +1314,20 @@ function puntuar_(f, c, comunas) {
    * 18 pares falsos.
    */
   /*
-   * Tres vías de relevancia, no una: **figura Y (fecha cercana O comuna O evento)**.
+   * **figura Y (fecha cercana O comuna [O eje])**.
    *
-   * La versión anterior pedía figura **y** fecha dentro de ±21. Con eso las reuniones temáticas
-   * quedaban fuera de la propuesta manual **por no tener ubicación** — que es justamente lo que
-   * hay que resolverles. La comuna y el evento entran como vías alternativas: si la fecha está
-   * rota (3.3.c) pero el tema coincide, hay razón de sobra para ofrecer el par.
+   * El `EVENTO` estuvo acá como tercera vía y se sacó: coincide por subcadena con 718 de 802
+   * filas —es una categoría ("Encuentro con Vecinos"), no un identificador— y subió la densidad
+   * de 2,6 a 8,2 pares por fila. Ver `EVENTO_COMO_UBICACION` en 00_Config.js.
    *
-   * Sigue siendo **Y** en la figura, que es lo que evitó los 1.883 pares: sin figura compartida
-   * no se propone nada.
+   * El eje entra cuando se confirme el mapeo (`EJE_COMO_UBICACION`): mismo eje que el barrio del
+   * destino. Sigue siendo **Y** en la figura, que es lo que evitó los 1.883 pares.
    */
   const distOk   = (dist !== null && dist <= VENTANA_EMPAREJAR_DIAS);
   const comunaOk = (c.comuna != null && cDest != null && cDest === c.comuna);
-  const proponible = (sFig > 0) && (distOk || comunaOk || eventoOk);
+  const ejeOk    = EJE_COMO_UBICACION && !!(c.eje && c.eje.tipo === 'eje' &&
+                   ejeDeBarrio_(f.barrio) === c.eje.eje);
+  const proponible = (sFig > 0) && (distOk || comunaOk || ejeOk);
 
   const obtenido = sFig + sFecha + sUbic + sHora;
   const alcSinUbic = alcanzable - pesoUbic;

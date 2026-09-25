@@ -276,8 +276,16 @@ estas filas **la ubicación no existe como concepto**.
 > | el arreglo | conseguir otra señal de lugar — la comuna | no hay lugar que conseguir; **hay tema** |
 > | qué queda | una fila sin ubicación, esperando la comuna | una fila con **otra clase** de confirmación |
 
-**Lo que sí tienen es la columna `EVENTO` del destino, y el nombre del formulario repite el
-tema.** O sea que hay con qué confirmar: **se compara un texto contra otro**.
+~~**Lo que sí tienen es la columna `EVENTO` del destino, y el nombre del formulario repite el
+tema.**~~
+
+> **Corrección (medida): `EVENTO` no sirve.** Es una **categoría, no un identificador**: coincide
+> por subcadena con **718 de 802 filas** (~90%), y los 12 casos que listó el bloque 2d eran todos
+> `Encuentro con Vecinos`. Una señal que coincide con el 90% no discrimina nada. Como vía de
+> relevancia de `EMPAREJAR_MANUAL` **subió la densidad de 2,6 a 8,2 pares por fila**; se sacó.
+>
+> Lo que distingue a una temática está en el **nombre del formulario** —`Temática Salud`,
+> `Eje Sur`— no en la columna `EVENTO` del destino (`esFormularioTematico_`, `detectEje_`).
 
 Probablemente expliquen dos números que quedaron sin explicación en la corrida del 25/09: las
 **14 filas que "tenían las dos señales y aun así no llegaron"** y parte de los **formularios
@@ -295,10 +303,10 @@ colgaban de ese formulario (B fila 730) —Coghlan, Villa Santa Rita, Floresta y
 Riachuelo— **Coghlan es zona norte, y el eje solo lo descarta** sin necesitar ninguna otra señal.
 Hasta ahora los cuatro competían igual.
 
-- `detectEje_` (`02_Parsing.js`) reconoce `Eje Norte/Sur/Centro/Oeste`. Las variantes
-  `Comuna 1 Norte` / `Comuna 1N` se detectan aparte, como `comuna_orientada`, y **no se usan
-  como eje**: pueden querer decir la mitad norte de la Comuna 1, que no es el eje Norte de la
-  ciudad. Qué significan lo confirma una persona.
+- `detectEje_` (`02_Parsing.js`) reconoce `Eje Norte/Sur/Centro/Oeste`. **`Comuna 1 Norte` /
+  `Comuna 1N` no son eje** (confirmado): son subdivisiones de la Comuna 1, que está en el
+  centro, y tratarlas como Eje Norte descartaría candidatos buenos. Las lee `detectComuna_`
+  como **comuna 1**, descartando el sufijo; `Comuna 1N` antes no la tomaba ninguna regex.
 - **La correspondencia eje → comunas no estaba escrita en ningún lado del proyecto.** La
   candidata es la columna `Zona` de `Comunas` (la 8, la que lee la fórmula de `AG`). No sabemos
   todavía si `Zona` es el eje: el bloque **2e** del log la vuelca con sus barrios y cruza cada
@@ -723,7 +731,7 @@ descendente antes de borrar. Es la misma operación resuelta bien a diez líneas
 > | campo | estado |
 > |---|---|
 > | **barrio** | ausente en `B` desde 2025-10 — 0% → 54% → 93% → **97%** |
-> | **fecha del nombre del formulario** | era no confiable: 20 `fecha_mal_parseada`, rango inflado hasta el 18/12/2026. **Con la regla del mes (1.c) es la fuente**; el día todavía puede venir corrido |
+> | **fecha del nombre del formulario** | era no confiable: rango inflado hasta el 18/12/2026. **Con la regla del mes (1.c) es la fuente**. Las 20 que parecían mal parseadas eran reprogramación: el destino corrido 1-3 días (3.3.c) |
 > | **`fecha_fin`** | no es la fecha de la reunión: es **el cierre del formulario**, otra magnitud (3.3.c). Da año y mes, y es respaldo |
 > | **figura sola** | no identifica |
 >
@@ -1063,7 +1071,11 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
   El ancla quedó descartada, pero **el parser igual había que arreglarlo** — 20
   `fecha_mal_parseada` son 20 filas que el matching no puede resolver. Lo que faltaba era una
-  regla que no dependiera de calibrar una distancia, y apareció del lado del negocio:
+  regla que no dependiera de calibrar una distancia, y apareció del lado del negocio.
+
+  > **Corrección: esas 20 no eran del parser** — ver *"Las 20 no eran errores de parseo"*, más
+  > abajo. La regla del mes sigue siendo correcta (descarta `"10-12 hs"` y los +303 días), pero
+  > no es lo que resuelve esas 20: resolvió **0 de 20** porque ahí no había ningún mes mal.
 
   > **Del formulario, el año y el mes de `fecha_fin` siempre vienen bien. Sólo el día puede
   > estar corrido.**
@@ -1153,6 +1165,39 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   > matchea con nada y no hay señal de confirmación que la rescate, porque el barrio tampoco
   > viene. Las **20 `fecha_mal_parseada`** no son 20 campos sucios, son 20 filas que el matching
   > no puede resolver. **Se arregla antes que el score**, no después.
+
+  #### 🔴 Corrección: las 20 no eran errores de parseo. Es desfase por reprogramación
+
+  Los casos que lista `diagCorteB()` tienen la misma forma: **el texto y `fecha_fin` coinciden
+  entre sí, y el que difiere es el destino**, por 1 a 3 días.
+
+  ```
+  destino 01/08 | fecha_fin 29/07 | texto 29/07
+  destino 23/09 | fecha_fin 22/09 | texto 22/09
+  destino 10/04 | fecha_fin 08/04 | texto 08/04
+  destino 31/03 | fecha_fin 30/03 | texto 30/03
+  ```
+
+  Es la regla de negocio de la sección 1.a: **la reunión se corre 2 o 3 días y el formulario
+  queda con la fecha original.** Por eso la regla del mes resolvió **0 de 20** y
+  `fecha_no_parseable` da 0: no había ningún mes mal. **El parseo no es el problema.**
+
+  → **El arreglo es la escala del score, no el parser.** Hasta
+  `TOLERANCIA_REPROGRAMACION_DIAS = 3` la fecha puntúa **como coincidencia plena**, igual que la
+  exacta: dentro de esa tolerancia es la misma reunión. La escala anterior (±1 0,24 · ±3 0,15)
+  castigaba justo la reprogramación y la tiraba debajo del umbral —figura + fecha ±3 daba 0,77.
+
+  → **`fecha_mal_parseada` se renombró `desfase_reprogramacion`**, porque mentía. `diagCorteB()`
+  ahora mide la lectura: cuántos casos tienen texto = `fecha_fin` y cuántos tienen el destino
+  corrido 1-3 días.
+
+  > **Ojo con lo que no explica.** La banda del grupo bajo daba ±1: 0, ±3: 8, **lejos: 50**. Que
+  > ±1 dé 0 es esperable (±1 ya puntuaba 0,91, arriba del umbral), pero si el desfase típico es
+  > de 1 a 3 días, **esas 50 no son reprogramación**. `logResumen_` ahora muestra el desvío real
+  > día por día y separa tres poblaciones: había un formulario a ±3 con la figura reconocida,
+  > había uno **sin ninguna figura reconocida** (probable: es el suyo y `figurasEnTexto_` no
+  > encontró el nombre, así que uno lejano que sí la nombra le ganó el lugar), o no había nada.
+  > Hasta ver ese reparto, las 50 no tienen explicación.
 - **El barrio ya no viene en `B`.** Ni en el texto libre del evento ni como columna. **El origen
   pasó a mandar comuna.**
 
@@ -1420,10 +1465,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | señal | puntaje |
    |---|---|
    | figura mencionada en el texto del evento | **0,35** |
-   | fecha exacta | **0,30** |
-   | fecha ±1 día | 0,24 |
-   | fecha ±3 días | 0,15 |
+   | fecha exacta **o a ±3 días** (`TOLERANCIA_REPROGRAMACION_DIAS`) | **0,30** |
    | fecha ±7 días | 0,06 |
+
+   > Hasta el 25/09 la escala era exacta 0,30 · ±1 0,24 · ±3 0,15. Castigaba la
+   > reprogramación, que es de 1 a 3 días (3.3.c, *"Las 20 no eran errores de parseo"*).
    | barrio coincide | **0,25** |
    | comuna coincide, **con barrio ausente en el origen** | 0,15 |
    | hora coincide | **0,10** |
@@ -1468,7 +1514,13 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
    | ni barrio, ni comuna, ni eje, ni evento | **no puntúa ni cuenta para el denominador** |
 
-   #### `EVENTO`: la ubicación de las reuniones temáticas
+   #### `EVENTO`: la ubicación de las reuniones temáticas — **DESCARTADO por medición**
+
+   > **Lo que sigue es el diseño original, y no se sostuvo.** `EVENTO` coincide por subcadena con
+   > 718 de 802 filas: es una categoría (`Encuentro con Vecinos`), no un identificador.
+   > `EVENTO_COMO_UBICACION` queda en `false` y **se sacó de la puerta de `EMPAREJAR_MANUAL`**,
+   > donde había subido la densidad de 2,6 a 8,2 pares por fila. La puerta vuelve a
+   > `figura Y (fecha ±21 O comuna)`, más el eje cuando se confirme. Ver 1.d.
 
    Las reuniones temáticas (sección 1.d) no tienen lugar, tienen **tema**, y el tema está en la
    columna `EVENTO` del destino y repetido en el nombre del formulario. Eso alcanza para
@@ -1499,8 +1551,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    regla de §6 aplicada a nuestro propio diseño: las tres falsas alarmas de esta migración
    fueron números altos presentados como conclusiones.
 
-   Lo que **no** está detrás del flag: la medición, y la tercera vía de relevancia de
-   `EMPAREJAR_MANUAL`. Proponerle un par a una persona no es escribir.
+   ~~Lo que **no** está detrás del flag: la medición, y la tercera vía de relevancia de
+   `EMPAREJAR_MANUAL`.~~ La vía de relevancia se sacó (ver el recuadro de arriba); queda sólo la
+   medición del bloque 2d.
 
    > **Y la aritmética, anotada antes de que el número invite a una conclusión que no da.**
    > Como el evento sube el numerador **y** el denominador, casi no mueve el veredicto
@@ -1965,8 +2018,9 @@ lo esperable es encontrarlas mezcladas.
 > orden. Ver "Por qué la Fase 2 no cierra", abajo.
 - **`detectFecha_` con la regla del mes** (1.c / 3.3.c). Reemplaza al ancla, que quedó
   descartada: el año y el mes salen de `fecha_fin`, el día del texto, y una ocurrencia con un
-  mes imposible se descarta en vez de arruinar la fila. `diagCorteB()` mide cuántas
-  `fecha_mal_parseada` resuelve.
+  mes imposible se descarta en vez de arruinar la fila. `diagCorteB()` midió que no resuelve
+  ninguna de las 20 que se llamaban `fecha_mal_parseada` — porque no eran de mes: son
+  `desfase_reprogramacion`, y las cubre la tolerancia de ±3 del score (3.3.c).
 - `00_Config.js` **ya está escrito** (IDs, solapas, `COLUMNAS_MANUALES`, `COLUMNAS_DERIVADAS`,
   `VENTANA_ALERTA_DIAS`); falta `01_Utils.js`, `02_Parsing.js` (con `detectComuna_` y el ancla de fecha) y
   `05_Escritura.js`.
@@ -2210,13 +2264,14 @@ una trampa que conviene tener clara antes de leer cualquier número.
 > que es el peso del barrio— **es aritméticamente imposible.** La resta engaña: el peso del
 > barrio no se resta del numerador, desaparece del cálculo.
 
-Qué produce realmente un 0,65, calculado sobre los pesos vigentes:
+Qué produce realmente un 0,65, calculado sobre los pesos **de ese momento** (con la tolerancia
+de ±3 de 3.3.c, las dos filas de ±1 y ±3 pasan a dar **1,00**):
 
 | combinación | score |
 |---|---|
 | figura + fecha exacta, sin ubicación evaluable | **1,00** |
-| figura + fecha ±1, sin ubicación | 0,91 |
-| figura + fecha ±3, sin ubicación | 0,77 |
+| figura + fecha ±1, sin ubicación | 0,91 → hoy 1,00 |
+| figura + fecha ±3, sin ubicación | 0,77 → hoy 1,00 |
 | **figura + fecha ±7, sin ubicación** | **0,63** ← esto |
 | **figura + fecha mala + comuna coincidente** | **0,63** ← o esto |
 | figura + fecha ±7 + comuna coincidente | 0,70 |
@@ -2228,6 +2283,8 @@ Qué produce realmente un 0,65, calculado sobre los pesos vigentes:
 Por eso `logResumen_` clasifica por **déficit**, no por ausencia: cuánto peso perdió cada señal
 **evaluable** que no coincidió del todo. Y reporta aparte la **banda de fecha** dentro del grupo
 bajo, que es el número accionable — si domina `±7`, el trabajo está en 3.3.c y no en la comuna.
+Ahora también el **desvío real día por día** y las tres poblaciones (ver 3.3.c, *"Las 20 no
+eran errores de parseo"*): una banda agregada escondía que "lejos" no es reprogramación.
 
 Y en el mismo paso mide **la comuna**, que es la señal que viene a reemplazar al barrio:
 
@@ -2282,6 +2339,39 @@ alternativas entre sí, no requisitos acumulados.
 El log reporta ahora la **densidad** (pares por fila y por formulario) y avisa si pasa de 5. Era
 la metrica que faltaba: *1.883* sonaba a "mucho trabajo", *18 por fila* dice que la lista es
 inutilizable. El objetivo es **2 a 4**.
+
+> **Corrección: la vía del evento se sacó.** Con ella la densidad pasó de **2,6 a 8,2 pares por
+> fila**: `EVENTO` coincide con el 90% de las filas y abría la puerta a casi cualquier par de la
+> misma figura. La puerta queda
+>
+> ```
+> figura  Y  ( fecha dentro de ±VENTANA_EMPAREJAR_DIAS  O  comuna coincide  [O eje coincide] )
+> ```
+>
+> con el eje detrás de `EJE_COMO_UBICACION`, que se suma cuando se confirme el mapeo (1.d).
+
+#### Las filas de comuna coincidente que no entran (las 65 `deberia_haber_entrado`)
+
+Casos como `francisco quintana|villa santa rita|20260423 ← Comuna 11 - 23/4` (Villa Santa Rita
+es Comuna 11): la comuna coincide y quedan afuera igual. Con figura + comuna deberían llegar
+alto aun con la fecha corrida.
+
+**Antes de culpar a la fecha, un dato estructural:** en `diagCorteB()`, `deberia_haber_entrado`
+es lo que queda **después** de descartar persona, barrio y fecha — o sea que en esas filas el
+legado reconoció la persona y la fecha **le coincidió exacta**. Si la fecha coincidía, no es la
+fecha la que las tira. La tolerancia de ±3 (3.3.c) sube a las que están corridas, pero para
+éstas hay que buscar otra causa.
+
+La candidata más fuerte es **la figura**: el legado reconocía personas con regex que admiten
+variantes (`pin(?:eiro|n?eiro)`, `quiro(?:s|z)`), y `figurasEnTexto_` busca **el nombre exacto
+de la columna `Figura` del destino**. Si el formulario escribe el nombre distinto, la figura no
+suma, el formulario queda en 0,56 (fecha + comuna sin figura) y **uno lejano que sí nombra la
+figura le gana**. Es el mismo mecanismo que puede explicar las 50 "lejos" del grupo bajo.
+
+El bloque **2f** del log lo mide: para cada fila con un formulario relevante de su misma comuna,
+toma el **más cercano en fecha** y dice si entró, y si no, por qué —
+`figura_no_reconocida_en_el_formulario`, `fecha_a_4_7_dias`, `fecha_a_mas_de_7_dias`,
+`gano_otro_candidato`, o el motivo del veredicto—, con los primeros 25 casos y quién les ganó.
 
 #### La ventana de análisis llega al upsert (y las conclusiones de arriba hay que releerlas)
 
@@ -2522,7 +2612,7 @@ puede pisar nada.
 **Si el próximo commit de código invalida algo que dice este documento, el documento se corrige
 en ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-No es prolijidad. En esta migración cambiamos de premisa **siete veces**:
+No es prolijidad. En esta migración cambiamos de premisa **nueve veces**:
 
 | lo que decía el documento | lo que medimos después |
 |---|---|
@@ -2533,6 +2623,8 @@ No es prolijidad. En esta migración cambiamos de premisa **siete veces**:
 | `fecha_fin` sirve de ancla | no discrimina; el ancla queda descartada |
 | `fecha_fin` y el texto son dos fuentes poco confiables, se compara contra las dos | `fecha_fin` es el cierre del formulario; el texto, con la regla del mes, es la fuente |
 | la clave natural es el plan B | no hay clave natural |
+| las 20 `fecha_mal_parseada` son errores del parser | texto y `fecha_fin` coinciden; el destino está corrido 1-3 días. Es reprogramación, y se arregla en la escala del score |
+| `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

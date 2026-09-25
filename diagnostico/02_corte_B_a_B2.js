@@ -17,7 +17,7 @@
  *                    dos (población × todas las filas de B) y no hace falta en cada corrida.
  *   diagFechaFin()  → DIAG_FECHA_FIN. ¿fecha_fin tiene error sistemático o es confiable?
  *                    De la respuesta salen dos diseños incompatibles de detectFecha_.
- *   diagAnclaFecha() → DIAG_ANCLA_FECHA. Cuántas fecha_mal_parseada resuelve anclar la fecha a
+ *   diagAnclaFecha() → DIAG_ANCLA_FECHA. Cuántas desfase_reprogramacion resuelve anclar la fecha a
  *                    fecha_fin, antes de escribir esa regla en 02_Parsing.js (CLAUDE.md 3.3).
  *
  * Depende de `diagnostico/01_hueco_sexo_edades.js`, que está en el mismo proyecto y comparte
@@ -283,7 +283,7 @@ function generarCorteB_diag2(cache) {
   const nuevoConteo = function () {
     return {
       no_esta_en_B: 0, desaparecida_del_origen: 0, persona_no_reconocida: 0,
-      barrio_no_reconocido: 0, fecha_no_parseable: 0, fecha_mal_parseada: 0,
+      barrio_no_reconocido: 0, fecha_no_parseable: 0, desfase_reprogramacion: 0,
       deberia_haber_entrado: 0
     };
   };
@@ -348,9 +348,12 @@ function generarCorteB_diag2(cache) {
       if (devPersona === '')                     causa = 'persona_no_reconocida';
       else if (devBarrio === '')                 causa = 'barrio_no_reconocido';
       else if (!fechaEfectiva)                   causa = 'fecha_no_parseable';
-      else if (!mismoDia_diag2(fechaEfectiva, h.fecha)) causa = 'fecha_mal_parseada';
+      // Antes se llamaba `fecha_mal_parseada`, y mentía: en estos casos el texto y fecha_fin
+      // coinciden entre sí y el que difiere es el destino, por 1 a 3 días. La reunión se corrió
+      // y el formulario quedó con la fecha original (CLAUDE.md 1.a y 3.3.c).
+      else if (!mismoDia_diag2(fechaEfectiva, h.fecha)) causa = 'desfase_reprogramacion';
 
-      if (causa === 'fecha_no_parseable' || causa === 'fecha_mal_parseada') {
+      if (causa === 'fecha_no_parseable' || causa === 'desfase_reprogramacion') {
         casosFecha.push({ clave: h.clave, destino: h.fecha, nombre: elegido.nombre,
                           fechaFin: elegido.fechaFin, legado: fechaEfectiva, causa: causa,
                           enVentana: h.enVentana });
@@ -415,12 +418,15 @@ function generarCorteB_diag2(cache) {
   Logger.log('--- el arreglo que implica cada grupo ---');
   const listas = conteo.persona_no_reconocida + conteo.barrio_no_reconocido;
   const acumulativo = conteo.no_esta_en_B + conteo.desaparecida_del_origen;
-  const fechas = conteo.fecha_no_parseable + conteo.fecha_mal_parseada;
+  const fechas = conteo.fecha_no_parseable + conteo.desfase_reprogramacion;
   Logger.log('  ampliar las listas de detectPersona_/detectBarrio_ (barato): %s filas', listas);
   Logger.log('    (están en B2 pero sin Persona/BarrioN, así que no se pueden indexar; ' +
              'confirmadas contra las %s claves incompletas de B2: %s coinciden por nombre)',
              b2.incompletas, confirmadasEnB2SinClave);
-  Logger.log('  arreglar el parseo de fechas (barato): %s filas', fechas);
+  Logger.log('  fecha no parseable + desfase por reprogramación: %s filas', fechas);
+  Logger.log('    (el desfase NO es del parser: texto y fecha_fin coinciden y el destino está ' +
+             'corrido 1-%s días. Lo cubre la tolerancia del score, TOLERANCIA_REPROGRAMACION_DIAS)',
+             TOLERANCIA_REPROGRAMACION_DIAS);
   _reglaDelMes_diag2(casosFecha);
   Logger.log('  >>> B2 acumulativo, rehacer syncB_to_B2 (caro): %s filas', acumulativo);
   Logger.log('  sin explicación: %s filas', conteo.deberia_haber_entrado);
@@ -586,7 +592,7 @@ function buscarCandidato_diag2(h, b) {
  * texto: es mejor que nada, y son pocas filas (el 99% de `B` tiene `fecha_fin`).
  */
 /**
- * ¿Cuántas de las `fecha_mal_parseada` resuelve **la regla del mes**?
+ * ¿Cuántas de las `desfase_reprogramacion` resuelve **la regla del mes**?
  *
  * La regla (CLAUDE.md 1.c): del formulario, **el año y el mes de `fecha_fin` siempre vienen
  * bien y sólo el día puede estar corrido**. El `detectFecha_` nuevo la aplica — descarta del
@@ -646,11 +652,32 @@ function _reglaDelMes_diag2(casos) {
   Logger.log('  alguna de las dos fechas coincide con el destino: %s  (referencia, NO lo usa el match)',
              algunaCoincide);
 
+  /*
+   * La lectura correcta de estos casos (CLAUDE.md 3.3.c): **texto y fecha_fin coinciden entre
+   * sí, y el que difiere es el destino**, por 1 a 3 días. Se mide acá en vez de suponerlo.
+   */
+  let acuerdanTextoYFin = 0, destinoCorrido = 0;
+  casos.forEach(function (c) {
+    const det = detectFecha_(c.nombre, c.fechaFin);
+    if (det.texto && det.fechaFin && mismoDia_diag2(det.texto, det.fechaFin)) acuerdanTextoYFin++;
+    const ref = det.texto || det.fechaFin;
+    const d = ref ? Math.abs(diasEntre_diag2(ref, c.destino)) : null;
+    if (d !== null && d >= 1 && d <= TOLERANCIA_REPROGRAMACION_DIAS) destinoCorrido++;
+  });
+  Logger.log('  texto y fecha_fin caen el MISMO día ........ %s de %s', acuerdanTextoYFin,
+             casos.length);
+  Logger.log('  el destino está corrido 1-%s días de esa fecha: %s de %s',
+             TOLERANCIA_REPROGRAMACION_DIAS, destinoCorrido, casos.length);
+
   if (resueltas >= casos.length * 0.8) {
     Logger.log('  >>> La regla resuelve casi todo. El parseo de fechas deja de ser una causa.');
+  } else if (destinoCorrido >= casos.length * 0.8) {
+    Logger.log('  >>> No es el parser: es DESFASE POR REPROGRAMACIÓN. El formulario tiene la fecha');
+    Logger.log('      original y el destino la corrida. Lo cubre TOLERANCIA_REPROGRAMACION_DIAS en');
+    Logger.log('      el score; la regla del mes no tiene nada que resolver acá.');
   } else if (resueltas === 0) {
-    Logger.log('  >>> La regla NO resuelve ninguna. Estos casos no son de mes: mirar los de abajo');
-    Logger.log('      antes de darla por buena — puede que el día del texto también esté mal.');
+    Logger.log('  >>> La regla NO resuelve ninguna, y tampoco es un desfase chico del destino.');
+    Logger.log('      Mirar los de abajo uno por uno.');
   }
 
   if (sinResolver.length) {
@@ -677,7 +704,7 @@ function resolverFecha_diag2(fb, usarAncla, ventana) {
 // ===================== DIAG_ANCLA_FECHA =====================
 
 /**
- * ¿Cuántas de las `fecha_mal_parseada` de `DIAG_CORTE_B` resuelve anclar la fecha a `fecha_fin`?
+ * ¿Cuántas de las `desfase_reprogramacion` de `DIAG_CORTE_B` resuelve anclar la fecha a `fecha_fin`?
  *
  * Sólo lectura, y **no cambia el parser**: compara las dos reglas sobre los mismos datos y el
  * mismo candidato, para poder decidir con un número antes de tocar `02_Parsing.js`.
@@ -735,16 +762,16 @@ function diagAnclaFecha() {
     // Los contadores salen sólo de la ventana de análisis; la solapa trae todo.
     if (h.enVentana) {
       efectos[efecto]++;
-      if (causaLegado === 'fecha_mal_parseada') {
+      if (causaLegado === 'desfase_reprogramacion') {
         malParseadaLegado++;
         if (efecto === 'resuelta') malParseadaResueltas++;
         else malParseadaSigueMal++;
       }
     }
 
-    // Se listan los casos que cambian y, además, todas las fecha_mal_parseada aunque no cambien:
+    // Se listan los casos que cambian y, además, todas las desfase_reprogramacion aunque no cambien:
     // son justamente las que hay que poder mirar de a una.
-    if (efecto === 'sin_cambio' && causaLegado !== 'fecha_mal_parseada') continue;
+    if (efecto === 'sin_cambio' && causaLegado !== 'desfase_reprogramacion') continue;
 
     const fLeg = resolverFecha_diag2(elegido, false);
     const fAnc = resolverFecha_diag2(elegido, true);
@@ -796,7 +823,7 @@ function diagAnclaFecha() {
 
   Logger.log('--- efecto sobre la población (sólo ventana de análisis, %s meses) ---',
              VENTANA_ANALISIS_MESES);
-  Logger.log('  fecha_mal_parseada con la regla del legado: %s', malParseadaLegado);
+  Logger.log('  desfase_reprogramacion con la regla del legado: %s', malParseadaLegado);
   Logger.log('  >>> de esas, RESUELTAS anclando a fecha_fin: %s (%s%%)', malParseadaResueltas,
              malParseadaLegado ? Math.round(malParseadaResueltas * 1000 / malParseadaLegado) / 10 : 0);
   Logger.log('  siguen mal: %s', malParseadaSigueMal);
@@ -877,7 +904,7 @@ function barrerAnchosDeVentana_diag2(poblacion, b) {
     for (let i = 0; i < pares.length; i++) {
       const cl = causaConFecha_diag2(pares[i].h, pares[i].e, false, null);
       const ca = causaConFecha_diag2(pares[i].h, pares[i].e, true, ventana);
-      if (cl === 'fecha_mal_parseada') malParseada++;
+      if (cl === 'desfase_reprogramacion') malParseada++;
       if (cl !== ca) {
         if (ca === 'deberia_haber_entrado') resueltas++;
         else if (cl === 'deberia_haber_entrado') rotas++;
@@ -889,7 +916,7 @@ function barrerAnchosDeVentana_diag2(poblacion, b) {
   Logger.log('--- curva por ancho de ventana (sólo ventana de análisis, %s pares) ---',
              pares.length);
   const base = evaluar(VENTANA_FECHA_TEXTO);
-  Logger.log('  fecha_mal_parseada con la regla del legado: %s', base.malParseada);
+  Logger.log('  desfase_reprogramacion con la regla del legado: %s', base.malParseada);
   Logger.log('  ventana            | resueltas | rotas | neto');
   Logger.log('  [%s, +%s] (actual)  |     %s     |   %s   |  %s',
              VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max,
@@ -909,7 +936,7 @@ function barrerAnchosDeVentana_diag2(poblacion, b) {
                'coincidencias de calendario.', mejorAncho, mejorNeto);
   } else {
     Logger.log('  >>> Ninguna ventana más ancha mejora el neto: ensanchar no alcanza y el ' +
-               'problema de las fecha_mal_parseada es otro.');
+               'problema de las desfase_reprogramacion es otro.');
   }
   return { mejorAncho: mejorAncho, mejorNeto: mejorNeto };
 }
@@ -922,7 +949,7 @@ function causaConFecha_diag2(h, elegido, usarAncla, ventana) {
   if (devBarrio === '') return 'barrio_no_reconocido';
   const fecha = resolverFecha_diag2(elegido, usarAncla, ventana);
   if (!fecha) return 'fecha_no_parseable';
-  if (!mismoDia_diag2(fecha, h.fecha)) return 'fecha_mal_parseada';
+  if (!mismoDia_diag2(fecha, h.fecha)) return 'desfase_reprogramacion';
   return 'deberia_haber_entrado';
 }
 
@@ -1221,10 +1248,10 @@ function diagScores() {
              fmt_diag2(inicioVentanaAnalisis_diag()), VENTANA_ANALISIS_MESES, totalEnVentana);
   Logger.log('esas filas.** La solapa trae las %s con la columna en_ventana para filtrar.',
              totalHistorico);
-  Logger.log('Pesos: figura %s | fecha %s/%s/%s | barrio %s, comuna-sin-barrio %s | hora %s',
-             PESOS_MATCH.figura, PESOS_MATCH.fechaExacta, PESOS_MATCH.fecha1Dia,
-             PESOS_MATCH.fecha3Dias, PESOS_MATCH.barrioIgual, PESOS_MATCH.comunaSinBarrio,
-             PESOS_MATCH.hora);
+  Logger.log('Pesos: figura %s | fecha %s hasta ±%s, %s hasta ±7 | barrio %s, comuna-sin-barrio ' +
+             '%s | hora %s', PESOS_MATCH.figura, PESOS_MATCH.fechaExacta,
+             TOLERANCIA_REPROGRAMACION_DIAS, PESOS_MATCH.fecha7Dias, PESOS_MATCH.barrioIgual,
+             PESOS_MATCH.comunaSinBarrio, PESOS_MATCH.hora);
   Logger.log('Umbrales PROVISORIOS en uso: UMBRAL_MATCH=%s MARGEN_MINIMO=%s',
              UMBRAL_MATCH, MARGEN_MINIMO);
 

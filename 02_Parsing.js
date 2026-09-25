@@ -288,38 +288,24 @@ function ejeDeBarrio_(barrio) {
 
 /**
  * El eje geográfico que menciona el texto de un formulario. Devuelve `null` si no hay ninguno, o
- * `{ eje, tipo, forma, comuna }`:
+ * `{ eje, tipo, forma }`:
  *
  *   tipo 'eje'               `Eje Norte`, `Eje Sur`… → eje = el de `EJES_CONOCIDOS`
  *   tipo 'eje_desconocido'   `Eje <otra cosa>`       → eje = '' (se reporta, no se usa)
- *   tipo 'comuna_orientada'  `Comuna 1 Norte`, `Comuna 1N` → eje = la orientación, comuna = 1
  *
- * **`comuna_orientada` no se usa como eje, y es deliberado.** `Comuna 1 Norte` puede querer
- * decir "el eje Norte" o "la parte norte de la Comuna 1" (Retiro / San Nicolás / Puerto Madero,
- * frente a San Telmo / Constitución). Son cosas distintas y la segunda NO es el eje Norte de la
- * ciudad: tratarla como eje descalificaría candidatos buenos. Se detecta y se mide; qué
- * significa lo confirma una persona.
+ * **`Comuna 1 Norte` / `Comuna 1N` NO son eje** (confirmado con el equipo): son subdivisiones
+ * de la Comuna 1, que está en el centro. Tratarlas como Eje Norte descartaría candidatos buenos.
+ * Las lee `detectComuna_`, como comuna 1.
  *
  * Sólo detecta. Que puntúe o no lo decide `EJE_COMO_UBICACION`.
  */
 function detectEje_(texto) {
   const t = normalizeText_(texto);
   if (!t) return null;
-
-  let m = /\bcomuna\s*0?(\d{1,2})\s*(norte|sur|centro|oeste|n|s)\b/.exec(t);
-  if (m) {
-    const inicial = { n: 'norte', s: 'sur' };
-    const o = inicial[m[2]] || m[2];
-    return { eje: _canonEje_(o), tipo: 'comuna_orientada', forma: m[0],
-             comuna: numComuna_(m[1]) };
-  }
-
-  m = /\beje\s+([a-z]+)\b/.exec(t);
-  if (m) {
-    const eje = _canonEje_(m[1]);
-    return { eje: eje, tipo: eje ? 'eje' : 'eje_desconocido', forma: m[0], comuna: null };
-  }
-  return null;
+  const m = /\beje\s+([a-z]+)\b/.exec(t);
+  if (!m) return null;
+  const eje = _canonEje_(m[1]);
+  return { eje: eje, tipo: eje ? 'eje' : 'eje_desconocido', forma: m[0] };
 }
 
 function _canonEje_(palabra) {
@@ -335,18 +321,22 @@ function esFormularioTematico_(texto) {
   const t = normalizeText_(texto);
   if (!t) return false;
   if (/\btematic[oa]s?\b/.test(t)) return true;
-  const e = detectEje_(texto);
-  return !!(e && e.tipo !== 'comuna_orientada');
+  return !!detectEje_(texto);
 }
 
 /**
  * Número de comuna mencionado en el texto: `Comuna 6`, `COMUNA 06`, `C6` → `6`.
  * El origen dejó de mandar barrio y pasó a mandar comuna (CLAUDE.md 3.3.b).
+ *
+ * Las subdivisiones de la Comuna 1 —`Comuna 1 Norte`, `Comuna 1N`, `Comuna 1 Sur`, `C1S`— se
+ * leen como **comuna 1**, descartando el sufijo. `Comuna 1 Norte` ya se leía así; `Comuna 1N`,
+ * con el sufijo pegado, no la tomaba ninguna de las dos regex y la fila quedaba sin ninguna señal
+ * de ubicación. Recupera cobertura; no cambia lo que ya se leía.
  */
 function detectComuna_(texto) {
   const t = String(texto == null ? '' : texto);
-  let m = /\bcomuna\s*0?(\d{1,2})\b/i.exec(t);
-  if (!m) m = /\bc0?(\d{1,2})\b/i.exec(t);
+  let m = /\bcomuna\s*0?(\d{1,2})(?:\s*(?:norte|sur|n|s))?\b/i.exec(t);
+  if (!m) m = /\bc0?(\d{1,2})(?:n|s)?\b/i.exec(t);
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return (n >= 1 && n <= 15) ? n : null;

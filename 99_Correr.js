@@ -28,12 +28,16 @@
  *                                                final. Idempotente. Una sola vez.
  *   paso2_upsertEnSeco()      → correrEnSeco()   NO toca el destino. Escribe REVISAR_MATCH,
  *                                                EMPAREJAR_MANUAL y SIN_MATCH en la intermedia.
- *                                                El log trae el bloque 2e: ¿Zona == eje? y
- *                                                los temáticos sin ninguna fila a ±3 días.
+ *                                                El log trae: 2b desvío real del grupo bajo
+ *                                                (tres poblaciones), 2e ¿Zona == eje? y
+ *                                                temáticos sin fila a ±3, 2f por qué no entran
+ *                                                las de comuna coincidente.
  *     si falla un reporte:  paso2_rehacer_revisarMatch / _emparejarManual / _sinMatch
  *   paso3_medirReglaDelMes()  → diagCorteB()     NO toca el destino. Escribe DIAG_CORTE_B en la
  *                                                intermedia; el bloque "LA REGLA DEL MES" va
- *                                                al log.
+ *                                                al log, y ahí se confirma que las 20
+ *                                                desfase_reprogramacion son el destino corrido
+ *                                                1-3 días y no un error del parser.
  *
  *  Qué mirar en cada log y qué decide cada número: docs/ESTADO.md, sección 2.
  *
@@ -53,7 +57,7 @@ function paso1_columnasDeTraza() {
 function paso2_upsertEnSeco() {
   _anunciar_('paso 2 — upsert en seco', 'correrEnSeco()  [20_UpsertDestino.js]',
              'NO en el destino (fuerza DRY_RUN aunque la constante diga otra cosa)',
-             'log (con el bloque 2e del eje) + solapas REVISAR_MATCH, EMPAREJAR_MANUAL y ' +
+             'log (bloques 2b, 2e y 2f) + solapas REVISAR_MATCH, EMPAREJAR_MANUAL y ' +
              'SIN_MATCH en la intermedia');
   return correrEnSeco();
 }

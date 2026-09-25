@@ -141,9 +141,7 @@ const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
  */
 const PESOS_MATCH = {
   figura:          0.35,
-  fechaExacta:     0.30,
-  fecha1Dia:       0.24,
-  fecha3Dias:      0.15,
+  fechaExacta:     0.30,   // exacta o dentro de TOLERANCIA_REPROGRAMACION_DIAS
   fecha7Dias:      0.06,
   barrioIgual:     0.25,
   comunaSinBarrio: 0.15,
@@ -219,14 +217,21 @@ const DIAS_TEMATICA_CERCANA = 3;
  * listas fijas, sin canonización, sin parser — como la clave del flujo Agenda, que es la mejor
  * del proyecto justamente por eso.
  *
- * ### Arranca APAGADO, a propósito
+ * ### 🔴 MEDIDO: `EVENTO` no sirve como señal. Queda en `false` y no se enciende.
  *
- * `false` no es cautela de trámite: es la regla de CLAUDE.md §6 —*un conteo alto no es una
- * conclusión*— aplicada a nuestro propio diseño. El bloque **2d** del log mide la cobertura
- * antes de que esto puntúe nada. Se enciende con ese número a la vista, no antes.
+ * **Es una categoría, no un identificador.** El bloque 2d de la corrida en seco dio que `EVENTO`
+ * coincide por subcadena con **718 de 802 filas** (~90%), y los 12 casos que listó eran todos
+ * `Encuentro con Vecinos`. Una señal que coincide con el 90% no discrimina nada.
  *
- * Lo que **no** está detrás del flag: la medición del bloque 2d y la tercera vía de relevancia
- * de `EMPAREJAR_MANUAL`. Proponerle un par a una persona no es escribir.
+ * Y como vía de relevancia de `EMPAREJAR_MANUAL` hacía daño: **subió la densidad de 2,6 a 8,2
+ * pares por fila.** Se sacó de la puerta, que vuelve a `figura Y (fecha ±21 O comuna)` —más el
+ * eje, cuando se confirme (`EJE_COMO_UBICACION`).
+ *
+ * Las temáticas siguen siendo un caso real, pero lo que las distingue está en el **nombre del
+ * formulario** (`Temática Salud`, `Eje Sur`), no en la columna `EVENTO` del destino. Ver
+ * `esFormularioTematico_` y `detectEje_`.
+ *
+ * La medición del bloque 2d se deja: es la que sostiene este número.
  */
 const EVENTO_COMO_UBICACION = false;
 
@@ -244,19 +249,32 @@ const PALABRAS_VACIAS_EVENTO = [
 ];
 
 /**
- * **La fecha es señal, no clave.** Escala decreciente y **ninguna banda descarta por sí sola**:
- * un desvío de 9 días puntúa 0 pero no elimina al candidato. La regla del mes garantiza el año
- * y el mes, no el día: el día del nombre del formulario puede venir corrido, y la fecha del
- * destino la carga una persona (CLAUDE.md 1.c y 3.3.c).
+ * **Hasta 3 días de distancia es la misma reunión.** La reunión se corre 2 o 3 días y el
+ * formulario queda con la fecha original (CLAUDE.md 1.a y 3.3.c).
  *
- * El escalón de ±7 existe porque ahí vive casi todo el error medido: de los 223 comparables de
- * `diagFechaFin()`, sólo 4 tienen |d| > 7. Darle 0.06 en vez de 0 reconoce que "la misma semana"
- * aporta algo, sin que alcance para decidir nada por su cuenta.
+ * Lo mostró `diagCorteB()`: en las 20 `desfase_reprogramacion` (antes mal llamadas
+ * `fecha_mal_parseada`) **el texto y `fecha_fin` coinciden entre sí, y el que difiere es el
+ * destino**, por 1 a 3 días — 01/08 contra 29/07, 23/09 contra 22/09, 10/04 contra 08/04. No hay
+ * ningún mes mal: por eso la regla del mes resolvió 0 de 20. **El parseo no es el problema.**
+ */
+const TOLERANCIA_REPROGRAMACION_DIAS = 3;
+
+/**
+ * **La fecha es señal, no clave.** Ninguna banda descarta por sí sola: un desvío de 9 días
+ * puntúa 0 pero no elimina al candidato.
+ *
+ * **Dentro de `TOLERANCIA_REPROGRAMACION_DIAS` puntúa como coincidencia plena**, igual que la
+ * fecha exacta: dentro de esa tolerancia es la misma reunión corrida. La escala anterior
+ * (exacta 0,30 · ±1 0,24 · ±3 0,15) **castigaba justo la reprogramación** y dejaba esas filas
+ * debajo del umbral: figura + fecha ±3 daba 0,77, figura + fecha ±3 + comuna 0,81.
+ *
+ * El escalón de ±7 queda como estaba: "la misma semana" aporta algo sin alcanzar para decidir.
+ *
+ * Costo, anotado: dos reuniones de la misma figura a 3 días o menos ahora empatan en fecha. No
+ * se escribe ninguna sola — el empate cae en `MARGEN_MINIMO` y va a `REVISAR_MATCH`.
  */
 const BANDAS_FECHA = [
-  { dias: 0, peso: PESOS_MATCH.fechaExacta },
-  { dias: 1, peso: PESOS_MATCH.fecha1Dia },
-  { dias: 3, peso: PESOS_MATCH.fecha3Dias },
+  { dias: TOLERANCIA_REPROGRAMACION_DIAS, peso: PESOS_MATCH.fechaExacta },
   { dias: 7, peso: PESOS_MATCH.fecha7Dias }
 ];
 

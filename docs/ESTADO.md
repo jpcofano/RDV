@@ -44,7 +44,7 @@ leído los números de la corrida en seco.
 
 ## 2. Qué hay que mirar de esa corrida, y qué decide cada número
 
-Son cuatro decisiones pendientes, todas esperando el mismo log. **Ninguna se toma sin el número
+Son varias decisiones pendientes, todas esperando el mismo log. **Ninguna se toma sin el número
 delante**; están descritas en `CLAUDE.md` con su razonamiento completo.
 
 ### a) ¿El umbral 0,88 sigue valiendo?
@@ -58,43 +58,58 @@ ventana de 6 meses** y dice una de tres cosas:
   [00_Config.js](../00_Config.js) **y anotar el número al lado**;
 - el barrido no calibra → la población está toda de un lado. No inventar un corte.
 
-### b) ¿Se enciende `EVENTO_COMO_UBICACION`?
+### b) ~~¿Se enciende `EVENTO_COMO_UBICACION`?~~ CERRADA: no
 
-Bloque **2d**. Hoy está en `false`. Se enciende si el evento cubre una parte apreciable de las
-filas temáticas y coincide donde tiene que coincidir.
+El bloque 2d dio que `EVENTO` coincide con **718 de 802** filas (`Encuentro con Vecinos`): es una
+categoría, no un identificador. Queda en `false` y **se sacó de la puerta de
+`EMPAREJAR_MANUAL`**, donde había subido la densidad de 2,6 a 8,2 pares por fila.
 
-> **Ojo con la aritmética, está en el log y conviene creerle:** el evento sube el numerador y el
-> denominador, así que `figura + fecha ±7 + evento` da **0,73** — sigue debajo del umbral.
-> Encenderlo **no rescata por sí solo** a una fila con la fecha rota. Donde cambia algo es en el
-> margen entre candidatos.
+### c) ~~¿La regla del mes resolvió las `fecha_mal_parseada`?~~ Reinterpretada
 
-### c) ¿La regla del mes resolvió las `fecha_mal_parseada`?
+Resolvió **0 de 20**, y no porque fallara: **no eran de mes**. Texto y `fecha_fin` coinciden y el
+destino está corrido 1-3 días — **desfase por reprogramación**. Se renombraron
+`desfase_reprogramacion` y el arreglo fue la escala: hasta ±3 días puntúa como coincidencia plena
+(`TOLERANCIA_REPROGRAMACION_DIAS`). `diagCorteB()` ahora lo mide: "texto y fecha_fin caen el
+mismo día" y "el destino está corrido 1-3 días". Lo esperable son casi todas en las dos.
 
-Bloque **`LA REGLA DEL MES`** de `diagCorteB()`. Lo esperable es *casi todas*. Si da cero, la
-regla no es la explicación y hay que mirar los casos que el log lista uno por uno — puede que el
-día del texto también esté mal.
+En el upsert, la línea *"de las que escribiría, a 1-3 días"* del bloque 1 dice cuántas entran
+gracias a la tolerancia.
 
-### d) ¿Cuántos huérfanos quedan con la puerta de tres vías?
+### d) ¿Qué es el "lejos" del grupo bajo?
 
-Bloque **3**. La puerta de `EMPAREJAR_MANUAL` pasó de `figura Y fecha±21` a
-`figura Y (fecha±21 O comuna O evento)`. Con la versión de dos términos los formularios
-huérfanos habían saltado de 11 a 81 y las filas sin candidato de 0 a 56. **Deberían bajar.** Si
-no bajan, el problema no era la puerta.
+Bloque **2b**, *"desvío REAL del mejor candidato"* y *"¿había algún formulario a ±3 días?"*. La
+corrida anterior dio ±1: 0, ±3: 8, **lejos: 50**; si el desfase típico es de 1 a 3 días, esas 50
+no son reprogramación. Tres poblaciones:
 
-> Y la **densidad** (pares por fila) tiene que quedar entre 2 y 4. Si pasa de 5 el log avisa: la
-> lista no se puede trabajar y la puerta quedó laxa de nuevo.
+- **con su figura reconocida** → el problema no es la fecha: mirar ubicación u hora;
+- **sin ninguna figura reconocida** → probable: el formulario es el suyo pero `figurasEnTexto_`
+  no encontró el nombre, y uno lejano que sí lo nombra le ganó. El log lista los casos;
+- **ninguno** → el formulario no está en `B` con esa fecha. Otra población, otro arreglo.
 
-### e) ¿La `Zona` de `Comunas` es el eje? ¿Se enciende `EJE_COMO_UBICACION`?
+### e) ¿Por qué no entran las de comuna coincidente?
+
+Bloque **2f**. Las 65 `deberia_haber_entrado` son las de comuna, y **en `diagCorteB()` esa
+categoría ya implica fecha exacta** —así que la fecha no es la sospechosa principal. El bloque
+toma el formulario de la misma comuna más cercano en fecha y dice por qué no entró. Si domina
+`figura_no_reconocida_en_el_formulario`, el arreglo es cómo `figurasEnTexto_` reconoce nombres,
+y es la misma causa probable que la del punto d).
+
+### f) Huérfanos y densidad de `EMPAREJAR_MANUAL`
+
+Bloque **3**. La puerta es `figura Y (fecha±21 O comuna)` —sin evento—. La **densidad** tiene
+que volver a 2-4 pares por fila (con el evento había subido a 8,2). Si pasa de 5 el log avisa.
+
+### g) ¿La `Zona` de `Comunas` es el eje? ¿Se enciende `EJE_COMO_UBICACION`?
 
 Bloque **2e**, punto a). Vuelca cada valor de la columna 8 de `Comunas` con sus barrios. Si
 nombran `Norte/Sur/Centro/Oeste` **y los barrios se ven bien**, el mapeo está; si no, hay que
 escribirlo, y el punto b) —cada formulario con eje contra los barrios del destino con los que
 se emparejaría, más el cruce eje × zona— es el material para armarlo. Hoy en `false`.
 
-> Mirar ahí también las `Comuna 1 Norte` / `Comuna 1N`: se detectan pero **no se usan como
-> eje** hasta saber si son el eje o la mitad norte de la comuna.
+> `Comuna 1 Norte` / `Comuna 1N` **no son eje** (subdivisiones de la Comuna 1): las lee
+> `detectComuna_` como comuna 1.
 
-### f) ¿Los formularios temáticos tienen alguna reunión cerca?
+### h) ¿Los formularios temáticos tienen alguna reunión cerca?
 
 Bloque **2e**, punto c). Para cada formulario temático, si hay **alguna** fila de su figura a
 ±3 días. Los que no tienen ninguna se listan uno por uno: **son huérfanos reales**, y ningún
@@ -226,5 +241,5 @@ en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
 > **Si el próximo commit de código invalida algo que dice `CLAUDE.md`, el documento se corrige en
 > ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-En esta migración cambiamos de premisa siete veces. Entre la medición y la actualización, el
+En esta migración cambiamos de premisa nueve veces. Entre la medición y la actualización, el
 documento decía algo falso — y ése es justo el momento en que alguien lo abre para decidir.
