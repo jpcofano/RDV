@@ -84,6 +84,11 @@ const VENTANA_ANALISIS_MESES = 6;
 // ===================== Fechas =====================
 
 /**
+ * ⚠️ **OBSOLETA desde 2026-09-25: el ancla de fechas quedó descartada** (CLAUDE.md 3.3.c).
+ * `detectFecha_` ya no la usa — devuelve las dos fechas y el matching las puntúa con tolerancia
+ * (`BANDAS_FECHA`). Se conserva porque `diagAnclaFecha()` la referencia como registro de la
+ * medición que llevó a descartarla. **No usarla en código nuevo.**
+ *
  * Ventana de aceptación de la fecha sacada del texto libre, **relativa a `fecha_fin`**, que es
  * el ancla (CLAUDE.md 3.3).
  *
@@ -136,12 +141,29 @@ const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
 const PESOS_MATCH = {
   figura:          0.35,
   fechaExacta:     0.30,
-  fecha1Dia:       0.20,
-  fecha3Dias:      0.10,
+  fecha1Dia:       0.24,
+  fecha3Dias:      0.15,
+  fecha7Dias:      0.06,
   barrioIgual:     0.25,
   comunaSinBarrio: 0.15,
   hora:            0.10
 };
+
+/**
+ * **La fecha es señal, no clave.** Escala decreciente y **ninguna banda descarta por sí sola**:
+ * un desvío de 9 días puntúa 0 pero no elimina al candidato, porque la fecha no es confiable ni
+ * en el origen ni en el destino (CLAUDE.md 3.3.c).
+ *
+ * El escalón de ±7 existe porque ahí vive casi todo el error medido: de los 223 comparables de
+ * `diagFechaFin()`, sólo 4 tienen |d| > 7. Darle 0.06 en vez de 0 reconoce que "la misma semana"
+ * aporta algo, sin que alcance para decidir nada por su cuenta.
+ */
+const BANDAS_FECHA = [
+  { dias: 0, peso: PESOS_MATCH.fechaExacta },
+  { dias: 1, peso: PESOS_MATCH.fecha1Dia },
+  { dias: 3, peso: PESOS_MATCH.fecha3Dias },
+  { dias: 7, peso: PESOS_MATCH.fecha7Dias }
+];
 
 /**
  * **PROVISORIOS.** Puestos a ojo, no medidos.
@@ -165,6 +187,57 @@ const MARGEN_MINIMO = 0.15;
 
 /** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */
 const TOLERANCIA_HORA_MIN = 30;
+
+// ===================== Texto libre del origen =====================
+
+/**
+ * Prefijos administrativos que el origen antepone al nombre del evento y que hay que sacar
+ * **antes** de buscar la figura. Si no, `VINCULO CIUDADANO - Clara Muzzio ...` puede matchear
+ * contra una figura equivocada, o no matchear.
+ *
+ * Se comparan normalizados y sólo al principio del texto.
+ */
+const PREFIJOS_EVENTO = [
+  'vinculo ciudadano',
+  'jorge macri',
+  'post'
+];
+
+/**
+ * Marca de formulario anulado. **Un formulario con esto no es candidato de nada**: no se
+ * propone, no se puntúa, no aparece en `EMPAREJAR_MANUAL`.
+ *
+ * Es distinto de "no matcheó": es el origen diciendo explícitamente que esa carga no vale.
+ * Tratarlo como candidato sería reintroducir a mano un dato que alguien ya descartó.
+ */
+const MARCA_ANULADO = 'NO USAR';
+
+// ===================== Trazabilidad del match =====================
+
+/**
+ * Columnas nuevas al final del destino, junto a `RDV_UID` (CLAUDE.md, decisión 2).
+ *
+ * **Se escriben también cuando el score NO alcanzó.** Ahí `form_origen` guarda el mejor
+ * candidato descartado y `form_nivel` el motivo. Un caso mal resuelto tiene que poder
+ * auditarse sin volver a correr nada — y el día que aparezca una fuente de fecha mejor, se
+ * puede reprocesar y comparar contra lo que se había decidido en vez de empezar de cero.
+ *
+ * `form_origen` va **literal, sin normalizar**: es la trazabilidad, no una clave.
+ */
+const COLUMNAS_TRAZA = [
+  'RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match'
+];
+
+/** Solapa de propuestas de emparejamiento a mano (CLAUDE.md, decisión 2). */
+const RDV_HOJA_EMPAREJAR = 'EMPAREJAR_MANUAL';
+
+/**
+ * Piso para **proponer** un par en `EMPAREJAR_MANUAL`. Deliberadamente bajo: el objetivo ahí no
+ * es acertar sino no ofrecer un producto cartesiano. Un par se propone si comparte figura o si
+ * cae en `VENTANA_EMPAREJAR_DIAS`; por debajo, no se propone nada.
+ */
+const PISO_EMPAREJAR = 0.30;
+const VENTANA_EMPAREJAR_DIAS = 21;
 
 // ===================== STATUS REUNIÓN =====================
 

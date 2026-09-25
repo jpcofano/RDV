@@ -143,11 +143,58 @@ function detectPersona_(texto) {
 }
 
 /**
+ * Saca los prefijos administrativos del nombre del evento (`PREFIJOS_EVENTO`).
+ *
+ * `VINCULO CIUDADANO - Clara Muzzio, Palermo` → `Clara Muzzio, Palermo`. Hay que hacerlo
+ * **antes** de buscar la figura: un prefijo que contiene un nombre propio —`JORGE MACRI -`—
+ * matchea como figura y se lleva puesta a la figura real del evento.
+ *
+ * Saca prefijos repetidos: `POST - JORGE MACRI - ...` queda limpio en una sola pasada.
+ */
+function limpiarPrefijos_(texto) {
+  let t = str(texto);
+  let cambió = true;
+  while (cambió) {
+    cambió = false;
+    for (let i = 0; i < PREFIJOS_EVENTO.length; i++) {
+      const re = new RegExp('^\\s*' + _escapeRe_(PREFIJOS_EVENTO[i]) + '\\s*[-–:]\\s*', 'i');
+      const sinAcentos = normalizeText_(t);
+      if (re.test(sinAcentos)) {
+        // Se corta sobre el texto original, contando los caracteres que consumió la versión
+        // normalizada. Normalizar no cambia el largo en ninguno de estos prefijos.
+        const m = re.exec(sinAcentos);
+        t = t.substring(m[0].length).trim();
+        cambió = true;
+      }
+    }
+  }
+  return t;
+}
+
+function _escapeRe_(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * ¿El formulario está anulado? `NO USAR` en el nombre del evento.
+ *
+ * **Un formulario anulado no es candidato de nada**: no se puntúa, no se propone en
+ * `EMPAREJAR_MANUAL`, no aparece como "mejor descartado". Es distinto de "no matcheó": es el
+ * origen diciendo que esa carga no vale, y reintroducirla a mano sería deshacer una decisión
+ * que alguien ya tomó.
+ */
+function esFormularioAnulado_(texto) {
+  return normalizeText_(texto).indexOf(normalizeText_(MARCA_ANULADO)) !== -1;
+}
+
+/**
  * **Todas** las figuras mencionadas. Dos o más significa una inscripción compartida por varias
  * reuniones, que es `multi_figura` y va a revisión, no un caso ambiguo (CLAUDE.md, decisión 2).
+ *
+ * Limpia los prefijos administrativos antes de buscar.
  */
 function figurasEnTexto_(texto) {
-  const t = normalizeText_(texto);
+  const t = normalizeText_(limpiarPrefijos_(texto));
   if (!t) return [];
   const out = [];
   const figuras = _listas_().figuras;
@@ -225,18 +272,52 @@ function detectComuna_(texto) {
  * movió— y esas filas hay que poder listarlas.
  */
 function detectFecha_(texto, fechaFin) {
-  const ancla = fechaFin instanceof Date ? toDate_(fechaFin) : toDate_(fechaFin);
-  const delTexto = _fechaDelTexto_(texto, ancla);
+  const porFechaFin = toDate_(fechaFin);
+  const porTexto = _fechaDelTexto_(texto, porFechaFin);
+  const desvio = (porTexto && porFechaFin) ? diasEntre_(porTexto, porFechaFin) : null;
 
-  if (!delTexto && !ancla) return { fecha: null, fuente: '', desvio: null };
-  if (!delTexto) return { fecha: ancla, fuente: 'fecha_fin', desvio: null };
-  if (!ancla)    return { fecha: delTexto, fuente: 'texto_sin_ancla', desvio: null };
+  return {
+    texto: porTexto,
+    fechaFin: porFechaFin,
+    desvio: desvio,
+    // `mejor` es sólo para mostrar y para las filas que necesitan **una** fecha. No decide
+    // ningún match: para eso está `distanciaFecha_`, que compara contra las dos.
+    mejor: porFechaFin || porTexto || null,
+    fuente: porFechaFin ? 'fecha_fin' : (porTexto ? 'texto' : '')
+  };
+}
 
-  const desvio = diasEntre_(delTexto, ancla);
-  const dentro = (desvio >= VENTANA_FECHA_TEXTO.min && desvio <= VENTANA_FECHA_TEXTO.max);
-  return dentro
-    ? { fecha: delTexto, fuente: 'texto',     desvio: desvio }
-    : { fecha: ancla,    fuente: 'fecha_fin', desvio: desvio };
+/**
+ * Distancia en días entre la fecha del destino y la **más cercana** de las dos candidatas.
+ *
+ * Ésta es la función que usa el matching, y compara contra las dos a propósito: como ninguna de
+ * las dos fuentes es confiable (3.3.c), quedarse con una sola sería elegir cuál equivocarse.
+ * Devuelve `null` si no hay con qué comparar.
+ */
+function distanciaFecha_(fechaDestino, det) {
+  if (!fechaDestino || !det) return null;
+  let mejor = null;
+  [det.texto, det.fechaFin].forEach(function (f) {
+    if (!f) return;
+    const d = Math.abs(diasEntre_(f, fechaDestino));
+    if (mejor === null || d < mejor) mejor = d;
+  });
+  return mejor;
+}
+
+/**
+ * El puntaje de la señal de fecha, por bandas decrecientes (`BANDAS_FECHA`).
+ *
+ * **Ninguna banda descarta.** Un desvío de 30 días puntúa 0 y el candidato sigue compitiendo
+ * con las otras señales — porque la fecha dejó de ser parte de la clave y pasó a ser una
+ * señal más (CLAUDE.md, decisión 2).
+ */
+function puntajeFecha_(dias) {
+  if (dias === null || dias === undefined) return 0;
+  for (let i = 0; i < BANDAS_FECHA.length; i++) {
+    if (dias <= BANDAS_FECHA[i].dias) return BANDAS_FECHA[i].peso;
+  }
+  return 0;
 }
 
 /**

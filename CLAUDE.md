@@ -1136,11 +1136,40 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    |---|---|
    | figura mencionada en el texto del evento | **0,35** |
    | fecha exacta | **0,30** |
-   | fecha ±1 día | 0,20 |
-   | fecha ±3 días | 0,10 |
+   | fecha ±1 día | 0,24 |
+   | fecha ±3 días | 0,15 |
+   | fecha ±7 días | 0,06 |
    | barrio coincide | **0,25** |
    | comuna coincide, **con barrio ausente en el origen** | 0,15 |
    | hora coincide | **0,10** |
+
+   #### La fecha es señal, no clave — y ninguna banda descarta
+
+   Cambió con el cierre de 3.3.c. Antes la fecha era mitad de la clave; ahora es una señal más,
+   con **escala decreciente y ningún efecto eliminatorio**: un desvío de 30 días puntúa 0 y el
+   candidato **sigue compitiendo** con las demás señales.
+
+   El escalón de ±7 no es arbitrario: de los 223 comparables de `diagFechaFin()`, **sólo 4**
+   tienen |d| > 7. Darle 0,06 reconoce que "la misma semana" aporta algo sin que alcance para
+   decidir nada solo.
+
+   Y `distanciaFecha_` compara contra **las dos** fechas candidatas —la del texto y `fecha_fin`—
+   quedándose con la más cercana. Como ninguna de las dos es confiable, elegir una sola sería
+   elegir cuál equivocarse.
+
+   #### Dos puertas de relevancia, con anchos distintos
+
+   | puerta | para qué | condición |
+   |---|---|---|
+   | `relevante` | el **match automático** | comparte figura, **o** fecha dentro de ±7 |
+   | `proponible` | `EMPAREJAR_MANUAL`, que mira una persona | comparte figura, **o** fecha dentro de ±21 |
+
+   Vale ofrecerle un par dudoso a alguien para que lo confirme; no vale escribirlo solo. Sin
+   esta separación, cualquier formulario a tres semanas de distancia entraba como "mejor
+   candidato descartado" y ensuciaba `SIN_MATCH` con nombres que no tienen nada que ver — el
+   tipo de ruido que hace que después nadie mire el reporte.
+
+   **La ubicación no abre ninguna de las dos puertas.** Confirma, no identifica (sección 1.b).
 
    #### La ubicación tiene tres estados, no dos
 
@@ -1221,12 +1250,62 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    > divide? ¿Se asigna a una sola? **No lo resuelve el pipeline por su cuenta.** Hasta que haya
    > una respuesta, estos casos quedan en `REVISAR_MATCH` sin escribir nada.
 
-   #### `REVISAR_MATCH`
+   #### Trazabilidad: qué formulario se pasó
 
-   Una fila por cada caso que quedó a mano, con lo necesario para resolverlo sin volver a
-   calcular nada: **fila del destino, los candidatos con su score, el margen y el motivo**
-   (`margen_chico` o `multi_figura`). Cuando una persona confirma cuál era, **se estampa el
-   `RDV_UID`** y el caso no vuelve a aparecer: la próxima corrida entra por uuid.
+   Columnas nuevas al final del destino, junto a `RDV_UID`:
+
+   ```
+   RDV_UID | form_origen | form_score | form_nivel | form_fecha_match
+   ```
+
+   - `form_origen` es el `Nombre` del evento de `B`, **literal, sin normalizar**. Es
+     trazabilidad, no una clave: se guarda tal cual vino;
+   - `form_nivel` dice **por qué señales** matcheó (`figura+fecha±1+comuna`);
+   - **se escriben también cuando el score NO alcanzó.** Ahí `form_origen` guarda el mejor
+     candidato descartado y `form_nivel` el motivo.
+
+   Esa última línea es la que importa. Un caso mal resuelto tiene que poder auditarse **sin
+   volver a correr nada** — y el día que aparezca una fuente de fecha mejor, con `form_origen`
+   guardado se puede reprocesar y **comparar contra lo que se había decidido**, en vez de
+   empezar de cero.
+
+   #### `REVISAR_MATCH` deja de ser cola de trabajo
+
+   Pasa a ser **un reporte**: filas donde hubo candidato pero no alcanzó. Se mira cuando se
+   quiera, no bloquea nada. Confirmar una estampa el `RDV_UID` y el caso no vuelve a aparecer.
+
+   El cambio es de expectativa más que de formato: **no hay bootstrap manual previo.** Nadie
+   resuelve 103 filas antes de arrancar. El pipeline hace lo que puede en cada corrida y deja
+   registrado lo que no.
+
+   #### `EMPAREJAR_MANUAL`: el lado que falta
+
+   Todo lo demás mira **desde el destino hacia `B`**. Falta el opuesto: **formularios que no se
+   asociaron a ninguna fila**. Con las dos listas juntas el problema se ve completo, y muchas
+   veces la solución salta a la vista — un formulario huérfano y una fila vacía que
+   evidentemente se corresponden.
+
+   ```
+   nombre_formulario | inscriptos | Figura | Barrio | Fecha | score | senales | confirmar
+   ```
+
+   - **sólo pares con alguna razón de serlo.** 103 contra 100 sin filtrar son 10.300 filas y
+     nadie las mira. El piso es bajo (`PISO_EMPAREJAR`) pero existe;
+   - **ordenado por score descendente**, no por fecha: lo más plausible arriba, que es como se
+     trabaja una lista así;
+   - los candidatos de un mismo formulario van **juntos y seguidos**, para poder elegir entre
+     ellos sin buscarlos. Los grupos se ordenan por su mejor candidato;
+   - `confirmar` vacía. Cuando el pipeline la encuentra llena, **estampa el `RDV_UID` en las dos
+     puntas** y esa fila no vuelve a aparecer.
+
+   **Dos bloques al final: formularios sin ningún candidato, y filas del destino sin ninguno.**
+   Son la medida de lo que el sistema **no puede resolver ni con ayuda humana**. Si ese bloque
+   es grande, falta información que no está en ninguno de los dos lados — y eso es una
+   conversación con quien carga los formularios, no un problema de código.
+
+   **Exclusiones:** formularios marcados `NO USAR` (el origen ya los descartó; reintroducirlos
+   sería deshacer una decisión ajena) y filas cuya reunión **todavía no pasó** — no son hueco,
+   son futuro.
 3. **Clave B→B2 sin métricas**: `normalizeText_(Nombre) + "|" + yyyyMMdd(fecha_fin)`.
    Hoy usa `nombre|inscriptos`. Los inscriptos son finales (el formulario cierra), así que en
    la práctica funciona, pero una métrica no puede formar parte de una clave.
@@ -1380,7 +1459,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 02_Parsing.js      detectPersona_/Barrio_/Comuna_/Fecha_, listas derivadas de datos ← ya escrito
 05_Escritura.js    setSiDelSistema_ + marcarRealizada_. El único que escribe en el destino.  ← ya escrito
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
-20_UpsertDestino.js  A2+B2+Agenda → RVD JM-CM - ES, match uuid→natural, SIN_MATCH
+20_UpsertDestino.js  B+A2 → destino, match uuid→score, 3 reportes   ← ya escrito (DRY_RUN)
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
@@ -1667,8 +1746,21 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - **El `RDV_UID` ya está**: se adelantó a la Fase 2b. Acá sólo hay que asegurarse de que la
   lectura nueva lo propague y de que las filas nuevas de A2/B2 nazcan con uuid.
 
-### Fase 5 — Upsert nuevo
-- `20_UpsertDestino.js` con match uuid → natural → `SIN_MATCH`.
+### Fase 5 — Upsert nuevo  *(escrito, en DRY_RUN)*
+
+> **`20_UpsertDestino.js` ya está en el repo, con `DRY_RUN = true`.** Calcula todo, llena
+> `SIN_MATCH`, `REVISAR_MATCH` y `EMPAREJAR_MANUAL`, y **no escribe una sola celda del destino**.
+>
+> **Ese modo no es una precaución: es el modo en el que se calibra.** `UMBRAL_MATCH` y
+> `MARGEN_MINIMO` están puestos a ojo, y los números de la corrida en seco son los únicos que
+> pueden fijarlos. Mover el umbral y volver a correr, hasta que el reparto entre `escribiría`,
+> `a revisar` y `sin match` sea el que se quiere.
+>
+> Los candidatos salen de **`B`, el import crudo, y no de B2**: B2 es un espejo que pierde
+> justamente las filas que no pudo indexar (3.1.f), así que buscar ahí sería heredar el problema
+> que venimos a resolver.
+
+- `20_UpsertDestino.js` con match uuid → score → `SIN_MATCH`.
 - **Toda escritura por `setSiDelSistema_`. Cero `setValue` sueltos.** Revisar el diff con
   `grep -rn "setValue\|setValues" 20_UpsertDestino.js` — tiene que dar cero.
 - `COLUMNAS_MANUALES` chequeadas antes que nada: esas siete ni se intentan.
