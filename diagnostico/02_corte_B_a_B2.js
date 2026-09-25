@@ -1476,6 +1476,9 @@ function medirComunaEnTexto_diag2(poblacion, b, comunas) {
 /**
  * Score de un candidato de `B` contra una fila del destino. Máximo 1.0 con los pesos por
  * defecto: 0.35 figura + 0.30 fecha + 0.25 barrio + 0.10 hora.
+ *
+ * La señal de fecha es la del upsert (`distanciaFecha_` + `puntajeFecha_`, `02_Parsing.js`).
+ * Las demás señales siguen implementadas acá.
  */
 function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
   let sFigura = 0, sFecha = 0, sBarrio = 0, sHora = 0;
@@ -1484,20 +1487,20 @@ function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
   const figuraNorm = normalizeText_diag(h.figura);
   if (figuraNorm && fb.nombreNorm.indexOf(figuraNorm) !== -1) sFigura = PESOS_MATCH.figura;
 
-  // --- fecha: contra la del texto y contra Fecha_Fin, se queda con la más cercana ---
-  if (h.fecha) {
-    let dias = null;
-    [fb.fechaTexto, fb.fechaFin].forEach(function (f) {
-      if (!f) return;
-      const d = Math.abs(diasEntre_diag2(f, h.fecha));
-      if (dias === null || d < dias) dias = d;
-    });
-    if (dias !== null) {
-      if (dias === 0)      sFecha = PESOS_MATCH.fechaExacta;
-      else if (dias <= 1)  sFecha = PESOS_MATCH.fecha1Dia;
-      else if (dias <= 3)  sFecha = PESOS_MATCH.fecha3Dias;
-    }
-  }
+  /*
+   * --- fecha: EL MISMO criterio que el upsert, llamando a las mismas funciones ---
+   *
+   * `detectFecha_` (regla del mes) → `distanciaFecha_` (contra la fecha del texto, `fecha_fin`
+   * sólo de respaldo) → `puntajeFecha_` (`BANDAS_FECHA`). Nada de reimplementarlo acá: dos
+   * criterios sobre la misma pregunta es la forma del bug de `mapBarrioCanon_` (3.1.h), y
+   * cuando los números difirieran no se sabría si es un hallazgo o una inconsistencia.
+   *
+   * No usa `fb.fechaTexto`: ése sale del parser legado (`detectFecha_diag2`), que existe para
+   * medir lo que hace el código viejo, no para puntuar.
+   */
+  if (!fb.detFecha) fb.detFecha = detectFecha_(limpiarPrefijos_(fb.nombre), fb.fechaFin);
+  const dias = distanciaFecha_(h.fecha, fb.detFecha);
+  sFecha = puntajeFecha_(dias);
 
   /*
    * --- ubicación: tres estados, no dos (CLAUDE.md 3.3.b y decisión 2) ---
@@ -1552,7 +1555,7 @@ function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
    * había para acertar— puntuaría 0.80 por campos que el origen ya no manda, y el umbral
    * habría que recalibrarlo cada vez que cambia el formulario.
    */
-  const fechaEvaluable = !!(h.fecha && (fb.fechaTexto || fb.fechaFin));
+  const fechaEvaluable = (dias !== null);       // como el upsert: evaluable si hay distancia
   const alcanzable = PESOS_MATCH.figura +
                      (fechaEvaluable ? PESOS_MATCH.fechaExacta : 0) +
                      pesoUbicacion +
