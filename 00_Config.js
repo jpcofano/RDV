@@ -188,6 +188,81 @@ const MARGEN_MINIMO = 0.15;
 /** Tolerancia para dar por coincidente la hora, en minutos. El texto libre rara vez es exacto. */
 const TOLERANCIA_HORA_MIN = 30;
 
+// ===================== B2: la lógica de negocio que hay que no perder =====================
+
+/**
+ * **Colapso de canales: 8 en el origen → 5 en el destino.**
+ *
+ * Es lógica de negocio real y confirmada, y hasta hoy **existía sólo adentro de
+ * `syncB_to_B2`** ([Sync B to B2.js:117-121](Sync%20B%20to%20B2.js#L117)). Vive acá para que
+ * reescribir B2 no se la lleve puesta.
+ *
+ * La clave es el nombre de la columna en `B` **sin** el prefijo `Inscriptos canal `.
+ */
+const MAPEO_CANALES = {
+  'Mail':        ['Mailing'],
+  'Call Center': ['Call Center'],
+  'IVR':         ['IVR'],
+  'RRSS':        ['Facebook', 'Google', 'Programmatic'],
+  'Difusión':    ['Difusion', 'Otros']
+};
+
+/** El prefijo que llevan las columnas de canal en `B`. */
+const PREFIJO_CANAL_B = 'Inscriptos canal ';
+
+/**
+ * **Escalado de sexo.** `B` trae `Inscriptos M` y `Inscriptos F` contados sobre
+ * `Inscriptos unicos identificados`, que es menor que `Inscriptos`. B2 los lleva a proporción
+ * del total ([Sync B to B2.js:166-169](Sync%20B%20to%20B2.js#L166)):
+ *
+ *     Masculinos = round(Inscriptos × Inscriptos M / Inscriptos unicos identificados)
+ *     Femeninos  = round(Inscriptos × Inscriptos F / Inscriptos unicos identificados)
+ *
+ * Con `identificados = 0` no se escala nada: quedan vacíos, no en cero (CLAUDE.md 0.a).
+ *
+ * ⚠️ **No hay categoría X.** `B` sólo trae `M` y `F`. Si el origen empieza a mandar una
+ * tercera, hoy no se lee y nadie se entera.
+ */
+function escalarSexo_(inscriptos, cuenta, identificados) {
+  const ins = numOcero_(inscriptos), c = numOcero_(cuenta), id = numOcero_(identificados);
+  if (!(id > 0)) return '';
+  return Math.round(ins * (c / id));
+}
+
+/**
+ * **Las edades NO se escalan.** Se copian crudas de `B` y `Sin identificar` absorbe el resto
+ * ([Sync B to B2.js:124-129](Sync%20B%20to%20B2.js#L129)):
+ *
+ *     Sin identificar = max(0, Inscriptos − suma de las cinco bandas)
+ *
+ * **Es una asimetría real y hay que conocerla**: el sexo queda a escala de `Inscriptos` y las
+ * edades a escala de `identificados`, con la diferencia empujada a `Sin identificar`. Por eso
+ * `DIAG_ATOMICIDAD` ve `suma_sexo` y `suma_edades` comportarse distinto contra el mismo total.
+ *
+ * No se cambia acá: cambiar el criterio cambiaría números ya publicados. Queda documentado.
+ */
+function sinIdentificar_(inscriptos, sumaBandas) {
+  const ins = numOcero_(inscriptos);
+  if (!(ins > 0)) return '';
+  return Math.max(0, ins - numOcero_(sumaBandas));
+}
+
+/**
+ * Las columnas con las que queda B2 después del rediseño (CLAUDE.md 1.c).
+ *
+ * **Se fue todo lo que era clave o corrección**: `ID`, `KEY`, `Clave PIM`, `Procesado BF`,
+ * `Fecha C`, `Persona (manual)`, `Barrio (manual)`, `Fecha (manual)`. B2 deja de ser superficie
+ * de corrección y pasa a ser **vista de lectura**.
+ */
+const COLUMNAS_B2 = [
+  'Nombre',
+  'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión',
+  'Inscriptos', 'Masculinos', 'Femeninos',
+  '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar',
+  'Persona', 'BarrioN', 'Comuna', 'Fecha',
+  'RDV_UID', 'form_score'
+];
+
 // ===================== Texto libre del origen =====================
 
 /**

@@ -217,6 +217,100 @@ las filas que fallan por barrio. Si el barrio del destino está vacío, la comun
 Y en la otra dirección tampoco sirve: **de la comuna no se deduce el barrio.** Cada comuna tiene
 entre 2 y 6 barrios. La comuna confirma, nunca identifica.
 
+**c) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
+destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
+negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
+
+> **B2 se conserva, pero cambia de naturaleza: pasa a ser vista de lectura, no superficie de
+> corrección.**
+
+**1. Colapsa 8 canales del origen en 5.** Es negocio, no plumbing, y está confirmado
+([Sync B to B2.js:117-121](Sync%20B%20to%20B2.js#L117)):
+
+| columna del destino | columnas de `B` que suma |
+|---|---|
+| `Mail` | `Inscriptos canal Mailing` |
+| `Call Center` | `Inscriptos canal Call Center` |
+| `IVR` | `Inscriptos canal IVR` |
+| `RRSS` | `Facebook` + `Google` + `Programmatic` |
+| `Difusión` | `Difusion` + `Otros` |
+
+**Se conserva.** Vive en `MAPEO_CANALES` en `00_Config.js`.
+
+**2. Escala el sexo, y NO escala las edades.** La asimetría es real y hay que conocerla.
+
+```
+Masculinos = round(Inscriptos × Inscriptos M / Inscriptos unicos identificados)
+Femeninos  = round(Inscriptos × Inscriptos F / Inscriptos unicos identificados)
+
+18-24 … 66+     se copian CRUDAS de B, sin escalar
+Sin identificar = max(0, Inscriptos − suma de las cinco bandas)
+```
+
+> **El sexo queda a escala de `Inscriptos` y las edades a escala de `identificados`**, con la
+> diferencia empujada a `Sin identificar`. No es un descuido de la descripción: es lo que hace
+> el código, y explica por qué `DIAG_ATOMICIDAD` ve `suma_sexo` y `suma_edades` comportarse
+> distinto contra el mismo total.
+>
+> **No se cambia**: tocar el criterio cambiaría números ya publicados. Se documenta y listo.
+>
+> ⚠️ **No hay categoría X.** `B` sólo trae `Inscriptos M` y `Inscriptos F`. Si el origen empieza
+> a mandar una tercera, hoy no se lee y nadie se entera.
+
+**Se conserva.** En `escalarSexo_` y `sinIdentificar_`, en `00_Config.js`.
+
+**3. Era la superficie de corrección** — `Persona (manual)`, `Barrio (manual)`,
+`Fecha (manual)`, `BarrioN`. **Se elimina.**
+
+Esas columnas existían porque **el destino no se podía corregir con seguridad**: fórmulas de
+array que se rompen (3.1.b), sincronización bidireccional (paso 5) y cero trazabilidad. Ninguna
+de las tres condiciones sigue en pie — el destino ahora tiene `form_origen`, `RDV_UID`,
+`setSiDelSistema_` y `EMPAREJAR_MANUAL`.
+
+Y había un problema más de fondo: **corregían qué persona, barrio o fecha representa el
+formulario**, y esa corrección después tenía que **matchear por clave natural** contra el
+destino — que es exactamente el paso roto (3.2). Se corregía de un lado para que un eslabón
+frágil lo llevara al otro.
+
+`EMPAREJAR_MANUAL` **nombra la fila del destino directamente**. Misma corrección, sin el
+eslabón. → **Una sola superficie de corrección, y está en el destino.**
+
+**4. Claves y estado** — `ID`, `KEY`, `Clave PIM`, `Procesado BF`, `Fecha C`. **Se eliminan.**
+Las tres primeras son las claves naturales rotas; `Procesado BF` ya estaba descartado
+(decisión 6). `RDV_UID` los reemplaza a todos.
+
+#### B2 se reconstruye entera en cada corrida, sin upsert y sin claves
+
+Con qué queda:
+
+```
+Nombre | Mail | Call Center | IVR | RRSS | Difusión | Inscriptos
+       | Masculinos | Femeninos | 18-24 … 66+ | Sin identificar
+       | Persona | BarrioN | Comuna | Fecha        ← lo que el parser entendió
+       | RDV_UID | form_score                      ← a qué fila del destino se asoció
+```
+
+#### Por qué se conserva materializada y no sólo en memoria
+
+Escrito acá a propósito, porque **sin este motivo alguien la va a querer borrar**: ya no es
+superficie de corrección, ya no tiene claves, y parece un intermedio que se podría calcular al
+vuelo.
+
+> **Es el único lugar donde se ve qué entendió el pipeline de cada formulario.**
+
+Cuando un dato salga mal, B2 es lo que permite distinguir **si falló la lectura, la
+transformación o el match**: `Nombre` muestra lo que llegó, las columnas de canal y sexo
+muestran lo que se transformó, y `Persona`/`BarrioN`/`Comuna`/`Fecha` muestran lo que el parser
+entendió. Sin eso, un número raro en el destino no tiene cómo rastrearse hasta su causa.
+
+Cuesta nada y ahorra mucho.
+
+> **Consecuencia que hay que tener presente: se pierde el historial.** Reconstruir entera cada
+> vez significa que **si un formulario desaparece del origen, desaparece de B2**. Con
+> `form_origen` guardado en el destino eso ya no importa para la trazabilidad —el texto del
+> formulario queda del lado del destino, que no se reconstruye— pero **es un cambio real
+> respecto de hoy** y conviene saberlo antes de extrañar una fila.
+
 ---
 
 ## 2. Flujo actual
@@ -638,6 +732,25 @@ duplicadas. No tiene filas que el destino no tenga, así que **no sirve como fue
 directa del problema de la clave `nombre|inscriptos` (decisión 3). Cuando `Inscriptos` cambia
 entre dos corridas, la clave cambia y `syncB_to_B2` inserta una fila nueva en vez de actualizar
 la que ya estaba. Se listan en `DIAG_DUP_B2`.
+
+> #### Las 14 duplicadas y las 23 incompletas no se arreglan: dejan de poder existir
+>
+> **B2 se reconstruye entera en cada corrida desde `B`, sin upsert y sin claves** (sección 1.c).
+> Y eso mata las dos cosas **por construcción**, no por una corrección:
+>
+> - **no hay clave contra la cual duplicar.** Una fila de `B` es una fila de B2. Si `Inscriptos`
+>   cambia, la fila se reescribe, no se agrega otra;
+> - **no hay clave que pueda quedar incompleta.** `Persona` y `BarrioN` pasan a ser *lo que el
+>   parser entendió*, columnas informativas. Que vengan vacías ya no vuelve la fila
+>   inencontrable, porque nadie la busca por ahí — la identidad es `RDV_UID`.
+>
+> **Es la diferencia entre arreglar un bug y eliminar la categoría del bug.** Un upsert con
+> clave sobre datos sin clave estable siempre va a tener duplicados y huérfanos; el arreglo no
+> es una clave mejor, es no necesitar clave.
+>
+> ⚠️ **Cuando mires los reportes después del cambio, esos dos números van a desaparecer.** No es
+> que el diagnóstico se rompió: es lo esperado. `DIAG_DUP_B2` debería quedar vacío, y las claves
+> incompletas dejan de contarse porque la clave ya no existe.
 
 **Las 23 claves incompletas en B2 son una causa aparte, no un detalle.** Esas filas **están en
 B2** pero sin `Persona` o sin `BarrioN`, así que no se pueden indexar y el upsert nunca las
@@ -1888,6 +2001,31 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.
+
+### Documentar a medida, no al final
+
+**Si el próximo commit de código invalida algo que dice este documento, el documento se corrige
+en ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
+
+No es prolijidad. En esta migración cambiamos de premisa **seis veces**:
+
+| lo que decía el documento | lo que medimos después |
+|---|---|
+| el staging pierde datos | cero cortes en los pasos 4 y 5 |
+| el barrio falla por lista incompleta | el dato no viene desde 2025-10 |
+| los 8 pares repetidos rompen la regla de una reunión por día | la regla se sostiene: es desfase por reprogramación |
+| el desvío grande es la firma de una reprogramación | cero de los desvíos grandes son `Reprogramada` |
+| `fecha_fin` sirve de ancla | no discrimina; el ancla queda descartada |
+| la clave natural es el plan B | no hay clave natural |
+
+Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
+Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es
+un documento incompleto: **es un documento que miente**, y con más autoridad que la ausencia de
+documento, porque parece verificado.
+
+La regla práctica: **decisión de diseño tomada, hallazgo en el código o premisa que cambia →
+se escribe y se commitea en el momento.** No se acumulan tres hallazgos para un commit grande de
+documentación.
 
 ### Un diagnóstico que grita por algo que no existe es peor que no avisar
 
