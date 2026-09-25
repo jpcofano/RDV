@@ -217,7 +217,35 @@ las filas que fallan por barrio. Si el barrio del destino está vacío, la comun
 Y en la otra dirección tampoco sirve: **de la comuna no se deduce el barrio.** Cada comuna tiene
 entre 2 y 6 barrios. La comuna confirma, nunca identifica.
 
-**c) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
+**c) No todas las reuniones tienen lugar: hay reuniones temáticas.**
+
+Es una **categoría propia**, y aparece así en el destino:
+
+```
+JORGE MACRI - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte - 16/07/2026
+```
+
+`Eje Norte` no es un barrio ni una comuna, y `Orden Público / Seguridad` es **el tema**. Para
+estas filas **la ubicación no existe como concepto**.
+
+> **No confundirla con el barrio ausente de 3.3.b.** Son dos cosas distintas y llevan a arreglos
+> distintos:
+>
+> | | 3.3.b — barrio ausente | 1.c — reunión temática |
+> |---|---|---|
+> | el dato | **existía y desapareció** cuando cambió el formulario | **nunca existió**: no hay lugar que mandar |
+> | el arreglo | conseguir otra señal de lugar — la comuna | no hay lugar que conseguir; **hay tema** |
+> | qué queda | una fila sin ubicación, esperando la comuna | una fila con **otra clase** de confirmación |
+
+**Lo que sí tienen es la columna `EVENTO` del destino, y el nombre del formulario repite el
+tema.** O sea que hay con qué confirmar: **se compara un texto contra otro**.
+
+Probablemente expliquen dos números que quedaron sin explicación en la corrida del 25/09: las
+**14 filas que "tenían las dos señales y aun así no llegaron"** y parte de los **formularios
+huérfanos**. Las dos cosas se miden en el bloque **2d** del log antes de darle peso a nada
+(decisión 2).
+
+**d) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
 negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
 
@@ -743,7 +771,7 @@ la que ya estaba. Se listan en `DIAG_DUP_B2`.
 
 > #### Las 14 duplicadas y las 23 incompletas no se arreglan: dejan de poder existir
 >
-> **B2 se reconstruye entera en cada corrida desde `B`, sin upsert y sin claves** (sección 1.c).
+> **B2 se reconstruye entera en cada corrida desde `B`, sin upsert y sin claves** (sección 1.d).
 > Y eso mata las dos cosas **por construcción**, no por una corrección:
 >
 > - **no hay clave contra la cual duplicar.** Una fila de `B` es una fila de B2. Si `Inscriptos`
@@ -1292,14 +1320,56 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    **La ubicación no abre ninguna de las dos puertas.** Confirma, no identifica (sección 1.b).
 
-   #### La ubicación tiene tres estados, no dos
+   #### La ubicación tiene tres estados, no dos — y tres vías de evaluarse
 
    | situación en el origen | efecto |
    |---|---|
    | barrio presente y **igual** | **+0,25** |
    | barrio **ausente**, comuna presente y coincide | **+0,15** |
+   | sin barrio ni comuna, **`EVENTO` del destino en el nombre del formulario** | **+0,25** |
    | barrio **o comuna** presentes y **distintos** | **descalifica** el candidato |
-   | ni barrio ni comuna | **no puntúa ni cuenta para el denominador** |
+   | ni barrio, ni comuna, ni evento | **no puntúa ni cuenta para el denominador** |
+
+   #### `EVENTO`: la ubicación de las reuniones temáticas
+
+   Las reuniones temáticas (sección 1.c) no tienen lugar, tienen **tema**, y el tema está en la
+   columna `EVENTO` del destino y repetido en el nombre del formulario. Eso alcanza para
+   confirmar un candidato.
+
+   **Vale lo mismo que el barrio (0,25) y ocupa su lugar en el denominador**, no se suma aparte.
+   Una fila temática con **figura + fecha + evento tiene evidencia completa**, no parcial — que
+   es exactamente el principio de la normalización: se puntúa sobre lo que había para acertar.
+
+   > **Tiene la propiedad que veníamos buscando: se compara, no se interpreta.**
+   >
+   > Sin listas fijas, sin canonización, sin parser. Es el mismo precedente que la **clave del
+   > flujo Agenda** (`persona|fecha|hora`), que sigue siendo la mejor del proyecto justamente
+   > porque no depende de que una lista reconozca un texto libre
+   > ([docs/agenda-legado.md](docs/agenda-legado.md)). Todo lo que sí depende de eso —
+   > `detectPersona_` con sus 20 nombres, `detectBarrio_`, los dos `mapBarrioCanon_` con alias
+   > cruzados (3.1.h)— es de donde salieron los bloqueantes.
+
+   **Positivo únicamente: entra al denominador sólo cuando coincide.** Es asimétrico respecto
+   del barrio y es deliberado. Un barrio distinto **afirma** que la reunión fue en otro lado, y
+   por eso descalifica; un evento que no coincide no afirma nada, porque el nombre del
+   formulario es texto libre y puede simplemente no repetir el tema. Penalizarlo sería castigar
+   a una fila por cómo la tipeó alguien.
+
+   **Arranca apagado** (`EVENTO_COMO_UBICACION = false`). No es cautela de trámite: el bloque
+   **2d** del log mide la cobertura —cuántas filas traen `EVENTO`, en cuántas coincide, cuántas
+   del grupo bajo y de los huérfanos la tienen— **antes** de que la señal puntúe nada. Es la
+   regla de §6 aplicada a nuestro propio diseño: las tres falsas alarmas de esta migración
+   fueron números altos presentados como conclusiones.
+
+   Lo que **no** está detrás del flag: la medición, y la tercera vía de relevancia de
+   `EMPAREJAR_MANUAL`. Proponerle un par a una persona no es escribir.
+
+   > **Y la aritmética, anotada antes de que el número invite a una conclusión que no da.**
+   > Como el evento sube el numerador **y** el denominador, casi no mueve el veredicto
+   > automático: `figura + fecha exacta + evento` da 1,00, que ya daba 1,00 sin el evento, y
+   > `figura + fecha ±7 + evento` da **0,73**, que sigue debajo de 0,88. Donde sí cambia algo es
+   > en el **margen** entre dos candidatos y en la **puerta de `EMPAREJAR_MANUAL`**. Si el
+   > déficit dominante de una fila es la fecha, el arreglo es 3.3.c y no esta señal.
 
    **La distinción no es barrio contra comuna: es ausencia contra desacuerdo.**
 
@@ -2031,13 +2101,90 @@ misma figura del ultimo ano.
 
 > **Una lista que nadie mira es peor que no tenerla: ocupa el lugar de la que si serviria.**
 
-La puerta pasa a **Y**: misma figura **y** dentro de +-21 dias. Y si alguna fila se queda sin par
-propuesto, aparece en el bloque de huerfanas — **es informacion honesta**, a diferencia de 18
+La puerta pasa a **Y**: misma figura **y** dentro de ±21 días. Y si alguna fila se queda sin par
+propuesto, aparece en el bloque de huérfanas — **es información honesta**, a diferencia de 18
 pares falsos.
+
+#### Corrección: el **Y** se pasó de estricto, y la culpa no era de la ventana
+
+El cambio de **O** a **Y** llevó los formularios huérfanos de **11 a 81** y las filas del destino
+sin ningún candidato de **0 a 56**. Es un salto grande y vale entenderlo antes de tocar otra cosa:
+
+> **Lo que explotaba la lista era el `O`, no el ancho de la ventana.** Con `O`, un formulario
+> entraba por compartir figura **aunque la fecha estuviera a un año**. Con la figura ya
+> obligatoria, ensanchar la ventana **no puede** reintroducir el producto cartesiano.
+
+Pero el `Y` de dos términos dejaba afuera un caso entero: **las reuniones temáticas** (1.c) y las
+filas con la **fecha rota** (3.3.c) no tienen cómo pasar la única vía que quedaba. Quedaban fuera
+de la propuesta manual **por no tener ubicación**, que es justamente lo que hay que resolverles.
+
+La puerta queda con **tres vías**:
+
+```
+figura  Y  ( fecha dentro de ±VENTANA_EMPAREJAR_DIAS  O  comuna coincide  O  evento coincide )
+```
+
+Sigue siendo **Y** en la figura, que es lo que evitó los 1.883 pares. Las otras dos vías son
+alternativas entre sí, no requisitos acumulados.
 
 El log reporta ahora la **densidad** (pares por fila y por formulario) y avisa si pasa de 5. Era
 la metrica que faltaba: *1.883* sonaba a "mucho trabajo", *18 por fila* dice que la lista es
 inutilizable. El objetivo es **2 a 4**.
+
+#### La ventana de análisis llega al upsert (y las conclusiones de arriba hay que releerlas)
+
+`20_UpsertDestino.js` se escribió **después** de los once reportes de `diagnostico/` y **no
+heredó la cabecera de ventana**. O sea que todo lo que reportó la corrida del 25/09 salió de las
+**802 filas históricas, desde julio de 2025**.
+
+Eso no es un detalle de presentación. Mezcla el período en que el formulario todavía mandaba
+barrio con el período en que dejó de mandarlo (3.3.b), que es exactamente la mezcla que la
+ventana existe para evitar (3.5): **un número así describe un origen que ya no existe**, y
+además lo describe más optimista de lo que es, porque esos datos traían una señal que hoy no
+llega.
+
+**Quedan en cuarentena, hasta la próxima corrida, estas tres conclusiones:**
+
+| conclusión del 25/09 | por qué hay que releerla |
+|---|---|
+| *"domina la fecha, 52 de 112"* | las 112 incluyen filas de 2025. Si se concentran en el período viejo, el problema de hoy es otro |
+| **81 formularios huérfanos** | ídem, y además los mide el `Y` de dos términos que acá arriba se corrigió |
+| **56 filas del destino sin candidato** | ídem |
+
+**Qué cambia en el código y qué no:**
+
+- **el upsert sigue procesando las 802.** El backfill de la Fase 6 llena el histórico completo,
+  así que filtrar lo que se *hace* sería romperlo. **La ventana filtra lo que se reporta y se
+  calibra, no lo que se hace;**
+- cada contador del log pasa a tener **dos lecturas**, `ventana | total`, y los porcentajes de
+  cada columna se calculan **sobre su propia base** — comparar mezclando no dice nada;
+- los **veredictos automáticos** del log (cuál señal domina, si el umbral se confirma) se sacan
+  **de la columna de la ventana**;
+- las tres solapas de reporte llevan columna **`en_ventana`**, como las `DIAG_*`;
+- `inicioVentanaAnalisis_()` y `enVentanaAnalisis_()` pasan a `01_Utils.js`, y los `_diag`
+  delegan: **una sola implementación**, como el resto del archivo.
+
+#### El umbral se recalibra sobre la ventana, con un barrido
+
+`UMBRAL_MATCH = 0,88` **salió del valle de la distribución histórica**. Un umbral calibrado
+contra un origen que ya no existe es una suposición con cara de medición, así que la curva se
+vuelve a calcular sobre los últimos 6 meses.
+
+`_logValle_()` barre los cortes de 0,50 a 0,99 de a 0,01 y busca la **meseta más larga**: el
+tramo donde mover el umbral **no cambia a cuántas filas afecta**. Ahí es donde un corte es
+estable, que es toda la propiedad que se le pide a un umbral.
+
+Y dice explícitamente los tres casos, en vez de dejarlos a interpretación:
+
+| lo que da el barrido | qué significa |
+|---|---|
+| el 0,88 cae **adentro** de la meseta | se confirma, no hay que tocarlo |
+| cae **afuera** | el log propone el medio de la meseta medida, para escribirlo en `00_Config.js` |
+| la meseta ocupa **casi todo el barrido**, o mide menos de 3 pasos | **el barrido no calibra nada.** O la población está toda de un lado, o la distribución es continua y cualquier corte es arbitrario |
+
+Ese tercer caso es el que faltaba. Un barrido siempre devuelve *algún* máximo; decir cuándo ese
+máximo no significa nada es la diferencia entre una medición y una falsa alarma con formato de
+dato (§6).
 
 #### Lo que dio la corrida parcial del 25/09
 

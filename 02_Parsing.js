@@ -363,3 +363,67 @@ function _contienePalabra_(pajar, aguja) {
     desde = i + 1;
   }
 }
+
+
+// ===================== EVENTO: el texto contra el texto =====================
+
+/**
+ * Normalización para comparar `EVENTO` con el nombre del formulario.
+ *
+ * Las **dos puntas se normalizan igual** — es la mitad del valor de esta señal. Encima de
+ * `normalizeText_` (acentos, minúsculas, espacios) saca comillas y puntuación, que es
+ * exactamente donde las dos puntas difieren: el destino escribe `"Orden Público"/ Seguridad` y
+ * el formulario `Orden Publico - Seguridad`.
+ */
+function normalizarEvento_(s) {
+  return normalizeText_(s)
+    .replace(/["'\u00AB\u00BB\u201C\u201D\u2018\u2019]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Las palabras de contenido de un evento: las que distinguen un tema de otro. */
+function palabrasEvento_(texto) {
+  const n = normalizarEvento_(texto);
+  if (!n) return [];
+  const vistas = {};
+  return n.split(' ').filter(function (w) {
+    if (w.length < 4) return false;                              // 'de', 'con', 'eje'
+    if (PALABRAS_VACIAS_EVENTO.indexOf(w) !== -1) return false;  // no distinguen nada
+    if (vistas[w]) return false;
+    vistas[w] = true;
+    return true;
+  });
+}
+
+/**
+ * ¿El `EVENTO` de una fila del destino aparece en el nombre de un formulario?
+ *
+ * Devuelve `null` cuando no hay `EVENTO` — **ausencia, no desacuerdo** (CLAUDE.md, decisión 2).
+ * Cuando lo hay, informa las dos formas de coincidir por separado, porque miden cosas
+ * distintas y conviene verlas antes de fundirlas en un booleano:
+ *
+ *   `sub`      el evento entero aparece como subcadena. Es la fuerte y la rara: basta una
+ *              coma de más en una punta para perderla.
+ *   `palabras` al menos `MIN_PALABRAS_EVENTO` palabras de contenido, **todas** las que hay si
+ *              son menos, aparecen en el nombre. Sobrevive al reordenamiento y a la puntuación.
+ */
+function coincideEvento_(eventoDestino, nombreFormulario) {
+  const e = normalizarEvento_(eventoDestino);
+  if (!e) return null;
+  const n = normalizarEvento_(nombreFormulario);
+  if (!n) return { sub: false, palabras: false, cubiertas: 0, total: 0 };
+
+  const sub = _contienePalabra_(n, e);
+
+  const ps = palabrasEvento_(eventoDestino);
+  let cubiertas = 0;
+  for (let i = 0; i < ps.length; i++) if (_contienePalabra_(n, ps[i])) cubiertas++;
+
+  // Con pocas palabras de contenido se exigen todas; con muchas, el mínimo configurado.
+  const necesarias = Math.min(ps.length, MIN_PALABRAS_EVENTO);
+  const palabras = ps.length > 0 && cubiertas >= necesarias && cubiertas === ps.length;
+
+  return { sub: sub, palabras: palabras, cubiertas: cubiertas, total: ps.length };
+}

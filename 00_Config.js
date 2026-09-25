@@ -146,8 +146,54 @@ const PESOS_MATCH = {
   fecha7Dias:      0.06,
   barrioIgual:     0.25,
   comunaSinBarrio: 0.15,
+  eventoIgual:     0.25,
   hora:            0.10
 };
+
+/**
+ * **El texto del evento como tercera vía de ubicación** — para las reuniones temáticas.
+ *
+ * Hay filas del destino cuyo lugar no es un barrio ni una comuna sino un tema:
+ *
+ *     JORGE MACRI - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte - 16/07/2026
+ *
+ * `Eje Norte` no es barrio ni comuna, y `Orden Público / Seguridad` es el tema. Para estas filas
+ * **la ubicación no existe como concepto** — es un caso distinto del barrio que el origen dejó
+ * de mandar (CLAUDE.md 3.3.b), donde el dato existía y desapareció.
+ *
+ * Pero el texto del evento **sí está**, en la columna `EVENTO` del destino, y el nombre del
+ * formulario lo repite. Así que hay con qué confirmar: se compara un texto contra otro.
+ *
+ * **Vale lo mismo que el barrio (0,25) y ocupa su lugar**, no se suma aparte: una fila temática
+ * con figura + fecha + evento tiene evidencia **completa**, no parcial.
+ *
+ * Tiene la propiedad que veníamos buscando desde 3.3.c: **se compara, no se interpreta.** Sin
+ * listas fijas, sin canonización, sin parser — como la clave del flujo Agenda, que es la mejor
+ * del proyecto justamente por eso.
+ *
+ * ### Arranca APAGADO, a propósito
+ *
+ * `false` no es cautela de trámite: es la regla de CLAUDE.md §6 —*un conteo alto no es una
+ * conclusión*— aplicada a nuestro propio diseño. El bloque **2d** del log mide la cobertura
+ * antes de que esto puntúe nada. Se enciende con ese número a la vista, no antes.
+ *
+ * Lo que **no** está detrás del flag: la medición del bloque 2d y la tercera vía de relevancia
+ * de `EMPAREJAR_MANUAL`. Proponerle un par a una persona no es escribir.
+ */
+const EVENTO_COMO_UBICACION = false;
+
+/**
+ * Cuántas palabras de contenido del `EVENTO` tienen que aparecer en el nombre del formulario
+ * para dar la coincidencia por palabras. Con una sola alcanzaría cualquier cosa.
+ */
+const MIN_PALABRAS_EVENTO = 2;
+
+/** Palabras que no distinguen nada y no cuentan para la coincidencia por palabras. */
+const PALABRAS_VACIAS_EVENTO = [
+  'con', 'los', 'las', 'del', 'para', 'por', 'una', 'unos', 'unas', 'que',
+  'encuentro', 'encuentros', 'reunion', 'reuniones', 'vecinos', 'vecinas',
+  'tematico', 'tematica', 'tematicos', 'tematicas', 'eje', 'jorge', 'macri'
+];
 
 /**
  * **La fecha es señal, no clave.** Escala decreciente y **ninguna banda descarta por sí sola**:

@@ -921,15 +921,12 @@ function generarProcedencia_diag(cache) {
  * (CLAUDE.md 3.3.b). Los totales históricos se reportan igual, aparte.
  */
 function enVentanaAnalisis_diag(fecha) {
-  if (!fecha) return false;
-  return fecha >= inicioVentanaAnalisis_diag();
+  return enVentanaAnalisis_(fecha);          // 01_Utils.js
 }
 
-/** El primer día de la ventana: hoy menos VENTANA_ANALISIS_MESES, al mediodía. */
+/** El primer día de la ventana. Delega: una sola implementación (01_Utils.js). */
 function inicioVentanaAnalisis_diag() {
-  const hoy = new Date();
-  return new Date(hoy.getFullYear(), hoy.getMonth() - VENTANA_ANALISIS_MESES, hoy.getDate(),
-                  12, 0, 0);
+  return inicioVentanaAnalisis_();
 }
 
 /**

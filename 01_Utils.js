@@ -150,6 +150,42 @@ function diasEntre_(a, b) {
   return Math.round((a.getTime() - b.getTime()) / 86400000);
 }
 
+// ===================== Ventana de análisis =====================
+
+/**
+ * El primer día de la ventana: hoy menos `VENTANA_ANALISIS_MESES`, al mediodía.
+ *
+ * Vive acá y no en `diagnostico/` porque **el upsert también la necesita**. Los helpers `_diag`
+ * delegan en estos: una sola implementación, como todo lo demás de este archivo.
+ */
+function inicioVentanaAnalisis_() {
+  const hoy = new Date();
+  return new Date(hoy.getFullYear(), hoy.getMonth() - VENTANA_ANALISIS_MESES, hoy.getDate(),
+                  12, 0, 0);
+}
+
+/** ¿La fecha cae dentro de la ventana de análisis? */
+function enVentanaAnalisis_(fecha) {
+  if (!fecha) return false;
+  return fecha >= inicioVentanaAnalisis_();
+}
+
+/**
+ * Un contador con dos lecturas: **dentro de la ventana** y **total histórico**.
+ *
+ * Existe porque el upsert **procesa las 802 filas** —el backfill de la Fase 6 llena el
+ * histórico completo— pero **calibra y reporta sobre la ventana**. Son dos preguntas distintas
+ * sobre la misma corrida, y mezclarlas fue lo que hizo que el 0,88 saliera de una distribución
+ * contaminada con el formulario viejo.
+ */
+function contador_() { return { v: 0, t: 0 }; }
+
+function sumar_(c, enVentana, n) {
+  const k = (n === undefined) ? 1 : n;
+  c.t += k;
+  if (enVentana) c.v += k;
+}
+
 // ===================== Columnas =====================
 
 /**
@@ -187,7 +223,8 @@ function aliasColumna_(nombre) {
     'Difusión':    ['difusión', 'difusion'],
     'Masculinos':  ['masculinos', 'masculino'],
     'Femeninos':   ['femeninos', 'femenino'],
-    'ID':          ['id']
+    'ID':          ['id'],
+    'EVENTO':      ['evento', 'eventos', 'nombre del evento', 'tema', 'tematica']
   };
   return A[nombre] || [nombre];
 }
