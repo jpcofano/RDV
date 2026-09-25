@@ -284,6 +284,36 @@ Probablemente expliquen dos números que quedaron sin explicación en la corrida
 huérfanos**. Las dos cosas se miden en el bloque **2d** del log antes de darle peso a nada
 (decisión 2).
 
+**Y muchas traen un eje geográfico, que es ubicación de verdad.**
+
+```
+JORGE MACRI - Encuentro Temático "Salud" Jorge Macri Eje Sur - 14/08/2026
+```
+
+no trae barrio ni comuna, pero `Eje Sur` **acota la geografía**. De los cuatro candidatos que
+colgaban de ese formulario (B fila 730) —Coghlan, Villa Santa Rita, Floresta y Villa
+Riachuelo— **Coghlan es zona norte, y el eje solo lo descarta** sin necesitar ninguna otra señal.
+Hasta ahora los cuatro competían igual.
+
+- `detectEje_` (`02_Parsing.js`) reconoce `Eje Norte/Sur/Centro/Oeste`. Las variantes
+  `Comuna 1 Norte` / `Comuna 1N` se detectan aparte, como `comuna_orientada`, y **no se usan
+  como eje**: pueden querer decir la mitad norte de la Comuna 1, que no es el eje Norte de la
+  ciudad. Qué significan lo confirma una persona.
+- **La correspondencia eje → comunas no estaba escrita en ningún lado del proyecto.** La
+  candidata es la columna `Zona` de `Comunas` (la 8, la que lee la fórmula de `AG`). No sabemos
+  todavía si `Zona` es el eje: el bloque **2e** del log la vuelca con sus barrios y cruza cada
+  formulario con eje contra los barrios del destino con los que se emparejaría.
+- Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
+  contiene varias comunas, y **descalifica** si el barrio del destino es de otro eje, igual que
+  `comuna_distinta`. Detrás de `EJE_COMO_UBICACION = false` hasta confirmar el mapeo.
+
+> **Y ojo con la fecha de ese caso.** Los cuatro candidatos de la fila 730 están a **7, 7, 11 y
+> 13 días** del formulario. Descartar Coghlan no hace que ninguno de los otros tres sea la
+> reunión: probablemente el formulario corresponda a una fila que no está en la lista, o a
+> ninguna. El bloque 2e reporta, para cada formulario temático, si existe **alguna** fila de su
+> figura a ±`DIAS_TEMATICA_CERCANA` (3) días. **Si no existe, es un huérfano real** y ningún
+> peso de ubicación lo rescata.
+
 **e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
 negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
@@ -1427,15 +1457,16 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    **La ubicación no abre ninguna de las dos puertas.** Confirma, no identifica (sección 1.b).
 
-   #### La ubicación tiene tres estados, no dos — y tres vías de evaluarse
+   #### La ubicación tiene tres estados, no dos — y cuatro vías de evaluarse
 
    | situación en el origen | efecto |
    |---|---|
    | barrio presente y **igual** | **+0,25** |
    | barrio **ausente**, comuna presente y coincide | **+0,15** |
-   | sin barrio ni comuna, **`EVENTO` del destino en el nombre del formulario** | **+0,25** |
-   | barrio **o comuna** presentes y **distintos** | **descalifica** el candidato |
-   | ni barrio, ni comuna, ni evento | **no puntúa ni cuenta para el denominador** |
+   | sin barrio ni comuna, **eje** del formulario = eje del barrio del destino | **+0,10** (detrás de `EJE_COMO_UBICACION`, ver 1.d) |
+   | sin barrio, comuna ni eje, **`EVENTO` del destino en el nombre del formulario** | **+0,25** |
+   | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
+   | ni barrio, ni comuna, ni eje, ni evento | **no puntúa ni cuenta para el denominador** |
 
    #### `EVENTO`: la ubicación de las reuniones temáticas
 

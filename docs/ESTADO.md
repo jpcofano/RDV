@@ -84,6 +84,23 @@ no bajan, el problema no era la puerta.
 > Y la **densidad** (pares por fila) tiene que quedar entre 2 y 4. Si pasa de 5 el log avisa: la
 > lista no se puede trabajar y la puerta quedó laxa de nuevo.
 
+### e) ¿La `Zona` de `Comunas` es el eje? ¿Se enciende `EJE_COMO_UBICACION`?
+
+Bloque **2e**, punto a). Vuelca cada valor de la columna 8 de `Comunas` con sus barrios. Si
+nombran `Norte/Sur/Centro/Oeste` **y los barrios se ven bien**, el mapeo está; si no, hay que
+escribirlo, y el punto b) —cada formulario con eje contra los barrios del destino con los que
+se emparejaría, más el cruce eje × zona— es el material para armarlo. Hoy en `false`.
+
+> Mirar ahí también las `Comuna 1 Norte` / `Comuna 1N`: se detectan pero **no se usan como
+> eje** hasta saber si son el eje o la mitad norte de la comuna.
+
+### f) ¿Los formularios temáticos tienen alguna reunión cerca?
+
+Bloque **2e**, punto c). Para cada formulario temático, si hay **alguna** fila de su figura a
+±3 días. Los que no tienen ninguna se listan uno por uno: **son huérfanos reales**, y ningún
+peso de ubicación los salva. El caso a mirar primero es **B fila 730** (Eje Sur, 14/08), cuyos
+cuatro candidatos están a 7, 7, 11 y 13 días.
+
 ---
 
 ## 3. Cómo leer los logs nuevos

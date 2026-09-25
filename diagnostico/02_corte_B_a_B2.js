@@ -1478,7 +1478,9 @@ function medirComunaEnTexto_diag2(poblacion, b, comunas) {
  * defecto: 0.35 figura + 0.30 fecha + 0.25 barrio + 0.10 hora.
  *
  * La señal de fecha es la del upsert (`distanciaFecha_` + `puntajeFecha_`, `02_Parsing.js`).
- * Las demás señales siguen implementadas acá.
+ * Las demás señales siguen implementadas acá — y **no tienen la vía de eje**. Con
+ * `EJE_COMO_UBICACION = false` no hay diferencia; si se enciende, este score diverge del upsert
+ * en las filas con eje y hay que pasar la ubicación a la misma función antes de volver a usarlo.
  */
 function scoreCandidato_diag2(h, horaDestino, fb, comunas) {
   let sFigura = 0, sFecha = 0, sBarrio = 0, sHora = 0;

@@ -28,6 +28,8 @@
  *                                                final. Idempotente. Una sola vez.
  *   paso2_upsertEnSeco()      → correrEnSeco()   NO toca el destino. Escribe REVISAR_MATCH,
  *                                                EMPAREJAR_MANUAL y SIN_MATCH en la intermedia.
+ *                                                El log trae el bloque 2e: ¿Zona == eje? y
+ *                                                los temáticos sin ninguna fila a ±3 días.
  *     si falla un reporte:  paso2_rehacer_revisarMatch / _emparejarManual / _sinMatch
  *   paso3_medirReglaDelMes()  → diagCorteB()     NO toca el destino. Escribe DIAG_CORTE_B en la
  *                                                intermedia; el bloque "LA REGLA DEL MES" va
@@ -51,7 +53,8 @@ function paso1_columnasDeTraza() {
 function paso2_upsertEnSeco() {
   _anunciar_('paso 2 — upsert en seco', 'correrEnSeco()  [20_UpsertDestino.js]',
              'NO en el destino (fuerza DRY_RUN aunque la constante diga otra cosa)',
-             'log + solapas REVISAR_MATCH, EMPAREJAR_MANUAL y SIN_MATCH en la intermedia');
+             'log (con el bloque 2e del eje) + solapas REVISAR_MATCH, EMPAREJAR_MANUAL y ' +
+             'SIN_MATCH en la intermedia');
   return correrEnSeco();
 }
 

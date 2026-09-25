@@ -127,8 +127,9 @@ const VENTANA_FECHA_TEXTO = { min: -2, max: 7 };
  *
  *   barrio igual                               → +0.25
  *   comuna igual, con barrio ausente en origen → +0.15
+ *   eje igual, sin barrio ni comuna            → +0.10   (detrás de EJE_COMO_UBICACION)
  *   ausencia (ni barrio ni comuna)             → no puntúa NI cuenta para el denominador
- *   desacuerdo (barrio o comuna distintos)     → descalifica: el candidato no se escribe solo
+ *   desacuerdo (barrio, comuna o eje distintos)→ descalifica: el candidato no se escribe solo
  *
  * La ausencia de dato no puede puntuar como contradicción. El desacuerdo sí es contradicción,
  * venga del barrio o de la comuna: la distinción no es qué campo es, es ausencia contra
@@ -146,9 +147,56 @@ const PESOS_MATCH = {
   fecha7Dias:      0.06,
   barrioIgual:     0.25,
   comunaSinBarrio: 0.15,
+  ejeSinComuna:    0.10,   // un eje contiene varias comunas: confirma menos que una comuna
   eventoIgual:     0.25,
   hora:            0.10
 };
+
+/**
+ * **El eje geográfico como cuarta vía de ubicación**, para los formularios temáticos.
+ *
+ *     JORGE MACRI - Encuentro Temático "Salud" Jorge Macri Eje Sur - 14/08/2026
+ *
+ * no trae barrio ni comuna, pero `Eje Sur` **acota la geografía**. De los cuatro candidatos que
+ * colgaban de ese formulario (Coghlan, Villa Santa Rita, Floresta, Villa Riachuelo), Coghlan es
+ * zona norte: el eje solo lo descarta, sin ninguna otra señal.
+ *
+ * Es la misma señal de ubicación, en su lugar del orden **barrio → comuna → eje → evento**, y
+ * con la misma asimetría que la comuna:
+ *
+ *   eje del formulario == eje del barrio del destino  → +0.10
+ *   eje del formulario != eje del barrio del destino  → DESCALIFICA, como comuna_distinta
+ *   no se sabe el eje de alguno de los dos             → no puntúa ni cuenta al denominador
+ *
+ * El eje del destino sale de **subir su barrio** por la tabla `Comunas`, columna `Zona`
+ * (`COMUNAS_COL_ZONA`), igual que la comuna. Nunca se deduce el barrio del eje.
+ *
+ * ### Arranca APAGADO, y esta vez por un motivo concreto
+ *
+ * **No sabemos todavía si la `Zona` de `Comunas` es lo mismo que el eje del formulario.** La
+ * correspondencia eje → comunas no estaba escrita en ningún lado del proyecto. El bloque **2e**
+ * del log vuelca los valores de `Zona` con sus barrios, y los formularios con eje con los
+ * barrios del destino con los que se estarían emparejando, para confirmar el mapeo a mano.
+ * Encender esto con el mapeo sin confirmar es descalificar candidatos con una tabla que puede
+ * significar otra cosa — y el descarte es justo lo que no se recupera solo.
+ */
+const EJE_COMO_UBICACION = false;
+
+/** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
+const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste'];
+
+/**
+ * La columna de `Comunas` que la fórmula de `AG (Zona)` del destino lee:
+ * `VLOOKUP(B2:B2374, Comunas!A:Z, 8, FALSE)` → columna 8, `H`. Se usa por posición porque es
+ * como la usa la planilla; si el encabezado de esa columna no dice `Zona`, el bloque 2e avisa.
+ */
+const COMUNAS_COL_ZONA = 8;
+
+/**
+ * La distancia que el bloque 2e usa para decir si un formulario temático tiene **alguna** fila
+ * del destino cerca. Si no hay ninguna, es un huérfano real, no un problema de puntaje.
+ */
+const DIAS_TEMATICA_CERCANA = 3;
 
 /**
  * **El texto del evento como tercera vía de ubicación** — para las reuniones temáticas.

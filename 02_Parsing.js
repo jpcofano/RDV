@@ -89,7 +89,11 @@ function leerBarrios_() {
 
   const nFilas = sh.getLastRow();
   if (nFilas < 2) throw new Error('La tabla "' + RDV_HOJA_COMUNAS + '" está vacía.');
-  const vals = sh.getRange(2, 1, nFilas - 1, 2).getValues();
+  // La columna de zona, si la tabla llega hasta ahí. Si no, `zona` queda vacía y el eje del
+  // destino no se puede evaluar — que es ausencia, no desacuerdo.
+  const nCols = Math.min(sh.getLastColumn(), COMUNAS_COL_ZONA);
+  const vals = sh.getRange(2, 1, nFilas - 1, Math.max(2, nCols)).getValues();
+  const conZona = nCols >= COMUNAS_COL_ZONA;
 
   const out = [];
   const vistos = {};
@@ -99,10 +103,21 @@ function leerBarrios_() {
     const norm = _expandirAbreviaturas_(normalizeText_(canon));
     if (!norm || vistos[norm]) continue;
     vistos[norm] = true;
-    out.push({ canon: canon, norm: norm, comuna: numComuna_(vals[i][1]) });
+    out.push({ canon: canon, norm: norm, comuna: numComuna_(vals[i][1]),
+               zona: conZona ? str(vals[i][COMUNAS_COL_ZONA - 1]) : '' });
   }
   out.sort(function (a, b) { return b.norm.length - a.norm.length; });
   return out;
+}
+
+/**
+ * El encabezado de la columna `COMUNAS_COL_ZONA` de `Comunas`, o `''` si la tabla no llega.
+ * Sólo para que el bloque 2e pueda decir si esa columna es de verdad `Zona`.
+ */
+function encabezadoZonaComunas_() {
+  const sh = SpreadsheetApp.openById(RDV_SS_DESTINO).getSheetByName(RDV_HOJA_COMUNAS);
+  if (!sh || sh.getLastColumn() < COMUNAS_COL_ZONA) return '';
+  return str(sh.getRange(1, COMUNAS_COL_ZONA).getValue());
 }
 
 /**
@@ -238,6 +253,90 @@ function comunaDeBarrio_(barrio) {
     if (barrios[i].canon === canon) return barrios[i].comuna;
   }
   return null;
+}
+
+/** La zona de un barrio según `Comunas` (columna `COMUNAS_COL_ZONA`). `''` si no se sabe. */
+function zonaDeBarrio_(barrio) {
+  const canon = canonizarBarrio_(barrio);
+  if (!canon) return '';
+  const barrios = _listas_().barrios;
+  for (let i = 0; i < barrios.length; i++) {
+    if (barrios[i].canon === canon) return barrios[i].zona || '';
+  }
+  return '';
+}
+
+/**
+ * El eje que nombra un valor de `Zona` —`Norte`, `Zona Norte`, `Eje Norte`— o `''` si no nombra
+ * ninguno de `EJES_CONOCIDOS`. **Si la `Zona` de `Comunas` resulta ser otra cosa** (una región
+ * sanitaria, un nombre propio), esto devuelve `''` para todo y el eje no se puede evaluar: el
+ * bloque 2e lo dice en vez de inventar un mapeo.
+ */
+function ejeDeZona_(zona) {
+  const t = normalizeText_(zona);
+  if (!t) return '';
+  for (let i = 0; i < EJES_CONOCIDOS.length; i++) {
+    if (_contienePalabra_(t, normalizeText_(EJES_CONOCIDOS[i]))) return EJES_CONOCIDOS[i];
+  }
+  return '';
+}
+
+/** El eje de un barrio del destino, subiéndolo por `Comunas`. `''` si no se sabe. */
+function ejeDeBarrio_(barrio) {
+  return ejeDeZona_(zonaDeBarrio_(barrio));
+}
+
+/**
+ * El eje geográfico que menciona el texto de un formulario. Devuelve `null` si no hay ninguno, o
+ * `{ eje, tipo, forma, comuna }`:
+ *
+ *   tipo 'eje'               `Eje Norte`, `Eje Sur`… → eje = el de `EJES_CONOCIDOS`
+ *   tipo 'eje_desconocido'   `Eje <otra cosa>`       → eje = '' (se reporta, no se usa)
+ *   tipo 'comuna_orientada'  `Comuna 1 Norte`, `Comuna 1N` → eje = la orientación, comuna = 1
+ *
+ * **`comuna_orientada` no se usa como eje, y es deliberado.** `Comuna 1 Norte` puede querer
+ * decir "el eje Norte" o "la parte norte de la Comuna 1" (Retiro / San Nicolás / Puerto Madero,
+ * frente a San Telmo / Constitución). Son cosas distintas y la segunda NO es el eje Norte de la
+ * ciudad: tratarla como eje descalificaría candidatos buenos. Se detecta y se mide; qué
+ * significa lo confirma una persona.
+ *
+ * Sólo detecta. Que puntúe o no lo decide `EJE_COMO_UBICACION`.
+ */
+function detectEje_(texto) {
+  const t = normalizeText_(texto);
+  if (!t) return null;
+
+  let m = /\bcomuna\s*0?(\d{1,2})\s*(norte|sur|centro|oeste|n|s)\b/.exec(t);
+  if (m) {
+    const inicial = { n: 'norte', s: 'sur' };
+    const o = inicial[m[2]] || m[2];
+    return { eje: _canonEje_(o), tipo: 'comuna_orientada', forma: m[0],
+             comuna: numComuna_(m[1]) };
+  }
+
+  m = /\beje\s+([a-z]+)\b/.exec(t);
+  if (m) {
+    const eje = _canonEje_(m[1]);
+    return { eje: eje, tipo: eje ? 'eje' : 'eje_desconocido', forma: m[0], comuna: null };
+  }
+  return null;
+}
+
+function _canonEje_(palabra) {
+  const p = normalizeText_(palabra);
+  for (let i = 0; i < EJES_CONOCIDOS.length; i++) {
+    if (normalizeText_(EJES_CONOCIDOS[i]) === p) return EJES_CONOCIDOS[i];
+  }
+  return '';
+}
+
+/** ¿El formulario es de una reunión temática (CLAUDE.md 1.d)? Por el texto o por traer eje. */
+function esFormularioTematico_(texto) {
+  const t = normalizeText_(texto);
+  if (!t) return false;
+  if (/\btematic[oa]s?\b/.test(t)) return true;
+  const e = detectEje_(texto);
+  return !!(e && e.tipo !== 'comuna_orientada');
 }
 
 /**

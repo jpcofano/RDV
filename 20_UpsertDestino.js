@@ -299,7 +299,9 @@ function calcularPlan_(enSeco) {
     if (normalizarEvento_(f.evento)) sumar_(evBase, enVentanaAnalisis_(f.fecha));
   });
 
-  return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist,
+  const ejes = medirEjes_(dest, cands, comunas);
+
+  return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
            evStats: evStats, evBase: evBase, ejemplosEvento: ejemplosEvento,
@@ -530,6 +532,7 @@ function logResumen_(plan) {
   }
 
   _logEvento_(plan, b, e);
+  _logEjes_(plan.ejes);
 
   Logger.log('--- 3. EMPAREJAR_MANUAL ---');
   Logger.log('  pares propuestos ............ %s', _dc_(e.pares));
@@ -622,6 +625,187 @@ function _logEvento_(plan, b, e) {
       Logger.log('    evento: "%s"  (%s/%s palabras)  score=%s', x.evento, x.cubiertas, x.total,
                  x.score);
       Logger.log('      form: %s', x.nombre);
+    });
+  }
+}
+
+/**
+ * El bloque 2e, en memoria: **el eje geográfico, medido antes de darle peso**.
+ *
+ * Contesta tres cosas, sin que el flag `EJE_COMO_UBICACION` cambie nada:
+ *
+ *   a) ¿La `Zona` de `Comunas` es el eje? Vuelca sus valores con los barrios de cada uno.
+ *   b) Los formularios con eje, y con qué filas del destino se estarían emparejando (misma
+ *      figura, dentro de `VENTANA_EMPAREJAR_DIAS`) — con la zona de cada barrio, para confirmar
+ *      el mapeo a mano y ver qué candidatos el eje descartaría.
+ *   c) Los formularios temáticos: ¿hay ALGUNA fila del destino de su figura a ±
+ *      `DIAS_TEMATICA_CERCANA`? Si no hay ninguna, es un huérfano real y ningún peso lo salva.
+ */
+function medirEjes_(dest, cands, comunas) {
+  // --- a) la columna Zona de Comunas ---
+  const porZona = {};
+  _listas_().barrios.forEach(function (b) {
+    const z = b.zona || '(vacía)';
+    if (!porZona[z]) porZona[z] = { zona: z, eje: ejeDeZona_(b.zona), barrios: [], comunas: {} };
+    porZona[z].barrios.push(b.canon);
+    if (b.comuna != null) porZona[z].comunas[b.comuna] = true;
+  });
+
+  // --- b) formularios con eje ---
+  const porForma = {};
+  const cruce = {};              // eje del formulario × zona del barrio del destino → pares
+  const pares = { total: contador_(), coincide: contador_(), descarta: contador_(),
+                  noEvaluable: contador_() };
+  const detalle = [];
+  const conEje = contador_(), orientadas = contador_(), desconocidos = [];
+
+  // --- c) temáticos ---
+  const tem = { total: contador_(), conCercana: contador_(), huerfanos: [] };
+
+  for (let i = 0; i < cands.vivos.length; i++) {
+    const c = cands.vivos[i];
+    const ev = enVentanaAnalisis_(c.det && c.det.mejor);
+    const e = c.eje;
+
+    if (e) {
+      const k = e.tipo + ':' + (e.eje || e.forma);
+      if (!porForma[k]) porForma[k] = contador_();
+      sumar_(porForma[k], ev);
+      if (e.tipo === 'eje') sumar_(conEje, ev);
+      if (e.tipo === 'comuna_orientada') sumar_(orientadas, ev);
+      if (e.tipo === 'eje_desconocido' && desconocidos.length < 15) {
+        desconocidos.push({ forma: e.forma, nombre: c.nombre });
+      }
+    }
+
+    if (e && (e.tipo === 'eje' || e.tipo === 'comuna_orientada')) {
+      const filas = [];
+      for (let j = 0; j < dest.filas.length; j++) {
+        const f = dest.filas[j];
+        if (c.figurasNorm.indexOf(normalizeText_(f.figura)) === -1) continue;
+        const dist = distanciaFecha_(f.fecha, c.det);
+        if (dist === null || dist > VENTANA_EMPAREJAR_DIAS) continue;
+
+        const zona = zonaDeBarrio_(f.barrio);
+        const ejeDest = ejeDeZona_(zona);
+        let veredicto = 'no_evaluable';
+        if (e.tipo === 'eje' && ejeDest) veredicto = (ejeDest === e.eje) ? 'coincide' : 'descarta';
+
+        if (e.tipo === 'eje') {
+          sumar_(pares.total, ev);
+          sumar_(pares[veredicto === 'no_evaluable' ? 'noEvaluable' : veredicto], ev);
+          const kc = e.eje + ' × ' + (zona || '(sin zona)');
+          cruce[kc] = (cruce[kc] || 0) + 1;
+        }
+        const comunaDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
+        filas.push({ fila: f.fila, barrio: f.barrio, comuna: comunaDest, zona: zona, dist: dist,
+                     veredicto: veredicto });
+      }
+      filas.sort(function (x, y) { return x.dist - y.dist; });
+      detalle.push({ c: c, ev: ev, filas: filas });
+    }
+
+    if (c.tematico) {
+      sumar_(tem.total, ev);
+      let cercana = null;
+      for (let j = 0; j < dest.filas.length; j++) {
+        const f = dest.filas[j];
+        if (c.figurasNorm.indexOf(normalizeText_(f.figura)) === -1) continue;
+        const dist = distanciaFecha_(f.fecha, c.det);
+        if (dist !== null && dist <= DIAS_TEMATICA_CERCANA &&
+            (!cercana || dist < cercana.dist)) cercana = { f: f, dist: dist };
+      }
+      if (cercana) sumar_(tem.conCercana, ev);
+      else tem.huerfanos.push({ c: c, ev: ev });
+    }
+  }
+
+  return { encabezadoZona: encabezadoZonaComunas_(), porZona: porZona, porForma: porForma,
+           conEje: conEje, orientadas: orientadas, desconocidos: desconocidos,
+           pares: pares, cruce: cruce, detalle: detalle, tem: tem };
+}
+
+/** El bloque 2e del log. Ver `medirEjes_`. */
+function _logEjes_(m) {
+  Logger.log('--- 2e. EL EJE GEOGRÁFICO (temáticas sin barrio ni comuna) ---');
+  Logger.log('  EJE_COMO_UBICACION = %s  (peso si se enciende: %s; un eje distinto DESCALIFICA)',
+             EJE_COMO_UBICACION, PESOS_MATCH.ejeSinComuna);
+
+  // a) ¿Zona == eje?
+  Logger.log('  a) Comunas, columna %s: encabezado "%s"', COMUNAS_COL_ZONA,
+             m.encabezadoZona || '(la tabla no llega a esa columna)');
+  const zonas = Object.keys(m.porZona).sort();
+  let zonasConEje = 0;
+  zonas.forEach(function (z) {
+    const x = m.porZona[z];
+    if (x.eje) zonasConEje++;
+    Logger.log('     %s  → eje %s | comunas %s | %s barrios: %s', z, x.eje || '(ninguno)',
+               Object.keys(x.comunas).sort(function (p, q) { return p - q; }).join(',') || '-',
+               x.barrios.length, x.barrios.join(', '));
+  });
+  if (!zonas.length || zonasConEje === 0) {
+    Logger.log('  >>> La Zona de Comunas NO nombra ningún eje. El mapeo eje → comunas no existe en');
+    Logger.log('      el proyecto: hay que escribirlo a mano. Mirar el punto b) para armarlo.');
+  } else if (zonasConEje < zonas.length) {
+    Logger.log('  >>> %s de %s valores de Zona nombran un eje. Los otros quedan sin evaluar.',
+               zonasConEje, zonas.length);
+  } else {
+    Logger.log('  >>> Todos los valores de Zona nombran un eje. Si los barrios de cada uno se ven');
+    Logger.log('      bien, el mapeo está y se puede encender el flag. CONFIRMARLO mirando la lista.');
+  }
+
+  // b) formularios con eje
+  Logger.log('  b) formularios con eje ............ %s', _dc_(m.conEje));
+  Logger.log('     con "Comuna N Norte/Sur" ....... %s  (NO se usan como eje: ver detectEje_)',
+             _dc_(m.orientadas));
+  Object.keys(m.porForma).sort().forEach(function (k) {
+    Logger.log('       %s: %s', k, _dc_(m.porForma[k]));
+  });
+  m.desconocidos.forEach(function (d) {
+    Logger.log('     eje no reconocido "%s" | %s', d.forma, d.nombre);
+  });
+  Logger.log('     pares figura + fecha ±%s contra filas del destino: %s',
+             VENTANA_EMPAREJAR_DIAS, _dc_(m.pares.total));
+  Logger.log('       el eje coincide ...... %s', _dcp_(m.pares.coincide, m.pares.total));
+  Logger.log('       el eje DESCARTARÍA ... %s', _dcp_(m.pares.descarta, m.pares.total));
+  Logger.log('       no evaluable ......... %s  (el barrio del destino no tiene zona con eje)',
+             _dcp_(m.pares.noEvaluable, m.pares.total));
+  Logger.log('     cruce eje del formulario × zona del barrio del destino (para confirmar el mapeo):');
+  Object.keys(m.cruce).sort().forEach(function (k) {
+    Logger.log('       %s: %s', k, m.cruce[k]);
+  });
+
+  const lim = 30;
+  Logger.log('     --- %s formularios con eje, con sus filas candidatas (primeros %s) ---',
+             m.detalle.length, lim);
+  m.detalle.slice(0, lim).forEach(function (d) {
+    Logger.log('     [%s] B fila %s | %s | %s | %s', d.ev ? 'ventana' : 'histor.', d.c.fila,
+               d.c.eje.tipo === 'eje' ? 'Eje ' + d.c.eje.eje : d.c.eje.forma,
+               fmtFecha_(d.c.det.mejor) || 'sin fecha', d.c.nombre);
+    if (!d.filas.length) Logger.log('         (ninguna fila de la figura a ±%s días)',
+                                    VENTANA_EMPAREJAR_DIAS);
+    d.filas.forEach(function (x) {
+      Logger.log('         fila %s  %s días  %s | comuna %s | zona %s → %s', x.fila, x.dist,
+                 x.barrio || 'sin barrio', x.comuna == null ? '-' : x.comuna,
+                 x.zona || '-', x.veredicto);
+    });
+  });
+
+  // c) temáticos: ¿hay alguna fila cerca?
+  const t = m.tem;
+  Logger.log('  c) formularios temáticos .......... %s', _dc_(t.total));
+  Logger.log('     con alguna fila de su figura a ±%s días: %s', DIAS_TEMATICA_CERCANA,
+             _dcp_(t.conCercana, t.total));
+  Logger.log('     SIN NINGUNA ....................... %s',
+             _dc_({ v: t.total.v - t.conCercana.v, t: t.total.t - t.conCercana.t }));
+  if (t.huerfanos.length) {
+    Logger.log('  >>> Esos no tienen reunión en el destino a ±%s días: son HUÉRFANOS REALES.',
+               DIAS_TEMATICA_CERCANA);
+    Logger.log('      Ningún peso de ubicación los rescata. Es una conversación con quien carga');
+    Logger.log('      los formularios o el destino, no un problema de puntaje:');
+    t.huerfanos.slice(0, 40).forEach(function (h) {
+      Logger.log('       [%s] B fila %s | %s | ins=%s | %s', h.ev ? 'ventana' : 'histor.',
+                 h.c.fila, fmtFecha_(h.c.det.mejor) || 'sin fecha', h.c.inscriptos, h.c.nombre);
     });
   }
 }
@@ -845,9 +1029,9 @@ function puntuar_(f, c, comunas) {
   /*
    * --- ubicación: ausencia no puntúa, desacuerdo descalifica ---
    *
-   * Tres vías, en orden de especificidad: **barrio, comuna, evento**. Es una sola señal con tres
-   * formas de evaluarse, no tres señales: la que aplique ocupa el lugar en el denominador y las
-   * otras no existen.
+   * Cuatro vías, en orden de especificidad: **barrio, comuna, eje, evento**. Es una sola señal
+   * con cuatro formas de evaluarse, no cuatro señales: la que aplique ocupa el lugar en el
+   * denominador y las otras no existen.
    *
    * El `EVENTO` es la última porque es la de las reuniones temáticas, donde no hay barrio ni
    * comuna **que buscar** — el lugar no es un lugar, es un tema (CLAUDE.md 1.c).
@@ -870,6 +1054,19 @@ function puntuar_(f, c, comunas) {
     pesoUbic = PESOS_MATCH.comunaSinBarrio;
     alcanzable += pesoUbic;
     if (cDest === c.comuna) { sUbic = pesoUbic; senales.push('comuna'); }
+    else desacuerdo = true;
+  } else if (EJE_COMO_UBICACION && c.eje && c.eje.tipo === 'eje' && ejeDeBarrio_(f.barrio)) {
+    /*
+     * El eje: un eje contiene varias comunas, así que confirma menos (0,10) — pero un eje
+     * distinto **descalifica** igual que una comuna distinta. `Eje Sur` contra un barrio del
+     * norte no es evidencia débil: es otra reunión. Ver `EJE_COMO_UBICACION` en 00_Config.js.
+     *
+     * Sólo `tipo === 'eje'`. `Comuna 1 Norte` (`comuna_orientada`) no entra: no sabemos si es el
+     * eje o la mitad norte de la comuna (ver `detectEje_`).
+     */
+    pesoUbic = PESOS_MATCH.ejeSinComuna;
+    alcanzable += pesoUbic;
+    if (ejeDeBarrio_(f.barrio) === c.eje.eje) { sUbic = pesoUbic; senales.push('eje'); }
     else desacuerdo = true;
   } else if (eventoOk && EVENTO_COMO_UBICACION) {
     /*
@@ -1300,6 +1497,8 @@ function leerCandidatos_() {
       figurasNorm: figurasEnTexto_(nombre).map(normalizeText_),
       barrio: detectBarrio_(limpio),
       comuna: detectComuna_(limpio),
+      eje: detectEje_(limpio),
+      tematico: esFormularioTematico_(limpio),
       horaMin: _horaEnMinutos_(limpio),
       det: detectFecha_(limpio, iFin != null ? r[iFin] : null),
       inscriptos: ins,
