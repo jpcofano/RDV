@@ -98,6 +98,10 @@ function _soloUno_(cual) {
  * cuerpo**? Es el único caso en que limpiar el prefijo cambia algo a favor. Si da cero o casi
  * cero, la limpieza no compra nada y sale.
  *
+ * **Ya corrió (25/09 20:18) y cerró la pregunta:** `EVITA` 0 | 0, `PIERDE` 18 | 41. La limpieza
+ * salió de `figurasEnTexto_`. Queda como registro, y se puede rehacer: sigue midiendo lo mismo
+ * porque `compararLimpiezaPrefijo_` no pasa por `figurasEnTexto_`.
+ *
  * Usa `leerCandidatos_()` —la misma población que puntúa el upsert, sin los anulados— y
  * `compararLimpiezaPrefijo_()`, que comparte el matcheo con `figurasEnTexto_`. Un formulario está
  * en la ventana si su fecha detectada lo está (el mismo criterio que el resto del log).
@@ -126,10 +130,13 @@ function medirFiguraEnPrefijo() {
     const clave = (r.enPrefijo.join(' + ') || '(prefijo sin figura: ' + normalizeText_(r.prefijo) + ')') +
                   '  →  ' + (r.con.join(' + ') || '(ninguna)');
     const g = grupos[r.clase];
-    if (!g.has(clave)) g.set(clave, { n: contador_(), ejemplos: [] });
+    if (!g.has(clave)) g.set(clave, { n: contador_(), ejV: [], ejH: [] });
     const x = g.get(clave);
     sumar_(x.n, ev);
-    if (x.ejemplos.length < 3) x.ejemplos.push({ ev: ev, fila: c.fila, nombre: c.nombre });
+    // Los ejemplos de la ventana van primero: es la población que decide. Por orden de fila,
+    // los primeros salían todos históricos.
+    const ej = ev ? x.ejV : x.ejH;
+    if (ej.length < 3) ej.push({ ev: ev, fila: c.fila, nombre: c.nombre });
   });
 
   Logger.log('=== medirFiguraEnPrefijo — sólo lectura, no escribe nada ===');
@@ -181,7 +188,7 @@ function medirFiguraEnPrefijo() {
     const tope = (k === 'prefijo_neutro') ? 5 : 30;
     orden.slice(0, tope).forEach(function (e) {
       Logger.log('  %s  %s', _dc_(e[1].n), e[0]);
-      e[1].ejemplos.forEach(function (x) {
+      e[1].ejV.concat(e[1].ejH).slice(0, 3).forEach(function (x) {
         Logger.log('       [%s] B fila %s | %s', x.ev ? 'ventana' : 'histor.', x.fila, x.nombre);
       });
     });

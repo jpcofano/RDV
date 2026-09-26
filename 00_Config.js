@@ -406,12 +406,15 @@ const COLUMNAS_B2 = [
 
 /**
  * Prefijos administrativos que el origen antepone al nombre del evento, y que `limpiarPrefijos_`
- * saca **antes** de buscar la figura.
+ * saca del texto.
  *
- * ⚠️ **Lista sin medir.** Se propuso en la migración por razonamiento, no por un caso observado,
- * y cuesta: la figura que aparece sólo en el prefijo (`JORGE MACRI - Encuentro con vecinos ...`)
- * deja de puntuar. Ver el encabezado de `limpiarPrefijos_` en `02_Parsing.js` y
- * docs/HANDOFF-2026-09-25.md, sección 3.
+ * **Para la figura: medido y descartado** (25/09 20:18). No compraba nada —0 formularios con una
+ * figura en el prefijo y otra en el cuerpo— y costaba 41 (18 en ventana) que perdían su única
+ * figura. `figurasEnTexto_` ya no limpia prefijos.
+ *
+ * ⚠️ **Para barrio, comuna, eje, temática, hora y fecha sigue siendo una hipótesis sin medir**:
+ * `leerCandidatos_` todavía detecta todo eso sobre el texto limpio. Ver `limpiarPrefijos_` en
+ * `02_Parsing.js`.
  *
  * Se comparan normalizados y sólo al principio del texto.
  */

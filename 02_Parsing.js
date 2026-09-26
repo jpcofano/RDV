@@ -160,22 +160,22 @@ function detectPersona_(texto) {
 /**
  * Saca los prefijos administrativos del nombre del evento (`PREFIJOS_EVENTO`).
  *
- * ⚠️ **HIPÓTESIS SIN MEDIR — no es un caso observado.** La justificación de abajo es un
- * razonamiento que se escribió al diseñar esto, no algo que se haya visto en los datos. El
- * ejemplo `POST - JORGE MACRI - ...` que figuraba acá **no existe** en el origen
- * (docs/HANDOFF-2026-09-25.md, sección 5). El legado no limpiaba nada: `detectPersona_` corría
- * sobre el texto completo.
+ * **Para la figura: MEDIDO Y DESCARTADO** (`medirFiguraEnPrefijo()`, corrida del 25/09 20:18,
+ * 280 formularios en ventana / 776 vivos):
  *
- * Lo que sí está medido es el costo: en la corrida del 25/09 el bloque 2f atribuye el **37,3%**
- * de las no-entradas con comuna coincidente a `figura_no_reconocida_en_el_formulario`, con casos
- * como `JORGE MACRI - Encuentro con vecinos - Palermo 05/07`, donde la figura aparece **sólo en
- * el prefijo** y al borrarlo deja de puntuar.
+ *     EVITA multi_figura   0 |  0     ← el único beneficio posible
+ *     sigue multi_figura   0 |  0
+ *     PIERDE la figura    18 | 41     ← todos "Jorge Macri → ninguna"
+ *     otro                 0 |  0
  *
- * El razonamiento, para evaluarlo contra el número: *un prefijo con un nombre propio
- * —`JORGE MACRI -`— matchearía como figura y se llevaría puesta a la figura real del evento*
- * (`JORGE MACRI - Clara Muzzio, Palermo`). Eso sólo pasa si hay formularios con **una figura en
- * el prefijo y otra distinta en el cuerpo**. **Ese número no se midió.** Si da cero o casi
- * cero, esta función no compra nada y sale.
+ * La justificación era un razonamiento, no un caso: *un prefijo con nombre propio —`JORGE MACRI
+ * -`— se llevaría puesta a la figura real del evento*. El ejemplo `POST - JORGE MACRI - ...` que
+ * figuraba acá no existía (docs/HANDOFF-2026-09-25.md, sección 5). Medido, ningún formulario
+ * tiene una figura en el prefijo y otra distinta en el cuerpo. **`figurasEnTexto_` ya no la usa.**
+ *
+ * ⚠️ **Para los demás usos sigue siendo una HIPÓTESIS SIN MEDIR:** `leerCandidatos_` saca de acá
+ * el texto del que detecta barrio, comuna, eje, temática, hora y fecha, y `diagScores()` la usa
+ * para la fecha. Que limpiar ayude o moleste ahí no se midió; por eso no se tocó.
  */
 function limpiarPrefijos_(texto) {
   let t = str(texto);
@@ -217,10 +217,15 @@ function esFormularioAnulado_(texto) {
  * **Todas** las figuras mencionadas. Dos o más significa una inscripción compartida por varias
  * reuniones, que es `multi_figura` y va a revisión, no un caso ambiguo (CLAUDE.md, decisión 2).
  *
- * Limpia los prefijos administrativos antes de buscar.
+ * **Busca sobre el texto completo, como el legado** (`detectPersona_` nunca limpió nada).
+ *
+ * Hasta el 25/09 limpiaba primero los prefijos (`limpiarPrefijos_`). `medirFiguraEnPrefijo()`
+ * midió qué compraba eso para la figura: **nada**. Ningún formulario tenía una figura en el
+ * prefijo y otra distinta en el cuerpo (`evita_multi` 0 en ventana, 0 en el histórico), y 41
+ * perdían su única figura (18 en ventana, todos `JORGE MACRI - ...` sin repetir el nombre).
  */
 function figurasEnTexto_(texto) {
-  return _figurasEnNormalizado_(normalizeText_(limpiarPrefijos_(texto)));
+  return _figurasEnNormalizado_(normalizeText_(texto));
 }
 
 /**
@@ -242,8 +247,10 @@ function _figurasEnNormalizado_(t) {
  * Qué cambia `limpiarPrefijos_` en las figuras de **un** formulario. Sólo lectura; lo usa
  * `medirFiguraEnPrefijo()` para decidir si la limpieza se queda (docs/HANDOFF-2026-09-25.md, §3).
  *
- * Compara lo que ve el upsert hoy (`figurasEnTexto_`, con limpieza) contra lo que veía el legado
- * (el texto completo, sin limpiar). La `clase`:
+ * Compara las figuras **con** limpieza (lo que veía `figurasEnTexto_` hasta el 25/09) contra las
+ * figuras **sin** limpieza (el texto completo: lo que ve hoy, y lo que veía el legado). Llama
+ * directo a `_figurasEnNormalizado_`, así que mide lo mismo aunque `figurasEnTexto_` haya
+ * cambiado. Queda como registro de la medición que la descartó. La `clase`:
  *
  *   sin_prefijo       la limpieza no sacó nada
  *   prefijo_neutro    sacó algo, y las figuras son las mismas con y sin limpieza

@@ -12,20 +12,32 @@
  * **Se mantiene al día en el mismo commit** en que cambia qué hay que correr (CLAUDE.md §6).
  *
  * ============================================================================================
- *  DÓNDE ESTAMOS — al 2026-09-25                                  (detalle: docs/ESTADO.md)
+ *  DÓNDE ESTAMOS — al 2026-09-26                                  (detalle: docs/ESTADO.md)
  * ============================================================================================
  *
- *  Antes de nada: `clasp push`. El proyecto de Apps Script no tiene el código de las últimas
- *  sesiones.
+ *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
  *  DRY_RUN = true   en 20_UpsertDestino.js. El upsert NO puede tocar el destino.
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
+ *  >>> PRÓXIMO: paso2_upsertEnSeco(). Es la primera corrida con figurasEnTexto_ sobre el texto
+ *      completo (limpiarPrefijos_ ya no se aplica a la figura). Comparar contra la LÍNEA BASE,
+ *      la corrida en seco del 25/09 18:13, antes del cambio:
+ *
+ *        escribiría   231 | 627
+ *        a revisar     20 |  68
+ *        sin match     57 | 107
+ *        2f: figura_no_reconocida_en_el_formulario  103 (37,3%) en ventana
+ *
+ *      Lo esperable es que figura_no_reconocida baje, pero 18 formularios que perdían la
+ *      figura difícilmente explican 103 filas: el resto no tiene causa medida.
+ *
  *  La secuencia, en orden:
  *
  *   paso1_columnasDeTraza()   → correrFase2b()   ESCRIBE en el destino: sólo 5 encabezados al
- *                                                final. Idempotente. Una sola vez.
+ *                                                final. Idempotente. YA CORRIÓ (25/09): el
+ *                                                destino tiene las cinco.
  *   paso2_upsertEnSeco()      → correrEnSeco()   NO toca el destino. Escribe REVISAR_MATCH,
  *                                                EMPAREJAR_MANUAL y SIN_MATCH en la intermedia.
  *                                                El log trae: 2b desvío real del grupo bajo
@@ -38,16 +50,12 @@
  *                                                al log, y ahí se confirma que las 20
  *                                                desfase_reprogramacion son el destino corrido
  *                                                1-3 días y no un error del parser.
- *   paso4_medirFiguraEnPrefijo() → medirFiguraEnPrefijo()   NO escribe en ninguna planilla:
- *                                                sólo log. ¿Cuántos formularios tienen una figura
- *                                                en el prefijo y otra distinta en el cuerpo?
- *                                                Decide si limpiarPrefijos_ se saca, se acota o
- *                                                se conserva (HANDOFF-2026-09-25, sección 3).
- *   paso5_verificarLegToDate() → diagLegToDate()   NO escribe en ninguna planilla: sólo log.
- *                                                ¿Qué copia de legToDate_ gana, y qué le llega
- *                                                a la línea 72 del activador de Agenda (Date o
- *                                                string, cuántos ambiguos)? Pendiente de CLAUDE.md
- *                                                "los leg*_ duplicados".
+ *
+ *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
+ *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
+ *                                   busca sobre el texto completo.
+ *   rehacer_verificarLegToDate()    (25/09 23:26) gana una copia día primero y a la línea 72
+ *                                   sólo le llegan Date → el pendiente de legToDate_ es latente.
  *
  *  Qué mirar en cada log y qué decide cada número: docs/ESTADO.md, sección 2.
  *
@@ -99,26 +107,35 @@ function paso3_medirReglaDelMes() {
   return diagCorteB();
 }
 
-function paso4_medirFiguraEnPrefijo() {
-  _anunciar_('paso 4 — medir la figura en el prefijo', 'medirFiguraEnPrefijo()  [20_UpsertDestino.js]',
+// =============================================================================================
+//  YA CORRIDOS — dejar por si hace falta rehacerlos. No son parte de la secuencia de ahora.
+//  Ninguno escribe en el destino: escriben su solapa DIAG_* en la intermedia, o sólo el log.
+// =============================================================================================
+
+/**
+ * Qué compraba limpiarPrefijos_ para la figura. Corrió el 25/09 20:18: EVITA 0 | 0, PIERDE
+ * 18 | 41. La figura pasó a buscarse sobre el texto completo. Sigue midiendo lo mismo.
+ */
+function rehacer_medirFiguraEnPrefijo() {
+  _anunciar_('ya corrido — la figura en el prefijo', 'medirFiguraEnPrefijo()  [20_UpsertDestino.js]',
              'NO escribe en ninguna planilla (lee B, la columna Figura del destino y Comunas)',
              'sólo el log: formularios que PIERDEN la figura con la limpieza contra los que ' +
              'EVITAN multi_figura, agrupados por par prefijo → cuerpo');
   return medirFiguraEnPrefijo();
 }
 
-function paso5_verificarLegToDate() {
-  _anunciar_('paso 5 — qué legToDate_ gana y qué le llega', 'diagLegToDate()  [diagnostico/04_legado_fechas.js]',
+/**
+ * Qué copia de legToDate_ gana y qué le llega a la línea 72 del activador de Agenda. Corrió el
+ * 25/09 23:26: día primero, y sólo le llegan Date. Rehacerlo después de cada cambio de orden de
+ * archivos o si alguien empieza a tipear fechas en Fecha (manual).
+ */
+function rehacer_verificarLegToDate() {
+  _anunciar_('ya corrido — qué legToDate_ gana', 'diagLegToDate()  [diagnostico/04_legado_fechas.js]',
              'NO escribe en ninguna planilla (lee la solapa Agenda del archivo (4))',
              'sólo el log: la respuesta de legToDate_ a \'03/04/2026\' (dice qué copia gana) y el ' +
              'conteo de Date / string / ambiguos en Fecha (manual) y Fecha (auto)');
   return diagLegToDate();
 }
-
-// =============================================================================================
-//  YA CORRIDOS — dejar por si hace falta rehacerlos. No son parte de la secuencia de ahora.
-//  Ninguno escribe en el destino: todos escriben su solapa DIAG_* en la intermedia.
-// =============================================================================================
 
 /** Fase 1, los cinco juntos: el hueco de sexo/edades contra los dos saltos del staging. */
 function rehacer_diagFase1()           { _anunciarDiag_('diagFase1()', 'las 5 DIAG_ de la Fase 1');    return diagFase1(); }
