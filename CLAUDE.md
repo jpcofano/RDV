@@ -452,9 +452,8 @@ Cuesta nada y ahorra mucho.
 > andaba. Queda **pendiente de evaluar**, no dado de baja — ver
 > [docs/triggers-legado.md](docs/triggers-legado.md).
 >
-> ⚠️ **Antes de encender `runFullPipelineWithDelays`:** hay tres copias de `legToDate_` con
-> comportamientos distintos entre los archivos del pipeline, y cuál corre depende del orden de
-> carga. Ver *"Pendiente: los `leg*_` duplicados"* en la Fase 2.
+> *Nota:* hay tres copias de `legToDate_` en el legado; hoy no afecta (medido el 25/09), pero es
+> un riesgo latente. Ver *"Pendiente: los `leg*_` duplicados"* en la Fase 2.
 >
 > Lo que sigue describe el pipeline **como está escrito**, no como está corriendo.
 
@@ -621,9 +620,10 @@ pesa cada una antes de elegir por dónde empezar.
 
 > **Corrección para el barrio: ampliar `detectBarrio_` no arregla nada.** Las
 > `barrio_no_reconocido` son **todas** ausentes: el barrio no viene en `B` desde 2025-10 (3.3.b).
-> No hay texto que reconocer. La rama "ampliar listas" sólo aplica a la **figura**, y ahí el
-> problema medido es otro: `limpiarPrefijos_` y las variantes de grafía
-> (docs/HANDOFF-2026-09-25.md, sección 3).
+> No hay texto que reconocer. La rama "ampliar listas" sólo aplica a la **figura**. Ahí
+> `limpiarPrefijos_` quedó medido y descartado (25/09: 18 formularios en ventana perdían la
+> figura, 0 ganaban algo) y ya no se aplica a la figura; las **variantes de grafía** siguen como
+> candidata, **sin medir** (docs/HANDOFF-2026-09-25.md, sección 3).
 
 `DIAG_CORTE_B` (Fase 1b) mide el reparto. **Las 23 claves incompletas no alcanzan a explicar 72
 filas**, así que hay que esperar las dos causas mezcladas y dimensionar cada una, no elegir la
@@ -2125,7 +2125,21 @@ nada**:
 | `agendaHeaders_`, `agendaIdx_` | `Agenda push a base.js`, `Agenda traer datos del mail.js` | idénticos (mismo hash) |
 | **`legToDate_`** | los tres | **sí.** A2 y Upset: día primero (`03/04` = 3 de abril) y fijan las 12:00. **B2: `new Date(string)`** (`03/04` = 4 de marzo) y devuelve el `Date` sin fijar hora |
 
-**Corrección a lo que se venía diciendo: `legToDate_` sí se usa hoy.** Además de los tres pasos
+> **Estado: LATENTE. No afecta hoy** (medido con `diagLegToDate()`, 25/09 23:26):
+>
+> - gana una copia **día primero** (A2/Upset): `'03/04/2026'` → `03/04`, y el `Date` de las
+>   15:30 → `12:00`;
+> - a la línea 72 **no le llega ningún `string`**: `Fecha (manual)` vacía en las 5 filas, y lo que
+>   llega son 4 `Date` de `Fecha (auto)`.
+>
+> El riesgo que queda: que un `clasp push` cambie el orden de carga y gane la copia de B2,
+> **combinado** con una fecha tipeada como texto en `Fecha (manual)`. Hacen falta las dos cosas.
+> El arreglo, cuando toque —a más tardar en la **Fase 9**—, es que **las tres copias lean el día
+> primero**. No se tocó `legToDate_` ni el activador. Rehacer la medición con
+> `rehacer_verificarLegToDate()` si cambia el orden de los archivos o alguien empieza a cargar
+> `Fecha (manual)`.
+
+**`legToDate_` sí se usa hoy.** Además de los tres pasos
 apagados, la llama el **único activador vivo**: `syncAgendaSheetInBaseFromAgenda_2`
 (`Solapa agenda base final.js:72`), para la fecha que escribe en la solapa espejo `Agenda` del
 **workbook del destino (1)** (`DEST_SS_ID`, no la intermedia), la que entra en el ID
@@ -2143,17 +2157,15 @@ Qué tan grave es:
 - **verificado sobre el código:** `Fecha (auto)` la escribe la ingesta como `Date` con formato
   `dd/mm/yyyy` (`Agenda traer datos del mail.js:190-204`). `Fecha (manual)` la tipea una
   persona, y puede ser `Date` o `string` según cómo la reconozca Sheets;
-- **sin verificar:** qué copia gana, y cuántos `string` le llegan de verdad. En el
-  `clasp push` del 25/09 `Upset Base FInal.js` subió último, lo que *sugiere* que gana esa, pero
-  el orden de carga no está fijado (`filePushOrder` vacío). Lo mide `diagLegToDate()`
-  (`diagnostico/04_legado_fechas.js`, `paso5_verificarLegToDate()`): le pregunta a la función
-  por `'03/04/2026'` y cuenta los tipos que llegan a la línea 72.
+- **medido (25/09 23:26)** con `diagLegToDate()` (`diagnostico/04_legado_fechas.js`,
+  `rehacer_verificarLegToDate()`): gana una copia día primero y a la línea 72 sólo le llegan
+  `Date`. Ver el recuadro de arriba. El orden de carga sigue sin estar fijado
+  (`filePushOrder` vacío): lo que se midió es el orden de hoy.
 
-**Qué hacer, antes de encender `runFullPipelineWithDelays`** (y no antes, porque no hay
-urgencia medida): dejar una sola `legToDate_`, o renombrar la de `Sync B to B2.js` para que no
-compita. No se hace ahora: el pedido fue anotarlo, y tocar el legado sin corrida que lo
-verifique es lo que el plan evita. Se resuelve solo cuando las Fases 4 y 5 se lleven esos
-archivos (abajo), **salvo** el uso en `Solapa agenda base final.js`, que llega hasta la Fase 8.
+**Qué hacer, y cuándo:** que las tres copias lean el día primero (o que quede una sola), a más
+tardar en la Fase 9. No hay urgencia medida. Se resuelve solo cuando las Fases 4 y 5 se lleven
+esos archivos (abajo), **salvo** el uso en `Solapa agenda base final.js`, que llega hasta la
+Fase 8.
 
 **Cuándo cierra.** Cuando los tres archivos dejen de existir, y eso pasa solo:
 
@@ -2702,7 +2714,7 @@ No es prolijidad. En esta migración cambiamos de premisa **once veces**:
 | las 20 `fecha_mal_parseada` son errores del parser | texto y `fecha_fin` coinciden; el destino está corrido 1-3 días. Es reprogramación, y se arregla en la escala del score |
 | `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
 | `Para Revisar` es el destino del flujo Agenda | es el staging del pipeline principal (`Upset Base FInal.js:7`); Agenda también escribe ahí |
-| un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. La función cuesta el 37,3% de `figura_no_reconocida` (2f) y su beneficio no se midió |
+| un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. **Beneficio medido para la figura: 0** (25/09 20:18: `EVITA multi_figura` 0 \| 0; `PIERDE la figura` 18 \| 41). Sale de `figurasEnTexto_`; los demás usos siguen sin medir. **No explica el 37,3% del 2f:** 18 formularios difícilmente dan 103 filas. Cuánto aporta lo dirá el paso 2; el resto no tiene causa medida |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

@@ -26,11 +26,26 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
-| 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia |
+| 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. **← PRÓXIMO** |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
-| 4 | `paso4_medirFiguraEnPrefijo()` | `medirFiguraEnPrefijo()` | cuántos formularios tienen una figura en el prefijo y otra distinta en el cuerpo | **no escribe en ninguna planilla**; sólo log |
-| 5 | `paso5_verificarLegToDate()` | `diagLegToDate()` | qué copia de `legToDate_` gana y qué le llega a la línea 72 del activador de Agenda | **no escribe en ninguna planilla**; sólo log |
+
+**Próximo: el paso 2**, primera corrida con `figurasEnTexto_` sobre el texto completo. **Línea
+base** para comparar, la corrida en seco del 25/09 18:13 (antes del cambio):
+
+```
+escribiría   231 | 627
+a revisar     20 |  68
+sin match     57 | 107
+2f: figura_no_reconocida_en_el_formulario  103 (37,3%) en ventana
+```
+
+Lo esperable es que `figura_no_reconocida` baje, pero los 18 formularios que perdían la figura
+difícilmente explican 103 filas. **El resto no tiene causa medida**; las variantes de grafía son
+candidata, sin medir.
+
+Ya corridos, en el bloque YA CORRIDOS de `99_Correr.js`: `rehacer_medirFiguraEnPrefijo()` (el
+viejo paso 4, decisión i) y `rehacer_verificarLegToDate()` (el viejo paso 5, decisión j).
 
 Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
 `paso2_rehacer_emparejarManual()` o `paso2_rehacer_sinMatch()`, que rehacen sólo ése.
@@ -118,65 +133,42 @@ Bloque **2e**, punto c). Para cada formulario temático, si hay **alguna** fila 
 peso de ubicación los salva. El caso a mirar primero es **B fila 730** (Eje Sur, 14/08), cuyos
 cuatro candidatos están a 7, 7, 11 y 13 días.
 
-### i) ¿`limpiarPrefijos_` se saca, se acota o se conserva?
+### i) ~~¿`limpiarPrefijos_` se saca, se acota o se conserva?~~ CERRADA: sale de la figura
 
-Log de **`paso4_medirFiguraEnPrefijo()`**. Clasifica cada formulario vivo de `B` según qué le
-cambia la limpieza, comparando las figuras con y sin ella (`compararLimpiezaPrefijo_`, que
-comparte el matcheo con `figurasEnTexto_`):
+`rehacer_medirFiguraEnPrefijo()` corrió el **25/09 20:18** (280 formularios en ventana / 776
+vivos), comparando las figuras con y sin la limpieza:
 
-- **`PIERDE la figura`** → el costo. **Hipótesis, sin medir:** que explique buena parte del
-  37,3% de `figura_no_reconocida` del bloque 2f. Cuánto, lo dice el paso 2 re-corrido, no esto;
-- **`EVITA multi_figura`** → el beneficio. Es el único caso posible **por construcción**:
-  borrar texto sólo puede quitar figuras, así que la limpieza sólo ayuda cuando baja de 2+ a 1.
-  Ojo: sin la limpieza esos formularios **no se escribirían mal**. `evaluarCandidatos_`
-  (`20_UpsertDestino.js`, el bloque de veredicto) manda un score bajo a `SIN_MATCH` y un
-  `multi_figura` a `REVISAR_MATCH`, en ese orden y antes del margen. El beneficio es menos
-  revisión a mano;
-- **`otro`** → **sólo** debería aparecer por recortes desalineados de `limpiarPrefijos_`: si
-  normalizar acorta el prefijo (dos espacios, una tilde descompuesta) y no hay espacio después
-  del separador, el corte deja restos (`-Palermo`, `I-Palermo`). Cualquier otra cosa en `otro`
-  es un caso para mirar.
+```
+EVITA multi_figura   0 |  0     ← el único beneficio posible (por construcción)
+sigue multi_figura   0 |  0
+PIERDE la figura    18 | 41     ← una sola forma: Jorge Macri → ninguna
+otro                 0 |  0
+```
 
-**Lo que esta medición no cubre:** `limpiarPrefijos_` también recorta el texto del que
-`leerCandidatos_` saca barrio, comuna, eje, hora y fecha (`const limpio = limpiarPrefijos_(nombre)`),
-y `diagScores()` la usa para la fecha. Sacarla de `figurasEnTexto_` no toca esos usos; sacarla
-del todo sí, y eso no está medido.
+**El beneficio para la figura es cero, también en el histórico.** `figurasEnTexto_` pasó a buscar
+sobre el texto completo, como el legado.
 
-Si `EVITA` da cero o casi cero en la ventana, `figurasEnTexto_` deja de limpiar y vuelve a
-correr sobre el texto completo, como el legado. Si no, los grupos *prefijo → cuerpo* dicen si
-alcanza con acotarla. En los dos casos, **volver a correr el paso 2** y ver cuánto se mueve el
-grupo bajo: este log cuenta formularios, no matches. **Hipótesis, sin medir:** que el grupo
-bajo baje. Lo que sí está medido es que el 37,3% del 2f es `figura_no_reconocida`, no cuánto
-de eso es por el prefijo.
+- **No se tocó** `limpiarPrefijos_` en los demás usos: `leerCandidatos_` sigue detectando barrio,
+  comuna, eje, temática, hora y fecha sobre el texto limpio, y `diagScores()` la usa para la
+  fecha. Ahí **sigue siendo una hipótesis sin medir**.
+- **Corregido respecto de la versión anterior:** se había anotado como hipótesis que `PIERDE`
+  explicaría "buena parte del 37,3%" del 2f. **18 formularios difícilmente explican 103 filas.**
+  Cuánto aportan lo dirá el paso 2 (comparar contra la línea base de la sección 1); **el resto no
+  tiene causa medida**, y las variantes de grafía son candidata, sin medir.
 
-### j) ¿La copia de `legToDate_` que gana afecta al activador de Agenda?
+### j) ~~¿La copia de `legToDate_` que gana afecta al activador de Agenda?~~ CERRADA: no, hoy no
 
-Log de **`paso5_verificarLegToDate()`**. Contexto en CLAUDE.md, *"Pendiente: los `leg*_`
-duplicados"*. Dos puntos:
+`rehacer_verificarLegToDate()` corrió el **25/09 23:26**:
 
-1. **Qué copia gana**, preguntándole a la función: `'03/04/2026'` → `03/04` es una copia día
-   primero (A2 o Upset, idénticas); → `04/03` es la de `Sync B to B2.js`. El `Date` de prueba lo
-   confirma por la hora: `12:00` es A2/Upset, `15:30` es B2.
-2. **Qué le llega a la línea 72**: Date / string / número en `Fecha (manual)`, en `Fecha (auto)`
-   y en lo que efectivamente usa la línea (la manual si tiene algo, si no la auto), con los
-   string ambiguos (día y mes ≤ 12) y hasta 5 ejemplos.
+- gana una copia **día primero** (A2/Upset): `'03/04/2026'` → `03/04`, el `Date` de las 15:30 →
+  `12:00`;
+- a la línea 72 **no le llega ningún `string`**: `Fecha (manual)` está vacía en las 5 filas, y lo
+  que llega son 4 `Date` de `Fecha (auto)`. Con `Date` las tres copias dan el mismo día.
 
-Cómo decide, **ya verificado sobre el código** (las tres copias corridas en Node con zona
-horaria de Buenos Aires):
-
-- con un `Date`, las tres dan **el mismo día**; sólo cambia la hora (A2/Upset fijan las 12:00,
-  B2 deja la original). Después de la línea 72 la fecha se formatea `dd/MM/yyyy` para el ID
-  (`buildIdFinal_`), se escribe en la solapa espejo y ordena: con `Date`, **da igual qué copia
-  gane**;
-- `Fecha (auto)` la escribe la ingesta como `Date` con formato `dd/mm/yyyy`
-  (`Agenda traer datos del mail.js:190-204`), así que ahí llega `Date`. `Fecha (manual)` la
-  tipea una persona: **eso es lo que hay que medir**;
-- con `string` sí difieren: B2 lee `03/04` como 4 de marzo, da `null` para `13/04`, y corre
-  `2026-04-03` al día anterior.
-
-Si el punto 1 da día primero, o si no llega ningún string: **no afecta hoy**, y el pendiente
-queda para antes de encender el pipeline. Si gana B2 **y** llegan strings ambiguos con día ≠
-mes, la solapa espejo `Agenda` tiene fechas corridas hoy.
+El pendiente queda **latente** en CLAUDE.md: hace falta que un push cambie el orden de carga y
+gane la copia de B2 **y** que alguien tipee una fecha como texto. El arreglo (las tres copias día
+primero) va, a más tardar, en la Fase 9. Rehacer la medición si cambia el orden de los archivos
+o si empieza a cargarse `Fecha (manual)`.
 
 ---
 
@@ -232,7 +224,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso5_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -242,7 +234,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/01_hueco_sexo_edades.js](../diagnostico/01_hueco_sexo_edades.js) | `diagFase1()` y uno por reporte |
 | [diagnostico/02_corte_B_a_B2.js](../diagnostico/02_corte_B_a_B2.js) | `diagCorteB()`, `diagDupB2()`, `diagFechaFin()`, `diagScores()`, `diagAnclaFecha()` |
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
-| [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (paso 5) |
+| [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (`rehacer_verificarLegToDate()`, corrido el 25/09) |
 
 Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
 `diagAnclaFecha()` queda como registro de una medición cerrada. **No hace falta volver a
