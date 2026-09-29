@@ -21,26 +21,21 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO: paso9_medirDesempatePorEvidencia(). Sólo lectura, sólo log. Muchas de las 38
- *      REVISAR_MATCH de la ventana son Macri con dos candidatos a 1,0: el "1 a 1" (figura +
- *      fecha exacta + comuna) contra un temático (figura + fecha a 1 día, sin ubicación). Simula
- *      desempatar por evidencia —señales, distancia, inscriptos— y lista los casos resueltos
- *      para que una persona confirme el ganador. SIN esa confirmación no se implementa.
- *      paso8_medirVariantesSinFigura() y paso7_formulariosFaltantes(), si no corrieron.
- *      Después, paso2_upsertEnSeco() otra vez: el 2f ya separa otra_figura / sin_figura /
- *      posible_grafia, y el bloque 3 simula un tope de pares por fila.
+ *  >>> PRÓXIMO: paso2_upsertEnSeco(). Primera corrida con la regla SIN_FIGURA_POR_UBICACION (la
+ *      variante D-C del paso 8, implementada) y con el tope de 3 pares por fila en
+ *      EMPAREJAR_MANUAL. PREDICCIÓN anotada antes de correrlo (ventana): escribiría ≈ 241,
+ *      revisar ≈ 39, sin match ≈ 25. Si se aleja mucho, mirar antes de seguir.
+ *      paso9_medirDesempatePorEvidencia(): medición, sus números se leen antes de implementar
+ *      nada; puede correrse antes o después del paso 2.
  *
- *  LÍNEA BASE para la próxima comparación: la corrida en seco del 26/09 14:21. El destino pasó
- *  de 802 a 810 filas. Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE), ventana
- *  310 filas (304 evaluables):
+ *  LÍNEA BASE vigente: la corrida en seco del 26/09 16:45, con B actualizada (807 formularios).
+ *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE), 304 evaluables:
  *
- *        escribiría   223 (ventana)
- *        a revisar     30 (ventana)
- *        sin match     51 (ventana) = 25 sin formulario propio + 18 con un formulario cercano
- *                                     sin figura (13 de la serie de Seguridad) + 8 con su
- *                                     figura pero bajo el umbral
+ *        escribiría   229 (ventana)
+ *        a revisar     38 (ventana)
+ *        sin match     37 (ventana) = score_bajo 23 + sin_formulario_propio 14
  *
- *      Las anteriores (25/09 18:13 y 26/09 11:36) están en docs/ESTADO.md y CLAUDE.md.
+ *      Las anteriores (25/09 18:13, 26/09 11:36 y 14:21) están en docs/ESTADO.md y CLAUDE.md.
  *
  *  La secuencia, en orden:
  *
@@ -65,8 +60,7 @@
  *   paso7_formulariosFaltantes() → diagFormulariosFaltantes()   NO escribe en ninguna planilla:
  *                                                sólo log. Lee además Hoja1 del origen (3) por
  *                                                openById, sólo lectura.
- *   paso8_medirVariantesSinFigura() → medirVariantesSinFigura()   NO escribe en ninguna planilla:
- *                                                sólo log. Misma simulación que el paso 6.
+ *   (paso 8 ya corrió: rehacer_medirVariantesSinFigura(), en YA CORRIDOS.)
  *   paso9_medirDesempatePorEvidencia() → medirDesempatePorEvidencia()   NO escribe en ninguna
  *                                                planilla: sólo log. Recalcula el plan en memoria.
  *
@@ -144,15 +138,6 @@ function paso7_formulariosFaltantes() {
   return diagFormulariosFaltantes();
 }
 
-function paso8_medirVariantesSinFigura() {
-  _anunciar_('paso 8 — variantes del cambio "sin figura"',
-             'medirVariantesSinFigura()  [20_UpsertDestino.js]',
-             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
-             'sólo el log: para cada variante (0, A, B, C, D-B, D-C), cuántas filas objetivo ' +
-             'llegan al umbral, cuántas escritas quedan con empate o rival, y los casos');
-  return medirVariantesSinFigura();
-}
-
 function paso9_medirDesempatePorEvidencia() {
   _anunciar_('paso 9 — desempate por evidencia',
              'medirDesempatePorEvidencia()  [20_UpsertDestino.js]',
@@ -191,6 +176,20 @@ function rehacer_verificarLegToDate() {
              'sólo el log: la respuesta de legToDate_ a \'03/04/2026\' (dice qué copia gana) y el ' +
              'conteo de Date / string / ambiguos en Fecha (manual) y Fecha (auto)');
   return diagLegToDate();
+}
+
+/**
+ * Las variantes del cambio "sin figura". Corrió el 26/09 16:46: D-C recuperaba 12 de 14 filas
+ * objetivo con costo 0 | 0 y se implementó (SIN_FIGURA_POR_UBICACION). Queda como registro: sigue
+ * simulando sobre el alcanzable de ANTES de la regla (alcanzableBase), pero los "hoy" del log ya
+ * incluyen la regla, así que sus números no son comparables con los del 26/09.
+ */
+function rehacer_medirVariantesSinFigura() {
+  _anunciar_('ya corrido — variantes del cambio "sin figura"',
+             'medirVariantesSinFigura()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: por variante, filas objetivo que llegan, costo y los casos');
+  return medirVariantesSinFigura();
 }
 
 /** Fase 1, los cinco juntos: el hueco de sexo/edades contra los dos saltos del staging. */

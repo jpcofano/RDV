@@ -284,7 +284,7 @@ function medirFormulariosSinFigura() {
 
   // --- 3. la otra cara: el costo ---
   const simular = function (sc) {
-    const alc = sc.alcanzable - PESOS_MATCH.figura;
+    const alc = sc.alcanzableBase - PESOS_MATCH.figura;   // el de antes de la regla, sin restarla dos veces
     return alc > 0 ? redondear_(sc.absoluto / alc) : 0;
   };
   const costo = { escritas: contador_(), empate: contador_(), rival: contador_(),
@@ -459,7 +459,7 @@ function medirVariantesSinFigura() {
   const esSinFig = {};
   sinFig.forEach(function (c) { esSinFig[c.fila] = true; });
   const simular = function (sc) {
-    const alc = sc.alcanzable - PESOS_MATCH.figura;
+    const alc = sc.alcanzableBase - PESOS_MATCH.figura;   // el de antes de la regla, sin restarla dos veces
     return alc > 0 ? redondear_(sc.absoluto / alc) : 0;
   };
 
@@ -873,6 +873,7 @@ function calcularPlan_(enSeco) {
    */
   const porFila = {};
   const sinPropio = contador_(), sinPropioReciente = contador_();
+  const porSinFigEscribe = contador_(), porSinFigRevisa = contador_();   // SIN_FIGURA_POR_UBICACION
   const usados = {};
   const hist = [];
   for (let k = 0; k < 10; k++) hist.push(contador_());
@@ -963,10 +964,12 @@ function calcularPlan_(enSeco) {
 
     if (r.veredicto === 'escribiria') {
       sumar_(res.escribiria, ev);
+      if (r.mejor.porSinFigura) sumar_(porSinFigEscribe, ev);
       decisiones.push({ fila: f, cand: r.mejor.c, score: r.mejor.score,
                         nivel: r.mejor.nivel, dist: r.mejor.dist });
       usados[r.mejor.c.fila] = true;
     } else if (r.veredicto === 'REVISAR_MATCH') {
+      if (r.mejor.porSinFigura) sumar_(porSinFigRevisa, ev);
       sumar_(res.revisar, ev); cuenta(r.motivo, ev);
       filasRevisar.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha),
                          r.mejor.c.nombre, r.mejor.score, r.segundoScore, r.margen,
@@ -1009,6 +1012,7 @@ function calcularPlan_(enSeco) {
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
+           porSinFigEscribe: porSinFigEscribe, porSinFigRevisa: porSinFigRevisa,
            comunas: comunas,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
@@ -1130,6 +1134,9 @@ function logResumen_(plan) {
   Object.keys(plan.motivos).sort().forEach(function (m) {
     Logger.log('    %s: %s', m, _dc_(plan.motivos[m]));
   });
+  Logger.log('  por la regla sin_figura_por_ubicacion (SIN_FIGURA_POR_UBICACION = %s): escribiría %s' +
+             ' | a revisar %s', SIN_FIGURA_POR_UBICACION, _dc_(plan.porSinFigEscribe || contador_()),
+             _dc_(plan.porSinFigRevisa || contador_()));
   if (plan.sinPropio && plan.sinPropio.t) {
     Logger.log('  sin_formulario_propio NO es un score que no alcanzó: toda reunión tiene formulario');
     Logger.log('  (CLAUDE.md 1), así que falta en B o está mal fechado. El veredicto sigue siendo');
@@ -1304,16 +1311,29 @@ function logResumen_(plan) {
   const ts = e.topeSim;
   if (ts) {
     const dens = function (p, f) { return f ? Math.round(p * 10 / f) / 10 : 0; };
-    Logger.log('  --- SIMULACIÓN: tope de %s pares por fila (MAX_PARES_POR_FILA = %s) ---',
-               ts.n, MAX_PARES_POR_FILA === null ? 'null, sin tope' : MAX_PARES_POR_FILA);
-    Logger.log('    se eligen por score y después por cercanía de fecha. Es la lista de propuestas:');
-    Logger.log('    no cambia ningún veredicto. Números sobre la lista SIN tope.');
+    Logger.log('  --- TOPE de %s pares por fila (MAX_PARES_POR_FILA = %s), con garantía ---', ts.n,
+               MAX_PARES_POR_FILA === null ? 'null: sólo simulado, no aplicado' : MAX_PARES_POR_FILA);
+    Logger.log('    cada fila se queda con sus %s mejores (score, después cercanía de fecha), pero', ts.n);
+    Logger.log('    un formulario al que el tope dejaría SIN NINGÚN par conserva su mejor par, aunque');
+    Logger.log('    exceda el tope de esa fila. Es la lista de propuestas: no cambia ningún veredicto.');
+    Logger.log('    Números sobre la lista SIN tope.');
     Logger.log('    pares: %s  →  %s   (se cortan %s)', _dc_(ts.antes), _dc_(ts.despues),
                _dc_(ts.cortados));
-    Logger.log('    densidad (ventana): %s → %s pares por fila', dens(ts.antes.v, ts.filasAntes.v),
-               dens(ts.despues.v, ts.filasDespues.v));
-    Logger.log('    filas que quedarían con 0 pares: %s   (tendría que ser 0)', _dc_(ts.filasEnCero));
-    Logger.log('    formularios que se quedarían sin ninguna propuesta: %s', _dc_(ts.formsSinNada));
+    Logger.log('    densidad (ventana): %s → %s pares por fila (sin la garantía: %s)',
+               dens(ts.antes.v, ts.filasAntes.v), dens(ts.despues.v, ts.filasDespues.v),
+               dens(ts.despuesSinGarantiaV, ts.filasDespues.v));
+    Logger.log('    filas que quedan con 0 pares: %s   (tendría que ser 0)', _dc_(ts.filasEnCero));
+    Logger.log('    formularios sin ninguna propuesta: %s   (con la garantía, tendría que ser 0)',
+               _dc_(ts.formsSinNada));
+    if (ts.rescatados.length) {
+      Logger.log('    --- %s formularios que sin la garantía desaparecían, y el par que conservan ---',
+                 ts.rescatados.length);
+      ts.rescatados.forEach(function (x) {
+        Logger.log('      %s  →  %s %s | %s | score %s', x.c.nombre, x.p ? x.p.f.figura : '?',
+                   x.p ? fmtFecha_(x.p.f.fecha) : '', x.p ? (x.p.f.barrio || 'sin barrio') : '',
+                   x.p ? x.p.sc.score : '-');
+      });
+    }
     Object.keys(ts.porFig).map(function (k) { return [k, ts.porFig[k]]; })
       .sort(function (a, b) { return b[1].antes.v - a[1].antes.v; }).slice(0, 5)
       .forEach(function (x) {
@@ -2045,9 +2065,27 @@ function evaluarCandidatos_(f, candidatos, comunas) {
     }
     if (sc.score <= 0) continue;
     limpios.push(sc);
+  }
+
+  /*
+   * Desempate a favor del que nombra la figura (SIN_FIGURA_POR_UBICACION, variante D-C): si hay
+   * un candidato que nombra la figura de la fila y llega al umbral, los formularios SIN figura
+   * no compiten —ni ganan, ni empatan, ni cuentan como rival para el margen—. Si no lo hay,
+   * compiten normal, y dos sin figura empatados van a revisión como cualquier empate.
+   *
+   * Es la misma selección de siempre (`limpios`), filtrada: no un segundo criterio.
+   */
+  let compiten = limpios;
+  if (SIN_FIGURA_POR_UBICACION && limpios.some(function (s) {
+    return s.nombraFigura && s.score >= UMBRAL_MATCH;
+  })) {
+    compiten = limpios.filter(function (s) { return !s.sinFigura; });
+  }
+  // Mejor y segundo, con el mismo desempate de siempre: a igual score gana el primero visto.
+  compiten.forEach(function (sc) {
     if (!mejor || sc.score > mejor.score) { segundo = mejor; mejor = sc; }
     else if (!segundo || sc.score > segundo.score) segundo = sc;
-  }
+  });
 
   // Un candidato en desacuerdo de ubicación no compite con uno limpio, pero si es lo único que
   // hay y el resto de las señales da alto, va a revisión y no a la basura: la contradicción
@@ -2076,7 +2114,7 @@ function evaluarCandidatos_(f, candidatos, comunas) {
    * y no deciden nada: el veredicto ya está tomado arriba.
    */
   const contendientes = (motivo === 'margen_chico')
-    ? limpios.filter(function (s) { return mejor.score - s.score < MARGEN_MINIMO; })
+    ? compiten.filter(function (s) { return mejor.score - s.score < MARGEN_MINIMO; })
     : null;
 
   return { mejor: mejor, segundoScore: s2, margen: margen, veredicto: veredicto, motivo: motivo,
@@ -2214,6 +2252,25 @@ function puntuar_(f, c, comunas) {
                    ejeDeBarrio_(f.barrio) === c.eje.eje);
   const proponible = (sFig > 0) && (distOk || comunaOk || ejeOk);
 
+  /*
+   * --- formularios sin figura, por ubicación (SIN_FIGURA_POR_UBICACION, 00_Config.js) ---
+   *
+   * Un formulario que no nombra a NADIE no puede sumar figura, y con la figura en el
+   * denominador no pasa de 0,56. La figura sale del denominador **sólo** si la ubicación es
+   * evaluable y coincide (barrio o comuna) y la fecha está a ±DIAS_SIN_FIGURA_POR_UBICACION;
+   * si no, puntúa como antes. Es la variante D-C del paso 8; el desempate a favor del que
+   * nombra la figura vive en evaluarCandidatos_.
+   */
+  const alcanzableBase = alcanzable;      // antes de la regla: lo usan las mediciones (pasos 6 y 8)
+  const sinFigura = !c.figurasNorm.length;
+  const porSinFigura = SIN_FIGURA_POR_UBICACION && sinFigura && !desacuerdo &&
+                       pesoUbic > 0 && sUbic === pesoUbic &&
+                       dist !== null && dist <= DIAS_SIN_FIGURA_POR_UBICACION;
+  if (porSinFigura) {
+    alcanzable -= PESOS_MATCH.figura;
+    senales.push('sin_figura_por_ubicacion');
+  }
+
   const obtenido = sFig + sFecha + sUbic + sHora;
   const alcSinUbic = alcanzable - pesoUbic;
 
@@ -2228,7 +2285,7 @@ function puntuar_(f, c, comunas) {
     c: c,
     score: redondear_(alcanzable > 0 ? obtenido / alcanzable : 0),
     perdido: {
-      figura: redondear_(PESOS_MATCH.figura - sFig),
+      figura: porSinFigura ? 0 : redondear_(PESOS_MATCH.figura - sFig),   // no evaluada: no cuesta
       fecha:  dist === null ? 0 : redondear_(PESOS_MATCH.fechaExacta - sFecha),
       ubic:   redondear_(pesoUbic - sUbic),
       hora:   (f.horaMin !== null && c.horaMin !== null) ? redondear_(PESOS_MATCH.hora - sHora) : 0
@@ -2241,6 +2298,10 @@ function puntuar_(f, c, comunas) {
     resto: redondear_(alcSinUbic > 0 ? (obtenido - sUbic) / alcSinUbic : 0),
     absoluto: redondear_(obtenido),
     alcanzable: redondear_(alcanzable),
+    alcanzableBase: redondear_(alcanzableBase),
+    sinFigura: sinFigura,
+    porSinFigura: porSinFigura,
+    nombraFigura: sFig > 0,
     dist: dist,
     relevante: relevante,
     proponible: proponible,
@@ -2303,9 +2364,9 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
    * debería ser ninguna) y cuántos formularios se quedarían sin propuesta. Después, si
    * MAX_PARES_POR_FILA está fijado, se aplica de verdad. No toca ningún veredicto.
    */
-  const topeSim = _simularTopePorFila_(grupos, MAX_PARES_POR_FILA_SIMULADO);
+  const topeSim = _simularTopePorFila_(grupos, MAX_PARES_POR_FILA || MAX_PARES_POR_FILA_SIMULADO);
   if (MAX_PARES_POR_FILA) {
-    const quedan = _topePorFila_(grupos, MAX_PARES_POR_FILA);
+    const quedan = _topePorFila_(grupos, MAX_PARES_POR_FILA, true);
     for (let i = grupos.length - 1; i >= 0; i--) {
       const g = grupos[i];
       g.props = g.props.filter(function (p) { return quedan[g.c.fila + '|' + p.f.fila]; });
@@ -2429,8 +2490,19 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
 /**
  * Los pares que se quedan con un tope de `n` por fila del destino: `{ 'formFila|destFila': true }`.
  * Orden para elegir: score, después cercanía de fecha (sin fecha, al final).
+ *
+ * Con `garantizar`, **un formulario al que el tope dejaría sin ningún par conserva su mejor par**,
+ * aunque exceda el tope de esa fila:
+ * el tope achica la lista de cada fila, pero no puede hacer desaparecer un formulario de la
+ * propuesta —ese formulario no tendría otro lugar donde aparecer—.
  */
-function _topePorFila_(grupos, n) {
+function _topePorFila_(grupos, n, garantizar) {
+  const orden = function (a, b) {
+    if (b.sc.score !== a.sc.score) return b.sc.score - a.sc.score;
+    const da = a.sc.dist === null ? Infinity : a.sc.dist;
+    const db = b.sc.dist === null ? Infinity : b.sc.dist;
+    return da - db;
+  };
   const porFilaDest = {};
   grupos.forEach(function (g) {
     g.props.forEach(function (p) {
@@ -2439,37 +2511,55 @@ function _topePorFila_(grupos, n) {
   });
   const quedan = {};
   Object.keys(porFilaDest).forEach(function (k) {
-    porFilaDest[k].sort(function (a, b) {
-      if (b.p.sc.score !== a.p.sc.score) return b.p.sc.score - a.p.sc.score;
-      const da = a.p.sc.dist === null ? Infinity : a.p.sc.dist;
-      const db = b.p.sc.dist === null ? Infinity : b.p.sc.dist;
-      return da - db;
-    }).slice(0, n).forEach(function (x) { quedan[x.g.c.fila + '|' + x.p.f.fila] = true; });
+    porFilaDest[k].sort(function (a, b) { return orden(a.p, b.p); })
+      .slice(0, n).forEach(function (x) { quedan[x.g.c.fila + '|' + x.p.f.fila] = true; });
   });
+  if (garantizar) {
+    // Sólo a los que el tope dejó sin NINGÚN par: no se trata de agregar pares, sino de que
+    // ningún formulario desaparezca de la lista.
+    grupos.forEach(function (g) {
+      const leQueda = g.props.some(function (p) { return quedan[g.c.fila + '|' + p.f.fila]; });
+      if (leQueda) return;
+      const mejor = g.props.slice().sort(orden)[0];
+      if (mejor) quedan[g.c.fila + '|' + mejor.f.fila] = true;
+    });
+  }
   return quedan;
 }
 
-/** Qué haría un tope de `n` por fila, sin aplicarlo. [ventana | total] por la fecha de la fila. */
+/**
+ * Qué hace un tope de `n` por fila, sobre la lista SIN tope. [ventana | total] por la fecha de la
+ * fila. Con garantía (el formulario que quedaría sin ningún par conserva su mejor par) es lo que se
+ * aplica; sin garantía se mide sólo para listar los formularios que la garantía rescata.
+ */
 function _simularTopePorFila_(grupos, n) {
-  const quedan = _topePorFila_(grupos, n);
+  const quedan = _topePorFila_(grupos, n, true);
+  const sinGarantia = _topePorFila_(grupos, n, false);
   const antes = contador_(), despues = contador_(), cortados = contador_();
   const filasAntes = {}, filasDespues = {}, formsSinNada = contador_();
-  const porFig = {};
+  const porFig = {}, rescatados = [];
+  let despuesSinG = 0;
   grupos.forEach(function (g) {
-    let leQueda = false;
+    let leQueda = false, leQuedabaSinG = false;
     g.props.forEach(function (p) {
       const ev = enVentanaAnalisis_(p.f.fecha);
       const k = p.f.figura || '(sin figura)';
+      const key = g.c.fila + '|' + p.f.fila;
       if (!porFig[k]) porFig[k] = { antes: contador_(), despues: contador_() };
       sumar_(antes, ev); sumar_(porFig[k].antes, ev);
       filasAntes[p.f.fila] = ev;
-      if (quedan[g.c.fila + '|' + p.f.fila]) {
+      if (sinGarantia[key]) { leQuedabaSinG = true; if (ev) despuesSinG++; }
+      if (quedan[key]) {
         sumar_(despues, ev); sumar_(porFig[k].despues, ev);
         filasDespues[p.f.fila] = ev;
         leQueda = true;
       } else sumar_(cortados, ev);
     });
     if (!leQueda) sumar_(formsSinNada, enVentanaAnalisis_(g.c.det && g.c.det.mejor));
+    if (!leQuedabaSinG) {
+      const mejor = g.props.filter(function (p) { return quedan[g.c.fila + '|' + p.f.fila]; })[0];
+      rescatados.push({ c: g.c, p: mejor });
+    }
   });
   const cuenta = function (m) {
     const c = contador_();
@@ -2479,7 +2569,8 @@ function _simularTopePorFila_(grupos, n) {
   const fA = cuenta(filasAntes), fD = cuenta(filasDespues);
   const filasEnCero = { v: fA.v - fD.v, t: fA.t - fD.t };
   return { n: n, antes: antes, despues: despues, cortados: cortados, filasAntes: fA,
-           filasDespues: fD, filasEnCero: filasEnCero, formsSinNada: formsSinNada, porFig: porFig };
+           filasDespues: fD, filasEnCero: filasEnCero, formsSinNada: formsSinNada, porFig: porFig,
+           rescatados: rescatados, despuesSinGarantiaV: despuesSinG };
 }
 
 function leerConfirmaciones_() {

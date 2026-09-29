@@ -1315,6 +1315,18 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   formulario que nombra la figura (D)— con la misma simulación y sin tocar `puntuar_`. Cuenta
   también las filas que irían a revisión por **dos formularios iguales** (los dos
   `Comuna 1 Sur - 3/9`, con 0 y 116 inscriptos).
+
+  **Resultado del paso 8 (26/09 16:46, ventana) e implementación:** la variante **D-C** —ubicación
+  coincidente obligatoria, fecha a ±1 y desempate a favor del que nombra la figura— recupera
+  **12 de 14** filas objetivo con **costo 0 | 0**; 1 va a revisión (Landerreche 03/09, los dos
+  `Comuna 1 Sur - 3/9`), que es lo correcto. **Implementada** detrás de
+  `SIN_FIGURA_POR_UBICACION = true` (decisión 2, *"Formularios sin figura, por ubicación"*).
+- **Los formularios de Hernán Lombardi de 2026 faltan en la consulta** (medido el 26/09, con B
+  actualizada a 807 formularios): el último suyo que llega es de **fines de 11/2025**, y hay
+  **8 filas en ventana** sin formulario. Es un faltante de la consulta que llena `Hoja1` en
+  (3), no nuestro: toda reunión tiene formulario (sección 1). La misma actualización de `B`
+  **sí resolvió** los faltantes de Jorge Macri posteriores al 14/08 (el formato `"1 a 1"`,
+  abajo).
 - **`JORGE MACRI - Encuentro "1 a 1" - Día d/m Barrio` ES la reunión de Macri**, no una lista de
   espera (confirmado por el usuario). Son los formularios que faltaban después del 14/08: 17/9
   Belgrano, 24/9 Floresta, 29/9 Villa Santa Rita y Belgrano. Antes de saberlo, esas filas
@@ -1625,6 +1637,24 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | ~~sin barrio, comuna ni eje, **`EVENTO` del destino en el nombre del formulario**~~ | ~~+0,25~~ **descartado**: `EVENTO` es una categoría (718/802), flag en `false` |
    | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
    | ni barrio, ni comuna, ni eje, ni evento | **no puntúa ni cuenta para el denominador** |
+
+   #### Formularios sin figura, por ubicación (`SIN_FIGURA_POR_UBICACION`, desde el 26/09)
+
+   Un formulario que **no nombra a nadie** (3.3, el formato de 09/2026) no puede sumar figura, y
+   con la figura en el denominador no pasa de 0,56. Para esos formularios, **la figura sale del
+   denominador sólo si la ubicación es evaluable y coincide** (barrio o comuna) **y la fecha está a
+   ±1 día**. Si no, puntúan como antes: un `"Gustavo Arengo 26/7"` sin ubicación no gana nada.
+
+   **Desempate:** un formulario sin figura **nunca desplaza** —ni empata, ni supera, ni cuenta
+   como rival para el margen— a un ganador que nombra la figura de la fila y llega al umbral.
+   Contra un candidato con figura **bajo** el umbral compite normal. Dos sin figura empatados van
+   a revisión, como cualquier empate. Se hace filtrando la misma selección de `evaluarCandidatos_`
+   (`limpios`), no con un segundo criterio.
+
+   La traza lo dice: `form_nivel` (y la columna de señales de `REVISAR_MATCH`) lleva
+   `sin_figura_por_ubicacion`, y el log cuenta cuántas filas se escriben o van a revisión por la
+   regla. Medido antes (paso 8, variante D-C): 12 de 14 objetivos, costo 0 | 0. **El desempate
+   por evidencia del paso 9 es otra cosa y NO está implementado.**
 
    #### `EVENTO`: la ubicación de las reuniones temáticas — **DESCARTADO por medición**
 
@@ -2562,11 +2592,34 @@ toma el **más cercano en fecha** y dice si entró, y si no, por qué —
 > apellido de la figura aparece en el nombre), con el mismo cruce por veredicto. La suma de las
 > tres es el rótulo viejo, y el log la muestra para comparar. **Cuánto pesa cada una lo dice la
 > próxima corrida**: lo de "mayormente otra figura" sale de leer los ejemplos, no de un conteo.
+>
+> **Medido (26/09 16:45, ventana): `otra_figura` 73, `sin_figura` 16, `posible_grafia` 0.** El
+> 32,7% era "otra figura": otras reuniones de la misma comuna. La grafía no pesa en la ventana;
+> afecta sólo al histórico. Premisa cerrada en §6.
 
-#### La corrida en seco del 26/09 14:21: línea base vigente
+#### La corrida en seco del 26/09 16:45: línea base vigente
+
+Con **B actualizada: 807 formularios**. Corte de ventana fijo en 26/03/2026; **304 evaluables**.
+Es contra la que se compara la próxima, que ya corre con `SIN_FIGURA_POR_UBICACION` y el tope de
+`EMPAREJAR_MANUAL`.
+
+| (ventana) | 26/09 16:45 | predicción para la próxima (anotada antes de correrla) |
+|---|---|---|
+| escribiría | **229** | ≈ 241 |
+| a revisar | **38** | ≈ 39 |
+| sin match | **37** — `score_bajo` 23, `sin_formulario_propio` 14 | ≈ 25 |
+
+La actualización de `B` resolvió los faltantes de Jorge Macri posteriores al 14/08; siguen
+faltando los de Hernán Lombardi de 2026 (3.3).
+
+**`EMPAREJAR_MANUAL`:** `MAX_PARES_POR_FILA = 3`, con la garantía de que un formulario al que el
+tope dejaría sin ningún par conserva su mejor par. Simulado sin la garantía: densidad 11,0 → 2,6,
+ninguna fila vacía, pero 5 formularios desaparecían de la lista.
+
+#### La corrida en seco del 26/09 14:21: línea base anterior
 
 El destino pasó de **802 a 810** filas. Corte de ventana fijo en 26/03/2026; ventana **310**
-filas, **304 evaluables**. Es contra la que se compara la próxima.
+filas, **304 evaluables**.
 
 | (ventana) | 26/09 14:21 |
 |---|---|
@@ -2587,7 +2640,7 @@ ventana (10,3 por fila); el resto está entre 1,3 y 3,3. `MAX_PARES_POR_FILA` (d
 permite un tope por fila, elegido por score y después por cercanía de fecha, y el bloque 3 lo
 simula en 3 antes de fijarlo. Es una lista de propuestas: no cambia ningún veredicto.
 
-#### La corrida en seco del 26/09 11:36: línea base anterior
+#### La corrida en seco del 26/09 11:36: línea base más vieja
 
 Primera corrida con la figura buscada sobre el texto completo. Es contra la que se compara la
 próxima. Corte de ventana fijo en 26/03/2026 (3.5), base 302 filas.
@@ -2879,7 +2932,7 @@ No es prolijidad. En esta migración cambiamos de premisa **doce veces**:
 | `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
 | `Para Revisar` es el destino del flujo Agenda | es el staging del pipeline principal (`Upset Base FInal.js:7`); Agenda también escribe ahí |
 | un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. **Beneficio medido para la figura: 0** (25/09 20:18: `EVITA multi_figura` 0 \| 0; `PIERDE la figura` 18 \| 41). Sale de `figurasEnTexto_`; los demás usos siguen sin medir. Corrida del 26/09 con el cambio: 2f 103 → 92 en ventana, y los temáticos B 624, 705, 646 y 686 dejaron de ser huérfanos. **Ojo: el 2f (37,3% el 25/09, 32,7% el 26/09) no cuenta filas que fallan** —cuenta filas cuyo formulario de comuna más cercano no ganó, y muchas se escriben igual con otro—; lo que falla de verdad lo separa el cruce motivo × veredicto |
-| el 37,3% / 32,7% del 2f (`figura_no_reconocida_en_el_formulario`) era una falla de reconocimiento de la figura — **fue lo que motivó investigar `limpiarPrefijos_`** | la categoría estaba mal rotulada: era "el formulario no nombra la figura de la fila", y según los ejemplos del log venía mayormente de formularios de **otra figura** (otras reuniones de la misma comuna). Separada en `otra_figura` / `sin_figura` / `posible_grafia`; el peso de cada una lo da la próxima corrida |
+| el 37,3% / 32,7% del 2f (`figura_no_reconocida_en_el_formulario`) era una falla de reconocimiento de la figura — **fue lo que motivó investigar `limpiarPrefijos_`** | la categoría estaba mal rotulada: era "el formulario no nombra la figura de la fila", y venía de formularios de **otra figura** (otras reuniones de la misma comuna). **Cerrada con el conteo** (26/09 16:45, ventana): `otra_figura` 73, `sin_figura` 16, `posible_grafia` 0. La grafía afecta sólo al histórico |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

@@ -194,6 +194,28 @@ const PESOS_MATCH = {
  */
 const EJE_COMO_UBICACION = false;
 
+/**
+ * **Formularios sin figura, por ubicación** (la variante D-C del paso 8, implementada).
+ *
+ * Desde 09/2026 hay formularios que no nombran a nadie (`VÍNCULO CIUDADANO - Encuentro con
+ * vecinos sobre Seguridad - Comuna X - d/m`, CLAUDE.md 3.3). Con la figura siempre en el
+ * denominador no pueden pasar de 0,56. Con esto encendido, para un formulario sin figura:
+ *
+ *   - la figura SALE del denominador sólo si la ubicación es evaluable y coincide (barrio o
+ *     comuna) Y la fecha está a ±DIAS_SIN_FIGURA_POR_UBICACION. Si no, puntúa como antes;
+ *   - desempate: un formulario sin figura nunca desplaza —ni empata, ni supera, ni cuenta como
+ *     rival para el margen— a un ganador que nombra la figura de la fila y llega al umbral.
+ *     Contra un candidato con figura bajo el umbral compite normal. Dos sin figura empatados
+ *     van a revisión, como siempre.
+ *
+ * Medido antes de implementar (paso 8, 26/09 16:46, ventana): recupera **12 de 14** filas
+ * objetivo con **costo 0 | 0**; 1 va a revisión (Landerreche 03/09: dos `Comuna 1 Sur - 3/9`,
+ * con 0 y 116 inscriptos), que es lo correcto. La traza lo dice: `form_nivel` lleva
+ * `sin_figura_por_ubicacion`.
+ */
+const SIN_FIGURA_POR_UBICACION = true;
+const DIAS_SIN_FIGURA_POR_UBICACION = 1;
+
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
 const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste'];
 
@@ -483,8 +505,14 @@ const VENTANA_EMPAREJAR_DIAS = 21;
  *
  * Es una lista de propuestas para una persona: **no cambia ningún veredicto**. El bloque 3 del log
  * simula el tope en 3 aunque esto esté en `null`, para decidir con el número delante.
+ *
+ * **Fijado en 3 (26/09), con una garantía:** un formulario al que el tope dejaría sin ningún par
+ * conserva su mejor par, aunque exceda el tope de esa fila. Simulado sin la garantía, la densidad
+ * bajaba de 11,0 a 2,6 sin dejar ninguna fila vacía, pero 5 formularios se quedaban sin ninguna
+ * propuesta: el tope no puede hacer desaparecer un formulario de la lista. El bloque 3 lista los
+ * que la garantía rescata, con el par que conservan, y la densidad final.
  */
-const MAX_PARES_POR_FILA = null;
+const MAX_PARES_POR_FILA = 3;
 
 /** El tope que el bloque 3 simula siempre, para ver qué haría uno antes de fijarlo. */
 const MAX_PARES_POR_FILA_SIMULADO = 3;

@@ -27,25 +27,33 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 26/09 14:21; **se vuelve a correr después del 8** |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 26/09 16:45. **← PRÓXIMO**: primera corrida con `SIN_FIGURA_POR_UBICACION` y el tope de `EMPAREJAR_MANUAL` |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 |
-| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Lee `Hoja1` del origen por `openById` |
-| 8 | `paso8_medirVariantesSinFigura()` | `medirVariantesSinFigura()` | variantes del cambio "sin figura": ubicación obligatoria, fecha estricta, desempate (decisión p) | **no escribe en ninguna planilla**; sólo log |
-| 9 | `paso9_medirDesempatePorEvidencia()` | `medirDesempatePorEvidencia()` | desempatar las `margen_chico` por señales, distancia e inscriptos (decisión q) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
+| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 16:42 |
+| 9 | `paso9_medirDesempatePorEvidencia()` | `medirDesempatePorEvidencia()` | desempatar las `margen_chico` por señales, distancia e inscriptos (decisión q) | **no escribe en ninguna planilla**; sólo log. Sus números se leen antes de implementar nada |
 
-**Línea base vigente: la corrida en seco del 26/09 14:21.** El destino pasó de 802 a 810 filas.
-Corte de ventana **fijo** en 26/03/2026 (`VENTANA_ANALISIS_DESDE`, `00_Config.js`); ventana 310
-filas, **304 evaluables**:
+El paso 8 ya corrió (26/09 16:46) y está en YA CORRIDOS como `rehacer_medirVariantesSinFigura()`;
+su variante D-C quedó implementada (decisión p).
+
+**Línea base vigente: la corrida en seco del 26/09 16:45**, con `B` actualizada (807
+formularios). Corte de ventana **fijo** en 26/03/2026 (`VENTANA_ANALISIS_DESDE`, `00_Config.js`);
+**304 evaluables**. Y la **predicción** para el próximo paso 2, anotada **antes** de correrlo:
 
 ```
-(ventana)       26/09 14:21
-escribiría          223
-a revisar            30
-sin match            51  =  25 sin formulario propio cerca (ahora sin_formulario_propio; paso 7)
-                         +  18 con un formulario cercano sin figura (13 de la serie de Seguridad)
-                         +   8 con su figura pero bajo el umbral
+(ventana)       26/09 16:45        predicción próximo paso 2
+escribiría          229                  ≈ 241
+a revisar            38                  ≈  39
+sin match            37                  ≈  25
+                     = score_bajo 23 + sin_formulario_propio 14
 ```
+
+Si el paso 2 se aleja mucho de la predicción, mirar antes de seguir: la predicción sale de la
+medición de D-C (12 de 14 objetivos recuperados, 1 a revisión, costo 0).
+
+La corrida anterior, del 26/09 14:21 (810 filas, ventana 310 / 304 evaluables): 223 | 30 | 51,
+con las 51 = 25 sin formulario propio cerca + 18 con un formulario cercano sin figura (13 de la
+serie de Seguridad) + 8 con su figura pero bajo el umbral.
 
 Las anteriores, para la historia (totales, salvo donde dice ventana):
 
@@ -61,9 +69,9 @@ densidad EMPAREJAR_MANUAL           4,9           7,0
 
 > ⚠️ **El 2f no cuenta filas que fallan**, y su categoría estaba mal rotulada. Cuenta filas cuyo
 > formulario de comuna más cercano no fue el que ganó; muchas se escriben igual con otro. Y
-> `figura_no_reconocida` era en realidad *"el formulario no nombra la figura de la fila"*: según
-> los ejemplos del log, mayormente **otra figura** (otras reuniones de la misma comuna), no una
-> falla de reconocimiento. Ahora se separa en `otra_figura` / `sin_figura` / `posible_grafia`
+> `figura_no_reconocida` era en realidad *"el formulario no nombra la figura de la fila"*.
+> **Medido el 26/09 16:45 (ventana): `otra_figura` 73, `sin_figura` 16, `posible_grafia` 0**: el
+> 32,7% era otra figura —otras reuniones de la misma comuna—, no una falla de reconocimiento
 > (decisión l).
 
 Las ventanas del log ya no son comparables con las de antes del 26/09 si no se corrigen por el
@@ -230,6 +238,9 @@ y **`posible_grafia`** (algún apellido de la figura está en el nombre). La sum
 número viejo; el log la muestra para comparar. Mirar cuánto pesa `posible_grafia`: es la única
 que apunta al reconocimiento de nombres.
 
+**Medido (26/09 16:45, ventana): `otra_figura` 73, `sin_figura` 16, `posible_grafia` 0.** La
+grafía no pesa en la ventana; afecta sólo al histórico. Cerrada.
+
 ### m) ¿De dónde sale la densidad de `EMPAREJAR_MANUAL`? (4,9 → 7,0) — medido: Jorge Macri
 
 **Jorge Macri tiene 328 de 346 pares en ventana** (10,3 por fila); el resto está entre 1,3 y 3,3.
@@ -238,8 +249,12 @@ hipótesis de por qué subió), y ahora **simula un tope de 3 pares por fila**: 
 la densidad que queda, cuántas filas quedarían con 0 pares (tendría que ser ninguna) y cuántos
 formularios se quedarían sin propuesta. Orden para elegir: score, después cercanía de fecha.
 
-Para fijarlo: `MAX_PARES_POR_FILA` en `00_Config.js` (hoy `null`, sin tope). Es la lista de
-propuestas: **no cambia ningún veredicto**.
+**Fijado: `MAX_PARES_POR_FILA = 3`**, con una garantía. Simulado sin ella (26/09), la densidad
+bajaba de 11,0 a 2,6 y ninguna fila quedaba vacía, pero **5 formularios se quedaban sin ninguna
+propuesta**. Regla: tope de 3 por fila, pero un formulario al que el tope dejaría sin ningún par
+**conserva su mejor par** aunque exceda el tope de esa fila. El bloque 3 lista esos formularios
+con el par que conservan, y la densidad final. Es la lista de propuestas: **no cambia ningún
+veredicto**.
 
 ### n) ¿Por qué "ninguno a ±3" pasó de 15 a 23?
 
@@ -270,34 +285,32 @@ Las filas con la reunión hace menos de 7 días salen marcadas como **posible "t
 importado"** —las 2 de Jorge Macri del 29/09 son el caso—: volver a mirarlas en unos días antes
 de reclamarlas.
 
-### p) ¿Qué variante del cambio "sin figura" rescata sin costo?
+### p) ~~¿Qué variante del cambio "sin figura" rescata sin costo?~~ CERRADA: D-C, implementada
 
-Log de **`paso8_medirVariantesSinFigura()`**. El paso 6 dio que sacar la figura del denominador
-para los formularios sin figura **sirve** (13 filas SIN_MATCH de la serie de Seguridad se
-recuperan; 11 de 14 formularios tienen exactamente 1 fila de su comuna a 0 días) pero **cuesta**:
-6 | 40 filas que hoy se escriben quedan empatadas o superadas. Las variantes atacan las dos
-causas vistas en el log —el sin figura y sin ubicación que puntúa con la fecha sola, y los
-rivales que entran por ±3—:
+`paso8_…` corrió el **26/09 16:46** (hoy en YA CORRIDOS como `rehacer_medirVariantesSinFigura()`).
+El paso 6 había dado que sacar la figura del denominador para los formularios sin figura sirve
+(13 filas SIN_MATCH de la serie de Seguridad; 11 de 14 formularios con exactamente 1 fila de su
+comuna a 0 días) pero cuesta (6 | 40 filas escritas empatadas o superadas). Las variantes:
 
-| variante | regla |
-|---|---|
-| 0 | el paso 6 tal cual, para comparar |
-| A | ubicación coincidente obligatoria (barrio o comuna) + fecha ±3 |
-| B | A + fecha exacta |
-| C | A + fecha ±1 |
-| D-B, D-C | B o C + desempate |
+| variante | regla | resultado (ventana) |
+|---|---|---|
+| 0 | el paso 6 tal cual | el costo de arriba |
+| A | ubicación coincidente obligatoria (barrio o comuna) + fecha ±3 | — |
+| B | A + fecha exacta | — |
+| C | A + fecha ±1 | — |
+| D-B | B + desempate | — |
+| **D-C** | **C + desempate** | **12 de 14 objetivos recuperados, costo 0 \| 0; 1 a revisión** |
 
-Para cada una, [ventana | total]: cuántas filas objetivo llegan al umbral con margen, cuántas
-escritas quedan con empate o rival (el costo, con los casos listados) y cuántas irían a revisión
-por 2+ formularios (los dos `Comuna 1 Sur - 3/9`, con 0 y 116 inscriptos).
+(De A, B, C y D-B tengo sólo la regla: los números no vinieron en el resumen.)
 
-**El desempate, como está implementado:** un formulario sin figura no desplaza al ganador de hoy
-si ese ganador nombra la figura de la fila (ni empate, ni superación, ni rival); contra un
-candidato con figura bajo el umbral, compite. Si se quería otra cosa, se ajusta antes de leer los
-números de la D.
+**La decisión: D-C, implementada** detrás de `SIN_FIGURA_POR_UBICACION = true` (`00_Config.js`;
+CLAUDE.md decisión 2). La fila que va a revisión es Landerreche 03/09, con dos
+`Comuna 1 Sur - 3/9` (0 y 116 inscriptos): **es lo correcto**, no hay con qué elegir entre dos
+formularios iguales. La traza lleva `sin_figura_por_ubicacion` en `form_nivel`.
 
-**Es el tamaño, no el resultado.** Nada toca `puntuar_`. La variante que se elija se implementa
-aparte y se verifica con el paso 2.
+Probado en Node con los casos del paso 8: Sabor 31/08, Tapia Retiro 03/09, Mraida 16/09 y
+Baistrocchi 08/09 se siguen escribiendo con su formulario; `"Gustavo Arengo 26/7"` (sin
+ubicación) no puntúa por la regla; Landerreche 03/09 va a revisión; Piñeiro 03/09 se recupera.
 
 ### q) ¿El desempate por evidencia elige bien? (confirmar a mano)
 
@@ -379,7 +392,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` a `paso9_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…`, `paso9_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
