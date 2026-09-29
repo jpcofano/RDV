@@ -179,6 +179,16 @@ Solapas que importan:
 **No se modifica nada en (3) ni en `RDV CONJUNTO`.** No se agregan columnas, no se pide un
 `evento_id` al origen. Cualquier identidad se genera de nuestro lado.
 
+**Toda reunión tiene formulario** (confirmado por el usuario, 26/09). Una fila sin formulario es
+un faltante en la consulta de (3), no un caso esperado.
+
+Consecuencia en el código: una fila SIN_MATCH sin ningún formulario que pueda ser el suyo a
+±`TOLERANCIA_REPROGRAMACION_DIAS` —ni uno de su figura ni uno sin figura de su comuna
+(`cercanosDeFila_`)— lleva el motivo **`sin_formulario_propio`**, separado de `score_bajo`. El
+veredicto no cambia; cambia el rótulo, para no presentar "falta el dato" como "el score no
+alcanzó" (§6). `diagFormulariosFaltantes()` (`paso7_…`) separa los candidatos a mal fechado de
+los faltantes, compara `B` contra `Hoja1` y arma la lista para quien mantiene la consulta.
+
 ### Reglas de negocio confirmadas
 
 **a) Una figura no tiene más de una reunión por día.** Confirmado con el equipo.
@@ -2530,6 +2540,18 @@ Lo que se sabe de cada cambio, y lo que no:
   contaban como "sin figura" ahora son "de otra figura" para filas de otras personas. El 2b
   desglosa "ninguno" y lista las filas. Parte del salto puede ser población: el corte se movió
   del 25/03 al 26/03 entre las dos corridas.
+
+> **Y lo que "ninguno" NO es:** no son "reuniones sin formulario". Toda reunión tiene formulario
+> (sección 1), así que cada una de esas filas —25 en ventana en la corrida siguiente— es un
+> formulario **faltante** en la consulta de `Hoja1` o uno **mal fechado** en `B`. Lo separa
+> `diagFormulariosFaltantes()`. Las 2 de Jorge Macri del 29/09 sin nada cerca pueden ser,
+> simplemente, formularios que todavía no se importaron: **posibilidad, no hecho**.
+>
+> Detalle de criterio: "ninguno" del 2b no es exactamente la población de
+> `sin_formulario_propio`. El 2b cuenta como "sin figura" cualquier formulario sin figura a ±3,
+> sea de la comuna que sea (así sigue comparable con las corridas anteriores); el motivo nuevo
+> no toma los de OTRA comuna, porque no pueden ser el formulario de la fila. Los dos salen de la
+> misma función, `cercanosDeFila_`, y el 2b dice cuántos "sin figura" son sólo de otra comuna.
 
 #### La ventana de análisis llega al upsert (y las conclusiones de arriba hay que releerlas)
 

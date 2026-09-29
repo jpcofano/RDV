@@ -24,8 +24,11 @@
  *  >>> PRÓXIMO: paso6_medirFormulariosSinFigura(). Sólo lectura, sólo log. Mide el TAMAÑO de
  *      sacar la figura del denominador para los formularios que no nombran a nadie (el formato
  *      "VÍNCULO CIUDADANO - ... - Comuna X - d/m" de 09/2026). No cambia pesos ni puertas.
+ *      Y paso7_formulariosFaltantes(): las filas sin formulario propio, ¿faltan en la consulta
+ *      de Hoja1 o están mal fechadas? Sale la lista para quien mantiene la consulta. Los dos son
+ *      independientes; el orden da igual.
  *      Después, paso2_upsertEnSeco() otra vez: el log trae el cruce nuevo del 2f, el desglose de
- *      "ninguno" del 2b y los pares por figura del bloque 3.
+ *      "ninguno" del 2b, los pares por figura del bloque 3 y el motivo sin_formulario_propio.
  *
  *  LÍNEA BASE para la próxima comparación: la corrida en seco del 26/09 11:36, ya con la figura
  *  buscada sobre el texto completo. Corte de ventana FIJO en 26/03/2026
@@ -59,6 +62,9 @@
  *   paso6_medirFormulariosSinFigura() → medirFormulariosSinFigura()   NO escribe en ninguna
  *                                                planilla: sólo log. Recalcula el plan (como el
  *                                                paso 2, sin escribir los reportes).
+ *   paso7_formulariosFaltantes() → diagFormulariosFaltantes()   NO escribe en ninguna planilla:
+ *                                                sólo log. Lee además Hoja1 del origen (3) por
+ *                                                openById, sólo lectura.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -123,6 +129,15 @@ function paso6_medirFormulariosSinFigura() {
              'sólo el log: formularios sin figura por forma, filas de su misma comuna a 0 y ±3 ' +
              'días, y cuántas filas que hoy se escriben tendrían empate o rival');
   return medirFormulariosSinFigura();
+}
+
+function paso7_formulariosFaltantes() {
+  _anunciar_('paso 7 — formularios faltantes o mal fechados',
+             'diagFormulariosFaltantes()  [diagnostico/05_formularios_faltantes.js]',
+             'NO escribe en ninguna planilla (recalcula el plan en memoria; lee Hoja1 del origen)',
+             'sólo el log: candidatos a mal fechado, B contra Hoja1, y la lista de FORMULARIOS ' +
+             'FALTANTES para quien mantiene la consulta');
+  return diagFormulariosFaltantes();
 }
 
 // =============================================================================================

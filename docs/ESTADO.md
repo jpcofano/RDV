@@ -30,6 +30,7 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Corrió el 26/09 11:36; **se vuelve a correr después del 6** |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
+| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Lee `Hoja1` del origen por `openById`. **← PRÓXIMO**, junto con el 6 |
 
 **Línea base para la próxima comparación: la corrida en seco del 26/09 11:36**, la primera con
 la figura buscada sobre el texto completo. Corte de ventana **fijo** en 26/03/2026
@@ -221,6 +222,27 @@ las filas (fecha, figura, barrio). Hipótesis, sin medir: los `JORGE MACRI - ...
 "sin figura" ahora son "de otra figura" para filas de otras personas. Parte puede ser población:
 entre las dos corridas el corte se movió; desde ahora está fijo (`VENTANA_ANALISIS_DESDE`).
 
+### o) Las filas sin formulario propio: ¿faltan o están mal fechados?
+
+**Toda reunión tiene formulario** (confirmado el 26/09; CLAUDE.md 1). Las filas "ninguno" del
+2b —25 en ventana en la última corrida— no son reuniones sin formulario: son formularios que
+faltan o que están mal fechados. En el upsert ahora llevan el motivo **`sin_formulario_propio`**
+en `SIN_MATCH`, separado de `score_bajo`; el veredicto no cambia.
+
+Log de **`paso7_formulariosFaltantes()`**, en tres partes:
+
+- **a)** para cada fila, el formulario de su figura más cercano **a cualquier distancia**. Si
+  coincide barrio o comuna y no es ya de otra fila → **candidato a mal fechado**, con la fecha
+  detectada, de dónde salió (texto o `fecha_fin`) y el nombre crudo. Es una sospecha, no un hecho;
+- **b)** `B` contra `Hoja1` por nombre normalizado + `fecha_fin`. Si no hay nada en `Hoja1` que
+  falte en `B`, el faltante está **en la consulta**, no en el IMPORTRANGE;
+- **c)** lo que queda: la lista de **FORMULARIOS FALTANTES** (fecha, figura, barrio, comuna),
+  ventana primero y por fecha. Es lo que se le pasa a quien mantiene la consulta.
+
+Las filas con la reunión hace menos de 7 días salen marcadas como **posible "todavía no
+importado"** —las 2 de Jorge Macri del 29/09 son el caso—: volver a mirarlas en unos días antes
+de reclamarlas.
+
 ---
 
 ## 3. Cómo leer los logs nuevos
@@ -275,7 +297,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -286,6 +308,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/02_corte_B_a_B2.js](../diagnostico/02_corte_B_a_B2.js) | `diagCorteB()`, `diagDupB2()`, `diagFechaFin()`, `diagScores()`, `diagAnclaFecha()` |
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
 | [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (`rehacer_verificarLegToDate()`, corrido el 25/09) |
+| [diagnostico/05_formularios_faltantes.js](../diagnostico/05_formularios_faltantes.js) | `diagFormulariosFaltantes()` — faltantes y mal fechados (`paso7_…`) |
 
 Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
 `diagAnclaFecha()` queda como registro de una medición cerrada. **No hace falta volver a

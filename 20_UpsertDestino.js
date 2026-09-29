@@ -528,6 +528,7 @@ function calcularPlan_(enSeco) {
    */
   const desvio = { porDia: {}, cercaConFigura: contador_(), cercaSinFigura: contador_(),
                    nadaCerca: contador_(), nadaConOtraFigura: contador_(), nadaSinNada: contador_(),
+                   sinFigSoloOtraComuna: contador_(),
                    listaNada: [], listaNadaHist: [],
                    ejemplosSinFigura: [], ejemplosConFigura: [] };
 
@@ -560,6 +561,7 @@ function calcularPlan_(enSeco) {
    * ya se decidió; lo leen el cruce del 2f y medirFormulariosSinFigura().
    */
   const porFila = {};
+  const sinPropio = contador_(), sinPropioReciente = contador_();
   const usados = {};
   const hist = [];
   for (let k = 0; k < 10; k++) hist.push(contador_());
@@ -592,6 +594,20 @@ function calcularPlan_(enSeco) {
     }
 
     const r = evaluarCandidatos_(f, cands.vivos, comunas);
+
+    /*
+     * `sin_formulario_propio`: **toda reunión tiene formulario** (CLAUDE.md 1, confirmado el
+     * 26/09). Una fila SIN_MATCH sin ningún formulario que pueda ser el suyo a ±tolerancia no es
+     * un score que no alcanzó: es un formulario que falta en `B` o está mal fechado. Cambia sólo
+     * el RÓTULO —el veredicto sigue siendo SIN_MATCH— para no presentar "falta el dato" como "el
+     * score no alcanzó" (§6). El motivo original queda en `motivoScore`.
+     */
+    if (r.veredicto === 'SIN_MATCH' && !cercanosDeFila_(f, cands.vivos, comunas).propio) {
+      r.motivoScore = r.motivo;
+      r.motivo = 'sin_formulario_propio';
+      sumar_(sinPropio, ev);
+      if (f.fecha && diasEntre_(_hoy_(), f.fecha) < 7) sumar_(sinPropioReciente, ev);  // hoy − reunión
+    }
     porFila[f.fila] = { veredicto: r.veredicto, motivo: r.motivo || '',
                         cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
                         segundo: r.segundoScore == null ? null : r.segundoScore };
@@ -619,7 +635,7 @@ function calcularPlan_(enSeco) {
       if (ev) scoresVentana.push(r.mejor.score);
       if (r.mejor.score < UMBRAL_MATCH) {
         _autopsia_(bajo, comunaDifieren, f, r.mejor, comunas, ev);
-        _desvioBajo_(desvio, f, r.mejor, cands.vivos, ev);
+        _desvioBajo_(desvio, f, r.mejor, cands.vivos, ev, comunas);
       }
       if (r.veredicto === 'escribiria' && r.mejor.dist !== null && r.mejor.dist >= 1 &&
           r.mejor.dist <= TOLERANCIA_REPROGRAMACION_DIAS) sumar_(porTolerancia, ev);
@@ -627,9 +643,9 @@ function calcularPlan_(enSeco) {
     _casoComuna_(comunaCaso, f, r, cands.vivos, comunas, ev);
 
     if (!r.mejor) {
-      sumar_(res.sinMatch, ev); cuenta('sin_candidatos', ev);
-      filasSinMatch.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha), 'sin_candidatos',
-                          '', '', f.evento, _sn_(ev)]);
+      sumar_(res.sinMatch, ev); cuenta(r.motivo || 'sin_candidatos', ev);
+      filasSinMatch.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha),
+                          r.motivo || 'sin_candidatos', '', '', f.evento, _sn_(ev)]);
       continue;
     }
 
@@ -680,6 +696,7 @@ function calcularPlan_(enSeco) {
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
+           sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
            comunas: comunas,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
@@ -801,6 +818,16 @@ function logResumen_(plan) {
   Object.keys(plan.motivos).sort().forEach(function (m) {
     Logger.log('    %s: %s', m, _dc_(plan.motivos[m]));
   });
+  if (plan.sinPropio && plan.sinPropio.t) {
+    Logger.log('  sin_formulario_propio NO es un score que no alcanzó: toda reunión tiene formulario');
+    Logger.log('  (CLAUDE.md 1), así que falta en B o está mal fechado. El veredicto sigue siendo');
+    Logger.log('  SIN_MATCH; cambia sólo el rótulo. Lista para pasar: diagFormulariosFaltantes().');
+    if (plan.sinPropioReciente.t) {
+      Logger.log('    de esas, %s con la reunión hace menos de 7 días: POSIBLE que el formulario',
+                 _dc_(plan.sinPropioReciente));
+      Logger.log('    todavía no se haya importado. No es un hecho: volver a mirarlas en unos días.');
+    }
+  }
   /*
    * `sin_candidatos` contra `score_bajo` es la distinción que decide el umbral:
    * el primero es "no hay con qué", el segundo es "hay, pero el corte lo rechaza".
@@ -815,6 +842,11 @@ function logResumen_(plan) {
   } else if (sinCand.t > 0) {
     Logger.log('  >>> Las %s | %s de sin match NO tienen candidato: el umbral no es el problema.',
                sinCand.v, sinCand.t);
+  }
+  const sinProp = plan.motivos['sin_formulario_propio'] || contador_();
+  if (sinProp.t > 0) {
+    Logger.log('      Y %s | %s son sin_formulario_propio: tampoco es el umbral, falta el formulario.',
+               sinProp.v, sinProp.t);
   }
 
   Logger.log('--- 2. DISTRIBUCIÓN DEL SCORE NORMALIZADO (sólo filas con candidato) ---');
@@ -1147,6 +1179,8 @@ function _logDesvioBajo_(plan) {
              TOLERANCIA_REPROGRAMACION_DIAS);
   Logger.log('    sí, con su figura reconocida ....... %s', _dcp_(d.cercaConFigura, tot));
   Logger.log('    sí, pero SIN ninguna figura reconocida %s', _dcp_(d.cercaSinFigura, tot));
+  Logger.log('      de esos, sólo de OTRA comuna (no pueden ser el suyo) %s',
+             _dc_(d.sinFigSoloOtraComuna));
   Logger.log('    no, ninguno ........................ %s', _dcp_(d.nadaCerca, tot));
   Logger.log('    Si "lejos" es grande y "sin figura" también: el formulario correcto existe, no');
   Logger.log('    se reconoció la figura, y uno lejano que sí la nombra le ganó el lugar. Si');
@@ -1487,26 +1521,55 @@ function _intentar_(fallaron, nombre, fn) {
  *   nada_cerca         no hay ningún formulario a ±tolerancia. Es la otra población: el
  *                      formulario no está en `B`, o está con una fecha que no es la suya.
  */
-function _desvioBajo_(d, f, mejor, vivos, ev) {
-  const k = mejor.dist === null ? 'sin fecha' : (mejor.dist > 21 ? '>21' : String(mejor.dist));
-  if (!d.porDia[k]) d.porDia[k] = contador_();
-  sumar_(d.porDia[k], ev);
-
+/**
+ * Los formularios de `B` a ±`TOLERANCIA_REPROGRAMACION_DIAS` de una fila del destino, por clase.
+ * **El único lugar que decide si una fila tiene "su" formulario cerca**: lo usan el 2b, el motivo
+ * `sin_formulario_propio` y `diagFormulariosFaltantes()`, para que no haya dos criterios.
+ *
+ *   conFig         el más cercano que nombra la figura de la fila
+ *   sinFigMisma    el más cercano que no nombra a nadie y NO contradice la comuna de la fila
+ *                  (su comuna coincide, o falta la de alguno de los dos)
+ *   sinFigOtra     el más cercano que no nombra a nadie y es de OTRA comuna
+ *   otraFig        el más cercano que nombra a otra figura
+ *   propio         conFig || sinFigMisma: hay un formulario que puede ser el suyo
+ *
+ * Cada uno es `{ c, x }` (formulario y distancia en días) o `null`.
+ */
+function cercanosDeFila_(f, vivos, comunas) {
   const tol = TOLERANCIA_REPROGRAMACION_DIAS;
   const figNorm = normalizeText_(f.figura);
-  let conFig = null, sinFig = null, otraFig = null;
+  const cDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
+  const r = { conFig: null, sinFigMisma: null, sinFigOtra: null, otraFig: null };
+  const tomar = function (k, c, x) { if (!r[k] || x < r[k].x) r[k] = { c: c, x: x }; };
   for (let j = 0; j < vivos.length; j++) {
     const c = vivos[j];
     const x = distanciaFecha_(f.fecha, c.det);
     if (x === null || x > tol) continue;
-    if (c.figurasNorm.indexOf(figNorm) !== -1) {
-      if (!conFig || x < conFig.x) conFig = { c: c, x: x };
-    } else if (!c.figurasNorm.length) {
-      if (!sinFig || x < sinFig.x) sinFig = { c: c, x: x };
-    } else if (!otraFig || x < otraFig.x) {
-      otraFig = { c: c, x: x };
-    }
+    if (c.figurasNorm.indexOf(figNorm) !== -1) tomar('conFig', c, x);
+    else if (!c.figurasNorm.length) {
+      const otra = c.comuna != null && cDest != null && c.comuna !== cDest;
+      tomar(otra ? 'sinFigOtra' : 'sinFigMisma', c, x);
+    } else tomar('otraFig', c, x);
   }
+  r.propio = !!(r.conFig || r.sinFigMisma);
+  return r;
+}
+
+function _desvioBajo_(d, f, mejor, vivos, ev, comunas) {
+  const k = mejor.dist === null ? 'sin fecha' : (mejor.dist > 21 ? '>21' : String(mejor.dist));
+  if (!d.porDia[k]) d.porDia[k] = contador_();
+  sumar_(d.porDia[k], ev);
+
+  /*
+   * Las tres poblaciones se cuentan como siempre —"sin figura" es cualquier formulario sin
+   * figura a ±tolerancia, sea de la comuna que sea— para que el 2b siga siendo comparable con
+   * las corridas anteriores. Aparte se cuenta cuántos de esos son sólo de OTRA comuna: ésos no
+   * pueden ser el formulario de la fila.
+   */
+  const cer = cercanosDeFila_(f, vivos, comunas);
+  const conFig = cer.conFig, otraFig = cer.otraFig;
+  const sinFig = cer.sinFigMisma || cer.sinFigOtra;
+  if (!cer.conFig && !cer.sinFigMisma && cer.sinFigOtra) sumar_(d.sinFigSoloOtraComuna, ev);
 
   if (conFig) {
     sumar_(d.cercaConFigura, ev);
