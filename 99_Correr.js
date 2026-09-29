@@ -21,11 +21,12 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO: paso8_medirVariantesSinFigura(). Sólo lectura, sólo log. El paso 6 (corrió el
- *      26/09) mostró que sacar la figura del denominador recupera la serie "sobre Seguridad -
- *      Comuna X", pero deja 6 | 40 filas que hoy se escriben empatadas o superadas. El paso 8
- *      mide variantes que exigen ubicación coincidente y fecha más estricta (A, B, C, D).
- *      paso7_formulariosFaltantes() sigue pendiente si no corrió; es independiente.
+ *  >>> PRÓXIMO: paso9_medirDesempatePorEvidencia(). Sólo lectura, sólo log. Muchas de las 38
+ *      REVISAR_MATCH de la ventana son Macri con dos candidatos a 1,0: el "1 a 1" (figura +
+ *      fecha exacta + comuna) contra un temático (figura + fecha a 1 día, sin ubicación). Simula
+ *      desempatar por evidencia —señales, distancia, inscriptos— y lista los casos resueltos
+ *      para que una persona confirme el ganador. SIN esa confirmación no se implementa.
+ *      paso8_medirVariantesSinFigura() y paso7_formulariosFaltantes(), si no corrieron.
  *      Después, paso2_upsertEnSeco() otra vez: el 2f ya separa otra_figura / sin_figura /
  *      posible_grafia, y el bloque 3 simula un tope de pares por fila.
  *
@@ -66,6 +67,8 @@
  *                                                openById, sólo lectura.
  *   paso8_medirVariantesSinFigura() → medirVariantesSinFigura()   NO escribe en ninguna planilla:
  *                                                sólo log. Misma simulación que el paso 6.
+ *   paso9_medirDesempatePorEvidencia() → medirDesempatePorEvidencia()   NO escribe en ninguna
+ *                                                planilla: sólo log. Recalcula el plan en memoria.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -148,6 +151,16 @@ function paso8_medirVariantesSinFigura() {
              'sólo el log: para cada variante (0, A, B, C, D-B, D-C), cuántas filas objetivo ' +
              'llegan al umbral, cuántas escritas quedan con empate o rival, y los casos');
   return medirVariantesSinFigura();
+}
+
+function paso9_medirDesempatePorEvidencia() {
+  _anunciar_('paso 9 — desempate por evidencia',
+             'medirDesempatePorEvidencia()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: las REVISAR_MATCH por margen_chico que se resolverían por señales, ' +
+             'distancia o inscriptos, los casos para confirmar a mano, y los formularios con 0 ' +
+             'inscriptos que hoy ganan una fila');
+  return medirDesempatePorEvidencia();
 }
 
 // =============================================================================================

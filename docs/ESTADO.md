@@ -31,7 +31,8 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 |
 | 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Lee `Hoja1` del origen por `openById` |
-| 8 | `paso8_medirVariantesSinFigura()` | `medirVariantesSinFigura()` | variantes del cambio "sin figura": ubicación obligatoria, fecha estricta, desempate (decisión p) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
+| 8 | `paso8_medirVariantesSinFigura()` | `medirVariantesSinFigura()` | variantes del cambio "sin figura": ubicación obligatoria, fecha estricta, desempate (decisión p) | **no escribe en ninguna planilla**; sólo log |
+| 9 | `paso9_medirDesempatePorEvidencia()` | `medirDesempatePorEvidencia()` | desempatar las `margen_chico` por señales, distancia e inscriptos (decisión q) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
 
 **Línea base vigente: la corrida en seco del 26/09 14:21.** El destino pasó de 802 a 810 filas.
 Corte de ventana **fijo** en 26/03/2026 (`VENTANA_ANALISIS_DESDE`, `00_Config.js`); ventana 310
@@ -298,6 +299,32 @@ números de la D.
 **Es el tamaño, no el resultado.** Nada toca `puntuar_`. La variante que se elija se implementa
 aparte y se verifica con el paso 2.
 
+### q) ¿El desempate por evidencia elige bien? (confirmar a mano)
+
+Log de **`paso9_medirDesempatePorEvidencia()`**. Muchas de las 38 REVISAR_MATCH de la ventana
+son Jorge Macri con dos candidatos a 1,0: el `"1 a 1"` (figura + fecha exacta + comuna) contra
+un temático `EJE Oeste/Norte` o `Primera Persona` (figura + fecha a 1 día, ubicación no
+evaluable). **El `"1 a 1"` es la reunión de Macri** (confirmado; CLAUDE.md 3.3), pero la
+normalización los deja iguales.
+
+Sobre los contendientes de cada `margen_chico` —los que quedan a menos de `MARGEN_MINIMO` del
+mejor—, el orden simulado es:
+
+1. más señales evaluadas **y** coincidentes (figura, fecha, ubicación, hora; la fecha cuenta si
+   está dentro de ±3);
+2. menor distancia en días;
+3. inscriptos > 0 antes que 0.
+
+Gana sólo el **estrictamente** mejor en el primer criterio que lo distinga; si empatan en los
+tres, sigue en revisión. El log da, en [ventana | total], cuántas se resolverían y por qué
+criterio, cuántas siguen (con los casos), y **todos los resueltos** con ganador, rivales y el
+porqué. Mirar primero *"ganador = OTRO"*: son las filas donde el desempate le da la fila a un
+formulario que hoy no es el mejor por score.
+
+**No se implementa sin que una persona confirme los resueltos.** Aparte, se listan los
+formularios con 0 inscriptos que hoy ganan una fila (Mercedes Miguel, `Comuna 9 15/9` → Miguel
+15/09 Liniers), sin tocarlos.
+
 ---
 
 ## 3. Cómo leer los logs nuevos
@@ -352,7 +379,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` a `paso8_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` a `paso9_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)

@@ -1315,6 +1315,25 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   formulario que nombra la figura (D)— con la misma simulación y sin tocar `puntuar_`. Cuenta
   también las filas que irían a revisión por **dos formularios iguales** (los dos
   `Comuna 1 Sur - 3/9`, con 0 y 116 inscriptos).
+- **`JORGE MACRI - Encuentro "1 a 1" - Día d/m Barrio` ES la reunión de Macri**, no una lista de
+  espera (confirmado por el usuario). Son los formularios que faltaban después del 14/08: 17/9
+  Belgrano, 24/9 Floresta, 29/9 Villa Santa Rita y Belgrano. Antes de saberlo, esas filas
+  aparecían como faltantes (paso 7).
+
+  **Y destapan un límite de la normalización.** Muchas de las 38 REVISAR_MATCH de la ventana son
+  Macri con **dos candidatos a 1,0**: el `"1 a 1"` —figura + fecha exacta + comuna coincidente,
+  3 señales— contra un temático (`EJE Oeste/Norte`, `Primera Persona`) —figura + fecha a 1 día y
+  la ubicación **no evaluable**, 2 señales—. Los dos normalizan a 1,0 y quedan en `margen_chico`:
+  **la normalización borra cuánta evidencia hay detrás de un score**. Ejemplos: Macri 10/04 (1 a 1
+  Comuna 6 contra Temática Salud EJE Oeste), Macri 17/04 (1 a 1 Comuna 1 contra Temática
+  Educación EJE Norte).
+
+  `medirDesempatePorEvidencia()` (`paso9_…`) simula desempatar, sólo cuando la diferencia es
+  menor que `MARGEN_MINIMO`, por: 1) más señales evaluadas y coincidentes, 2) menor distancia,
+  3) inscriptos > 0. Gana sólo el estrictamente mejor en el primer criterio que distinga. Lista
+  los casos resueltos para que una persona confirme el ganador: **sin esa confirmación no se
+  implementa**. Aparte lista los formularios con 0 inscriptos que hoy ganan una fila (Mercedes
+  Miguel, `Comuna 9 15/9` → fila de Miguel 15/09 Liniers), sin cambiarlos.
 
 ### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
 
