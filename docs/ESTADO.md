@@ -27,14 +27,26 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Corrió el 26/09 11:36; **se vuelve a correr después del 6** |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 26/09 14:21; **se vuelve a correr después del 8** |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
-| 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
-| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Lee `Hoja1` del origen por `openById`. **← PRÓXIMO**, junto con el 6 |
+| 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 |
+| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Lee `Hoja1` del origen por `openById` |
+| 8 | `paso8_medirVariantesSinFigura()` | `medirVariantesSinFigura()` | variantes del cambio "sin figura": ubicación obligatoria, fecha estricta, desempate (decisión p) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
 
-**Línea base para la próxima comparación: la corrida en seco del 26/09 11:36**, la primera con
-la figura buscada sobre el texto completo. Corte de ventana **fijo** en 26/03/2026
-(`VENTANA_ANALISIS_DESDE`, `00_Config.js`), base 302 filas:
+**Línea base vigente: la corrida en seco del 26/09 14:21.** El destino pasó de 802 a 810 filas.
+Corte de ventana **fijo** en 26/03/2026 (`VENTANA_ANALISIS_DESDE`, `00_Config.js`); ventana 310
+filas, **304 evaluables**:
+
+```
+(ventana)       26/09 14:21
+escribiría          223
+a revisar            30
+sin match            51  =  25 sin formulario propio cerca (ahora sin_formulario_propio; paso 7)
+                         +  18 con un formulario cercano sin figura (13 de la serie de Seguridad)
+                         +   8 con su figura pero bajo el umbral
+```
+
+Las anteriores, para la historia (totales, salvo donde dice ventana):
 
 ```
                   25/09 18:13   26/09 11:36
@@ -46,10 +58,12 @@ densidad EMPAREJAR_MANUAL           4,9           7,0
 "ninguno a ±3" del 2b (ventana)      15            23
 ```
 
-> ⚠️ **El 2f no cuenta filas que fallan.** Cuenta filas cuyo formulario de comuna más cercano no
-> fue el que ganó; muchas se escriben igual con otro formulario (los 25 ejemplos del 26/09 eran
-> casi todos `fila: escribiria`). El 37,3% y el 32,7% **no** son "filas que fallan". El log
-> nuevo cruza cada motivo con el veredicto de la fila (decisión l).
+> ⚠️ **El 2f no cuenta filas que fallan**, y su categoría estaba mal rotulada. Cuenta filas cuyo
+> formulario de comuna más cercano no fue el que ganó; muchas se escriben igual con otro. Y
+> `figura_no_reconocida` era en realidad *"el formulario no nombra la figura de la fila"*: según
+> los ejemplos del log, mayormente **otra figura** (otras reuniones de la misma comuna), no una
+> falla de reconocimiento. Ahora se separa en `otra_figura` / `sin_figura` / `posible_grafia`
+> (decisión l).
 
 Las ventanas del log ya no son comparables con las de antes del 26/09 si no se corrigen por el
 corte: la del 25/09 usaba 25/03 (base 307).
@@ -117,9 +131,10 @@ no son reprogramación. Tres poblaciones:
 
 Bloque **2f**. Las 65 `deberia_haber_entrado` son las de comuna, y **en `diagCorteB()` esa
 categoría ya implica fecha exacta** —así que la fecha no es la sospechosa principal. El bloque
-toma el formulario de la misma comuna más cercano en fecha y dice por qué no entró. Si domina
-`figura_no_reconocida_en_el_formulario`, el arreglo es cómo `figurasEnTexto_` reconoce nombres,
-y es la misma causa probable que la del punto d).
+toma el formulario de la misma comuna más cercano en fecha y dice por qué no entró. ~~Si domina
+`figura_no_reconocida_en_el_formulario`, el arreglo es cómo `figurasEnTexto_` reconoce nombres.~~
+Corregido: esa categoría era mayormente **otra figura**, no reconocimiento (decisión l). El
+reconocimiento sólo explica lo que caiga en `posible_grafia`.
 
 ### f) Huérfanos y densidad de `EMPAREJAR_MANUAL`
 
@@ -207,12 +222,23 @@ Bloque **2f** del paso 2. Ahora trae un **cruce motivo × veredicto de la fila**
 verdad son las columnas *revisar* y *sin match*. Los ejemplos listados son sólo de filas que no
 se escriben, ventana primero.
 
-### m) ¿De dónde sale la densidad de `EMPAREJAR_MANUAL`? (4,9 → 7,0)
+**Y el rótulo cambió:** `figura_no_reconocida_en_el_formulario` era *"el formulario no nombra la
+figura de la fila"*, que no es una falla de reconocimiento. Se separa en **`otra_figura`**
+(otra reunión de la misma comuna: Lombardi 30/03 ← un formulario de Landerreche), **`sin_figura`**
+y **`posible_grafia`** (algún apellido de la figura está en el nombre). La suma de las tres es el
+número viejo; el log la muestra para comparar. Mirar cuánto pesa `posible_grafia`: es la única
+que apunta al reconocimiento de nombres.
 
-Bloque **3** del paso 2: pares por figura de la fila (top 10) y cuántos existen **sólo porque la
-figura sale del prefijo**. Hipótesis a confirmar o descartar: la subida son las filas de Jorge
-Macri por los formularios `JORGE MACRI - ...` que ahora reconocen la figura. Si esos pares no
-son la mayor parte de la subida, la hipótesis cae.
+### m) ¿De dónde sale la densidad de `EMPAREJAR_MANUAL`? (4,9 → 7,0) — medido: Jorge Macri
+
+**Jorge Macri tiene 328 de 346 pares en ventana** (10,3 por fila); el resto está entre 1,3 y 3,3.
+El bloque 3 sigue contando cuántos pares existen **sólo porque la figura sale del prefijo** (la
+hipótesis de por qué subió), y ahora **simula un tope de 3 pares por fila**: cuántos se cortan,
+la densidad que queda, cuántas filas quedarían con 0 pares (tendría que ser ninguna) y cuántos
+formularios se quedarían sin propuesta. Orden para elegir: score, después cercanía de fecha.
+
+Para fijarlo: `MAX_PARES_POR_FILA` en `00_Config.js` (hoy `null`, sin tope). Es la lista de
+propuestas: **no cambia ningún veredicto**.
 
 ### n) ¿Por qué "ninguno a ±3" pasó de 15 a 23?
 
@@ -242,6 +268,35 @@ Log de **`paso7_formulariosFaltantes()`**, en tres partes:
 Las filas con la reunión hace menos de 7 días salen marcadas como **posible "todavía no
 importado"** —las 2 de Jorge Macri del 29/09 son el caso—: volver a mirarlas en unos días antes
 de reclamarlas.
+
+### p) ¿Qué variante del cambio "sin figura" rescata sin costo?
+
+Log de **`paso8_medirVariantesSinFigura()`**. El paso 6 dio que sacar la figura del denominador
+para los formularios sin figura **sirve** (13 filas SIN_MATCH de la serie de Seguridad se
+recuperan; 11 de 14 formularios tienen exactamente 1 fila de su comuna a 0 días) pero **cuesta**:
+6 | 40 filas que hoy se escriben quedan empatadas o superadas. Las variantes atacan las dos
+causas vistas en el log —el sin figura y sin ubicación que puntúa con la fecha sola, y los
+rivales que entran por ±3—:
+
+| variante | regla |
+|---|---|
+| 0 | el paso 6 tal cual, para comparar |
+| A | ubicación coincidente obligatoria (barrio o comuna) + fecha ±3 |
+| B | A + fecha exacta |
+| C | A + fecha ±1 |
+| D-B, D-C | B o C + desempate |
+
+Para cada una, [ventana | total]: cuántas filas objetivo llegan al umbral con margen, cuántas
+escritas quedan con empate o rival (el costo, con los casos listados) y cuántas irían a revisión
+por 2+ formularios (los dos `Comuna 1 Sur - 3/9`, con 0 y 116 inscriptos).
+
+**El desempate, como está implementado:** un formulario sin figura no desplaza al ganador de hoy
+si ese ganador nombra la figura de la fila (ni empate, ni superación, ni rival); contra un
+candidato con figura bajo el umbral, compite. Si se quería otra cosa, se ajusta antes de leer los
+números de la D.
+
+**Es el tamaño, no el resultado.** Nada toca `puntuar_`. La variante que se elija se implementa
+aparte y se verifica con el paso 2.
 
 ---
 
@@ -297,7 +352,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` a `paso8_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -370,5 +425,5 @@ en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
 > **Si el próximo commit de código invalida algo que dice `CLAUDE.md`, el documento se corrige en
 > ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-En esta migración cambiamos de premisa once veces. Entre la medición y la actualización, el
+En esta migración cambiamos de premisa doce veces. Entre la medición y la actualización, el
 documento decía algo falso — y ése es justo el momento en que alguien lo abre para decidir.

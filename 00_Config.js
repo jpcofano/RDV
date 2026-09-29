@@ -474,6 +474,21 @@ const RDV_HOJA_EMPAREJAR = 'EMPAREJAR_MANUAL';
 const PISO_EMPAREJAR = 0.30;
 const VENTANA_EMPAREJAR_DIAS = 21;
 
+/**
+ * **Tope de pares propuestos por fila del destino** en `EMPAREJAR_MANUAL`. `null` = sin tope.
+ *
+ * El problema medido (26/09 14:21) es una sola figura: Jorge Macri tiene 328 de 346 pares en
+ * ventana, 10,3 por fila; el resto está entre 1,3 y 3,3. Con un tope, cada fila se queda con sus
+ * N mejores pares, ordenados por score y después por cercanía de fecha.
+ *
+ * Es una lista de propuestas para una persona: **no cambia ningún veredicto**. El bloque 3 del log
+ * simula el tope en 3 aunque esto esté en `null`, para decidir con el número delante.
+ */
+const MAX_PARES_POR_FILA = null;
+
+/** El tope que el bloque 3 simula siempre, para ver qué haría uno antes de fijarlo. */
+const MAX_PARES_POR_FILA_SIMULADO = 3;
+
 // ===================== STATUS REUNIÓN =====================
 
 /**

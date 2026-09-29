@@ -1299,6 +1299,23 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   a ±3 días, y cuántas filas que hoy se escriben con otro formulario tendrían un empate o un
   rival. **No se cambió ningún peso ni puerta.**
 
+  **Lo que midió el paso 6 (26/09):** sacar la figura del denominador **sirve** —se recuperan
+  **13 filas SIN_MATCH** de la serie "sobre Seguridad - Comuna X", y **11 de los 14**
+  formularios tienen exactamente 1 fila de su comuna a 0 días—, pero **tal cual tiene un costo**:
+  **6 | 40 filas que hoy se escriben quedan empatadas o superadas**. Dos causas, vistas en el log:
+
+  - un formulario sin figura **y sin ubicación** (`Gustavo Arengo 26/7`, que en realidad nombra
+    a la figura con otra grafía) puntúa 1,0 con la fecha sola contra cualquier fila a ±3;
+  - en ventana los rivales entran **por la tolerancia de ±3** (Sabor 31/08 contra
+    `Comuna 2 - 3/9`, Mraida 16/09 contra `Comuna 10 - 17/9`, Miguel 15/09 contra
+    `Comuna 9 - 17/9`), mientras que los objetivos están casi todos a **0 días**.
+
+  `medirVariantesSinFigura()` (`paso8_…`) mide variantes que atacan las dos causas —ubicación
+  coincidente obligatoria (A), más fecha exacta (B) o ±1 (C), más un desempate a favor del
+  formulario que nombra la figura (D)— con la misma simulación y sin tocar `puntuar_`. Cuenta
+  también las filas que irían a revisión por **dos formularios iguales** (los dos
+  `Comuna 1 Sur - 3/9`, con 0 y 116 inscriptos).
+
 ### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
 
 Relevado antes de definir la excepción de la sección 0. **Sólo lectura, nada cambiado.**
@@ -2515,7 +2532,43 @@ toma el **más cercano en fecha** y dice si entró, y si no, por qué —
 > / sin match), dice cuántas de las "no entran" se escriben igual, y lista sólo las que no se
 > escriben.
 
-#### La corrida en seco del 26/09 11:36: línea base
+> **Segunda corrección: la categoría también estaba mal rotulada.**
+> `figura_no_reconocida_en_el_formulario` quería decir, en realidad, *"el formulario no nombra
+> la figura de la fila"*, y eso no es una falla de reconocimiento. Los ejemplos del log del 26/09
+> son en su mayoría formularios de **OTRA figura** —Lombardi 30/03 ← un formulario de Ruth
+> Landerreche; Muzzio 17/04 ← uno de Sánchez Zinny—: **otras reuniones de la misma comuna**. La
+> hipótesis de la figura escrita distinto (párrafo de arriba) explica, a lo sumo, una parte.
+>
+> El motivo se separó en **`otra_figura`**, **`sin_figura`** y **`posible_grafia`** (algún
+> apellido de la figura aparece en el nombre), con el mismo cruce por veredicto. La suma de las
+> tres es el rótulo viejo, y el log la muestra para comparar. **Cuánto pesa cada una lo dice la
+> próxima corrida**: lo de "mayormente otra figura" sale de leer los ejemplos, no de un conteo.
+
+#### La corrida en seco del 26/09 14:21: línea base vigente
+
+El destino pasó de **802 a 810** filas. Corte de ventana fijo en 26/03/2026; ventana **310**
+filas, **304 evaluables**. Es contra la que se compara la próxima.
+
+| (ventana) | 26/09 14:21 |
+|---|---|
+| escribiría | **223** |
+| a revisar | **30** |
+| sin match | **51** |
+
+Las 51 sin match se componen de:
+
+| | filas | qué son |
+|---|---|---|
+| sin formulario propio cerca | **25** | ahora motivo `sin_formulario_propio`: faltan o están mal fechados (paso 7) |
+| con un formulario cercano sin figura | **18** | de esas, **13** de la serie "sobre Seguridad - Comuna X" (3.3; pasos 6 y 8) |
+| con su figura, pero bajo el umbral | **8** | el grupo de score que no alcanza de verdad |
+
+**`EMPAREJAR_MANUAL`, el problema es una figura:** Jorge Macri tiene **328 de 346** pares en
+ventana (10,3 por fila); el resto está entre 1,3 y 3,3. `MAX_PARES_POR_FILA` (default `null`)
+permite un tope por fila, elegido por score y después por cercanía de fecha, y el bloque 3 lo
+simula en 3 antes de fijarlo. Es una lista de propuestas: no cambia ningún veredicto.
+
+#### La corrida en seco del 26/09 11:36: línea base anterior
 
 Primera corrida con la figura buscada sobre el texto completo. Es contra la que se compara la
 próxima. Corte de ventana fijo en 26/03/2026 (3.5), base 302 filas.
@@ -2792,7 +2845,7 @@ puede pisar nada.
 **Si el próximo commit de código invalida algo que dice este documento, el documento se corrige
 en ese mismo commit.** No en el siguiente, no en uno de limpieza al final.
 
-No es prolijidad. En esta migración cambiamos de premisa **once veces**:
+No es prolijidad. En esta migración cambiamos de premisa **doce veces**:
 
 | lo que decía el documento | lo que medimos después |
 |---|---|
@@ -2807,6 +2860,7 @@ No es prolijidad. En esta migración cambiamos de premisa **once veces**:
 | `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
 | `Para Revisar` es el destino del flujo Agenda | es el staging del pipeline principal (`Upset Base FInal.js:7`); Agenda también escribe ahí |
 | un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. **Beneficio medido para la figura: 0** (25/09 20:18: `EVITA multi_figura` 0 \| 0; `PIERDE la figura` 18 \| 41). Sale de `figurasEnTexto_`; los demás usos siguen sin medir. Corrida del 26/09 con el cambio: 2f 103 → 92 en ventana, y los temáticos B 624, 705, 646 y 686 dejaron de ser huérfanos. **Ojo: el 2f (37,3% el 25/09, 32,7% el 26/09) no cuenta filas que fallan** —cuenta filas cuyo formulario de comuna más cercano no ganó, y muchas se escriben igual con otro—; lo que falla de verdad lo separa el cruce motivo × veredicto |
+| el 37,3% / 32,7% del 2f (`figura_no_reconocida_en_el_formulario`) era una falla de reconocimiento de la figura — **fue lo que motivó investigar `limpiarPrefijos_`** | la categoría estaba mal rotulada: era "el formulario no nombra la figura de la fila", y según los ejemplos del log venía mayormente de formularios de **otra figura** (otras reuniones de la misma comuna). Separada en `otra_figura` / `sin_figura` / `posible_grafia`; el peso de cada una lo da la próxima corrida |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

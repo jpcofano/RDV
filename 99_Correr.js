@@ -21,26 +21,25 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO: paso6_medirFormulariosSinFigura(). Sólo lectura, sólo log. Mide el TAMAÑO de
- *      sacar la figura del denominador para los formularios que no nombran a nadie (el formato
- *      "VÍNCULO CIUDADANO - ... - Comuna X - d/m" de 09/2026). No cambia pesos ni puertas.
- *      Y paso7_formulariosFaltantes(): las filas sin formulario propio, ¿faltan en la consulta
- *      de Hoja1 o están mal fechadas? Sale la lista para quien mantiene la consulta. Los dos son
- *      independientes; el orden da igual.
- *      Después, paso2_upsertEnSeco() otra vez: el log trae el cruce nuevo del 2f, el desglose de
- *      "ninguno" del 2b, los pares por figura del bloque 3 y el motivo sin_formulario_propio.
+ *  >>> PRÓXIMO: paso8_medirVariantesSinFigura(). Sólo lectura, sólo log. El paso 6 (corrió el
+ *      26/09) mostró que sacar la figura del denominador recupera la serie "sobre Seguridad -
+ *      Comuna X", pero deja 6 | 40 filas que hoy se escriben empatadas o superadas. El paso 8
+ *      mide variantes que exigen ubicación coincidente y fecha más estricta (A, B, C, D).
+ *      paso7_formulariosFaltantes() sigue pendiente si no corrió; es independiente.
+ *      Después, paso2_upsertEnSeco() otra vez: el 2f ya separa otra_figura / sin_figura /
+ *      posible_grafia, y el bloque 3 simula un tope de pares por fila.
  *
- *  LÍNEA BASE para la próxima comparación: la corrida en seco del 26/09 11:36, ya con la figura
- *  buscada sobre el texto completo. Corte de ventana FIJO en 26/03/2026
- *  (VENTANA_ANALISIS_DESDE en 00_Config.js), base 302 filas:
+ *  LÍNEA BASE para la próxima comparación: la corrida en seco del 26/09 14:21. El destino pasó
+ *  de 802 a 810 filas. Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE), ventana
+ *  310 filas (304 evaluables):
  *
- *        escribiría   641 (total)      antes, 25/09 18:13: 627
- *        a revisar     85 (total)                          68
- *        sin match     76 (total)                         107
- *        2f: figura_no_reconocida_en_el_formulario  92 (32,7%) en ventana   (antes 103)
+ *        escribiría   223 (ventana)
+ *        a revisar     30 (ventana)
+ *        sin match     51 (ventana) = 25 sin formulario propio + 18 con un formulario cercano
+ *                                     sin figura (13 de la serie de Seguridad) + 8 con su
+ *                                     figura pero bajo el umbral
  *
- *      OJO con el 2f: cuenta filas cuyo formulario de comuna más cercano NO ganó, no filas
- *      que fallan. Muchas se escriben igual con otro formulario; el cruce nuevo lo separa.
+ *      Las anteriores (25/09 18:13 y 26/09 11:36) están en docs/ESTADO.md y CLAUDE.md.
  *
  *  La secuencia, en orden:
  *
@@ -65,6 +64,8 @@
  *   paso7_formulariosFaltantes() → diagFormulariosFaltantes()   NO escribe en ninguna planilla:
  *                                                sólo log. Lee además Hoja1 del origen (3) por
  *                                                openById, sólo lectura.
+ *   paso8_medirVariantesSinFigura() → medirVariantesSinFigura()   NO escribe en ninguna planilla:
+ *                                                sólo log. Misma simulación que el paso 6.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -138,6 +139,15 @@ function paso7_formulariosFaltantes() {
              'sólo el log: candidatos a mal fechado, B contra Hoja1, y la lista de FORMULARIOS ' +
              'FALTANTES para quien mantiene la consulta');
   return diagFormulariosFaltantes();
+}
+
+function paso8_medirVariantesSinFigura() {
+  _anunciar_('paso 8 — variantes del cambio "sin figura"',
+             'medirVariantesSinFigura()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: para cada variante (0, A, B, C, D-B, D-C), cuántas filas objetivo ' +
+             'llegan al umbral, cuántas escritas quedan con empate o rival, y los casos');
+  return medirVariantesSinFigura();
 }
 
 // =============================================================================================
