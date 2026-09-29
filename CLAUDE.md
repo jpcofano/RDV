@@ -347,6 +347,20 @@ Hasta ahora los cuatro competían igual.
 > **hipótesis, sin medir**, que sea la grafía y no la falta de reunión. El handoff no se corrige:
 > es una foto.
 
+**Tres reglas de negocio más, confirmadas por el usuario (26/09):**
+
+- **De dos formularios de una misma reunión, el que casi no tiene inscriptos no se hizo, y vale
+  el otro.** Es el criterio 3 del desempate por evidencia: *más inscriptos del formulario*, sólo
+  después de empatar en señales y distancia (fila 708: `Primera Persona 27/7`, 1344 contra su
+  duplicado `DEPORTES` con 1; fila 134: Tapia Saavedra 21/8, 72 contra 2).
+- **En régimen el sistema escribe todo; lo que no pueda matchear lo empareja una persona.**
+  `EMPAREJAR_MANUAL` es esa herramienta, y por eso tiene que ser trabajable (el tope de 3 pares
+  por fila).
+- **Los inscriptos que hoy tiene cargados el destino son sólo para validar el matcher, una vez.**
+  En régimen no van a existir como dato independiente: los escribe el propio sistema. **Prohibido
+  usarlos como señal o como desempate.** Se usan únicamente en `medirValidacionInscriptos()`
+  (`paso10_…`), que es una calibración de una sola vez.
+
 **e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
 negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
@@ -755,6 +769,25 @@ o sea que el daño cae sobre la mitad de la clave natural. Análisis completo en
 
 El segundo bloque de borrados del mismo archivo (líneas 197-200) **sí está bien hecho**: ordena
 descendente antes de borrar. Es la misma operación resuelta bien a diez líneas de distancia.
+
+**j) El upsert nuevo deja que un mismo formulario gane dos filas. BLOQUEANTE para `DRY_RUN = false`.**
+
+En `calcularPlan_`, `usados` sólo alimenta a `calcularEmparejar_`: **nada impide que un formulario
+gane dos filas con veredicto `escribiria`**, y sus inscriptos se escribirían en las dos. El paso 9
+lo mostró en tres casos:
+
+```
+"1 a 1 - Comuna 5 17/6"               → fila 645 Almagro 16/06 (1 día) y 648 Boedo 17/06 (0 días)
+"RDV JM Velez Sarfield - 5/6"         → fila 626 Flores 04/06 y 631 La Paternal 05/06
+"Clara Muzzio 07/11 Villa Pueyrredon" → fila 309 (sin barrio, 05/11) y 315 (07/11)
+```
+
+El log del paso 2 lleva ahora un **bloque 0 fijo** (`chequearFormularioUnico_`) que cuenta los
+formularios que ganan 2+ filas y **simula, sin implementarla**, la regla: un formulario va a UNA
+sola fila; si varias lo reclaman, se lo queda la de mejor evidencia (el mismo
+`_desempatePorEvidencia_` del paso 9); las otras se re-evalúan sin ese formulario, y si no les
+queda nada claro van a REVISAR_MATCH con motivo `formulario_compartido`. Los inscriptos del
+destino no entran. **Mientras el bloque 0 diga ROTO, no se pasa a `DRY_RUN = false`.**
 
 ### 3.2 Calidad de datos, medida
 
@@ -1342,10 +1375,18 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
   `medirDesempatePorEvidencia()` (`paso9_…`) simula desempatar, sólo cuando la diferencia es
   menor que `MARGEN_MINIMO`, por: 1) más señales evaluadas y coincidentes, 2) menor distancia,
-  3) inscriptos > 0. Gana sólo el estrictamente mejor en el primer criterio que distinga. Lista
+  3) más inscriptos del formulario (antes: inscriptos > 0). Gana sólo el estrictamente mejor en el primer criterio que distinga. Lista
   los casos resueltos para que una persona confirme el ganador: **sin esa confirmación no se
   implementa**. Aparte lista los formularios con 0 inscriptos que hoy ganan una fila (Mercedes
   Miguel, `Comuna 9 15/9` → fila de Miguel 15/09 Liniers), sin cambiarlos.
+
+  **Corrió el 26/09 17:06: 37 de 38 resueltas** (27 por señales, 10 por distancia). Después el
+  criterio 3 pasó de *inscriptos > 0* a *más inscriptos del formulario* (regla de negocio, sección
+  1), para resolver la fila 708 (1344 contra 1) y la 134 (72 contra 2). El log marca en cada
+  resuelto si el ganador es el mejor de hoy u "OTRO", y lista aparte los formularios
+  **"Genérico"** (`Jorge Macri - Genérico 2026`, 774 inscriptos): no está claro que un genérico
+  deba matchear. **Sigue sin implementarse** hasta ver el paso 10, que contrasta los resueltos con
+  los inscriptos que hoy tiene el destino.
 
 ### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
 

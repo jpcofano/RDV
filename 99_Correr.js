@@ -21,12 +21,15 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO: paso2_upsertEnSeco(). Primera corrida con la regla SIN_FIGURA_POR_UBICACION (la
- *      variante D-C del paso 8, implementada) y con el tope de 3 pares por fila en
- *      EMPAREJAR_MANUAL. PREDICCIÓN anotada antes de correrlo (ventana): escribiría ≈ 241,
- *      revisar ≈ 39, sin match ≈ 25. Si se aleja mucho, mirar antes de seguir.
- *      paso9_medirDesempatePorEvidencia(): medición, sus números se leen antes de implementar
- *      nada; puede correrse antes o después del paso 2.
+ *  >>> PRÓXIMO, en este orden (los tres sólo leen, ninguno toca el destino):
+ *      1. paso2_upsertEnSeco(). Primera corrida con SIN_FIGURA_POR_UBICACION (la variante D-C) y
+ *         el tope de 3 pares por fila. PREDICCIÓN anotada antes (ventana): escribiría ≈ 241,
+ *         revisar ≈ 39, sin match ≈ 25. El bloque 0 del log es el chequeo del invariante
+ *         "un formulario, una fila": si dice ROTO, DRY_RUN = false queda BLOQUEADO.
+ *      2. paso9_medirDesempatePorEvidencia(). El criterio 3 ahora es "más inscriptos del
+ *         formulario"; lista los "Genérico" aparte. Sus números se leen antes de implementar.
+ *      3. paso10_validarContraInscriptos(). Calibración de una vez contra los inscriptos que hoy
+ *         tiene el destino. NO entra en el score ni en ningún desempate.
  *
  *  LÍNEA BASE vigente: la corrida en seco del 26/09 16:45, con B actualizada (807 formularios).
  *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE), 304 evaluables:
@@ -63,6 +66,8 @@
  *   (paso 8 ya corrió: rehacer_medirVariantesSinFigura(), en YA CORRIDOS.)
  *   paso9_medirDesempatePorEvidencia() → medirDesempatePorEvidencia()   NO escribe en ninguna
  *                                                planilla: sólo log. Recalcula el plan en memoria.
+ *   paso10_validarContraInscriptos() → medirValidacionInscriptos()   NO escribe en ninguna
+ *                                                planilla: sólo log. Calibración de una vez.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -146,6 +151,15 @@ function paso9_medirDesempatePorEvidencia() {
              'distancia o inscriptos, los casos para confirmar a mano, y los formularios con 0 ' +
              'inscriptos que hoy ganan una fila');
   return medirDesempatePorEvidencia();
+}
+
+function paso10_validarContraInscriptos() {
+  _anunciar_('paso 10 — validación contra los inscriptos del destino (calibración de una vez)',
+             'medirValidacionInscriptos()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: cobertura, destino vs formulario elegido, los resueltos del paso 9 y ' +
+             'los choques del invariante contra los inscriptos cargados. NO entra en el score');
+  return medirValidacionInscriptos();
 }
 
 // =============================================================================================

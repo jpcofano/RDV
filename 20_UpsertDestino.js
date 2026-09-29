@@ -591,148 +591,455 @@ function medirVariantesSinFigura() {
   return V.map(function (v) { return { k: v.k, obj: v.obj, costo: v.costo }; });
 }
 
+// ===================== Evidencia: el orden compartido =====================
+
+/**
+ * Cuántas señales **evaluadas y coincidentes** tiene un par (figura, fecha, ubicación, hora). La
+ * fecha coincide si puntúa pleno (dentro de TOLERANCIA_REPROGRAMACION_DIAS), no a ±7.
+ */
+function _senalesCoincidentes_(sc) {
+  let n = 0;
+  if (sc.nombraFigura) n++;
+  if (sc.evaluables.fecha && sc.perdido.fecha === 0) n++;
+  if (sc.evaluables.ubic && sc.perdido.ubic === 0) n++;
+  if (sc.evaluables.hora && sc.perdido.hora === 0) n++;
+  return n;
+}
+
+/**
+ * **El orden por evidencia**, el mismo para todo lo que desempata: el paso 9 (entre formularios
+ * que compiten por una fila) y la regla simulada de un formulario por fila (entre filas que
+ * reclaman un formulario). Recibe pares `sc` y devuelve `{ ganador, porQue }`, o `ganador: null`
+ * si ninguno es estrictamente mejor.
+ *
+ *   1) más señales evaluadas y coincidentes
+ *   2) menor distancia en días
+ *   3) más inscriptos DEL FORMULARIO (regla de negocio: de dos formularios de una misma reunión,
+ *      el que casi no tiene inscriptos no se hizo). Nunca los del destino: ésos, en régimen, los
+ *      escribe el propio sistema (CLAUDE.md 1).
+ *
+ * Gana sólo el estrictamente mejor en el primer criterio que lo distinga del último rival.
+ */
+function _desempatePorEvidencia_(lista) {
+  const criterios = [
+    { k: 'senales', val: _senalesCoincidentes_, mayor: true },
+    { k: 'distancia', val: function (sc) { return sc.dist === null ? Infinity : sc.dist; },
+      mayor: false },
+    { k: 'inscriptos', val: function (sc) { return sc.c.inscriptos || 0; }, mayor: true }
+  ];
+  let quedan = lista.slice(), porQue = null;
+  for (let i = 0; i < criterios.length && quedan.length > 1; i++) {
+    const cr = criterios[i];
+    const vals = quedan.map(cr.val);
+    const mejorVal = cr.mayor ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
+    const siguen = quedan.filter(function (sc, j) { return vals[j] === mejorVal; });
+    if (siguen.length < quedan.length && siguen.length === 1) porQue = cr.k;
+    quedan = siguen;
+  }
+  return (quedan.length === 1 && porQue) ? { ganador: quedan[0], porQue: porQue }
+                                        : { ganador: null, porQue: null };
+}
+
+function _nombreCriterio_(k) { return k === 'senales' ? 'señales' : k; }
+
+/** Ventana primero, y adentro por fecha de la fila. */
+function _ordenarPorFila_(l) {
+  return l.slice().sort(function (a, b) {
+    if (a.ev !== b.ev) return a.ev ? -1 : 1;
+    return (a.f.fecha ? a.f.fecha.getTime() : 0) - (b.f.fecha ? b.f.fecha.getTime() : 0);
+  });
+}
+
+function _descPar_(sc) {
+  return _senalesCoincidentes_(sc) + ' señales (' + (sc.nivel || '-') + '), ' +
+         (sc.dist === null ? '?' : sc.dist) + ' días, ins=' + (sc.c.inscriptos || 0) +
+         ', score ' + sc.score + ' | ' + sc.c.nombre;
+}
+
 // ===================== Medición: desempate por evidencia =====================
 
 /**
+ * Las filas en REVISAR_MATCH por `margen_chico`, resueltas (o no) con el orden por evidencia sobre
+ * sus contendientes (los que quedan a menos de MARGEN_MINIMO del mejor, según evaluarCandidatos_).
+ * Sólo calcula; lo usan el paso 9 y el paso 10.
+ */
+function _resolverMargenChico_(plan) {
+  const out = { total: contador_(), sigue: contador_(), mismo: contador_(), otro: contador_(),
+                porCriterio: { senales: contador_(), distancia: contador_(),
+                               inscriptos: contador_() },
+                resueltos: [], siguen: [] };
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
+    if (!pf || pf.motivo !== 'margen_chico' || !pf.contendientes) return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    sumar_(out.total, ev);
+    const d = _desempatePorEvidencia_(pf.contendientes);
+    const x = { f: f, ev: ev, conts: pf.contendientes, hoy: pf.cand };
+    if (d.ganador) {
+      x.ganador = d.ganador; x.porQue = d.porQue;
+      x.esElDeHoy = d.ganador.c === pf.cand;
+      sumar_(out.porCriterio[d.porQue], ev);
+      sumar_(x.esElDeHoy ? out.mismo : out.otro, ev);
+      out.resueltos.push(x);
+    } else {
+      sumar_(out.sigue, ev);
+      out.siguen.push(x);
+    }
+  });
+  return out;
+}
+
+/**
  * **Sólo lectura, sólo log.** Muchas REVISAR_MATCH por `margen_chico` son de Jorge Macri con dos
- * candidatos a 1,0: el `"1 a 1"` —figura + fecha exacta + comuna coincidente— contra un temático
+ * candidatos a 1,0: el `"1 a 1"` —figura + fecha exacta + comuna— contra un temático
  * (`EJE Oeste/Norte`, `Primera Persona`) con figura + fecha a 1 día y la ubicación no evaluable.
- * Los dos normalizan a 1,0: **la normalización borra cuánta evidencia hay detrás**.
+ * **La normalización borra cuánta evidencia hay detrás.** Simula desempatar con
+ * `_desempatePorEvidencia_` y lista todo para que una persona confirme el ganador.
  *
- * Simula, sobre los contendientes de cada fila en `margen_chico` (los que quedan a menos de
- * MARGEN_MINIMO del mejor, según `evaluarCandidatos_`), este orden:
- *
- *   1) más señales evaluadas Y coincidentes (figura, fecha, ubicación, hora)
- *   2) menor distancia en días
- *   3) inscriptos > 0 antes que 0
- *
- * El primero sólo gana si es **estrictamente** mejor que todos los demás en el primer criterio
- * que los distinga; si empatan en los tres, sigue en revisión. "Coincidente" es puntaje pleno: la
- * fecha coincide dentro de TOLERANCIA_REPROGRAMACION_DIAS, no a ±7.
- *
- * **No se implementa sin que una persona confirme los casos resueltos**: por eso se listan todos.
+ * Corrió el 26/09 17:06: 37 de 38 resueltas (27 por señales, 10 por distancia). Desde entonces el
+ * criterio 3 pasó de "inscriptos > 0" a "más inscriptos DEL FORMULARIO" (regla de negocio). **No
+ * se implementa hasta ver el paso 10.**
  */
 function medirDesempatePorEvidencia() {
   Logger.log('=== medirDesempatePorEvidencia — sólo lectura, no escribe nada ===');
   const plan = calcularPlan_(true);
-  const dest = plan.dest, porFila = plan.porFila;
+  const r = _resolverMargenChico_(plan);
 
-  const senales = function (sc) {
-    let n = 0;
-    if (sc.perdido.figura === 0) n++;                              // la figura siempre se evalúa
-    if (sc.evaluables.fecha && sc.perdido.fecha === 0) n++;
-    if (sc.evaluables.ubic && sc.perdido.ubic === 0) n++;
-    if (sc.evaluables.hora && sc.perdido.hora === 0) n++;
-    return n;
-  };
-  const criterios = [
-    { k: 'senales', val: function (sc) { return senales(sc); }, mayor: true },
-    { k: 'distancia', val: function (sc) { return sc.dist === null ? Infinity : sc.dist; }, mayor: false },
-    { k: 'inscriptos', val: function (sc) { return (sc.c.inscriptos || 0) > 0 ? 1 : 0; }, mayor: true }
-  ];
+  Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
+             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
+  Logger.log('  orden: 1) señales evaluadas y coincidentes  2) menor distancia  3) MÁS inscriptos');
+  Logger.log('  del FORMULARIO (nunca los del destino). Gana sólo el estrictamente mejor.');
+  Logger.log('--- filas en REVISAR_MATCH por margen_chico: %s ---', _dc_(r.total));
+  Logger.log('  se resolverían ............. %s',
+             _dc_({ v: r.total.v - r.sigue.v, t: r.total.t - r.sigue.t }));
+  Logger.log('    por señales .............. %s', _dc_(r.porCriterio.senales));
+  Logger.log('    por distancia ............ %s', _dc_(r.porCriterio.distancia));
+  Logger.log('    por inscriptos ........... %s', _dc_(r.porCriterio.inscriptos));
+  Logger.log('    ganador = el mejor de hoy  %s | ganador = OTRO %s', _dc_(r.mismo), _dc_(r.otro));
+  Logger.log('  siguen en revisión ......... %s', _dc_(r.sigue));
 
-  const total = contador_(), sigue = contador_();
-  const porCriterio = { senales: contador_(), distancia: contador_(), inscriptos: contador_() };
-  const mismoGanador = contador_(), otroGanador = contador_();
-  const resueltos = [], siguen = [];
-
-  dest.filas.forEach(function (f) {
-    const pf = porFila[f.fila];
-    if (!pf || pf.motivo !== 'margen_chico' || !pf.contendientes) return;
-    const ev = enVentanaAnalisis_(f.fecha);
-    sumar_(total, ev);
-
-    // Se filtra la lista criterio por criterio: quedan los que empatan en lo mejor.
-    let quedan = pf.contendientes.slice(), porQue = null;
-    for (let i = 0; i < criterios.length && quedan.length > 1; i++) {
-      const cr = criterios[i];
-      const vals = quedan.map(cr.val);
-      const mejorVal = cr.mayor ? Math.max.apply(null, vals) : Math.min.apply(null, vals);
-      const siguientes = quedan.filter(function (sc, j) { return vals[j] === mejorVal; });
-      if (siguientes.length < quedan.length && siguientes.length === 1) porQue = cr.k;
-      quedan = siguientes;
-    }
-
-    const x = { f: f, ev: ev, conts: pf.contendientes, senales: senales };
-    if (quedan.length === 1 && porQue) {
-      x.ganador = quedan[0]; x.porQue = porQue;
-      sumar_(porCriterio[porQue], ev);
-      sumar_(x.ganador.c === pf.cand ? mismoGanador : otroGanador, ev);
-      resueltos.push(x);
-    } else {
-      sumar_(sigue, ev);
-      siguen.push(x);
-    }
+  Logger.log('--- RESUELTOS: confirmar a mano que el ganador es el correcto (ventana primero) ---');
+  _ordenarPorFila_(r.resueltos).forEach(function (x) {
+    Logger.log('  [%s] fila %s | %s | %s | %s → por %s | %s', x.ev ? 'ventana' : 'histor.',
+               x.f.fila, fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio',
+               _nombreCriterio_(x.porQue), x.esElDeHoy ? 'el mejor de hoy' : 'OTRO');
+    Logger.log('      GANA:  %s', _descPar_(x.ganador));
+    x.conts.forEach(function (sc) {
+      if (sc !== x.ganador) Logger.log('      rival: %s', _descPar_(sc));
+    });
+  });
+  Logger.log('--- SIGUEN en revisión (empatan en los tres criterios) ---');
+  _ordenarPorFila_(r.siguen).forEach(function (x) {
+    Logger.log('  [%s] fila %s | %s | %s | %s', x.ev ? 'ventana' : 'histor.', x.f.fila,
+               fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio');
+    x.conts.forEach(function (sc) { Logger.log('      %s', _descPar_(sc)); });
   });
 
-  // Aparte: formularios con 0 inscriptos que hoy GANAN una fila.
+  // Aparte 1: formularios con 0 inscriptos que hoy GANAN una fila.
   const ceroGana = [];
-  dest.filas.forEach(function (f) {
-    const pf = porFila[f.fila];
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
     if (pf && pf.veredicto === 'escribiria' && pf.cand && !(pf.cand.inscriptos > 0)) {
       ceroGana.push({ f: f, ev: enVentanaAnalisis_(f.fecha), c: pf.cand, score: pf.score });
     }
   });
-
-  // ===================== el log =====================
-  const ord = function (l) {
-    return l.slice().sort(function (a, b) {
-      if (a.ev !== b.ev) return a.ev ? -1 : 1;
-      return (a.f.fecha ? a.f.fecha.getTime() : 0) - (b.f.fecha ? b.f.fecha.getTime() : 0);
-    });
-  };
-  const desc = function (sc, fn) {
-    return fn(sc) + ' señales (' + (sc.nivel || '-') + '), ' + (sc.dist === null ? '?' : sc.dist) +
-           ' días, ins=' + (sc.c.inscriptos || 0) + ', score ' + sc.score + ' | ' + sc.c.nombre;
-  };
-
-  Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
-             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
-  Logger.log('  orden: 1) señales evaluadas y coincidentes  2) menor distancia  3) inscriptos > 0');
-  Logger.log('  gana sólo el ESTRICTAMENTE mejor en el primer criterio que distinga.');
-  Logger.log('--- filas en REVISAR_MATCH por margen_chico: %s ---', _dc_(total));
-  Logger.log('  se resolverían ............. %s', _dc_({ v: total.v - sigue.v, t: total.t - sigue.t }));
-  Logger.log('    por señales .............. %s', _dc_(porCriterio.senales));
-  Logger.log('    por distancia ............ %s', _dc_(porCriterio.distancia));
-  Logger.log('    por inscriptos ........... %s', _dc_(porCriterio.inscriptos));
-  Logger.log('    ganador = el mejor de hoy  %s | ganador = OTRO (el de hoy perdía) %s',
-             _dc_(mismoGanador), _dc_(otroGanador));
-  Logger.log('  siguen en revisión ......... %s', _dc_(sigue));
-
-  Logger.log('--- RESUELTOS: confirmar a mano que el ganador es el correcto (ventana primero) ---');
-  ord(resueltos).forEach(function (x) {
-    Logger.log('  [%s] fila %s | %s | %s | %s → por %s', x.ev ? 'ventana' : 'histor.', x.f.fila,
-               fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio',
-               x.porQue === 'senales' ? 'señales' : x.porQue);
-    Logger.log('      GANA:  %s', desc(x.ganador, x.senales));
-    x.conts.forEach(function (sc) {
-      if (sc !== x.ganador) Logger.log('      rival: %s', desc(sc, x.senales));
-    });
-  });
-
-  Logger.log('--- SIGUEN en revisión (empatan en los tres criterios) ---');
-  ord(siguen).forEach(function (x) {
-    Logger.log('  [%s] fila %s | %s | %s | %s', x.ev ? 'ventana' : 'histor.', x.f.fila,
-               fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio');
-    x.conts.forEach(function (sc) { Logger.log('      %s', desc(sc, x.senales)); });
-  });
-
   Logger.log('--- aparte: formularios con 0 inscriptos que HOY ganan una fila: %s ---',
              ceroGana.length);
-  ord(ceroGana).forEach(function (x) {
+  _ordenarPorFila_(ceroGana).forEach(function (x) {
     Logger.log('  [%s] fila %s | %s | %s | %s ← %s (score %s)', x.ev ? 'ventana' : 'histor.',
                x.f.fila, fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio',
                x.c.nombre, x.score);
   });
-  Logger.log('  (sólo se listan: no se cambió nada)');
+
+  // Aparte 2: formularios "Genérico": no está claro que un genérico deba matchear.
+  const esGen = function (c) { return /\bgenerico\b/.test(normalizeText_(c.nombre)); };
+  const gen = [];
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
+    if (!pf) return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    if (pf.cand && esGen(pf.cand)) {
+      gen.push({ f: f, ev: ev, c: pf.cand, como: 'gana (' + pf.veredicto + ')' });
+    }
+    (pf.contendientes || []).forEach(function (sc) {
+      if (esGen(sc.c) && sc.c !== pf.cand) {
+        gen.push({ f: f, ev: ev, c: sc.c, como: 'disputa (margen_chico)' });
+      }
+    });
+  });
+  Logger.log('--- aparte: formularios "Genérico" y las filas que ganan o disputan: %s ---',
+             gen.length);
+  _ordenarPorFila_(gen).forEach(function (x) {
+    Logger.log('  [%s] fila %s | %s | %s | %s → %s: %s (ins=%s)', x.ev ? 'ventana' : 'histor.',
+               x.f.fila, fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio', x.como,
+               x.c.nombre, x.c.inscriptos || 0);
+  });
+  Logger.log('  (los dos "aparte" sólo se listan: no se cambió nada)');
 
   Logger.log('  Qué NO dice esto:');
-  Logger.log('   - Que el criterio sea el correcto: eso lo dice una persona mirando RESUELTOS.');
-  Logger.log('   - "ganador = OTRO" son las filas donde el desempate le da la fila a un formulario');
-  Logger.log('     que hoy no es el mejor por score: son las que más hay que mirar.');
+  Logger.log('   - Que el criterio sea el correcto: eso lo dice una persona mirando RESUELTOS, y');
+  Logger.log('     el paso 10 contra los inscriptos que hoy tiene el destino.');
+  Logger.log('   - "OTRO" son las filas donde el desempate le da la fila a un formulario que hoy no');
+  Logger.log('     es el mejor por score: son las que más hay que mirar.');
   Logger.log('   - No mide los otros motivos de revisión (multi_figura, ubicacion_en_desacuerdo).');
 
-  return { total: total, sigue: sigue, porCriterio: porCriterio, ceroGana: ceroGana.length };
+  return { total: r.total, sigue: r.sigue, porCriterio: r.porCriterio, ceroGana: ceroGana.length,
+           genericos: gen.length };
+}
+
+// ===================== El invariante: un formulario, una fila =====================
+
+/**
+ * **Chequeo de invariante, va siempre en el log del paso 2.** Nada impide hoy que un mismo
+ * formulario gane dos filas con veredicto `escribiria`, y sus inscriptos se escribirían en las
+ * dos. Cuenta cuántos formularios ganan 2+ filas y **simula, sin implementarla**, esta regla:
+ *
+ *   un formulario va a UNA sola fila. Si varias lo reclaman, se lo queda la de mejor evidencia
+ *   (`_desempatePorEvidencia_`: señales, distancia; los inscriptos del formulario empatan, es el
+ *   mismo). Las otras se re-evalúan sin ese formulario: si les queda un ganador claro, lo toman;
+ *   si no, van a REVISAR_MATCH con motivo `formulario_compartido`. Si ninguna fila es
+ *   estrictamente mejor, todas van a `formulario_compartido`.
+ *
+ * Los inscriptos del DESTINO no entran en esta regla. **Bloqueante para DRY_RUN = false.**
+ */
+function chequearFormularioUnico_(dest, vivos, comunas, porFila) {
+  const porForm = new Map();
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
+    if (!porForm.has(pf.cand)) porForm.set(pf.cand, []);
+    porForm.get(pf.cand).push(f);
+  });
+
+  const choques = [], formsV = contador_(), filasAfect = contador_();
+  const sim = { seQueda: contador_(), reasignada: contador_(), compartido: contador_() };
+  porForm.forEach(function (filas, c) {
+    if (filas.length < 2) return;
+    const ev = filas.some(function (f) { return enVentanaAnalisis_(f.fecha); });
+    sumar_(formsV, ev);
+    const pares = filas.map(function (f) {
+      const sc = puntuar_(f, c, comunas);
+      sc.fila = f;
+      sumar_(filasAfect, enVentanaAnalisis_(f.fecha));
+      return sc;
+    });
+    const d = _desempatePorEvidencia_(pares);
+    const caso = { c: c, ev: ev, pares: pares, ganador: d.ganador, porQue: d.porQue, otras: [] };
+    pares.forEach(function (sc) {
+      const evF = enVentanaAnalisis_(sc.fila.fecha);
+      if (d.ganador && sc === d.ganador) { sumar_(sim.seQueda, evF); return; }
+      if (!d.ganador) {
+        sumar_(sim.compartido, evF);
+        caso.otras.push({ sc: sc, destino: 'formulario_compartido' });
+        return;
+      }
+      const sinEse = vivos.filter(function (x) { return x !== c; });
+      const r2 = evaluarCandidatos_(sc.fila, sinEse, comunas);
+      if (r2.veredicto === 'escribiria') {
+        sumar_(sim.reasignada, evF);
+        caso.otras.push({ sc: sc, destino: 'toma otro', nuevo: r2.mejor });
+      } else {
+        sumar_(sim.compartido, evF);
+        caso.otras.push({ sc: sc, destino: 'formulario_compartido' });
+      }
+    });
+    choques.push(caso);
+  });
+  return { choques: choques, formularios: formsV, filas: filasAfect, sim: sim };
+}
+
+function _logInvariante_(inv) {
+  Logger.log('--- 0. INVARIANTE: un formulario, una fila (chequeo fijo) ---');
+  if (!inv || !inv.choques.length) {
+    Logger.log('  OK: ningún formulario gana dos filas con veredicto escribiría.');
+    return;
+  }
+  Logger.log('  >>> ROTO: %s formularios ganan 2+ filas (%s filas afectadas). Sus inscriptos se',
+             _dc_(inv.formularios), _dc_(inv.filas));
+  Logger.log('      escribirían en todas. BLOQUEANTE para DRY_RUN = false.');
+  Logger.log('  Simulación (NO implementada): un formulario por fila, desempate por evidencia.');
+  Logger.log('    filas que se quedan el formulario ....... %s', _dc_(inv.sim.seQueda));
+  Logger.log('    filas re-evaluadas que toman otro ....... %s', _dc_(inv.sim.reasignada));
+  Logger.log('    filas a REVISAR por formulario_compartido %s', _dc_(inv.sim.compartido));
+  inv.choques.slice().sort(function (a, b) { return a.ev === b.ev ? 0 : (a.ev ? -1 : 1); })
+    .forEach(function (x) {
+      Logger.log('  [%s] %s (ins=%s)', x.ev ? 'ventana' : 'histor.', x.c.nombre,
+                 x.c.inscriptos || 0);
+      x.pares.forEach(function (sc) {
+        const o = x.otras.filter(function (y) { return y.sc === sc; })[0];
+        let destino;
+        if (sc === x.ganador) destino = 'SE LO QUEDA (por ' + _nombreCriterio_(x.porQue) + ')';
+        else if (o.destino === 'toma otro') {
+          destino = 'toma otro: ' + o.nuevo.c.nombre + ' (' + o.nuevo.score + ')';
+        } else destino = 'REVISAR: formulario_compartido';
+        Logger.log('      fila %s | %s | %s | %s señales, %s días → %s', sc.fila.fila,
+                   fmtFecha_(sc.fila.fecha), sc.fila.barrio || 'sin barrio',
+                   _senalesCoincidentes_(sc), sc.dist === null ? '?' : sc.dist, destino);
+      });
+    });
+}
+
+// ===================== Validación contra los inscriptos del destino =====================
+
+/**
+ * **Sólo lectura, sólo log. Es una CALIBRACIÓN DE UNA SOLA VEZ.**
+ *
+ * Los inscriptos que hoy tiene cargados el destino **no van a existir en régimen** como dato
+ * independiente: los va a escribir el propio sistema (CLAUDE.md 1). Por eso se usan **sólo** acá,
+ * para medir qué tan bien acierta el matcher sobre las filas que hoy tienen el dato. **No entran
+ * en el score, ni en ningún desempate, ni en la regla de un formulario por fila.**
+ *
+ * Mide cuatro cosas: la cobertura; la diferencia entre los inscriptos del destino y los del
+ * formulario elegido en las que se escribirían; si el ganador del desempate del paso 9 coincide
+ * con el destino o un rival coincide mejor; y, en los choques del invariante, qué fila coincide
+ * con el formulario y si la regla simulada eligió esa.
+ */
+function medirValidacionInscriptos() {
+  Logger.log('=== medirValidacionInscriptos — sólo lectura, CALIBRACIÓN de una sola vez ===');
+  Logger.log('  Los inscriptos del DESTINO se usan sólo acá: no entran en el score, ni en ningún');
+  Logger.log('  desempate, ni en la regla de un formulario por fila. En régimen los escribe el');
+  Logger.log('  propio sistema.');
+  const plan = calcularPlan_(true);
+  const dest = plan.dest, porFila = plan.porFila;
+  const iIns = dest.D['Inscriptos'];
+  const insDest = function (f) {
+    if (iIns == null) return null;
+    const v = f.valores[iIns];
+    return esVacio_(v) ? null : numOcero_(v);
+  };
+  const dif = function (d, form) {
+    if (d === null) return null;
+    return Math.abs((form || 0) - d) / Math.max(d, 1);
+  };
+
+  Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
+             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
+  if (iIns == null) {
+    Logger.log('  >>> El destino no tiene columna Inscriptos: nada que validar.');
+    return {};
+  }
+
+  // --- cobertura ---
+  const evaluables = contador_(), conDato = contador_();
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (!pf || pf.veredicto === 'futura') return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    sumar_(evaluables, ev);
+    if (insDest(f) !== null) sumar_(conDato, ev);
+  });
+
+  // --- las que se escribirían: destino contra formulario elegido ---
+  const bandas = { exacto: contador_(), p5: contador_(), p20: contador_(), mas: contador_() };
+  const grandes = [];
+  const escritasConDato = contador_();
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
+    const d = insDest(f);
+    if (d === null) return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    sumar_(escritasConDato, ev);
+    const x = dif(d, pf.cand.inscriptos);
+    const k = x === 0 ? 'exacto' : x <= 0.05 ? 'p5' : x <= 0.20 ? 'p20' : 'mas';
+    sumar_(bandas[k], ev);
+    if (k === 'mas') grandes.push({ f: f, ev: ev, d: d, c: pf.cand, x: x });
+  });
+
+  // --- los resueltos del paso 9 ---
+  const r9 = _resolverMargenChico_(plan);
+  const v9 = { conDato: contador_(), ganadorMejor: contador_(), rivalMejor: contador_(),
+               empate: contador_() };
+  const desac9 = [];
+  r9.resueltos.forEach(function (x) {
+    const d = insDest(x.f);
+    if (d === null) return;
+    sumar_(v9.conDato, x.ev);
+    const dg = dif(d, x.ganador.c.inscriptos);
+    let mejorRival = null;
+    x.conts.forEach(function (sc) {
+      if (sc === x.ganador) return;
+      const dr = dif(d, sc.c.inscriptos);
+      if (!mejorRival || dr < mejorRival.dr) mejorRival = { sc: sc, dr: dr };
+    });
+    if (!mejorRival || dg < mejorRival.dr) sumar_(v9.ganadorMejor, x.ev);
+    else if (mejorRival.dr < dg) {
+      sumar_(v9.rivalMejor, x.ev);
+      desac9.push({ f: x.f, ev: x.ev, x: x, d: d, rival: mejorRival.sc });
+    } else sumar_(v9.empate, x.ev);
+  });
+
+  // --- los choques del invariante ---
+  const inv = plan.invariante || { choques: [] };
+  const vInv = { conDato: 0, reglaAcierta: 0, reglaErra: 0, sinGanador: 0 };
+  const detInv = [];
+  inv.choques.forEach(function (ch) {
+    let mejor = null;
+    ch.pares.forEach(function (sc) {
+      const d = insDest(sc.fila);
+      if (d === null) return;
+      const x = dif(d, ch.c.inscriptos);
+      if (!mejor || x < mejor.x) mejor = { sc: sc, x: x, d: d };
+    });
+    if (!mejor) return;
+    vInv.conDato++;
+    if (!ch.ganador) vInv.sinGanador++;
+    else if (ch.ganador === mejor.sc) vInv.reglaAcierta++;
+    else vInv.reglaErra++;
+    detInv.push({ ch: ch, mejor: mejor });
+  });
+
+  // ===================== el log =====================
+  Logger.log('--- cobertura: filas evaluables con inscriptos cargados en el destino ---');
+  Logger.log('  %s de %s', _dc_(conDato), _dc_(evaluables));
+
+  Logger.log('--- las que se escribirían (%s con dato): destino vs formulario elegido ---',
+             _dc_(escritasConDato));
+  Logger.log('  exacto ..... %s', _dcp_(bandas.exacto, escritasConDato));
+  Logger.log('  <= 5%% ...... %s', _dcp_(bandas.p5, escritasConDato));
+  Logger.log('  <= 20%% ..... %s', _dcp_(bandas.p20, escritasConDato));
+  Logger.log('  más ........ %s   ← candidatas a match equivocado',
+             _dcp_(bandas.mas, escritasConDato));
+  _ordenarPorFila_(grandes).slice(0, 40).forEach(function (x) {
+    Logger.log('    [%s] fila %s | %s | %s | %s | destino %s vs formulario %s (%s%%) ← %s',
+               x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura,
+               x.f.barrio || 'sin barrio', x.d, x.c.inscriptos || 0, Math.round(x.x * 100),
+               x.c.nombre);
+  });
+
+  Logger.log('--- los RESUELTOS del paso 9 (%s con dato): ¿el ganador coincide con el destino? ---',
+             _dc_(v9.conDato));
+  Logger.log('  el ganador coincide mejor ... %s', _dc_(v9.ganadorMejor));
+  Logger.log('  UN RIVAL coincide mejor ..... %s', _dc_(v9.rivalMejor));
+  Logger.log('  empatan ..................... %s', _dc_(v9.empate));
+  _ordenarPorFila_(desac9).forEach(function (y) {
+    Logger.log('    [%s] fila %s | %s | %s | destino %s', y.ev ? 'ventana' : 'histor.', y.f.fila,
+               fmtFecha_(y.f.fecha), y.f.figura, y.d);
+    Logger.log('        ganó (por %s): ins=%s | %s', _nombreCriterio_(y.x.porQue),
+               y.x.ganador.c.inscriptos || 0, y.x.ganador.c.nombre);
+    Logger.log('        rival:        ins=%s | %s', y.rival.c.inscriptos || 0, y.rival.c.nombre);
+  });
+
+  Logger.log('--- los choques del invariante (%s con dato): ¿la regla simulada eligió la fila',
+             vInv.conDato);
+  Logger.log('    que coincide con los inscriptos del formulario? ---');
+  Logger.log('  acierta %s | erra %s | la regla no eligió ninguna %s', vInv.reglaAcierta,
+             vInv.reglaErra, vInv.sinGanador);
+  detInv.forEach(function (y) {
+    Logger.log('    %s (ins=%s): coincide la fila %s (destino %s) | la regla eligió %s',
+               y.ch.c.nombre, y.ch.c.inscriptos || 0, y.mejor.sc.fila.fila, y.mejor.d,
+               y.ch.ganador ? 'la fila ' + y.ch.ganador.fila.fila : 'ninguna');
+  });
+
+  Logger.log('  Qué NO dice esto:');
+  Logger.log('   - Las filas cargadas por el legado desde el mismo formulario coinciden por');
+  Logger.log('     construcción: eso valida al matcher nuevo contra el viejo, no contra la verdad.');
+  Logger.log('   - Las filas sin inscriptos cargados no aportan nada acá.');
+  Logger.log('   - Los inscriptos pueden haber crecido después de la carga: una diferencia chica no');
+  Logger.log('     es un error. Mirar la banda "más", no la de <= 20%.');
+  Logger.log('   - Nada de esto entra al score ni a un desempate: es una calibración de una vez.');
+
+  return { conDato: conDato, bandas: bandas, v9: v9, inv: vInv };
 }
 
 // ===================== El upsert =====================
@@ -1009,7 +1316,12 @@ function calcularPlan_(enSeco) {
 
   const ejes = medirEjes_(dest, cands, comunas);
 
+  // El invariante "un formulario, una fila": se chequea siempre (bloque 0 del log). Sólo mide y
+  // simula; no cambia ningún veredicto.
+  const invariante = chequearFormularioUnico_(dest, cands.vivos, comunas, porFila);
+
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
+           invariante: invariante,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
            porSinFigEscribe: porSinFigEscribe, porSinFigRevisa: porSinFigRevisa,
@@ -1120,6 +1432,8 @@ function logResumen_(plan) {
   Logger.log('  backfill de la Fase 6 llena el histórico— pero calibra sobre la ventana.');
   Logger.log('  Si las dos columnas difieren mucho, la de la derecha describe un origen que ya');
   Logger.log('  no existe y no sirve para decidir nada.');
+
+  _logInvariante_(plan.invariante);
 
   Logger.log('--- 1. VEREDICTOS (base: %s | %s filas, sin las %s futuras) ---',
              base.v, base.t, _dc_(r.futuras));

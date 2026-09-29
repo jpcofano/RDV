@@ -31,7 +31,8 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 |
 | 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 16:42 |
-| 9 | `paso9_medirDesempatePorEvidencia()` | `medirDesempatePorEvidencia()` | desempatar las `margen_chico` por señales, distancia e inscriptos (decisión q) | **no escribe en ninguna planilla**; sólo log. Sus números se leen antes de implementar nada |
+| 9 | `paso9_medirDesempatePorEvidencia()` | `medirDesempatePorEvidencia()` | desempatar las `margen_chico` por señales, distancia y **más inscriptos del formulario** (decisión q) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 17:06 (37 de 38); **se vuelve a correr** con el criterio 3 nuevo |
+| 10 | `paso10_validarContraInscriptos()` | `medirValidacionInscriptos()` | calibración de una vez contra los inscriptos que hoy tiene el destino (decisión s) | **no escribe en ninguna planilla**; sólo log. **No entra en el score** |
 
 El paso 8 ya corrió (26/09 16:46) y está en YA CORRIDOS como `rehacer_medirVariantesSinFigura()`;
 su variante D-C quedó implementada (decisión p).
@@ -48,7 +49,8 @@ sin match            37                  ≈  25
                      = score_bajo 23 + sin_formulario_propio 14
 ```
 
-Si el paso 2 se aleja mucho de la predicción, mirar antes de seguir: la predicción sale de la
+Después del paso 2, correr el 9 y el 10 (en ese orden). Si el paso 2 se aleja mucho de la
+predicción, mirar antes de seguir: la predicción sale de la
 medición de D-C (12 de 14 objetivos recuperados, 1 a revisión, costo 0).
 
 La corrida anterior, del 26/09 14:21 (810 filas, ventana 310 / 304 evaluables): 223 | 30 | 51,
@@ -85,6 +87,12 @@ Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`
 
 **`DRY_RUN = true` en [20_UpsertDestino.js](../20_UpsertDestino.js).** No se cambia hasta haber
 leído los números de la corrida en seco.
+
+> 🔴 **BLOQUEANTE para `DRY_RUN = false`: el invariante "un formulario, una fila" está roto.**
+> Nada impide hoy que un formulario gane dos filas con veredicto `escribiria`, y sus inscriptos se
+> escribirían en las dos (CLAUDE.md 3.1.j; tres casos en el paso 9). El bloque 0 del log del paso 2
+> lo chequea siempre y simula la regla que lo arreglaría. **Mientras diga ROTO, no se escribe.**
+> Ver decisión r).
 
 > El pipeline legado está **frenado a propósito**: un solo activador vivo,
 > `syncAgendaSheetInBaseFromAgenda_2`. Ver el recuadro de la sección 2 de `CLAUDE.md`. No
@@ -326,7 +334,7 @@ mejor—, el orden simulado es:
 1. más señales evaluadas **y** coincidentes (figura, fecha, ubicación, hora; la fecha cuenta si
    está dentro de ±3);
 2. menor distancia en días;
-3. inscriptos > 0 antes que 0.
+3. **más inscriptos del formulario** (hasta el 26/09: inscriptos > 0). Nunca los del destino.
 
 Gana sólo el **estrictamente** mejor en el primer criterio que lo distinga; si empatan en los
 tres, sigue en revisión. El log da, en [ventana | total], cuántas se resolverían y por qué
@@ -337,6 +345,52 @@ formulario que hoy no es el mejor por score.
 **No se implementa sin que una persona confirme los resueltos.** Aparte, se listan los
 formularios con 0 inscriptos que hoy ganan una fila (Mercedes Miguel, `Comuna 9 15/9` → Miguel
 15/09 Liniers), sin tocarlos.
+
+**Corrió el 26/09 17:06: 37 de 38 resueltas** (27 por señales, 10 por distancia). Después:
+
+- el criterio 3 pasó a **más inscriptos del formulario** (regla de negocio: de dos formularios de
+  una misma reunión, el que casi no tiene inscriptos no se hizo). Debería resolver la fila 708
+  (`Primera Persona 27/7`, 1344 contra su duplicado `DEPORTES` con 1) y la 134 (Tapia Saavedra
+  21/8, 72 contra 2);
+- cada resuelto dice si el ganador es **el mejor de hoy** u **"OTRO"**;
+- se listan aparte los formularios **"Genérico"** (`Jorge Macri - Genérico 2026`, 774 ins) y las
+  filas que ganan o disputan: no está claro que un genérico deba matchear.
+
+Sigue siendo medición: **no se implementa hasta ver el paso 10**. El orden por evidencia vive en
+una sola función, `_desempatePorEvidencia_`, que usan también la regla simulada de r) y el paso 10.
+
+### r) 🔴 El invariante "un formulario, una fila" (BLOQUEANTE para escribir)
+
+Bloque **0** del log del paso 2, fijo. Cuenta cuántos formularios ganan 2+ filas con veredicto
+`escribiria` [ventana | total], con los casos, y **simula sin implementarla** la regla: un
+formulario va a una sola fila; si varias lo reclaman, se lo queda la de mejor evidencia
+(`_desempatePorEvidencia_`: señales, distancia); las otras se re-evalúan sin ese formulario, y si
+no les queda nada claro van a REVISAR_MATCH con motivo `formulario_compartido`. Los inscriptos del
+destino no entran.
+
+Los tres casos del paso 9: `1 a 1 - Comuna 5 17/6` (filas 645 y 648), `RDV JM Velez Sarfield - 5/6`
+(626 y 631), `Clara Muzzio 07/11 Villa Pueyrredon` (309 y 315). **Mientras el bloque 0 diga
+ROTO, `DRY_RUN` no pasa a `false`.**
+
+### s) ¿Qué tan bien acierta el matcher contra los inscriptos que hoy tiene el destino?
+
+Log de **`paso10_validarContraInscriptos()`**. **Es una calibración de una sola vez**: los
+inscriptos que hoy tiene el destino no van a existir en régimen como dato independiente (los
+escribe el propio sistema), así que **no entran en el score, ni en ningún desempate, ni en la
+regla de r)**. Mide:
+
+- **cobertura**: filas evaluables con inscriptos cargados;
+- **las que se escribirían**: destino contra el formulario elegido, en bandas (exacto / ≤ 5% /
+  ≤ 20% / más), con la lista de las diferencias grandes —candidatas a match equivocado—;
+- **los resueltos del paso 9**: si el ganador coincide con el destino o un rival coincide mejor,
+  con los desacuerdos listados;
+- **los choques de r)**: qué fila coincide con los inscriptos del formulario, y si la regla
+  simulada eligió esa.
+
+Lo que no dice, y está en el log: las filas que el legado cargó desde el mismo formulario
+coinciden por construcción (valida al matcher nuevo contra el viejo, no contra la verdad); las
+filas sin inscriptos no aportan; y una diferencia chica puede ser inscriptos que crecieron después
+de la carga, no un error.
 
 ---
 
@@ -392,7 +446,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…`, `paso9_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…`, `paso9_…`, `paso10_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
