@@ -21,17 +21,23 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO: paso2_upsertEnSeco(). Es la primera corrida con figurasEnTexto_ sobre el texto
- *      completo (limpiarPrefijos_ ya no se aplica a la figura). Comparar contra la LÍNEA BASE,
- *      la corrida en seco del 25/09 18:13, antes del cambio:
+ *  >>> PRÓXIMO: paso6_medirFormulariosSinFigura(). Sólo lectura, sólo log. Mide el TAMAÑO de
+ *      sacar la figura del denominador para los formularios que no nombran a nadie (el formato
+ *      "VÍNCULO CIUDADANO - ... - Comuna X - d/m" de 09/2026). No cambia pesos ni puertas.
+ *      Después, paso2_upsertEnSeco() otra vez: el log trae el cruce nuevo del 2f, el desglose de
+ *      "ninguno" del 2b y los pares por figura del bloque 3.
  *
- *        escribiría   231 | 627
- *        a revisar     20 |  68
- *        sin match     57 | 107
- *        2f: figura_no_reconocida_en_el_formulario  103 (37,3%) en ventana
+ *  LÍNEA BASE para la próxima comparación: la corrida en seco del 26/09 11:36, ya con la figura
+ *  buscada sobre el texto completo. Corte de ventana FIJO en 26/03/2026
+ *  (VENTANA_ANALISIS_DESDE en 00_Config.js), base 302 filas:
  *
- *      Lo esperable es que figura_no_reconocida baje, pero 18 formularios que perdían la
- *      figura difícilmente explican 103 filas: el resto no tiene causa medida.
+ *        escribiría   641 (total)      antes, 25/09 18:13: 627
+ *        a revisar     85 (total)                          68
+ *        sin match     76 (total)                         107
+ *        2f: figura_no_reconocida_en_el_formulario  92 (32,7%) en ventana   (antes 103)
+ *
+ *      OJO con el 2f: cuenta filas cuyo formulario de comuna más cercano NO ganó, no filas
+ *      que fallan. Muchas se escriben igual con otro formulario; el cruce nuevo lo separa.
  *
  *  La secuencia, en orden:
  *
@@ -50,6 +56,9 @@
  *                                                al log, y ahí se confirma que las 20
  *                                                desfase_reprogramacion son el destino corrido
  *                                                1-3 días y no un error del parser.
+ *   paso6_medirFormulariosSinFigura() → medirFormulariosSinFigura()   NO escribe en ninguna
+ *                                                planilla: sólo log. Recalcula el plan (como el
+ *                                                paso 2, sin escribir los reportes).
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -105,6 +114,15 @@ function paso3_medirReglaDelMes() {
              'NO en el destino (sólo lectura)',
              'solapa DIAG_CORTE_B en la intermedia + bloque "LA REGLA DEL MES" en el log');
   return diagCorteB();
+}
+
+function paso6_medirFormulariosSinFigura() {
+  _anunciar_('paso 6 — formularios que no nombran a nadie',
+             'medirFormulariosSinFigura()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: formularios sin figura por forma, filas de su misma comuna a 0 y ±3 ' +
+             'días, y cuántas filas que hoy se escriben tendrían empate o rival');
+  return medirFormulariosSinFigura();
 }
 
 // =============================================================================================

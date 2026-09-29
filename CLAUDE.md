@@ -329,6 +329,14 @@ Hasta ahora los cuatro competían igual.
 > figura a ±`DIAS_TEMATICA_CERCANA` (3) días. **Si no existe, es un huérfano real** y ningún
 > peso de ubicación lo rescata.
 
+> **Corrección (corrida del 26/09 11:36): cuatro de los seis "huérfanos temáticos reales" del
+> handoff del 25/09 no lo eran.** B 624, 705, 646 y 686 son `JORGE MACRI - Encuentro Temático
+> ...` con la figura **sólo en el prefijo**: `limpiarPrefijos_` la borraba y el formulario no
+> nombraba a nadie. Con la figura buscada sobre el texto completo, ya tienen fila. Quedan
+> **B 421 y 448**, que nombran figuras sólo por apellido (`Lombardi-Tapia-Piragine`):
+> **hipótesis, sin medir**, que sea la grafía y no la falta de reunión. El handoff no se corrige:
+> es una foto.
+
 **e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
 negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería con el archivo.
@@ -1256,6 +1264,30 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 - `detectPersona_` es una lista fija de 20 nombres. Nombre fuera de lista → `''` → la fila entra
   a B2 sin `Persona` y queda inindexable (3.1.f).
 - `DEFAULT_YEAR = 2025` hardcodeado en `Código.js`.
+- **Desde 09/2026 hay formularios que no nombran a NINGUNA figura.** Formato nuevo, visto en la
+  corrida del 26/09 11:36:
+
+  ```
+  VÍNCULO CIUDADANO - Encuentro con vecinos sobre Seguridad - Comuna X - d/m
+  ```
+
+  **14 en ventana**, todos en *"formularios sin candidato"* de `EMPAREJAR_MANUAL`. Las filas del
+  destino **calzan por comuna + fecha**:
+
+  ```
+  Landerreche 03/09 Constitución  ↔  "... Comuna 1 Sur - 3/9"   (Constitución es Comuna 1)
+  Piñeiro     03/09 Recoleta      ↔  "... Comuna 2 - 3/9"       (Recoleta es Comuna 2)
+  ```
+
+  Hoy pierden porque **la figura siempre entra al denominador** de `puntuar_`: sin figura, lo
+  mejor que pueden dar es fecha + comuna sobre figura + fecha + comuna = 0,56. Es el mismo tipo
+  de fragilidad que el barrio de 3.3.b —**el origen deja de mandar un dato y el matching se
+  cae sin que nadie toque el código**—, y otro argumento para estampar `RDV_UID` cuanto antes.
+
+  `medirFormulariosSinFigura()` (`paso6_…`) mide **el tamaño** de sacar la figura del
+  denominador para estos formularios, sin hacerlo: cuántas filas de su misma comuna tienen a 0 y
+  a ±3 días, y cuántas filas que hoy se escriben con otro formulario tendrían un empate o un
+  rival. **No se cambió ningún peso ni puerta.**
 
 ### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
 
@@ -1335,7 +1367,11 @@ Qué cambia y qué no:
 | **las solapas `DIAG_*`** | traen todas las filas, con una columna `en_ventana` para filtrar |
 | **los repartos por mes** | van completos: son justamente para ver el cambio |
 
-La ventana se mide sobre la fecha de la reunión, contra el día de hoy.
+La ventana se mide sobre la fecha de la reunión, contra el día de hoy — **salvo que
+`VENTANA_ANALISIS_DESDE` fije el corte**. La ventana móvil corre el corte todos los días (entre el
+25/09 y el 26/09 pasó del 25/03 al 26/03 y la base bajó de 307 a 302), y así dos corridas no
+comparan la misma población. Desde el 26/09 está **fijo en 2026-03-26**, el corte de la línea
+base de esa corrida; `null` vuelve a la ventana móvil. Los logs dicen cuál de las dos se usó.
 
 ### 3.6 `syncManualCorrections_B2`: qué es ese 24,22% de error
 
@@ -2461,6 +2497,40 @@ toma el **más cercano en fecha** y dice si entró, y si no, por qué —
 `figura_no_reconocida_en_el_formulario`, `fecha_a_4_7_dias`, `fecha_a_mas_de_7_dias`,
 `gano_otro_candidato`, o el motivo del veredicto—, con los primeros 25 casos y quién les ganó.
 
+> **Corrección: el 2f no cuenta filas que fallan.** El motivo es del **formulario** de comuna más
+> cercano, no de la fila. En la corrida del 26/09 los 25 ejemplos listados eran casi todos
+> `fila: escribiria`: la fila entraba igual, con otro formulario. Leer `figura_no_reconocida`
+> 37,3% (25/09) o 32,7% (26/09) como "filas que fallan" era contar una cosa y presentarla como
+> otra (§6). El log ahora cruza cada motivo con el **veredicto de la fila** (escribiría / revisar
+> / sin match), dice cuántas de las "no entran" se escriben igual, y lista sólo las que no se
+> escriben.
+
+#### La corrida en seco del 26/09 11:36: línea base
+
+Primera corrida con la figura buscada sobre el texto completo. Es contra la que se compara la
+próxima. Corte de ventana fijo en 26/03/2026 (3.5), base 302 filas.
+
+| | 25/09 18:13 | **26/09 11:36** |
+|---|---|---|
+| escribiría (total) | 627 | **641** |
+| a revisar (total) | 68 | **85** |
+| sin match (total) | 107 | **76** |
+| 2f `figura_no_reconocida` (ventana) | 103 (37,3%) | **92 (32,7%)** — no son filas que fallan, ver arriba |
+| densidad de `EMPAREJAR_MANUAL` | 4,9 | **7,0** |
+| "ninguno a ±3" del 2b (ventana) | 15 | **23** |
+
+Lo que se sabe de cada cambio, y lo que no:
+
+- **escribiría / sin match:** los temáticos B 624, 705, 646 y 686 dejaron de ser huérfanos
+  (figura en el prefijo, 1.d). Cuántas filas más entraron por eso, no está desglosado;
+- **densidad 4,9 → 7,0:** hipótesis, sin medir, que sean las filas de Jorge Macri por los
+  formularios que ahora reconocen la figura del prefijo. El bloque 3 ahora desglosa los pares por
+  figura y cuenta los que existen sólo por el prefijo;
+- **"ninguno" 15 → 23:** sin causa medida. Hipótesis: formularios `JORGE MACRI - ...` que antes
+  contaban como "sin figura" ahora son "de otra figura" para filas de otras personas. El 2b
+  desglosa "ninguno" y lista las filas. Parte del salto puede ser población: el corte se movió
+  del 25/03 al 26/03 entre las dos corridas.
+
 #### La ventana de análisis llega al upsert (y las conclusiones de arriba hay que releerlas)
 
 `20_UpsertDestino.js` se escribió **después** de los once reportes de `diagnostico/` y **no
@@ -2714,7 +2784,7 @@ No es prolijidad. En esta migración cambiamos de premisa **once veces**:
 | las 20 `fecha_mal_parseada` son errores del parser | texto y `fecha_fin` coinciden; el destino está corrido 1-3 días. Es reprogramación, y se arregla en la escala del score |
 | `EVENTO` confirma las reuniones temáticas | coincide con el 90% de las filas: es una categoría, no un identificador |
 | `Para Revisar` es el destino del flujo Agenda | es el staging del pipeline principal (`Upset Base FInal.js:7`); Agenda también escribe ahí |
-| un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. **Beneficio medido para la figura: 0** (25/09 20:18: `EVITA multi_figura` 0 \| 0; `PIERDE la figura` 18 \| 41). Sale de `figurasEnTexto_`; los demás usos siguen sin medir. **No explica el 37,3% del 2f:** 18 formularios difícilmente dan 103 filas. Cuánto aporta lo dirá el paso 2; el resto no tiene causa medida |
+| un caso `POST - JORGE MACRI - ...` justificó `limpiarPrefijos_` | **inventado**: no existe. **Beneficio medido para la figura: 0** (25/09 20:18: `EVITA multi_figura` 0 \| 0; `PIERDE la figura` 18 \| 41). Sale de `figurasEnTexto_`; los demás usos siguen sin medir. Corrida del 26/09 con el cambio: 2f 103 → 92 en ventana, y los temáticos B 624, 705, 646 y 686 dejaron de ser huérfanos. **Ojo: el 2f (37,3% el 25/09, 32,7% el 26/09) no cuenta filas que fallan** —cuenta filas cuyo formulario de comuna más cercano no ganó, y muchas se escriben igual con otro—; lo que falla de verdad lo separa el cruce motivo × veredicto |
 
 Cada una de esas veces, **entre la medición y la actualización el documento decía algo falso**.
 Y ése es justo el momento en que alguien lo abre para decidir. Un documento desactualizado no es

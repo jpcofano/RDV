@@ -27,22 +27,31 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. **← PRÓXIMO** |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Corrió el 26/09 11:36; **se vuelve a correr después del 6** |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
+| 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO** |
 
-**Próximo: el paso 2**, primera corrida con `figurasEnTexto_` sobre el texto completo. **Línea
-base** para comparar, la corrida en seco del 25/09 18:13 (antes del cambio):
+**Línea base para la próxima comparación: la corrida en seco del 26/09 11:36**, la primera con
+la figura buscada sobre el texto completo. Corte de ventana **fijo** en 26/03/2026
+(`VENTANA_ANALISIS_DESDE`, `00_Config.js`), base 302 filas:
 
 ```
-escribiría   231 | 627
-a revisar     20 |  68
-sin match     57 | 107
-2f: figura_no_reconocida_en_el_formulario  103 (37,3%) en ventana
+                  25/09 18:13   26/09 11:36
+escribiría (total)       627          641
+a revisar  (total)        68           85
+sin match  (total)       107           76
+2f figura_no_reconocida (ventana)   103 (37,3%)   92 (32,7%)
+densidad EMPAREJAR_MANUAL           4,9           7,0
+"ninguno a ±3" del 2b (ventana)      15            23
 ```
 
-Lo esperable es que `figura_no_reconocida` baje, pero los 18 formularios que perdían la figura
-difícilmente explican 103 filas. **El resto no tiene causa medida**; las variantes de grafía son
-candidata, sin medir.
+> ⚠️ **El 2f no cuenta filas que fallan.** Cuenta filas cuyo formulario de comuna más cercano no
+> fue el que ganó; muchas se escriben igual con otro formulario (los 25 ejemplos del 26/09 eran
+> casi todos `fila: escribiria`). El 37,3% y el 32,7% **no** son "filas que fallan". El log
+> nuevo cruza cada motivo con el veredicto de la fila (decisión l).
+
+Las ventanas del log ya no son comparables con las de antes del 26/09 si no se corrigen por el
+corte: la del 25/09 usaba 25/03 (base 307).
 
 Ya corridos, en el bloque YA CORRIDOS de `99_Correr.js`: `rehacer_medirFiguraEnPrefijo()` (el
 viejo paso 4, decisión i) y `rehacer_verificarLegToDate()` (el viejo paso 5, decisión j).
@@ -152,7 +161,9 @@ sobre el texto completo, como el legado.
   comuna, eje, temática, hora y fecha sobre el texto limpio, y `diagScores()` la usa para la
   fecha. Ahí **sigue siendo una hipótesis sin medir**.
 - **Corregido respecto de la versión anterior:** se había anotado como hipótesis que `PIERDE`
-  explicaría "buena parte del 37,3%" del 2f. **18 formularios difícilmente explican 103 filas.**
+  explicaría "buena parte del 37,3%" del 2f. **18 formularios difícilmente explican 103 filas**
+  —y además el 37,3% nunca fueron "filas que fallan" (decisión l). El 26/09, con el cambio, el
+  2f bajó de 103 a 92 en ventana.
   Cuánto aportan lo dirá el paso 2 (comparar contra la línea base de la sección 1); **el resto no
   tiene causa medida**, y las variantes de grafía son candidata, sin medir.
 
@@ -169,6 +180,46 @@ El pendiente queda **latente** en CLAUDE.md: hace falta que un push cambie el or
 gane la copia de B2 **y** que alguien tipee una fecha como texto. El arreglo (las tres copias día
 primero) va, a más tardar, en la Fase 9. Rehacer la medición si cambia el orden de los archivos
 o si empieza a cargarse `Fecha (manual)`.
+
+### k) ¿Cuánto movería sacar la figura del denominador para los formularios sin figura?
+
+Log de **`paso6_medirFormulariosSinFigura()`**. El formato de 09/2026 —`VÍNCULO CIUDADANO -
+Encuentro con vecinos sobre Seguridad - Comuna X - d/m`— no nombra a nadie (CLAUDE.md 3.3): 14 en
+ventana, todos sin candidato. Hoy lo mejor que dan es fecha + comuna sobre figura + fecha +
+comuna = 0,56. Tres bloques:
+
+1. **cuántos hay y de qué forma**, con la comuna y la fecha normalizadas antes de agrupar;
+2. **filas de su misma comuna** (barrio → comuna) a 0 días y a ±3: exactamente 1 es el caso
+   limpio, 2 o más necesita otra señal, ninguna es huérfano. Con el veredicto de hoy de esas
+   filas;
+3. **la otra cara, el costo**: simulando `obtenido / (alcanzable − 0,35)` sólo para estos
+   formularios, cuántas filas que hoy se escriben con otro formulario tendrían un empate o un
+   rival que las mande a revisión; y cuántas que hoy no se escriben llegarían al umbral.
+
+**No es el resultado del cambio: es su tamaño.** No se tocaron pesos, puertas ni `puntuar_`. Si
+se decide el cambio, el resultado lo dice volver a correr el paso 2 con él hecho.
+
+### l) El 2f: ¿cuántas de las "no entran" fallan de verdad?
+
+Bloque **2f** del paso 2. Ahora trae un **cruce motivo × veredicto de la fila** y la línea
+*"De las N donde el más cercano no ganó, M son filas que IGUAL SE ESCRIBEN"*. Las que fallan de
+verdad son las columnas *revisar* y *sin match*. Los ejemplos listados son sólo de filas que no
+se escriben, ventana primero.
+
+### m) ¿De dónde sale la densidad de `EMPAREJAR_MANUAL`? (4,9 → 7,0)
+
+Bloque **3** del paso 2: pares por figura de la fila (top 10) y cuántos existen **sólo porque la
+figura sale del prefijo**. Hipótesis a confirmar o descartar: la subida son las filas de Jorge
+Macri por los formularios `JORGE MACRI - ...` que ahora reconocen la figura. Si esos pares no
+son la mayor parte de la subida, la hipótesis cae.
+
+### n) ¿Por qué "ninguno a ±3" pasó de 15 a 23?
+
+Bloque **2b** del paso 2. "ninguno" se cuenta igual que antes (para poder comparar) y se
+desglosa en *con un formulario a ±3 de OTRA figura* y *sin ningún formulario*, con la lista de
+las filas (fecha, figura, barrio). Hipótesis, sin medir: los `JORGE MACRI - ...` que antes eran
+"sin figura" ahora son "de otra figura" para filas de otras personas. Parte puede ser población:
+entre las dos corridas el corte se movió; desde ahora está fijo (`VENTANA_ANALISIS_DESDE`).
 
 ---
 
@@ -224,7 +275,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)

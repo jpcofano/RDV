@@ -140,8 +140,8 @@ function medirFiguraEnPrefijo() {
   });
 
   Logger.log('=== medirFiguraEnPrefijo — sólo lectura, no escribe nada ===');
-  Logger.log('VENTANA: %s en ventana / %s formularios vivos de B | corte: %s (últimos %s meses)',
-             base.v, base.t, fmtFecha_(inicioVentanaAnalisis_()), VENTANA_ANALISIS_MESES);
+  Logger.log('VENTANA: %s en ventana / %s formularios vivos de B | corte: %s (%s)',
+             base.v, base.t, fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
   Logger.log('  %s formularios sin fecha detectable: cuentan sólo en el total.', sinFecha);
   Logger.log('  PREFIJOS_EVENTO = %s', JSON.stringify(PREFIJOS_EVENTO));
   Logger.log('  Se lee [ventana | total]. Decide la ventana.');
@@ -196,6 +196,232 @@ function medirFiguraEnPrefijo() {
   });
 
   return { base: base, clases: cnt };
+}
+
+// ===================== Medición: los formularios que no nombran a nadie =====================
+
+/**
+ * **Sólo lectura, sólo log.** Mide el **tamaño** de un cambio posible, sin hacerlo.
+ *
+ * Desde 09/2026 hay un formato nuevo —`VÍNCULO CIUDADANO - Encuentro con vecinos sobre Seguridad
+ * - Comuna X - d/m`— que **no nombra ninguna figura** (CLAUDE.md 3.3). Las filas del destino
+ * calzan por comuna + fecha, pero esos formularios pierden porque la figura **siempre** entra al
+ * denominador de `puntuar_`: sin figura, el techo es fecha + comuna sobre figura + fecha + comuna.
+ *
+ * Tres preguntas, sin cambiar pesos ni puertas:
+ *
+ *   1. ¿Cuántos formularios vivos no nombran a nadie, y de qué forma son?
+ *   2. Para cada uno, ¿cuántas filas del destino de la MISMA comuna (barrio → comuna) hay a 0 días
+ *      y a ±3? Exactamente 1 es un match limpio; 2+ es ambiguo; 0 es huérfano.
+ *   3. La otra cara: si la figura NO contara en el denominador para estos formularios, ¿cuántas
+ *      filas que HOY se escriben con otro formulario pasarían a tener un empate o un rival?
+ *
+ * Recalcula el plan completo (`calcularPlan_`, sin escribir reportes) para tener el veredicto de
+ * cada fila. La simulación del punto 3 es `obtenido / (alcanzable − figura)` sobre el mismo
+ * `puntuar_`: no se toca la función.
+ */
+function medirFormulariosSinFigura() {
+  Logger.log('=== medirFormulariosSinFigura — sólo lectura, no escribe nada ===');
+  const plan = calcularPlan_(true);
+  const dest = plan.dest, comunas = plan.comunas, porFila = plan.porFila;
+  const vivos = plan.cands.vivos;
+  const tol = TOLERANCIA_REPROGRAMACION_DIAS;
+
+  const sinFig = vivos.filter(function (c) { return !c.figurasNorm.length; });
+  const esSinFig = {};
+  sinFig.forEach(function (c) { esSinFig[c.fila] = true; });
+
+  const base = contador_(), total = contador_(), conComuna = contador_();
+  vivos.forEach(function (c) { sumar_(base, enVentanaAnalisis_(c.det && c.det.mejor)); });
+
+  // --- 1. por forma ---
+  const formas = new Map();
+  // --- 2. candidatas de su misma comuna ---
+  const k0 = { uno: contador_(), varias: contador_(), ninguna: contador_() };
+  const k3 = { uno: contador_(), varias: contador_(), ninguna: contador_() };
+  const filasCand = {};                         // fila del destino → true (sin repetir)
+  const ejV = [], ejH = [];
+
+  sinFig.forEach(function (c) {
+    const ev = enVentanaAnalisis_(c.det && c.det.mejor);
+    sumar_(total, ev);
+
+    const forma = _formaFormulario_(c.nombre);
+    if (!formas.has(forma)) formas.set(forma, { n: contador_(), ejV: null, ejH: null });
+    const g = formas.get(forma);
+    sumar_(g.n, ev);
+    if (ev && !g.ejV) g.ejV = c.nombre;
+    if (!ev && !g.ejH) g.ejH = c.nombre;
+
+    if (c.comuna == null) return;               // sin comuna no hay contra qué calzar
+    sumar_(conComuna, ev);
+
+    const a0 = [], a3 = [];
+    for (let j = 0; j < dest.filas.length; j++) {
+      const f = dest.filas[j];
+      const cDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
+      if (cDest == null || cDest !== c.comuna) continue;
+      const d = distanciaFecha_(f.fecha, c.det);
+      if (d === null || d > tol) continue;
+      a3.push({ f: f, d: d });
+      if (d === 0) a0.push({ f: f, d: d });
+    }
+    sumar_(a0.length === 0 ? k0.ninguna : a0.length === 1 ? k0.uno : k0.varias, ev);
+    sumar_(a3.length === 0 ? k3.ninguna : a3.length === 1 ? k3.uno : k3.varias, ev);
+    a3.forEach(function (x) { filasCand[x.f.fila] = { f: x.f, ev: enVentanaAnalisis_(x.f.fecha) }; });
+
+    const lista = ev ? ejV : ejH;
+    if (lista.length < 20) lista.push({ c: c, a3: a3 });
+  });
+
+  // Veredicto HOY de las filas que son candidatas de algún formulario sin figura.
+  const verCand = {};
+  Object.keys(filasCand).forEach(function (k) {
+    const v = (porFila[k] && porFila[k].veredicto) || '?';
+    if (!verCand[v]) verCand[v] = contador_();
+    sumar_(verCand[v], filasCand[k].ev);
+  });
+
+  // --- 3. la otra cara: el costo ---
+  const simular = function (sc) {
+    const alc = sc.alcanzable - PESOS_MATCH.figura;
+    return alc > 0 ? redondear_(sc.absoluto / alc) : 0;
+  };
+  const costo = { escritas: contador_(), empate: contador_(), rival: contador_(),
+                  sinCambio: contador_(), ejemplos: [] };
+  const benef = { noEscritas: contador_(), limpio: contador_(), conRival: contador_(),
+                  nada: contador_() };
+
+  for (let j = 0; j < dest.filas.length; j++) {
+    const f = dest.filas[j];
+    const pf = porFila[f.fila];
+    if (!pf || pf.veredicto === 'futura' || pf.veredicto === 'rdv_uid') continue;
+    const ev = enVentanaAnalisis_(f.fecha);
+
+    // El mejor formulario sin figura para esta fila, con la figura fuera del denominador.
+    let mejorSF = null;
+    for (let i = 0; i < sinFig.length; i++) {
+      const c = sinFig[i];
+      const d = distanciaFecha_(f.fecha, c.det);
+      if (d === null || d > BANDAS_FECHA[BANDAS_FECHA.length - 1].dias) continue;  // relevancia
+      const sc = puntuar_(f, c, comunas);
+      if (!sc.relevante || sc.desacuerdo) continue;
+      const s = simular(sc);
+      if (!mejorSF || s > mejorSF.s) mejorSF = { c: c, s: s, d: d };
+    }
+
+    if (pf.veredicto === 'escribiria') {
+      sumar_(costo.escritas, ev);
+      if (!mejorSF || (pf.cand && esSinFig[pf.cand.fila])) { sumar_(costo.sinCambio, ev); continue; }
+      const sHoy = pf.score;
+      if (mejorSF.s >= sHoy) {
+        sumar_(costo.empate, ev);
+      } else if (sHoy - mejorSF.s < MARGEN_MINIMO) {
+        sumar_(costo.rival, ev);
+      } else {
+        sumar_(costo.sinCambio, ev); continue;
+      }
+      if (costo.ejemplos.length < 15) {
+        costo.ejemplos.push({ f: f, ev: ev, hoy: pf.cand, sHoy: sHoy, sf: mejorSF });
+      }
+    } else {
+      sumar_(benef.noEscritas, ev);
+      if (!mejorSF || mejorSF.s < UMBRAL_MATCH) { sumar_(benef.nada, ev); continue; }
+      // El rival es el mejor de hoy, salvo que el mejor de hoy SEA este formulario sin figura:
+      // entonces el rival es el segundo.
+      const esElMismo = pf.cand && pf.cand.fila === mejorSF.c.fila;
+      const rival = esElMismo ? (pf.segundo || 0) : (pf.score == null ? 0 : pf.score);
+      sumar_(mejorSF.s - rival >= MARGEN_MINIMO ? benef.limpio : benef.conRival, ev);
+    }
+  }
+
+  // ===================== el log =====================
+  Logger.log('VENTANA: %s en ventana / %s formularios vivos | corte: %s (%s)', base.v, base.t,
+             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
+  Logger.log('  Se lee [ventana | total]. Decide la ventana.');
+
+  Logger.log('--- 1. formularios que no nombran NINGUNA figura ---');
+  Logger.log('  sin figura .................. %s', _dcp_(total, base));
+  Logger.log('    con comuna en el nombre ... %s', _dcp_(conComuna, total));
+  Logger.log('  por forma (comuna → "comuna #", fecha → "d/m"; top 15):');
+  Array.from(formas.entries()).sort(function (a, b) { return b[1].n.t - a[1].n.t; })
+    .slice(0, 15).forEach(function (e) {
+      Logger.log('    %s  %s', _dc_(e[1].n), e[0]);
+      Logger.log('         ej.: %s', e[1].ejV || e[1].ejH);
+    });
+  if (formas.size > 15) Logger.log('    (%s formas más)', formas.size - 15);
+
+  Logger.log('--- 2. filas del destino de la MISMA comuna (vía barrio → comuna) ---');
+  Logger.log('  (sobre los %s | %s formularios sin figura CON comuna)', conComuna.v, conComuna.t);
+  Logger.log('                       a 0 días          a ±%s días', tol);
+  Logger.log('    exactamente 1 ... %s      %s', _dc_(k0.uno), _dc_(k3.uno));
+  Logger.log('    2 o más ......... %s      %s', _dc_(k0.varias), _dc_(k3.varias));
+  Logger.log('    ninguna ......... %s      %s', _dc_(k0.ninguna), _dc_(k3.ninguna));
+  Logger.log('  veredicto HOY de esas filas (misma comuna, ±%s; cada fila una vez):', tol);
+  Object.keys(verCand).sort().forEach(function (v) {
+    Logger.log('    %s %s', _padD_(v, 14), _dc_(verCand[v]));
+  });
+  Logger.log('  --- ejemplos (ventana primero, hasta 20 de cada) ---');
+  ejV.concat(ejH).forEach(function (x) {
+    const ev = enVentanaAnalisis_(x.c.det && x.c.det.mejor);
+    Logger.log('    [%s] B fila %s | comuna %s | %s | %s', ev ? 'ventana' : 'histor.', x.c.fila,
+               x.c.comuna, fmtFecha_(x.c.det && x.c.det.mejor) || 'sin fecha', x.c.nombre);
+    if (!x.a3.length) Logger.log('         (ninguna fila de esa comuna a ±%s)', tol);
+    x.a3.forEach(function (y) {
+      const pf = porFila[y.f.fila] || {};
+      Logger.log('         %s días → fila %s | %s | %s | %s | hoy: %s%s', y.d, y.f.fila,
+                 fmtFecha_(y.f.fecha), y.f.figura, y.f.barrio, pf.veredicto || '?',
+                 pf.cand ? ' (mejor candidato: ' + (pf.cand.fila === x.c.fila ? 'ESTE formulario)' :
+                                      'B fila ' + pf.cand.fila + ')') : '');
+    });
+  });
+
+  Logger.log('--- 3. la otra cara: si la figura NO contara en el denominador para estos ---');
+  Logger.log('  (simulado: obtenido / (alcanzable − %s) sobre el mismo puntuar_)', PESOS_MATCH.figura);
+  Logger.log('  filas que HOY se escriben ............. %s', _dc_(costo.escritas));
+  Logger.log('    un formulario sin figura las EMPATA o SUPERA ... %s', _dcp_(costo.empate, costo.escritas));
+  Logger.log('    uno les deja margen < %s (→ REVISAR_MATCH) ... %s', MARGEN_MINIMO,
+             _dcp_(costo.rival, costo.escritas));
+  Logger.log('    sin cambio ..................................... %s',
+             _dcp_(costo.sinCambio, costo.escritas));
+  Logger.log('  filas que HOY NO se escriben .......... %s', _dc_(benef.noEscritas));
+  Logger.log('    un formulario sin figura llegaría a %s con margen ... %s', UMBRAL_MATCH,
+             _dcp_(benef.limpio, benef.noEscritas));
+  Logger.log('    llegaría a %s pero con rival cerca ............. %s', UMBRAL_MATCH,
+             _dcp_(benef.conRival, benef.noEscritas));
+  Logger.log('    ninguno llega ...................................... %s',
+             _dcp_(benef.nada, benef.noEscritas));
+  if (costo.ejemplos.length) {
+    Logger.log('  --- filas que hoy se escriben y tendrían empate o rival (hasta 15) ---');
+    costo.ejemplos.forEach(function (x) {
+      Logger.log('    [%s] %s | %s | %s', x.ev ? 'ventana' : 'histor.', fmtFecha_(x.f.fecha),
+                 x.f.figura, x.f.barrio || 'sin barrio');
+      Logger.log('         hoy (%s): %s', x.sHoy, x.hoy ? x.hoy.nombre : '?');
+      Logger.log('         rival sin figura (%s simulado, %s días): %s', x.sf.s, x.sf.d, x.sf.c.nombre);
+    });
+  }
+
+  Logger.log('  Qué NO dice esto:');
+  Logger.log('   - NO es el resultado del cambio: es su TAMAÑO. No se tocó puntuar_, ni los pesos,');
+  Logger.log('     ni las puertas. El resultado lo dice correr el paso 2 con el cambio hecho.');
+  Logger.log('   - La simulación mueve sólo a los formularios sin figura; los demás puntúan igual.');
+  Logger.log('   - "Exactamente 1" a 0 días es el caso limpio; "2 o más" son reuniones de la misma');
+  Logger.log('     comuna el mismo día y necesitan otra señal, porque la figura no está.');
+  Logger.log('   - Los formularios sin comuna en el nombre no entran en el punto 2: no hay con qué.');
+
+  return { total: total, conComuna: conComuna, k0: k0, k3: k3, costo: costo, benef: benef };
+}
+
+/**
+ * La forma de un nombre de formulario, para agrupar (CLAUDE.md §6, regla 1): normalizado, con la
+ * comuna y la fecha reemplazadas por marcadores. Sólo para contar, no para matchear.
+ */
+function _formaFormulario_(nombre) {
+  return normalizeText_(nombre)
+    .replace(/\bcomuna\s*0?\d{1,2}(?:\s*(?:norte|sur|n|s))?\b/g, 'comuna #')
+    .replace(/\bc0?\d{1,2}(?:n|s)?\b/g, 'comuna #')
+    .replace(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g, 'd/m')
+    .replace(/\s+/g, ' ').trim();
 }
 
 // ===================== El upsert =====================
@@ -301,7 +527,9 @@ function calcularPlan_(enSeco) {
    * reconocida, sin ninguna figura reconocida, o nada.
    */
   const desvio = { porDia: {}, cercaConFigura: contador_(), cercaSinFigura: contador_(),
-                   nadaCerca: contador_(), ejemplosSinFigura: [], ejemplosConFigura: [] };
+                   nadaCerca: contador_(), nadaConOtraFigura: contador_(), nadaSinNada: contador_(),
+                   listaNada: [], listaNadaHist: [],
+                   ejemplosSinFigura: [], ejemplosConFigura: [] };
 
   // Cuántas escribiría gracias a la tolerancia de ±3 (antes caían debajo del umbral).
   const porTolerancia = contador_();
@@ -310,7 +538,9 @@ function calcularPlan_(enSeco) {
    * Las filas con un formulario de **comuna coincidente** que no entran: por qué. Con figura +
    * comuna deberían llegar alto aun con la fecha corrida (punto C).
    */
-  const comunaCaso = { total: contador_(), escribiria: contador_(), motivos: {}, ejemplos: [] };
+  const comunaCaso = { total: contador_(), escribiria: contador_(), motivos: {}, cruce: {},
+                       noEntraPeroSeEscribe: contador_(), ejemplos: [], ejemplosHist: [],
+                       ejemplosSeEscribe: [] };
 
   /*
    * Cobertura de `EVENTO`, la señal de las reuniones temáticas (CLAUDE.md 1.c).
@@ -324,6 +554,12 @@ function calcularPlan_(enSeco) {
   const ejemplosEvento = [];
 
   const filasRevisar = [], filasSinMatch = [], decisiones = [];
+  /*
+   * El veredicto de cada fila del destino, por número de fila: 'escribiria', 'REVISAR_MATCH',
+   * 'SIN_MATCH', 'rdv_uid' o 'futura', con su motivo y su mejor candidato. Sólo registra lo que
+   * ya se decidió; lo leen el cruce del 2f y medirFormulariosSinFigura().
+   */
+  const porFila = {};
   const usados = {};
   const hist = [];
   for (let k = 0; k < 10; k++) hist.push(contador_());
@@ -340,11 +576,14 @@ function calcularPlan_(enSeco) {
     if (ev) res.enVentana++;
 
     // Reuniones futuras: no son hueco, todavía no corresponde completarlas.
-    if (f.fecha && f.fecha > _hoy_()) { sumar_(res.futuras, ev); continue; }
+    if (f.fecha && f.fecha > _hoy_()) {
+      sumar_(res.futuras, ev); porFila[f.fila] = { veredicto: 'futura' }; continue;
+    }
 
     if (f.uid) {
       const porUid = cands.porUid.get(f.uid);
       sumar_(res.porUid, ev);
+      porFila[f.fila] = { veredicto: 'rdv_uid', cand: porUid || null };
       if (porUid) {
         decisiones.push({ fila: f, cand: porUid, score: 1, nivel: 'rdv_uid', dist: null });
         usados[porUid.fila] = true;
@@ -353,6 +592,9 @@ function calcularPlan_(enSeco) {
     }
 
     const r = evaluarCandidatos_(f, cands.vivos, comunas);
+    porFila[f.fila] = { veredicto: r.veredicto, motivo: r.motivo || '',
+                        cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
+                        segundo: r.segundoScore == null ? null : r.segundoScore };
 
     // --- cobertura de EVENTO contra el mejor candidato ---
     const tieneEvento = !!normalizarEvento_(f.evento);
@@ -437,7 +679,8 @@ function calcularPlan_(enSeco) {
   const ejes = medirEjes_(dest, cands, comunas);
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
-           desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso,
+           desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
+           comunas: comunas,
            bajo: bajo, comunaDifieren: comunaDifieren, formsConComuna: formsConComuna,
            formsConRechazo: formsConRechazo, formsSinFechaTexto: formsSinFechaTexto,
            evStats: evStats, evBase: evBase, ejemplosEvento: ejemplosEvento,
@@ -536,9 +779,9 @@ function logResumen_(plan) {
    * del histórico completo, mezclando el período en que el formulario mandaba barrio con el que
    * dejó de mandarlo (CLAUDE.md 3.5).
    */
-  Logger.log('VENTANA: %s en ventana / %s totales | corte: %s (últimos %s meses)',
+  Logger.log('VENTANA: %s en ventana / %s totales | corte: %s (%s)',
              r.enVentana, plan.dest.filas.length, fmtFecha_(inicioVentanaAnalisis_()),
-             VENTANA_ANALISIS_MESES);
+             descVentanaAnalisis_());
   Logger.log('  Todo lo que sigue se lee [ventana | total]. El upsert procesa las %s filas —el',
              plan.dest.filas.length);
   Logger.log('  backfill de la Fase 6 llena el histórico— pero calibra sobre la ventana.');
@@ -693,6 +936,26 @@ function logResumen_(plan) {
     Logger.log('  >>> Más de 5 por fila: la lista no se puede trabajar. La puerta está demasiado');
     Logger.log('      laxa — revisar `proponible` en puntuar_(). El objetivo es 2 a 4.');
   }
+
+  /*
+   * De dónde sale la densidad. Hipótesis a confirmar o descartar (26/09: subió de 4,9 a 7,0):
+   * son las filas de Jorge Macri, por los formularios que ahora reconocen la figura del prefijo.
+   */
+  Logger.log('  --- pares por figura de la fila (top 10, por total) ---');
+  Logger.log('      %s  pares         filas  pares/fila  de ellos, sólo por el prefijo',
+             _padD_('figura', 26));
+  Object.keys(e.porFigura || {}).map(function (k) { return [k, e.porFigura[k]]; })
+    .sort(function (a, b) { return b[1].pares.t - a[1].pares.t; })
+    .slice(0, 10).forEach(function (x) {
+      const nf = Object.keys(x[1].filas).length;
+      Logger.log('      %s  %s  %s  %s        %s', _padD_(x[0], 26), _dc_(x[1].pares),
+                 _pad_(nf, 5), _pad_(nf ? Math.round(x[1].pares.t * 10 / nf) / 10 : 0, 5),
+                 _dc_(x[1].soloPrefijo));
+    });
+  Logger.log('  pares que existen SÓLO porque la figura sale del prefijo: %s de %s',
+             _dc_(e.deSoloPrefijo || contador_()), _dc_(e.pares));
+  Logger.log('    Si son la mayor parte de la subida, se confirma la hipótesis. Si no, la subida');
+  Logger.log('    viene de otro lado y hay que mirar la tabla de arriba, no suponer.');
   Logger.log('  formularios sin candidato ... %s', _dc_(e.formulariosHuerfanos));
   Logger.log('    de esos, con el tema de alguna fila en el nombre: %s', _dc_(e.huerfConEvento));
   Logger.log('  filas del destino sin ninguno %s', _dc_(e.filasHuerfanas));
@@ -888,6 +1151,22 @@ function _logDesvioBajo_(plan) {
   Logger.log('    Si "lejos" es grande y "sin figura" también: el formulario correcto existe, no');
   Logger.log('    se reconoció la figura, y uno lejano que sí la nombra le ganó el lugar. Si');
   Logger.log('    domina "ninguno": el formulario no está en B con esa fecha — otra población.');
+  Logger.log('    "ninguno", desglosado (hipótesis a confirmar, no un hecho):');
+  Logger.log('      con un formulario a ±%s de OTRA figura .. %s', TOLERANCIA_REPROGRAMACION_DIAS,
+             _dc_(d.nadaConOtraFigura));
+  Logger.log('      sin ningún formulario a ±%s ............. %s', TOLERANCIA_REPROGRAMACION_DIAS,
+             _dc_(d.nadaSinNada));
+  Logger.log('      Si el salto de "ninguno" viene de la primera línea, no aparecieron filas sin');
+  Logger.log('      formulario: formularios que antes no nombraban figura ahora nombran otra.');
+  const nada = d.listaNada.concat(d.listaNadaHist);
+  if (nada.length) {
+    Logger.log('    --- las filas de "ninguno" (ventana primero; hasta 40 de cada) ---');
+    nada.forEach(function (x) {
+      Logger.log('      [%s] %s | %s | %s%s', x.ev ? 'ventana' : 'histor.', fmtFecha_(x.f.fecha),
+                 x.f.figura, x.f.barrio || 'sin barrio',
+                 x.otra ? '  ← a ' + x.x + ' días, de otra figura: ' + x.otra.nombre : '');
+    });
+  }
 
   if (d.ejemplosSinFigura.length) {
     Logger.log('    --- casos "sin figura": el formulario cercano, y el que ganó ---');
@@ -913,28 +1192,56 @@ function _logDesvioBajo_(plan) {
 function _logComuna_(cc) {
   Logger.log('--- 2f. FILAS CON UN FORMULARIO DE COMUNA COINCIDENTE ---');
   Logger.log('  filas con algún formulario relevante de su misma comuna: %s', _dc_(cc.total));
-  Logger.log('    entran (escribiría, con ese formulario) ............ %s',
+  Logger.log('    el más cercano en fecha es el que ganó (escribiría con él) %s',
              _dcp_(cc.escribiria, cc.total));
-  Logger.log('    no entran, por motivo del mejor de esos formularios:');
+  Logger.log('    el más cercano NO es el que ganó, por motivo:');
   Object.keys(cc.motivos).sort().forEach(function (m) {
     Logger.log('      %s: %s', m, _dcp_(cc.motivos[m], cc.total));
   });
-  Logger.log('  Con figura + comuna y la fecha a ±%s, el score es 1,00. Si no entran, el motivo',
-             TOLERANCIA_REPROGRAMACION_DIAS);
-  Logger.log('  de arriba dice cuál de las tres cosas falta: figura, fecha u otro candidato.');
-  if (cc.ejemplos.length) {
-    Logger.log('  --- los %s primeros ---', cc.ejemplos.length);
-    cc.ejemplos.forEach(function (x) {
+
+  /*
+   * Lo que el 2f NO dice, y que se leyó mal: el motivo es del FORMULARIO de comuna más cercano,
+   * no de la fila. Una fila con motivo figura_no_reconocida puede escribirse igual con otro
+   * formulario. El cruce de abajo es el que separa las filas que de verdad no entran.
+   */
+  Logger.log('  --- cruce: motivo × veredicto de la FILA  [ventana | total] ---');
+  const vs = ['escribiria', 'REVISAR_MATCH', 'SIN_MATCH'];
+  Logger.log('      %s  escribiría    revisar       sin match', _padD_('motivo', 38));
+  Object.keys(cc.cruce).sort().forEach(function (m) {
+    const x = cc.cruce[m];
+    Logger.log('      %s  %s', _padD_(m, 38), vs.map(function (v) {
+      return _dc_(x[v] || contador_());
+    }).join('   '));
+  });
+  const noEntran = { v: cc.total.v - cc.escribiria.v, t: cc.total.t - cc.escribiria.t };
+  Logger.log('  >>> De las %s | %s donde el más cercano no ganó, %s son filas que IGUAL SE ESCRIBEN',
+             noEntran.v, noEntran.t, _dc_(cc.noEntraPeroSeEscribe));
+  Logger.log('      (con otro formulario). Esas no son filas que fallan: es otro formulario el que');
+  Logger.log('      ganó. Las que fallan de verdad son las columnas revisar y sin match.');
+
+  const lista = cc.ejemplos.concat(cc.ejemplosHist);
+  if (lista.length) {
+    Logger.log('  --- filas que NO se escriben (ventana primero; hasta 25 de cada) ---');
+    lista.forEach(function (x) {
       Logger.log('    [%s] %s ← %s', x.ev ? 'ventana' : 'histor.', x.f.clave, x.sc.c.nombre);
       Logger.log('        %s | %s días | score %s (%s) | fila: %s%s', x.motivo,
                  x.sc.dist === null ? '-' : x.sc.dist, x.sc.score, x.sc.nivel, x.veredicto,
                  x.rmotivo ? ' / ' + x.rmotivo : '');
       if (x.ganador) {
-        Logger.log('        le ganó (score %s, %s días): %s', x.ganador.score, x.ganador.dist,
-                   x.ganador.c.nombre);
+        Logger.log('        mejor candidato de la fila (score %s, %s días): %s', x.ganador.score,
+                   x.ganador.dist, x.ganador.c.nombre);
       }
     });
   }
+  Logger.log('  (%s filas que se escriben con otro formulario no se listan: no son un problema.)',
+             cc.ejemplosSeEscribe.length >= 25 ? '25+' : cc.ejemplosSeEscribe.length);
+}
+
+/** Relleno a la derecha, para columnas de texto en el log. */
+function _padD_(s, n) {
+  s = String(s);
+  while (s.length < n) s += ' ';
+  return s;
 }
 
 /** El bloque 2e del log. Ver `medirEjes_`. */
@@ -1088,9 +1395,9 @@ function _logValle_(ventana, total) {
     const medio = Math.round((desde + hasta) * 50) / 100;
     Logger.log('  >>> UMBRAL_MATCH = %s cae FUERA del valle de la ventana. El 0,88 salió del',
                UMBRAL_MATCH);
-    Logger.log('      histórico completo, que describe el formulario viejo. Sobre los últimos');
-    Logger.log('      %s meses el corte estable está en %s (medio del valle): cambiarlo a ese',
-               VENTANA_ANALISIS_MESES, medio);
+    Logger.log('      histórico completo, que describe el formulario viejo. Sobre la ventana');
+    Logger.log('      (%s) el corte estable está en %s (medio del valle): cambiarlo a ese',
+               descVentanaAnalisis_(), medio);
     Logger.log('      valor en 00_Config.js, con este número anotado al lado.');
   }
 }
@@ -1187,7 +1494,7 @@ function _desvioBajo_(d, f, mejor, vivos, ev) {
 
   const tol = TOLERANCIA_REPROGRAMACION_DIAS;
   const figNorm = normalizeText_(f.figura);
-  let conFig = null, sinFig = null;
+  let conFig = null, sinFig = null, otraFig = null;
   for (let j = 0; j < vivos.length; j++) {
     const c = vivos[j];
     const x = distanciaFecha_(f.fecha, c.det);
@@ -1196,6 +1503,8 @@ function _desvioBajo_(d, f, mejor, vivos, ev) {
       if (!conFig || x < conFig.x) conFig = { c: c, x: x };
     } else if (!c.figurasNorm.length) {
       if (!sinFig || x < sinFig.x) sinFig = { c: c, x: x };
+    } else if (!otraFig || x < otraFig.x) {
+      otraFig = { c: c, x: x };
     }
   }
 
@@ -1210,7 +1519,19 @@ function _desvioBajo_(d, f, mejor, vivos, ev) {
       d.ejemplosSinFigura.push({ f: f, c: sinFig.c, x: sinFig.x, mejor: mejor, ev: ev });
     }
   } else {
+    /*
+     * "ninguno" se conserva igual que antes —sin formulario de su figura ni formulario sin
+     * figura a ±tolerancia— para que se pueda comparar contra corridas viejas. Adentro se separa
+     * si había uno de OTRA figura: cuando figurasEnTexto_ dejó de limpiar prefijos, un
+     * `JORGE MACRI - ...` cercano pasó de "sin figura" a "de otra figura" para una fila de otra
+     * persona. Hipótesis a confirmar con este desglose.
+     */
     sumar_(d.nadaCerca, ev);
+    sumar_(otraFig ? d.nadaConOtraFigura : d.nadaSinNada, ev);
+    const lista = ev ? d.listaNada : d.listaNadaHist;
+    if (lista.length < 40) {
+      lista.push({ f: f, ev: ev, otra: otraFig ? otraFig.c : null, x: otraFig ? otraFig.x : null });
+    }
   }
 }
 
@@ -1254,11 +1575,24 @@ function _casoComuna_(cc, f, r, vivos, comunas, ev) {
 
   if (!cc.motivos[motivo]) cc.motivos[motivo] = contador_();
   sumar_(cc.motivos[motivo], ev);
-  if (cc.ejemplos.length < 25) {
-    cc.ejemplos.push({ f: f, sc: best, motivo: motivo, ev: ev,
-                       ganador: (r.mejor && r.mejor.c !== best.c) ? r.mejor : null,
-                       veredicto: r.veredicto, rmotivo: r.motivo });
-  }
+
+  /*
+   * El cruce con el veredicto de la FILA. El motivo habla del formulario de comuna más cercano,
+   * no de la fila: una fila puede tener motivo `figura_no_reconocida` y escribirse igual con otro
+   * formulario. Sin este cruce, "no entran" se lee como "filas que fallan", y no lo es.
+   */
+  const v = r.veredicto || 'SIN_MATCH';
+  if (!cc.cruce[motivo]) cc.cruce[motivo] = {};
+  if (!cc.cruce[motivo][v]) cc.cruce[motivo][v] = contador_();
+  sumar_(cc.cruce[motivo][v], ev);
+  if (v === 'escribiria') sumar_(cc.noEntraPeroSeEscribe, ev);
+
+  // Los ejemplos que interesan son los de filas que NO se escriben, y de la ventana primero.
+  const ej = { f: f, sc: best, motivo: motivo, ev: ev,
+               ganador: (r.mejor && r.mejor.c !== best.c) ? r.mejor : null,
+               veredicto: r.veredicto, rmotivo: r.motivo };
+  const lista = (v === 'escribiria') ? cc.ejemplosSeEscribe : (ev ? cc.ejemplos : cc.ejemplosHist);
+  if (lista.length < 25) lista.push(ej);
 }
 
 function evaluarCandidatos_(f, candidatos, comunas) {
@@ -1528,10 +1862,26 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
 
   const filas = [];
   const pares = contador_();
+  /*
+   * Pares por figura de la fila del destino, y cuántos de ellos existen sólo porque la figura
+   * del formulario sale del prefijo (`compararLimpiezaPrefijo_` = pierde_figura: con la limpieza
+   * vieja ese formulario no nombraba a nadie). Es la medida de si la densidad subió por el
+   * cambio de figurasEnTexto_ del 26/09. Sólo cuenta.
+   */
+  const porFigura = {};
+  const deSoloPrefijo = contador_();
+  const clasePref = {};
   grupos.forEach(function (g) {
+    if (!(g.c.fila in clasePref)) clasePref[g.c.fila] = compararLimpiezaPrefijo_(g.c.nombre).clase;
+    const soloPrefijo = clasePref[g.c.fila] === 'pierde_figura';
     g.props.forEach(function (p) {
       const ev = enVentanaAnalisis_(p.f.fecha);
       sumar_(pares, ev);
+      const k = p.f.figura || '(sin figura)';
+      if (!porFigura[k]) porFigura[k] = { pares: contador_(), soloPrefijo: contador_(), filas: {} };
+      sumar_(porFigura[k].pares, ev);
+      porFigura[k].filas[p.f.fila] = true;
+      if (soloPrefijo) { sumar_(porFigura[k].soloPrefijo, ev); sumar_(deSoloPrefijo, ev); }
       filas.push([g.c.nombre, g.c.inscriptos, p.f.figura, p.f.barrio, fmtFecha_(p.f.fecha),
                   p.sc.score, p.sc.nivel, _sn_(ev), '']);
     });
@@ -1603,6 +1953,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
 
   // Sólo calcula. La escritura la hace escribirReportes_, para poder reintentarla sola.
   return { matriz: salida, pares: pares, huerfanos: huerfanos,
+           porFigura: porFigura, deSoloPrefijo: deSoloPrefijo,
            formulariosHuerfanos: huerfanosVent,
            filasConPropuesta: Object.keys(conPropuesta).length,
            formulariosConPropuesta: grupos.length,

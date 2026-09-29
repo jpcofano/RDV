@@ -244,9 +244,9 @@ function poblacionSinContraparte_diag2(cache) {
              '(%s del hueco + %s tapadas por carga manual) | con contraparte: %s | ' +
              'sin clave natural completa: %s',
              filas.length, enHueco, resto, conContraparte, claveIncompleta);
-  Logger.log('[diag2] ventana de análisis: desde %s (%s meses) → %s de %s filas adentro. ' +
+  Logger.log('[diag2] ventana de análisis: desde %s (%s) → %s de %s filas adentro. ' +
              'El veredicto y la calibración salen de esas; el resto se reporta como histórico.',
-             fmt_diag2(inicioVentanaAnalisis_diag()), VENTANA_ANALISIS_MESES, enVentana,
+             fmt_diag2(inicioVentanaAnalisis_diag()), descVentanaAnalisis_(), enVentana,
              filas.length);
 
   return filas;
@@ -821,8 +821,8 @@ function diagAnclaFecha() {
     Logger.log('  %s días | B fila %s | %s', x.d, x.fila, x.nombre);
   });
 
-  Logger.log('--- efecto sobre la población (sólo ventana de análisis, %s meses) ---',
-             VENTANA_ANALISIS_MESES);
+  Logger.log('--- efecto sobre la población (sólo ventana de análisis, %s) ---',
+             descVentanaAnalisis_());
   Logger.log('  desfase_reprogramacion con la regla del legado: %s', malParseadaLegado);
   Logger.log('  >>> de esas, RESUELTAS anclando a fecha_fin: %s (%s%%)', malParseadaResueltas,
              malParseadaLegado ? Math.round(malParseadaResueltas * 1000 / malParseadaLegado) / 10 : 0);
@@ -867,7 +867,7 @@ function medirDesviosVsReprogramada_diag2(poblacion, b) {
   });
 
   Logger.log('--- desvíos fuera de la ventana: ¿son reprogramaciones? ---');
-  Logger.log('  (sólo dentro de la ventana de análisis de %s meses)', VENTANA_ANALISIS_MESES);
+  Logger.log('  (sólo dentro de la ventana de análisis (%s))', descVentanaAnalisis_());
   Logger.log('  filas con desvío fuera de [%s, +%s]: %s',
              VENTANA_FECHA_TEXTO.min, VENTANA_FECHA_TEXTO.max, filas.length);
   Logger.log('  de esas, en estado Reprogramada: %s', repro.length);
@@ -1039,7 +1039,7 @@ function diagFechaFin() {
   cabeceraVentana_diag('DIAG_FECHA_FIN', comparables, conB2,
     'filas del destino CON contraparte en B2');
   Logger.log('Filas del destino con contraparte en B2: %s', conB2);
-  Logger.log('  fuera de la ventana de análisis (%s meses): %s', VENTANA_ANALISIS_MESES, fueraDeVentana);
+  Logger.log('  fuera de la ventana de análisis (%s): %s', descVentanaAnalisis_(), fueraDeVentana);
   Logger.log('  sin poder llegar a B por el Nombre del evento: %s', sinNombreEnB);
   Logger.log('  COMPARABLES: %s', comparables);
   if (!comparables) { Logger.log('Sin filas comparables: no se puede concluir nada.'); return null; }
@@ -1244,8 +1244,8 @@ function diagScores() {
     'filas del destino sin contraparte en B2');
   Logger.log('Población histórica: %s filas | candidatos evaluados por fila: %s',
              totalHistorico, b.filas.length);
-  Logger.log('VENTANA DE ANÁLISIS: desde %s (%s meses) → %s filas. **Todo lo que sigue sale de',
-             fmt_diag2(inicioVentanaAnalisis_diag()), VENTANA_ANALISIS_MESES, totalEnVentana);
+  Logger.log('VENTANA DE ANÁLISIS: desde %s (%s) → %s filas. **Todo lo que sigue sale de',
+             fmt_diag2(inicioVentanaAnalisis_diag()), descVentanaAnalisis_(), totalEnVentana);
   Logger.log('esas filas.** La solapa trae las %s con la columna en_ventana para filtrar.',
              totalHistorico);
   Logger.log('Pesos: figura %s | fecha %s hasta ±%s, %s hasta ±7 | barrio %s, comuna-sin-barrio ' +

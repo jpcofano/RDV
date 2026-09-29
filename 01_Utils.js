@@ -159,9 +159,24 @@ function diasEntre_(a, b) {
  * delegan en estos: una sola implementación, como todo lo demás de este archivo.
  */
 function inicioVentanaAnalisis_() {
+  // Corte fijo, si está configurado: dos corridas de días distintos, misma población.
+  const m = VENTANA_ANALISIS_DESDE
+    ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(VENTANA_ANALISIS_DESDE)) : null;
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+  if (VENTANA_ANALISIS_DESDE) {
+    throw new Error('VENTANA_ANALISIS_DESDE tiene que ser "yyyy-MM-dd" o null, y es "' +
+                    VENTANA_ANALISIS_DESDE + '".');
+  }
   const hoy = new Date();
   return new Date(hoy.getFullYear(), hoy.getMonth() - VENTANA_ANALISIS_MESES, hoy.getDate(),
                   12, 0, 0);
+}
+
+/** Cómo decir la ventana en una cabecera de log: fija o móvil. */
+function descVentanaAnalisis_() {
+  return VENTANA_ANALISIS_DESDE
+    ? 'corte FIJO (VENTANA_ANALISIS_DESDE = ' + VENTANA_ANALISIS_DESDE + ')'
+    : 'últimos ' + VENTANA_ANALISIS_MESES + ' meses desde hoy';
 }
 
 /** ¿La fecha cae dentro de la ventana de análisis? */

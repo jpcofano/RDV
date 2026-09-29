@@ -944,10 +944,10 @@ function inicioVentanaAnalisis_diag() {
  */
 function cabeceraVentana_diag(reporte, enVentana, totales, base) {
   Logger.log('=== %s ===', reporte);
-  Logger.log('VENTANA: %s en ventana / %s totales | corte: %s (%s meses) | base: %s',
+  Logger.log('VENTANA: %s en ventana / %s totales | corte: %s (%s) | base: %s',
              enVentana, totales, Utilities.formatDate(inicioVentanaAnalisis_diag(), DIAG_TZ,
                                                       'dd/MM/yyyy'),
-             VENTANA_ANALISIS_MESES, base || 'filas del destino');
+             descVentanaAnalisis_(), base || 'filas del destino');
   if (enVentana === totales) {
     Logger.log('  (todo cae dentro de la ventana: los %% de abajo son sobre %s)', totales);
   } else {

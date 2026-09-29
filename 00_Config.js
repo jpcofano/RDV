@@ -81,6 +81,20 @@ const COLUMNAS_DERIVADAS = [
  */
 const VENTANA_ANALISIS_MESES = 6;
 
+/**
+ * **Corte fijo de la ventana**, para que dos corridas de días distintos comparen la misma
+ * población. `'yyyy-MM-dd'`, o `null` para volver a la ventana móvil de
+ * `VENTANA_ANALISIS_MESES` contados desde hoy.
+ *
+ * Existe porque la ventana móvil corre el corte todos los días: entre la corrida del 25/09 y la
+ * del 26/09 pasó del 25/03 al 26/03 y la base bajó de 307 a 302 filas, y así un contador que
+ * cambia puede ser población y no efecto.
+ *
+ * Fijado en el corte de la **línea base del 26/09 11:36** (26/03/2026). Cuando se quiera volver a
+ * "los últimos 6 meses", poner `null` y decirlo en la línea base nueva.
+ */
+const VENTANA_ANALISIS_DESDE = '2026-03-26';
+
 // ===================== Fechas =====================
 
 /**
