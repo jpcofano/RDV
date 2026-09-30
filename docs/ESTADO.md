@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-09-25
+# Estado de la migración — al 2026-09-30
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -27,42 +27,60 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 26/09 17:44. **← PRÓXIMO**: primera corrida con el desempate por evidencia y el invariante aplicados |
-| 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion` (antes `fecha_mal_parseada`): texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
-| 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador para los formularios que no nombran a nadie (decisión k) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 |
-| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio: ¿mal fechadas, perdidas en el IMPORTRANGE o faltantes en la consulta de `Hoja1`? (decisión o) | **no escribe en ninguna planilla**; sólo log. Corrió el 26/09 16:42 |
-| 10 | `paso10_validarContraInscriptos()` | `medirValidacionInscriptos()` | calibración de una vez contra los inscriptos que hoy tiene el destino (decisión s) | **no escribe en ninguna planilla**; sólo log. **No entra en el score**. Corrió el 26/09 17:51; **se corre una vez más, después del paso 2, como control final** |
+| 14 | `paso14_formulasDestino()` | `diagFormulasDestino()` | las once derivadas siguen siendo fórmula, las siete de lookup leen la columna correcta de `Comunas`, y sus valores son los de `Comunas` de hoy (decisión x) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO, primero** (es rápido) |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 30/09 14:19. **← PRÓXIMO**: primera corrida con la guarda de transición (t) y el eje como último desempate (g) |
+| 10 | `paso10_validarContraInscriptos()` | `medirValidacionInscriptos()` | calibración contra los inscriptos que hoy tiene el destino (decisión s), ahora con la **búsqueda inversa** (u) | **no escribe en ninguna planilla**; sólo log. **No entra en el score**. Última: 30/09 14:23 |
+| 11 | `paso11_desacuerdoUbicacion()` | `medirDesacuerdoUbicacion()` | pares figura + fecha 0-1 con la ubicación en desacuerdo, y la propuesta simulada (decisión v) | **no escribe en ninguna planilla**; sólo log |
+| 13 | `paso13_filasFaltantesEnRDV()` | `listarFilasFaltantes()` | la lista para el equipo: formularios huérfanos con 10+ inscriptos (decisión w) | **no escribe en ninguna planilla**; sólo log |
+| 12 | `paso12_explicarFormulario()` / `paso12_explicarFila()` | `explicarFormulario()` / `explicarFila()` | un caso, señal por señal; leen `CASO_A_EXPLICAR` (decisión w) | **no escribe en ninguna planilla**; sólo log. Cuando haga falta |
+| 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion`: texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
+| 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador (decisión k) | sólo log. Corrió el 26/09 |
+| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio (decisión o) | sólo log. Corrió el 26/09 16:42 |
 
 Los pasos 8 y 9 ya corrieron y quedaron implementados (decisiones p y q); están en YA CORRIDOS
 como `rehacer_medirVariantesSinFigura()` y `rehacer_medirDesempatePorEvidencia()`.
 
-**Resultados del 26/09 17:44-17:51 (pasos 2, 9 y 10), con la decisión de implementar:**
+**Resultados del 30/09 14:19-14:23 (pasos 2 y 10), con el desempate por evidencia y el invariante
+aplicados:**
 
 | | resultado |
 |---|---|
-| D-C | **confirmada**: predicción 241 \| 39 \| 25, resultado **241 \| 39 \| 24** (ventana) |
-| tope de `EMPAREJAR_MANUAL` | 2,6 pares por fila, 0 filas vacías, 0 formularios perdidos |
-| paso 9 | **39 de 39** margen_chico resueltas → **se implementa** (`DESEMPATE_POR_EVIDENCIA`) |
-| paso 10 | **94,4% exacto** en ventana (221 de 234); el desempate coincide con el destino en **36 de 38** |
+| paso 2 (ventana) | **277 \| 3 \| 25** — predicción 272-278 \| 2-8 \| ~24. Total: **746 \| 15 \| 44** |
+| invariante | **11 choques resueltos en 3 vueltas; chequeo 0** → **deja de ser bloqueante** (decisión r) |
+| desempate | 26 por señales, 9 por distancia, 2 por inscriptos. **La salvaguarda se acepta** (hoy no frenó ninguno) |
+| `EMPAREJAR_MANUAL` | 19 pares en ventana, **1,7 por fila** |
+| paso 10 (ventana) | **96,2% exacto (253 de 263)**, 2,7% ≤ 5%, **3 en "más"** (527, 748, 769) |
+| desempates vs destino | **33 de 33** coinciden |
+| choques vs destino | **8 de 9**. El que no: `RDV JM Velez Sarfield - 5/6` (33 ins), que no coincide con ninguna de sus dos filas (la 626 tiene 105) |
 
-De los 2 desempates que no coinciden: la fila 645 (Macri 16/06 Almagro, destino 498 = el
-`Temático Educación`) se arregla con el invariante + re-evaluación, porque el
-`1 a 1 - Comuna 5 17/6` es de la 648 → **se implementa el invariante**; la otra tiene destino 0,
-sin dato.
+Del invariante: la **645** terminó en el `Temático Educación` (el destino tiene 498, sus
+inscriptos); la **626** (Flores 04/06) perdió tres formularios en cascada y terminó en
+`formulario_compartido`, que es lo correcto.
 
-**Línea base vigente: la corrida del 26/09 17:44**, ventana: **241 | 39 | 24**. Y la
-**predicción** para el próximo paso 2, anotada **antes** de correrlo:
+**Landerreche 03/09** con el `Comuna 1 Sur` de 116: **aceptado** (regla de negocio), atado a la
+respuesta del equipo sobre la fila **769**.
+
+**Línea base vigente: la corrida del 30/09 14:19**, ventana **277 | 3 | 25**. Y la **predicción**
+para el próximo paso 2, anotada **antes** de correrlo:
 
 ```
-(ventana)       26/09 17:44        predicción próximo paso 2
-escribiría          241                  ≈ 272-278
-a revisar            39                  ≈   2-8
-sin match            24                  ≈  24   (no cambia: score_bajo 10 + sin_formulario_propio 14)
-invariante (bloque 0)                          0 formularios con 2+ filas
+(ventana | total)   30/09 14:19        predicción próximo paso 2
+escribiría          277 | 746          ≈ 267 | 687   (la guarda frena ≈ 10 | 59)
+a revisar             3 |  15          ≈  13 |  74   (las frenadas, con motivo difiere_del_destino)
+sin match            25 |  44             25 |  44   (no cambia)
+decididas por el eje                        0        (último desempate: no debería decidir nada)
+invariante (bloque 0)                       0 formularios con 2+ filas
 ```
 
-Después del paso 2, correr el 10 como control final. Si el paso 2 se aleja mucho de la
-predicción, mirar antes de seguir.
+El ≈ 10 | 59 sale del paso 10: son las que se escribirían con el destino cargado y **distinto** del
+formulario (263 − 253 = 10 en ventana). `EMPAREJAR_MANUAL` puede crecer un poco: las frenadas
+quedan sin resolver y sus formularios libres, así que reciben pares.
+
+Después del paso 2, el 10 (con la búsqueda inversa), el 11 y el 13. Si el paso 2 se aleja mucho
+de la predicción, mirar antes de seguir.
+
+La corrida del 26/09 17:44 (D-C y tope de 3): **241 | 39 | 24** en ventana, predicción 241 | 39 |
+25; paso 10 del 26/09 17:51: 94,4% exacto (221 de 234), desempate 36 de 38.
 
 La corrida del 26/09 16:45 (B con 807 formularios; 304 evaluables): 229 | 38 | 37 (score_bajo 23,
 sin_formulario_propio 14).
@@ -102,15 +120,62 @@ Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`
 **`DRY_RUN = true` en [20_UpsertDestino.js](../20_UpsertDestino.js).** No se cambia hasta haber
 leído los números de la corrida en seco.
 
-> 🟡 **Bloqueante para `DRY_RUN = false`, a punto de cerrarse: el invariante "un formulario, una
-> fila".** El 26/09 un formulario podía ganar dos filas con veredicto `escribiria` (CLAUDE.md
-> 3.1.j). **Desde el 30/09 está implementado** (`aplicarFormularioUnico_`) y el bloque 0 del log del
-> paso 2 lo **chequea** sobre el resultado final. **Deja de ser bloqueante cuando ese chequeo dé 0**
-> en la próxima corrida. Si no da 0, el log lo dice en mayúsculas. Ver decisión r).
+> ✅ **Ya no es bloqueante: el invariante "un formulario, una fila".** El paso 2 del 30/09 14:19
+> resolvió 11 choques en 3 vueltas y el chequeo del bloque 0 dio **0**. Se sigue chequeando en cada
+> corrida; si algún día no da 0, el log lo dice en mayúsculas. Ver decisión r). Lo que falta para
+> `DRY_RUN = false` está en la lista de abajo (1b).
 
 > El pipeline legado está **frenado a propósito**: un solo activador vivo,
 > `syncAgendaSheetInBaseFromAgenda_2`. Ver el recuadro de la sección 2 de `CLAUDE.md`. No
 > encender nada sin leerlo.
+
+---
+
+## 1b. Lista para pasar a `DRY_RUN = false`
+
+**`DRY_RUN` lo cambia el usuario, no el código ni Claude.** Esto es la lista de lo que tiene que
+estar en verde antes, y el orden de la primera escritura real. Nada de esto está hecho todavía.
+
+**Antes (todo en verde, o no se pasa):**
+
+- [ ] **Backup completo** según [docs/backup.md](backup.md): copias de (1), (2) y (4) con fecha;
+      el **texto** de las once fórmulas en `docs/formulas-legado.md`; foto de `Comunas` **A:I**
+      (ahora incluye la columna I del eje); los números de control; el conteo de `#4F81BD` de hoy.
+- [ ] **`clasp push` desde Rdv** y `clasp show-file-status` sin diferencias con el commit.
+- [ ] **Activadores**: sigue habiendo uno solo vivo (`syncAgendaSheetInBaseFromAgenda_2`), y
+      ninguno apunta a `upsertDestino` ([docs/triggers-legado.md](triggers-legado.md)).
+- [ ] **`paso14_formulasDestino()`** da `CONFIRMADO`: las once derivadas conservan su fórmula y
+      muestran lo que dice `Comunas`.
+- [ ] **Guarda de transición encendida**: `TRANSICION_RESPETAR_DESTINO = true` en
+      `00_Config.js`, y el paso 2 lo muestra en su línea ("guarda de transición … frenadas N").
+- [ ] **Invariante en 0**: el bloque 0 del paso 2 dice 0 formularios con 2+ filas escritas.
+- [ ] **El paso 2 cerca de la predicción** (arriba). Decididas por el eje: 0.
+- [ ] **El paso 10 revisado**: la banda "más" y la búsqueda inversa miradas caso por caso. Una
+      fila de "más" que la guarda no frena no existe (la guarda frena todo lo distinto), pero sí
+      hay que mirar las que tienen destino **sin cargar**: ésas se escriben.
+- [ ] **El grep del invariante**: `grep -rn "setValue\|setValues" 20_UpsertDestino.js` da sólo
+      `escribirHoja_` (intermedia).
+
+**La primera escritura, en este orden:**
+
+1. El usuario pone `DRY_RUN = false` en `20_UpsertDestino.js`; `clasp push`.
+2. En el editor, **a mano**, `upsertDestino()` **una sola vez**. El log dice cuántas celdas y
+   cuántos `RDV_UID` escribió.
+3. Sugerido: volver a `DRY_RUN = true` y `clasp push` hasta terminar la verificación.
+4. Verificar:
+   - `paso14_formulasDestino()` sigue dando `CONFIRMADO` (ninguna derivada se rompió);
+   - `rehacer_diagProcedencia()`: los `#4F81BD` de las `COLUMNAS_MANUALES` **no subieron** (el
+     upsert no las escribe nunca);
+   - `paso2_upsertEnSeco()`: las que se escribieron ahora entran **por `RDV_UID`**, y el resto
+     queda igual.
+
+**Dos cosas a saber antes de la primera escritura:**
+
+- **La traza de los descartados también se escribe**, y por `setSiDelSistema_` queda **fija**: la
+  próxima corrida no la reescribe. Una fila frenada hoy queda con `form_nivel =
+  descartado:difiere_del_destino` aunque después se resuelva.
+- **`TRANSICION_RESPETAR_DESTINO` se apaga (`false`) después del backfill** (Fase 6): es un
+  seguro de migración, no una regla del régimen.
 
 ---
 
@@ -214,6 +279,15 @@ casos que el eje venía a resolver.
 La columna I y la convención del `?` **se quedan**. El 2e ahora mide primero **cuántas filas
 perderían a su ganador actual (o el del desempate) por el eje**, con los casos —la única cifra que
 dice si el eje hace daño—; el % de pares queda como dato secundario.
+
+**El eje queda SÓLO como último desempate (30/09, `EJE_COMO_DESEMPATE = true`).** Cuarto criterio
+de `_desempatePorEvidencia_`, después de señales, distancia e inscriptos del formulario: gana el
+contendiente cuyo eje coincide con el del barrio de la fila, **sólo si exactamente uno coincide**.
+Eje distinto, vacío o `?` = neutro. **Nunca entra al score ni al margen, y nunca descalifica.**
+Respeta la salvaguarda del desempate (umbral propio, no `multi_figura`). Traza:
+`+desempate_por_eje`. El paso 2 tiene una línea fija con cuántas filas decidió: **se espera 0**
+(los tres criterios anteriores ya resuelven todo lo que se vio). Si da más de 0, mirar esas filas
+con `paso12_explicarFila()` antes de confiar.
 
 ### h) ¿Los formularios temáticos tienen alguna reunión cerca?
 
@@ -410,7 +484,7 @@ llegar al umbral por sí mismo y no ser `multi_figura`; si empatan en los tres c
 sigue en REVISAR por margen_chico. La traza lleva `+desempate_por_<criterio>`. El orden vive en
 una sola función, `_desempatePorEvidencia_`, que usan también el invariante de r) y el paso 10.
 
-### r) El invariante "un formulario, una fila" — implementado; bloqueante hasta que el chequeo dé 0
+### r) ~~El invariante "un formulario, una fila" — bloqueante~~ CERRADA: chequeo 0 (30/09 14:19)
 
 **Implementado el 30/09** (`aplicarFormularioUnico_`, entre las dos vueltas de `calcularPlan_`,
 después del desempate). Si un formulario lo ganan 2+ filas, se lo queda la de mejor evidencia
@@ -427,6 +501,12 @@ Probado en Node con los casos del paso 9: la **648** se queda con `1 a 1 - Comun
 **645** termina en `Encuentro Temático Educación - Eje Oeste`; Ricardes `Comuna 9 29/6` → **671**
 (no la 669); Muzzio `11/9 Recoleta` → **785** (no la 778). **Deja de ser bloqueante cuando el
 chequeo del próximo paso 2 dé 0.**
+
+**Dio 0 el 30/09 14:19**: 11 choques resueltos en 3 vueltas. La 645 terminó en el `Temático
+Educación`; la 626 (Flores 04/06) perdió tres formularios en cascada y terminó en
+`formulario_compartido`, que es lo correcto. En el paso 10, **8 de 9** choques coinciden con el
+destino; el que no es `RDV JM Velez Sarfield - 5/6` (33 ins), que no coincide con ninguna de sus
+dos filas (la 626 tiene 105) — lo mira la búsqueda inversa (u).
 
 ### s) ¿Qué tan bien acierta el matcher contra los inscriptos que hoy tiene el destino?
 
@@ -462,7 +542,85 @@ inscriptos de `Comuna 1 Sur - 3/9`— y el matcher le asigna `Tapia - Comuna 1 N
 748 (Tapia Villa Real 20/08) tiene 6 contra un formulario de 113. Las dos, **consultadas al
 equipo, pendientes**.
 
-Se corre **una vez más, después del paso 2, como control final**.
+**Corrió el 30/09 14:23: 96,2% exacto en ventana (253 de 263), 2,7% ≤ 5%, 3 en "más" (527, 748,
+769). Desempates 33 de 33. Choques 8 de 9.**
+
+Se vuelve a correr después del próximo paso 2, ahora **con la búsqueda inversa** (u) al final.
+
+### t) La guarda de transición: `TRANSICION_RESPETAR_DESTINO` — implementada (30/09)
+
+**Regla de transición, no del matcher.** Sólo para filas con veredicto `escribiria`: si el destino
+tiene inscriptos cargados (≠ 0) y son **distintos** de los del formulario elegido, **no se
+escribe**: va a REVISAR_MATCH con motivo `difiere_del_destino`, con los dos valores en la columna
+de nivel (`… | destino N vs formulario M`). Igual o sin cargar → se escribe como siempre.
+
+- **No toca el matching**: la elección ya está hecha cuando la guarda mira. Los inscriptos del
+  destino siguen fuera del score, de los desempates y del invariante (CLAUDE.md 1). Es la única
+  lectura de ese dato fuera del paso 10, y es para **decidir si se escribe**, no qué.
+- **Es un seguro de migración**: la primera escritura no pisa (en el desagregado) una fila que el
+  legado cargó con otro número, que puede ser el correcto (769, 748). **Se apaga después del
+  backfill.**
+- El paso 2 muestra cuántas frena `[ventana | total]` —**se espera ≈ 10 | 59**— con los casos. El
+  paso 10 las sigue contando en sus bandas: lo que valida es la elección.
+
+### u) La búsqueda inversa del paso 10 — implementada (30/09), sólo calibración
+
+Para cada fila dudosa —la banda "más", los choques resueltos al revés, los desempates donde un
+rival coincide mejor, las que no se escriben con dato en el destino, y las de
+`FILAS_BUSQUEDA_INVERSA` (527, 626, 631, 748, 769)—, los formularios **de su figura** (o sin
+figura) a ±`DIAS_BUSQUEDA_INVERSA` (7) con **exactamente** los inscriptos del destino: *"el
+destino tiene N: coincide con este formulario"*, y si ese formulario es el elegido, está libre o ya
+lo toma otra fila. Bereciartua 29/07 Flores (185 vs 169) entra por "no se escribe".
+
+**Sólo log; no entra en el score.** Un número igual puede ser casualidad, sobre todo con números
+chicos: propone dónde mirar.
+
+### v) Ubicación en desacuerdo con figura y fecha coincidentes — medición (30/09)
+
+Caso: **Bereciartua**, fila 29/07/2026 **Flores (Comuna 7)**, 185 ins, contra *"VÍNCULO CIUDADANO -
+Encuentro con vecinos - Pablo Bereciartua - Comuna 6 - 29/7"* (169). Figura y fecha exactas; la
+comuna distinta lo **descalifica**. Hoy, si la fila tiene **cualquier** otro candidato limpio, el
+descalificado ni siquiera llega a REVISAR (sólo va si es lo único que hay).
+
+`paso11_desacuerdoUbicacion()` mide:
+
+- **a)** los pares figura + fecha a 0-1 días + ubicación en desacuerdo, `[ventana | total]`, con
+  los casos: en qué quedó la fila (¿ya se escribe con otro formulario?) y si el par está hoy en
+  `EMPAREJAR_MANUAL`;
+- **b) la propuesta, simulada y NO implementada**: esos pares no se descartan; si la fila no tiene
+  un ganador mejor → REVISAR_MATCH con motivo `ubicacion_en_desacuerdo`; el par aparece siempre en
+  `EMPAREJAR_MANUAL`; **nunca se escribe solo**. Cuenta cuántas filas y pares cambiarían.
+
+El 185 contra 169 lo mira la búsqueda inversa (u). Se decide con los números.
+
+### w) Herramientas para revisar casos uno por uno — `diagnostico/06_revisar_casos.js`
+
+Sólo lectura, sólo log.
+
+- **`explicarFormulario`** (`paso12_explicarFormulario()`): fecha detectada y su fuente (texto o
+  `fecha_fin`, y las ocurrencias que descartó la regla del mes), figuras, barrio, comuna, eje,
+  inscriptos, y **todas** las filas de su figura a ±21 días con el score señal por señal, si quedó
+  descalificado y por qué, y si pasó la puerta de `EMPAREJAR_MANUAL` (y si no, por qué: fila ya
+  resuelta, formulario tomado, no nombra la figura, fecha lejos sin comuna, bajo el piso, o el tope).
+- **`explicarFila`** (`paso12_explicarFila()`): lo mismo desde la fila, más su veredicto, su
+  traza, sus contendientes y cómo ganó.
+- Los dos leen **`CASO_A_EXPLICAR`** en `99_Correr.js`: número de fila de B o texto del nombre
+  (formulario), o número de fila del destino (fila).
+- **`listarFilasFaltantes`** (`paso13_filasFaltantesEnRDV()`): **la lista para el equipo**.
+  Formularios **sin ningún candidato** con `MIN_INSCRIPTOS_FILA_FALTANTE` (10) o más, como *"posible
+  fila faltante en RDV"*, ventana primero. Los de menos de 10 sólo se cuentan. Se esperan en
+  ventana: Mraida Comuna 3 20/7 (103) y 22/7 (129), Bereciartua Comuna 6 29/7 (169), Primera
+  Persona 12/8 con Nicolás Vázquez (425), Sánchez Zinny San Cristóbal 8/4 (91), Miguel Comuna 15
+  22/4 (46).
+
+### x) Las derivadas del destino leen `Comunas` B-H — chequeo (30/09)
+
+Las siete columnas `Comuna`, `Poblacion`, `p. Mujer`, `P. Varon`, `(km2)`, `(hab/km2)` y
+`Zona` del destino son VLOOKUP del barrio contra `Comunas` B-H (CLAUDE.md 3.1.b). **La
+corrección de las columnas E-G de `Comunas` cambió esos valores en el destino, a los correctos.**
+`paso14_formulasDestino()` lo confirma: las once derivadas conservan su fórmula (y el ancla no
+está en `#REF!`), las siete de lookup leen la columna que corresponde (2 a 8), y fila por fila el
+valor del destino es el que da `Comunas` hoy. Sólo lectura: si algo difiere, se lista.
 
 ---
 
@@ -518,7 +676,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | `30_Derivadas.js` | **falta** (Fase 3) |
 | `40_Agenda.js` | **falta** (Fase 8) |
 | [40_Alertas.js](../40_Alertas.js) | escrito, **no enganchado**. A mano: `correrAlertaCambios()` |
-| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…`, `paso9_…`, `paso10_…` y `rehacer_…`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
+| [99_Correr.js](../99_Correr.js) | escrito. **El único archivo que se abre para correr algo**: `paso1_…` a `paso3_…`, `paso6_…`, `paso7_…`, `paso10_…` a `paso14_…` y `rehacer_…`; la constante `CASO_A_EXPLICAR`. Sin lógica propia; se actualiza en el mismo commit en que cambia qué correr |
 | `99_Pipeline.js` | **falta** (Fase 7) |
 
 ### Diagnósticos (sólo lectura, ninguno escribe en el destino)
@@ -530,6 +688,8 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
 | [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (`rehacer_verificarLegToDate()`, corrido el 25/09) |
 | [diagnostico/05_formularios_faltantes.js](../diagnostico/05_formularios_faltantes.js) | `diagFormulariosFaltantes()` — faltantes y mal fechados (`paso7_…`) |
+| [diagnostico/06_revisar_casos.js](../diagnostico/06_revisar_casos.js) | `explicarFormulario()`, `explicarFila()` (`paso12_…`), `listarFilasFaltantes()` (`paso13_…`) — decisión w |
+| [diagnostico/07_formulas_destino.js](../diagnostico/07_formulas_destino.js) | `diagFormulasDestino()` — las derivadas contra `Comunas` (`paso14_…`) — decisión x |
 
 Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
 `diagAnclaFecha()` queda como registro de una medición cerrada. **No hace falta volver a

@@ -12,7 +12,7 @@
  * **Se mantiene al día en el mismo commit** en que cambia qué hay que correr (CLAUDE.md §6).
  *
  * ============================================================================================
- *  DÓNDE ESTAMOS — al 2026-09-26                                  (detalle: docs/ESTADO.md)
+ *  DÓNDE ESTAMOS — al 2026-09-30                                  (detalle: docs/ESTADO.md)
  * ============================================================================================
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
@@ -21,23 +21,32 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO, en este orden (los dos sólo leen, ninguno toca el destino):
- *      1. paso2_upsertEnSeco(). Primera corrida con el DESEMPATE POR EVIDENCIA y el INVARIANTE
- *         "un formulario, una fila" aplicados. PREDICCIÓN anotada antes (ventana): escribiría
- *         ≈ 272-278, revisar ≈ 2-8, sin match ≈ 24; invariante (bloque 0): 0 formularios con 2+
- *         filas. Si el chequeo del bloque 0 da 0, el invariante deja de ser bloqueante.
- *      2. paso10_validarContraInscriptos(). Control final: calibración contra los inscriptos que
- *         hoy tiene el destino (un destino con 0 es "sin cargar", no una diferencia). NO entra
- *         en el score ni en ningún desempate.
+ *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino):
+ *      1. paso14_formulasDestino(). Confirma que las once derivadas siguen siendo fórmula y que
+ *         Comuna..Zona muestran lo que dice Comunas HOY (después de corregir E-G). Rápido.
+ *      2. paso2_upsertEnSeco(). Primera corrida con la GUARDA DE TRANSICIÓN y el EJE como último
+ *         desempate. PREDICCIÓN: la guarda frena ≈ 10 | 59 (pasan de escribiría a revisar con
+ *         motivo difiere_del_destino) → escribiría ≈ 267 | 687, revisar ≈ 13 | 74, sin match
+ *         25 | 44 igual. Decididas por el eje: 0. Invariante: 0. EMPAREJAR_MANUAL puede crecer
+ *         un poco: las frenadas quedan libres y reciben pares.
+ *      3. paso10_validarContraInscriptos(). Ahora con la BÚSQUEDA INVERSA al final: para cada
+ *         fila dudosa, los formularios de su figura a ±7 con los mismos inscriptos del destino.
+ *      4. paso11_desacuerdoUbicacion(). Pares figura + fecha 0-1 con la ubicación en desacuerdo
+ *         (Bereciartua 29/07 Flores), y la propuesta simulada.
+ *      5. paso13_filasFaltantesEnRDV(). La lista para el equipo: formularios huérfanos con 10+
+ *         inscriptos. Se esperan en ventana: Mraida C3 20/7 y 22/7, Bereciartua C6 29/7,
+ *         Primera Persona 12/8, Sánchez Zinny San Cristóbal 8/4, Miguel C15 22/4.
+ *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
+ *      editando CASO_A_EXPLICAR (más abajo).
  *
- *  LÍNEA BASE vigente: la corrida en seco del 26/09 17:44 (ya con D-C y el tope de 3). Corte de
- *  ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE):
+ *  LÍNEA BASE vigente: la corrida en seco del 30/09 14:19 (desempate + invariante aplicados).
+ *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE):
  *
- *        escribiría   241 (ventana)     predicción era 241
- *        a revisar     39 (ventana)                    39
- *        sin match     24 (ventana)                    25
+ *        escribiría   277 | 746     predicción era 272-278
+ *        a revisar      3 |  15                    2-8
+ *        sin match     25 |  44                    ~24
  *
- *      Las anteriores (25/09 18:13, 26/09 11:36, 14:21 y 16:45) están en docs/ESTADO.md y CLAUDE.md.
+ *      Las anteriores (25/09 18:13, 26/09 11:36, 14:21, 16:45 y 17:44) están en docs/ESTADO.md.
  *
  *  La secuencia, en orden:
  *
@@ -65,7 +74,13 @@
  *   (paso 8 ya corrió: rehacer_medirVariantesSinFigura(), en YA CORRIDOS.)
  *   (paso 9 ya corrió y se implementó: rehacer_medirDesempatePorEvidencia(), en YA CORRIDOS.)
  *   paso10_validarContraInscriptos() → medirValidacionInscriptos()   NO escribe en ninguna
- *                                                planilla: sólo log. Calibración de una vez.
+ *                                                planilla: sólo log. Calibración de una vez,
+ *                                                con la búsqueda inversa al final.
+ *   paso11_desacuerdoUbicacion() → medirDesacuerdoUbicacion()   sólo log.
+ *   paso12_explicarFormulario() / paso12_explicarFila() → diagnostico/06_revisar_casos.js
+ *                                                sólo log. Leen CASO_A_EXPLICAR.
+ *   paso13_filasFaltantesEnRDV() → listarFilasFaltantes()   sólo log.
+ *   paso14_formulasDestino() → diagFormulasDestino()   sólo log; lee el destino y Comunas.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -148,6 +163,58 @@ function paso10_validarContraInscriptos() {
              'sólo el log: cobertura, destino vs formulario elegido, los resueltos del paso 9 y ' +
              'los choques del invariante contra los inscriptos cargados. NO entra en el score');
   return medirValidacionInscriptos();
+}
+
+function paso11_desacuerdoUbicacion() {
+  _anunciar_('paso 11 — ubicación en desacuerdo con figura y fecha coincidentes',
+             'medirDesacuerdoUbicacion()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: pares figura + fecha 0-1 + ubicación en desacuerdo, en qué quedó cada ' +
+             'fila, si el par está en EMPAREJAR_MANUAL, y la propuesta simulada (no implementada)');
+  return medirDesacuerdoUbicacion();
+}
+
+/**
+ * El caso que explican los dos paso12_*. Editar y correr:
+ *   paso12_explicarFormulario → número de fila de B, o un texto que esté en el nombre del formulario
+ *   paso12_explicarFila       → número de fila del destino
+ */
+const CASO_A_EXPLICAR = 'Bereciartua - Comuna 6';
+
+function paso12_explicarFormulario() {
+  _anunciar_('paso 12 — explicar un formulario (CASO_A_EXPLICAR = ' + CASO_A_EXPLICAR + ')',
+             'explicarFormulario()  [diagnostico/06_revisar_casos.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: fecha y su fuente, figuras, ubicación, inscriptos, y cada fila de su ' +
+             'figura a ±21 días con el score señal por señal y la puerta de EMPAREJAR_MANUAL');
+  return explicarFormulario(CASO_A_EXPLICAR);
+}
+
+function paso12_explicarFila() {
+  _anunciar_('paso 12 — explicar una fila del destino (CASO_A_EXPLICAR = ' + CASO_A_EXPLICAR + ')',
+             'explicarFila()  [diagnostico/06_revisar_casos.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: veredicto y traza de la fila, y cada formulario de su figura a ±21 ' +
+             'días con el score señal por señal y la puerta de EMPAREJAR_MANUAL');
+  return explicarFila(CASO_A_EXPLICAR);
+}
+
+function paso13_filasFaltantesEnRDV() {
+  _anunciar_('paso 13 — posibles filas faltantes en RDV (lista para el equipo)',
+             'listarFilasFaltantes()  [diagnostico/06_revisar_casos.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: formularios sin ningún candidato con MIN_INSCRIPTOS_FILA_FALTANTE o ' +
+             'más, ventana primero');
+  return listarFilasFaltantes();
+}
+
+function paso14_formulasDestino() {
+  _anunciar_('paso 14 — fórmulas del destino contra Comunas',
+             'diagFormulasDestino()  [diagnostico/07_formulas_destino.js]',
+             'NO escribe en ninguna planilla (lee valores y fórmulas del destino y Comunas)',
+             'sólo el log: las once derivadas conservan su fórmula, las siete de lookup leen la ' +
+             'columna correcta de Comunas, y sus valores son los de Comunas de hoy');
+  return diagFormulasDestino();
 }
 
 // =============================================================================================

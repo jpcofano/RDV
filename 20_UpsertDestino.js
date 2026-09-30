@@ -627,6 +627,10 @@ function _desempatePorEvidencia_(lista) {
       mayor: false },
     { k: 'inscriptos', val: function (sc) { return sc.c.inscriptos || 0; }, mayor: true }
   ];
+  // 4) el eje, ÚLTIMO y sólo si exactamente uno coincide (con dos o ninguno, no decide nada).
+  if (EJE_COMO_DESEMPATE) {
+    criterios.push({ k: 'eje', val: function (sc) { return sc.ejeCoincide ? 1 : 0; }, mayor: true });
+  }
   let quedan = lista.slice(), porQue = null;
   for (let i = 0; i < criterios.length && quedan.length > 1; i++) {
     const cr = criterios[i];
@@ -666,7 +670,7 @@ function _descPar_(sc) {
 function _resolverMargenChico_(plan) {
   const out = { total: contador_(), sigue: contador_(), mismo: contador_(), otro: contador_(),
                 porCriterio: { senales: contador_(), distancia: contador_(),
-                               inscriptos: contador_() },
+                               inscriptos: contador_(), eje: contador_() },
                 resueltos: [], siguen: [] };
   plan.dest.filas.forEach(function (f) {
     const pf = plan.porFila[f.fila];
@@ -1006,17 +1010,13 @@ function _logInvariante_(plan) {
  */
 function medirValidacionInscriptos() {
   Logger.log('=== medirValidacionInscriptos — sólo lectura, CALIBRACIÓN de una sola vez ===');
-  Logger.log('  Los inscriptos del DESTINO se usan sólo acá: no entran en el score, ni en ningún');
-  Logger.log('  desempate, ni en la regla de un formulario por fila. En régimen los escribe el');
-  Logger.log('  propio sistema.');
+  Logger.log('  Los inscriptos del DESTINO se usan sólo acá y en la guarda de transición (que decide');
+  Logger.log('  si se ESCRIBE, no qué se elige): no entran en el score, ni en ningún desempate, ni en');
+  Logger.log('  la regla de un formulario por fila. En régimen los escribe el propio sistema.');
   const plan = calcularPlan_(true);
   const dest = plan.dest, porFila = plan.porFila;
   const iIns = dest.D['Inscriptos'];
-  const insDest = function (f) {
-    if (iIns == null) return null;
-    const v = f.valores[iIns];
-    return esVacio_(v) ? null : numOcero_(v);
-  };
+  const insDest = function (f) { return _insDestino_(dest, f); };
   const dif = function (d, form) {
     if (d === null) return null;
     return Math.abs((form || 0) - d) / Math.max(d, 1);
@@ -1048,7 +1048,8 @@ function medirValidacionInscriptos() {
   const escritasConDato = contador_(), escritasSinCargar = contador_();
   dest.filas.forEach(function (f) {
     const pf = porFila[f.fila];
-    if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
+    // Las frenadas por la guarda de transición entran igual: lo que se valida es la ELECCIÓN.
+    if (!pf || !pf.cand || (pf.veredicto !== 'escribiria' && pf.motivo !== 'difiere_del_destino')) return;
     const d = insDest(f);
     if (d === null) return;
     const ev = enVentanaAnalisis_(f.fecha);
@@ -1155,6 +1156,8 @@ function medirValidacionInscriptos() {
                y.ch.ganador ? 'la fila ' + y.ch.ganador.fila.fila : 'ninguna');
   });
 
+  _logBusquedaInversa_(plan, grandes, detInv, desac9, insDest);
+
   Logger.log('  Qué NO dice esto:');
   Logger.log('   - Las filas cargadas por el legado desde el mismo formulario coinciden por');
   Logger.log('     construcción: eso valida al matcher nuevo contra el viejo, no contra la verdad.');
@@ -1164,6 +1167,200 @@ function medirValidacionInscriptos() {
   Logger.log('   - Nada de esto entra al score ni a un desempate: es una calibración de una vez.');
 
   return { conDato: conDato, bandas: bandas, v9: v9, inv: vInv };
+}
+
+/**
+ * **Búsqueda inversa** (paso 10, calibración): para cada fila dudosa, qué formularios de SU
+ * figura a ±`DIAS_BUSQUEDA_INVERSA` tienen EXACTAMENTE los inscriptos que el destino tiene
+ * cargados. "El destino tiene N: coincide con este formulario".
+ *
+ * Sólo log. **No entra al score ni a ningún desempate**: los inscriptos del destino son de
+ * validación (CLAUDE.md, paso 10). Un número igual puede ser casualidad —sobre todo con números
+ * chicos—, así que esto propone dónde mirar, no dice cuál es.
+ *
+ * Qué filas: las de la banda "más", las de los choques del invariante que la regla resolvió al
+ * revés, los desempates donde un rival coincide mejor, las que no se escriben (a revisar o sin
+ * match) con dato en el destino, y las de `FILAS_BUSQUEDA_INVERSA`.
+ */
+function _logBusquedaInversa_(plan, grandes, detInv, desac9, insDest) {
+  const dest = plan.dest, porFila = plan.porFila, vivos = plan.cands.vivos;
+  const tol = DIAS_BUSQUEDA_INVERSA;
+
+  // qué formulario ya toma qué fila (para decir "ya lo usa la fila X")
+  const tomadoPor = {};
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (pf && pf.veredicto === 'escribiria' && pf.cand) tomadoPor[pf.cand.fila] = f.fila;
+  });
+  const porNumero = {};
+  dest.filas.forEach(function (f) { porNumero[f.fila] = f; });
+
+  const vistas = {}, lista = [];
+  const agregar = function (f, porQue) {
+    if (!f || vistas[f.fila]) return;
+    const d = insDest(f);
+    if (d === null || d === 0) return;
+    vistas[f.fila] = true;
+    lista.push({ f: f, ev: enVentanaAnalisis_(f.fecha), d: d, porQue: porQue });
+  };
+  grandes.forEach(function (x) { agregar(x.f, 'banda "más"'); });
+  detInv.forEach(function (y) {
+    if (y.ch.ganador && y.ch.ganador !== y.mejor.sc) {
+      agregar(y.mejor.sc.fila, 'choque resuelto al revés');
+      agregar(y.ch.ganador.fila, 'choque resuelto al revés');
+    }
+  });
+  desac9.forEach(function (y) { agregar(y.f, 'desempate: un rival coincide mejor'); });
+  (FILAS_BUSQUEDA_INVERSA || []).forEach(function (n) { agregar(porNumero[n], 'pedida a mano'); });
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    // las frenadas por la guarda ya están en las bandas (y en "más" si difieren mucho)
+    if (pf && pf.motivo !== 'difiere_del_destino' &&
+        (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH')) {
+      agregar(f, 'no se escribe (' + (pf.motivo || pf.veredicto) + ')');
+    }
+  });
+
+  const res = { con: contador_(), sin: contador_(), esElElegido: contador_() };
+  Logger.log('--- BÚSQUEDA INVERSA: formularios de la figura a ±%s días con los MISMOS inscriptos ' +
+             'que el destino (%s filas) ---', tol, lista.length);
+  Logger.log('  Sólo para mirar: un número igual puede ser casualidad. No entra en nada.');
+  _ordenarPorFila_(lista).forEach(function (x) {
+    const f = x.f, figNorm = normalizeText_(f.figura), pf = porFila[f.fila] || {};
+    const hallados = [];
+    for (let j = 0; j < vivos.length; j++) {
+      const c = vivos[j];
+      if ((c.inscriptos || 0) !== x.d) continue;
+      const sinFig = !c.figurasNorm.length;
+      if (!sinFig && c.figurasNorm.indexOf(figNorm) === -1) continue;
+      const dd = distanciaFecha_(f.fecha, c.det);
+      if (dd === null || dd > tol) continue;
+      hallados.push({ c: c, dd: dd, sinFig: sinFig });
+    }
+    hallados.sort(function (a, b) { return a.dd - b.dd; });
+    const elegido = pf.cand || null;
+    const ok = hallados.some(function (h) { return h.c === elegido; });
+    sumar_(hallados.length ? res.con : res.sin, x.ev);
+    if (ok) sumar_(res.esElElegido, x.ev);
+    Logger.log('  [%s] fila %s | %s | %s | %s | %s → %s',
+               x.ev ? 'ventana' : 'histor.', f.fila, fmtFecha_(f.fecha), f.figura,
+               f.barrio || 'sin barrio', x.porQue, pf.veredicto + (pf.motivo ? '/' + pf.motivo : ''));
+    Logger.log('      %s: %s', pf.veredicto === 'escribiria' ? 'elegido hoy' : 'mejor candidato (no se escribe)',
+               elegido ? 'ins=' + (elegido.inscriptos || 0) + ' | ' + elegido.nombre : 'ninguno');
+    if (!hallados.length) {
+      Logger.log('      el destino tiene %s: NINGÚN formulario de su figura a ±%s días tiene ese número',
+                 x.d, tol);
+    }
+    hallados.forEach(function (h) {
+      const quien = h.c === elegido ? '  ← ES EL ELEGIDO'
+        : (tomadoPor[h.c.fila] != null ? '  (ya lo toma la fila ' + tomadoPor[h.c.fila] + ')' : '  (libre)');
+      Logger.log('      el destino tiene %s: coincide con B fila %s (%s días%s) | %s%s', x.d,
+                 h.c.fila, h.dd, h.sinFig ? ', SIN figura' : '', h.c.nombre, quien);
+    });
+  });
+  Logger.log('  resumen: con algún formulario coincidente %s | sin ninguno %s | el coincidente es ' +
+             'el elegido %s', _dc_(res.con), _dc_(res.sin), _dc_(res.esElElegido));
+  return res;
+}
+
+// ===================== Medición: ubicación en desacuerdo con figura y fecha =====================
+
+/**
+ * **Ubicación en desacuerdo cuando figura y fecha coinciden** (pedido del 30/09, punto 5). Sólo
+ * lectura y log; **no cambia ningún veredicto**.
+ *
+ * Caso que lo motiva: Bereciartua, fila 29/07/2026 Flores (Comuna 7), contra "VÍNCULO CIUDADANO -
+ * Encuentro con vecinos - Pablo Bereciartua - Comuna 6 - 29/7". Figura y fecha exactas, y la
+ * comuna distinta lo DESCALIFICA. Si el barrio del destino está mal cargado (lo carga una
+ * persona), el desacuerdo es un dato malo nuestro, no del origen.
+ *
+ *   a) los pares con figura + fecha a 0–1 días + ubicación EN DESACUERDO, [ventana | total], con
+ *      los casos: en qué quedó la fila (¿ya se escribe con otro formulario?) y si el par está hoy
+ *      en EMPAREJAR_MANUAL.
+ *   b) la PROPUESTA, simulada: esos pares no se descartan. Si la fila no tiene un ganador mejor,
+ *      va a REVISAR_MATCH con motivo ubicacion_en_desacuerdo; el par aparece siempre en
+ *      EMPAREJAR_MANUAL; nunca se escribe solo. Acá sólo se cuenta cuántas filas y pares cambiarían.
+ */
+function medirDesacuerdoUbicacion() {
+  Logger.log('=== medirDesacuerdoUbicacion — sólo lectura, no cambia ningún veredicto ===');
+  const plan = calcularPlan_(true);
+  const dest = plan.dest, vivos = plan.cands.vivos, comunas = plan.comunas, porFila = plan.porFila;
+  const paresSet = (plan.emp && plan.emp.paresSet) || {};
+  const tomadoPor = {};
+  plan.decisiones.forEach(function (d) { if (!d.noEscribir && d.cand) tomadoPor[d.cand.fila] = d.fila.fila; });
+
+  const cnt = { pares: contador_(), filas: contador_(), restoAlto: contador_(),
+                escritaConOtro: contador_(), yaRevisar: contador_(), revisarOtro: contador_(),
+                sinMatch: contador_(), enEmparejar: contador_(), noEnEmparejar: contador_(),
+                propRevisar: contador_(), propPares: contador_() };
+  const casos = [], vistaFila = {};
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (!pf || pf.veredicto === 'futura' || pf.veredicto === 'rdv_uid') return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    for (let j = 0; j < vivos.length; j++) {
+      const c = vivos[j];
+      const sc = puntuar_(f, c, comunas);
+      if (!sc.desacuerdo || !sc.nombraFigura || sc.dist === null || sc.dist > 1) continue;
+      sumar_(cnt.pares, ev);
+      if (sc.resto >= UMBRAL_MATCH) sumar_(cnt.restoAlto, ev);
+      const enEmp = !!paresSet[c.fila + '|' + f.fila];
+      sumar_(enEmp ? cnt.enEmparejar : cnt.noEnEmparejar, ev);
+      if (!enEmp) sumar_(cnt.propPares, ev);
+      const estado = pf.veredicto === 'escribiria' ? 'escrita_con_otro'
+        : pf.motivo === 'ubicacion_en_desacuerdo' ? 'ya_revisar_desacuerdo'
+        : pf.veredicto === 'REVISAR_MATCH' ? 'revisar_' + pf.motivo : 'sin_match_' + pf.motivo;
+      if (!vistaFila[f.fila]) {
+        vistaFila[f.fila] = true;
+        sumar_(cnt.filas, ev);
+        if (estado === 'escrita_con_otro') sumar_(cnt.escritaConOtro, ev);
+        else if (estado === 'ya_revisar_desacuerdo') sumar_(cnt.yaRevisar, ev);
+        else {
+          if (pf.veredicto === 'REVISAR_MATCH') sumar_(cnt.revisarOtro, ev); else sumar_(cnt.sinMatch, ev);
+          sumar_(cnt.propRevisar, ev);   // la propuesta la mandaría a revisión por desacuerdo
+        }
+      }
+      const bDest = normalizeText_(f.barrio);
+      casos.push({ f: f, ev: ev, c: c, sc: sc, estado: estado, enEmp: enEmp, pf: pf,
+                   cDest: bDest ? comunas.get(bDest) : null, tomado: tomadoPor[c.fila] });
+    }
+  });
+
+  Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
+             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
+  Logger.log('--- a) pares con figura + fecha a 0–1 días + ubicación EN DESACUERDO (hoy descalificados) ---');
+  Logger.log('  pares ....................................... %s', _dc_(cnt.pares));
+  Logger.log('    sin la ubicación llegarían al umbral ...... %s', _dc_(cnt.restoAlto));
+  Logger.log('    están hoy en EMPAREJAR_MANUAL ............. %s', _dc_(cnt.enEmparejar));
+  Logger.log('    NO están en EMPAREJAR_MANUAL .............. %s', _dc_(cnt.noEnEmparejar));
+  Logger.log('  filas del destino con al menos uno .......... %s', _dc_(cnt.filas));
+  Logger.log('    ya se escriben con OTRO formulario ........ %s', _dc_(cnt.escritaConOtro));
+  Logger.log('    ya en REVISAR por ubicacion_en_desacuerdo . %s', _dc_(cnt.yaRevisar));
+  Logger.log('    en REVISAR por otro motivo ................ %s', _dc_(cnt.revisarOtro));
+  Logger.log('    SIN_MATCH ................................. %s', _dc_(cnt.sinMatch));
+  _ordenarPorFila_(casos).slice(0, 60).forEach(function (x) {
+    Logger.log('  [%s] fila %s | %s | %s | %s (comuna %s) | %s días | score %s, sin ubicación %s',
+               x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura,
+               x.f.barrio || 'sin barrio', x.cDest == null ? '-' : x.cDest, x.sc.dist, x.sc.score,
+               x.sc.resto);
+    Logger.log('      formulario: B fila %s | barrio %s | comuna %s | ins=%s | %s', x.c.fila,
+               x.c.barrio || '-', x.c.comuna == null ? '-' : x.c.comuna, x.c.inscriptos || 0, x.c.nombre);
+    Logger.log('      la fila hoy: %s%s | en EMPAREJAR_MANUAL: %s%s', x.estado,
+               x.estado === 'escrita_con_otro' && x.pf.cand ? ' (B fila ' + x.pf.cand.fila + ': ' + x.pf.cand.nombre + ')' : '',
+               x.enEmp ? 'sí' : 'NO',
+               x.tomado != null ? ' | el formulario ya lo toma la fila ' + x.tomado : '');
+  });
+  if (casos.length > 60) Logger.log('  ... y %s pares más', casos.length - 60);
+
+  Logger.log('--- b) PROPUESTA (simulada, NO implementada): no descartar esos pares ---');
+  Logger.log('  si la fila no tiene un ganador mejor → REVISAR_MATCH / ubicacion_en_desacuerdo;');
+  Logger.log('  el par aparece siempre en EMPAREJAR_MANUAL; nunca se escribe solo.');
+  Logger.log('  filas que pasarían a REVISAR por desacuerdo ... %s', _dc_(cnt.propRevisar));
+  Logger.log('  pares que se sumarían a EMPAREJAR_MANUAL ...... %s', _dc_(cnt.propPares));
+  Logger.log('  las que ya se escriben con otro formulario no cambian (%s).', _dc_(cnt.escritaConOtro));
+  Logger.log('  Qué NO dice esto: si el desacuerdo es un barrio mal cargado en el destino o una');
+  Logger.log('  reunión distinta. Eso se ve caso por caso (explicarFila / explicarFormulario).');
+  return cnt;
 }
 
 // ===================== El upsert =====================
@@ -1348,9 +1545,30 @@ function calcularPlan_(enSeco) {
    */
   const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, usados);
 
+  /*
+   * --- guarda de transición (TRANSICION_RESPETAR_DESTINO, 00_Config.js) ---
+   * Sólo sobre las que se escribirían: si el destino ya tiene inscriptos cargados (≠ 0) y son
+   * DISTINTOS de los del formulario elegido, no se escribe: REVISAR_MATCH por difiere_del_destino.
+   * No toca el matching —la elección ya está hecha—: es un seguro para la primera escritura.
+   */
+  const frenadas = { cnt: contador_(), casos: [] };
+  if (TRANSICION_RESPETAR_DESTINO) {
+    evals.forEach(function (x) {
+      if (x.r.veredicto !== 'escribiria' || !x.r.mejor) return;
+      const d = _insDestino_(dest, x.f);
+      if (d === null || d === 0) return;                       // sin cargar: se escribe
+      const form = x.r.mejor.c.inscriptos || 0;
+      if (d === form) return;                                   // igual: se escribe
+      x.r = Object.assign({}, x.r, { veredicto: 'REVISAR_MATCH', motivo: 'difiere_del_destino',
+                                     insDestino: d, insForm: form });
+      sumar_(frenadas.cnt, x.ev);
+      frenadas.casos.push({ f: x.f, ev: x.ev, d: d, form: form, c: x.r.mejor.c });
+    });
+  }
+
   // Cuántas margen_chico resolvió el desempate por evidencia, y cuántas no por el umbral.
   const desempateCnt = { senales: contador_(), distancia: contador_(), inscriptos: contador_(),
-                         bajoUmbral: contador_() };
+                         eje: contador_(), bajoUmbral: contador_() };
 
   /*
    * --- vuelta 2: con el resultado final de cada fila ---
@@ -1429,9 +1647,12 @@ function calcularPlan_(enSeco) {
     } else if (r.veredicto === 'REVISAR_MATCH') {
       if (r.mejor.porSinFigura) sumar_(porSinFigRevisa, ev);
       sumar_(res.revisar, ev); cuenta(r.motivo, ev);
+      const nivelRev = r.motivo === 'difiere_del_destino'
+        ? r.mejor.nivel + ' | destino ' + r.insDestino + ' vs formulario ' + r.insForm
+        : r.mejor.nivel;
       filasRevisar.push([f.clave, f.figura, f.barrio, fmtFecha_(f.fecha),
                          r.mejor.c.nombre, r.mejor.score, r.segundoScore, r.margen,
-                         r.motivo, r.mejor.nivel, _sn_(ev)]);
+                         r.motivo, nivelRev, _sn_(ev)]);
       decisiones.push({ fila: f, cand: r.mejor.c, score: r.mejor.score,
                         nivel: 'descartado:' + r.motivo, dist: r.mejor.dist, noEscribir: true });
     } else {
@@ -1473,7 +1694,7 @@ function calcularPlan_(enSeco) {
                        chequeo: chequearFormularioUnico_(dest, cands.vivos, comunas, porFila) };
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
-           invariante: invariante, desempateCnt: desempateCnt,
+           invariante: invariante, desempateCnt: desempateCnt, frenadas: frenadas,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
            porSinFigEscribe: porSinFigEscribe, porSinFigRevisa: porSinFigRevisa,
@@ -1487,6 +1708,19 @@ function calcularPlan_(enSeco) {
 }
 
 function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
+
+/**
+ * Los inscriptos que el DESTINO tiene cargados en la fila: `null` si no hay columna o la celda
+ * está vacía; 0 es "sin cargar" y lo interpreta quien llama. Lo usan la guarda de transición
+ * (TRANSICION_RESPETAR_DESTINO), la validación del paso 10 y las herramientas de revisión —
+ * **nunca el score ni un desempate**.
+ */
+function _insDestino_(dest, f) {
+  const i = dest.D['Inscriptos'];
+  if (i == null) return null;
+  const v = f.valores[i];
+  return esVacio_(v) ? null : numOcero_(v);
+}
 
 /**
  * Qué le costó score a una fila que no llegó al umbral, **por ventana y en total**.
@@ -1564,6 +1798,29 @@ function _autopsia_(bajo, difieren, f, mejor, comunas, ev) {
  * Si la escritura se cae —y ya se cayó dos veces— la corrida sirve igual. Es la diferencia
  * entre perder una corrida y perder sólo una solapa que se puede rehacer en cuatro segundos.
  */
+/**
+ * La guarda de transición, en el paso 2: cuántas filas frena y cuáles.
+ *
+ * Es un seguro para la PRIMERA escritura, no una regla del matcher: con la guarda puesta, una
+ * fila que el destino ya tiene cargada con otro número no se toca aunque el match sea bueno.
+ */
+function _logFrenadas_(plan) {
+  const fr = plan.frenadas;
+  if (!fr) return;
+  Logger.log('  guarda de transición (TRANSICION_RESPETAR_DESTINO = %s): frenadas %s   ' +
+             '(se espera ≈ 10 | 59)', TRANSICION_RESPETAR_DESTINO, _dc_(fr.cnt));
+  if (!TRANSICION_RESPETAR_DESTINO) return;
+  Logger.log('    el destino tiene inscriptos cargados (≠ 0) y DIFIEREN del formulario elegido:');
+  Logger.log('    no se escriben, van a REVISAR_MATCH con motivo difiere_del_destino.');
+  const casos = _ordenarPorFila_(fr.casos);
+  casos.slice(0, 80).forEach(function (x) {
+    Logger.log('    [%s] fila %s | %s | %s | destino %s vs formulario %s ← %s',
+               x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura,
+               x.d, x.form, x.c.nombre);
+  });
+  if (casos.length > 80) Logger.log('    ... y %s más', casos.length - 80);
+}
+
 function logResumen_(plan) {
   const r = plan.res;
   const base = { v: r.enVentana - r.futuras.v, t: plan.dest.filas.length - r.futuras.t };
@@ -1606,7 +1863,10 @@ function logResumen_(plan) {
                'distancia %s | por inscriptos %s', DESEMPATE_POR_EVIDENCIA, _dc_(dc.senales),
                _dc_(dc.distancia), _dc_(dc.inscriptos));
     Logger.log('    ganador bajo el umbral o multi_figura (sigue en revisión): %s', _dc_(dc.bajoUmbral));
+    Logger.log('    decididas por el EJE, último desempate (EJE_COMO_DESEMPATE = %s): %s   (se espera 0)',
+               EJE_COMO_DESEMPATE, _dc_(dc.eje));
   }
+  _logFrenadas_(plan);
   Logger.log('  por la regla sin_figura_por_ubicacion (SIN_FIGURA_POR_UBICACION = %s): escribiría %s' +
              ' | a revisar %s', SIN_FIGURA_POR_UBICACION, _dc_(plan.porSinFigEscribe || contador_()),
              _dc_(plan.porSinFigRevisa || contador_()));
@@ -2873,6 +3133,10 @@ function puntuar_(f, c, comunas) {
     sinFigura: sinFigura,
     porSinFigura: porSinFigura,
     nombraFigura: sFig > 0,
+    // Para el ÚLTIMO desempate (EJE_COMO_DESEMPATE): el eje del formulario coincide con el del
+    // barrio de la fila. No puntúa ni descalifica: sólo lo lee _desempatePorEvidencia_.
+    ejeCoincide: !!(c.eje && c.eje.tipo === 'eje' && ejeDeBarrio_(f.barrio) &&
+                    ejeDeBarrio_(f.barrio) === c.eje.eje),
     dist: dist,
     relevante: relevante,
     proponible: proponible,
@@ -2952,6 +3216,9 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
 
   const filas = [];
   const pares = contador_();
+  // Qué pares quedaron en la lista, por 'formFila|destFila': lo leen las herramientas de revisión
+  // (explicarFormulario / explicarFila) y medirDesacuerdoUbicacion(). Sólo lectura.
+  const paresSet = {};
   /*
    * Pares por figura de la fila del destino, y cuántos de ellos existen sólo porque la figura
    * del formulario sale del prefijo (`compararLimpiezaPrefijo_` = pierde_figura: con la limpieza
@@ -2967,6 +3234,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
     g.props.forEach(function (p) {
       const ev = enVentanaAnalisis_(p.f.fecha);
       sumar_(pares, ev);
+      paresSet[g.c.fila + '|' + p.f.fila] = true;
       const k = p.f.figura || '(sin figura)';
       if (!porFigura[k]) porFigura[k] = { pares: contador_(), soloPrefijo: contador_(), filas: {} };
       sumar_(porFigura[k].pares, ev);
@@ -3042,7 +3310,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas) {
   });
 
   // Sólo calcula. La escritura la hace escribirReportes_, para poder reintentarla sola.
-  return { matriz: salida, pares: pares, huerfanos: huerfanos,
+  return { matriz: salida, pares: pares, huerfanos: huerfanos, paresSet: paresSet,
            porFigura: porFigura, deSoloPrefijo: deSoloPrefijo, topeSim: topeSim,
            formulariosHuerfanos: huerfanosVent,
            filasConPropuesta: Object.keys(conPropuesta).length,

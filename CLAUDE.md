@@ -363,6 +363,13 @@ Hasta ahora los cuatro competían igual.
   La columna I y la convención del `?` **se quedan**: no molestan, y si algún día se revisa, el
   mapeo ya está. El 2e mide primero **cuántas filas perderían a su ganador actual por el eje** —la
   única cifra que dice si hace daño— y deja el % de pares como dato secundario.
+- **El eje queda SÓLO como último desempate (30/09, `EJE_COMO_DESEMPATE = true`).** Es el cuarto
+  criterio de `_desempatePorEvidencia_`, después de señales, distancia e inscriptos del
+  formulario, y decide **sólo si exactamente uno** de los contendientes tiene el eje del barrio de
+  la fila. Eje distinto, vacío o `?` = neutro. **Nunca entra al score ni al margen, y nunca
+  descalifica** (eso sería `EJE_COMO_UBICACION`, que sigue apagado). Respeta la salvaguarda del
+  desempate. Traza `+desempate_por_eje`; el paso 2 cuenta en una línea fija cuántas filas decidió
+  (**se espera 0**).
 
 > **Y ojo con la fecha de ese caso.** Los cuatro candidatos de la fila 730 están a **7, 7, 11 y
 > 13 días** del formulario. Descartar Coghlan no hace que ninguno de los otros tres sea la
@@ -391,7 +398,9 @@ Hasta ahora los cuatro competían igual.
 - **Los inscriptos que hoy tiene cargados el destino son sólo para validar el matcher, una vez.**
   En régimen no van a existir como dato independiente: los escribe el propio sistema. **Prohibido
   usarlos como señal o como desempate.** Se usan únicamente en `medirValidacionInscriptos()`
-  (`paso10_…`), que es una calibración de una sola vez.
+  (`paso10_…`), que es una calibración de una sola vez, y en la **guarda de transición**
+  (`TRANSICION_RESPETAR_DESTINO`, decisión 2), que decide **si se escribe**, no qué se elige, y se
+  apaga después del backfill. Es la única excepción, y está declarada.
 
 **e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
@@ -607,6 +616,16 @@ Además están clavadas hasta la fila **2374**: la fila 2375 en adelante no reci
 son aritmética de la misma fila; las siete restantes son un `VLOOKUP` contra `Comunas!A:H`
 que se resuelve leyendo esa tabla una vez a un `Map`.
 
+> **Las siete de lookup leen `Comunas` B-H por fórmula** —columna 2 comuna, 3 población, 4
+> mujeres, 5 varones, 6 km², 7 densidad, 8 zona—, así que **cualquier corrección de `Comunas` se
+> ve en el destino en el acto**. Pasó el 30/09: se corrigieron las columnas **E-G** de `Comunas` y
+> los valores de `P. Varon`, `(km2)` y `(hab/km2)` del destino cambiaron, **a los correctos**. No
+> es un daño: es la fórmula haciendo su trabajo. Lo confirma `diagFormulasDestino()`
+> (`paso14_formulasDestino()`, sólo lectura): las once conservan su fórmula, las siete leen la
+> columna que corresponde, y fila por fila el valor es el de `Comunas` hoy. Consecuencia para la
+> Fase 3: la comparación de `recalcDerivadas_()` contra el original vale sólo contra `Comunas` del
+> mismo momento. La columna I (`Eje geográfico`) no la lee ninguna fórmula.
+
 **c) Colisiones en el scope global.** Apps Script comparte un único scope entre todos los `.gs`.
 Hay declaraciones repetidas: `normalizeHeader_` ×10, `toDate_` ×9, `str`/`num` ×9/×7,
 `normalizeText_` ×7, `findIdxOr_` ×6, `ensureHeaders_` ×5, `mapBarrioCanon_` ×2.
@@ -802,7 +821,7 @@ o sea que el daño cae sobre la mitad de la clave natural. Análisis completo en
 El segundo bloque de borrados del mismo archivo (líneas 197-200) **sí está bien hecho**: ordena
 descendente antes de borrar. Es la misma operación resuelta bien a diez líneas de distancia.
 
-**j) El upsert nuevo deja que un mismo formulario gane dos filas. BLOQUEANTE para `DRY_RUN = false`.**
+**j) El upsert nuevo deja que un mismo formulario gane dos filas. ~~BLOQUEANTE para `DRY_RUN = false`~~ CERRADO el 30/09: chequeo 0.**
 
 En `calcularPlan_`, `usados` sólo alimenta a `calcularEmparejar_`: **nada impide que un formulario
 gane dos filas con veredicto `escribiria`**, y sus inscriptos se escribirían en las dos. El paso 9
@@ -832,6 +851,11 @@ destino no entran. **Mientras el bloque 0 diga ROTO, no se pasa a `DRY_RUN = fal
 > `1 a 1 - Comuna 5 17/6` y la 645 termina en `Encuentro Temático Educación - Eje Oeste`;
 > Ricardes `Comuna 9 29/6` → 671 (no la 669); Muzzio `11/9 Recoleta` → 785 (no la 778).
 > **Deja de ser bloqueante cuando el chequeo del bloque 0 del próximo paso 2 dé 0.**
+>
+> **Dio 0 el 30/09 14:19**: 11 choques resueltos en 3 vueltas. La 645 terminó en el `Temático
+> Educación`; la 626 (Flores 04/06) perdió tres formularios en cascada y terminó en
+> `formulario_compartido`, que es lo correcto. **Ya no bloquea**; se sigue chequeando en cada
+> corrida.
 
 ### 3.2 Calidad de datos, medida
 
@@ -1763,7 +1787,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    Dos reglas más, en este orden, las dos con el mismo orden por evidencia
    (`_desempatePorEvidencia_`: 1) señales evaluadas y coincidentes, 2) menor distancia, 3) más
-   inscriptos DEL FORMULARIO):
+   inscriptos DEL FORMULARIO, 4) el eje, sólo si exactamente uno coincide — 1.d):
 
    1. **Desempate** (`evaluarCandidatos_`): cuando el mejor le gana al segundo por menos de
       `MARGEN_MINIMO`, gana el estrictamente mejor en el primer criterio que distinga, si llega al
@@ -1773,6 +1797,22 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       sin él, iterando; sin ganador claro, REVISAR por `formulario_compartido` (3.1.j).
 
    Los inscriptos del destino no entran en ninguna de las dos (sección 1).
+
+   #### Guarda de transición: `TRANSICION_RESPETAR_DESTINO` (desde el 30/09)
+
+   **Regla de transición, no del matcher**, para la primera escritura. Después del invariante, y
+   sólo sobre las filas con veredicto `escribiria`: si el destino tiene inscriptos cargados (≠ 0)
+   y son **distintos** de los del formulario elegido, **no se escribe**: REVISAR_MATCH con motivo
+   `difiere_del_destino`, con los dos valores y el formulario elegido. Igual o sin cargar → se
+   escribe como siempre.
+
+   - **No toca el matching**: la elección ya está hecha. Es la única lectura de los inscriptos del
+     destino fuera del paso 10, y decide **si** se escribe, no **qué** (sección 1).
+   - Por qué: el destino no es verdad absoluta (769, 748), pero tampoco lo es el matcher; con los
+     dos números distintos, la primera escritura no elige. Lo mira una persona.
+   - **Es un seguro de migración: se apaga (`false`) después del backfill** (Fase 6).
+   - El paso 2 dice cuántas frena `[ventana | total]` (se esperaba ≈ 10 | 59) con los casos; el
+     paso 10 las sigue contando en sus bandas, porque lo que valida es la elección.
 
    #### `EVENTO`: la ubicación de las reuniones temáticas — **DESCARTADO por medición**
 
@@ -2890,6 +2930,8 @@ origen", que llevan a trabajos completamente distintos.
   ya no esté en `B`, del origen (3) — con la regla dura de la sección 1: se lee, no se modifica.
 - Correr con `setSiDelSistema_`: el backfill escribe sobre celdas vacías, que es justo lo que
   son las 79. Ninguna de estas filas debería pisar nada.
+- **Terminado el backfill: `TRANSICION_RESPETAR_DESTINO = false`** (decisión 2, guarda de
+  transición). Antes, revisar las `difiere_del_destino` que quedaron en REVISAR_MATCH.
 
 ### Fase 7 — Activadores del pipeline de inscriptos
 - **Dar de baja los activadores viejos del pipeline de inscriptos** (ahora sí, con el inventario de Fase 0 a mano).

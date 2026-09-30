@@ -56,9 +56,10 @@ Cómo: pararse en la celda, copiar el contenido de la barra de fórmulas, pegarl
 
 ## 3. Foto de la tabla de lookup
 
-- [ ] Solapa `Comunas` (A:H) del destino → copiar a una solapa nueva `Comunas BACKUP AAAA-MM-DD`
-      **pegando sólo valores**. Es la fuente de las siete columnas `AA`–`AG`; si cambia después,
-      la comparación de la Fase 3 deja de ser válida.
+- [ ] Solapa `Comunas` (A:I) del destino → copiar a una solapa nueva `Comunas BACKUP AAAA-MM-DD`
+      **pegando sólo valores**. A:H es la fuente de las siete columnas `AA`–`AG`; si cambia
+      después, la comparación de la Fase 3 deja de ser válida. La I es el eje geográfico
+      (`Eje geográfico`, con `?` = pendiente), que lee el matcher.
 
 ## 4. Números de control (para poder verificar después)
 

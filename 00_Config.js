@@ -262,6 +262,43 @@ const DESEMPATE_POR_EVIDENCIA = true;
 /** Tope de vueltas del invariante "un formulario, una fila", para que no cicle. */
 const MAX_VUELTAS_FORMULARIO_UNICO = 10;
 
+/**
+ * **El eje como ÚLTIMO desempate** (30/09). Cuarto criterio de `_desempatePorEvidencia_`, después
+ * de señales, distancia e inscriptos: gana el candidato cuyo eje coincide con el del barrio de la
+ * fila, **sólo si exactamente uno coincide**. Eje distinto, vacío o `?` = neutro. Nunca entra al
+ * score ni al margen, y nunca descalifica (eso sería `EJE_COMO_UBICACION`, que queda apagado).
+ * Respeta la salvaguarda del desempate (umbral propio, no multi_figura). Traza:
+ * `+desempate_por_eje`. Se espera que decida 0 filas; el log lo cuenta en una línea fija.
+ */
+const EJE_COMO_DESEMPATE = true;
+
+/**
+ * **Guarda de transición para la primera escritura** (30/09). Sólo para filas con veredicto
+ * `escribiria`: si el destino tiene inscriptos cargados (≠ 0) y son DISTINTOS de los del
+ * formulario elegido, **no se escribe**: va a REVISAR_MATCH con motivo `difiere_del_destino`, con
+ * los dos valores. Destino igual o sin cargar → se escribe como siempre.
+ *
+ * **No toca el matching**: los inscriptos del destino siguen fuera del score y de los desempates
+ * (CLAUDE.md 1). Es un seguro de migración, para que la primera escritura no pise una carga del
+ * legado que puede ser la correcta (filas 769 y 748). **Se apaga (false) después del backfill.**
+ */
+const TRANSICION_RESPETAR_DESTINO = true;
+
+/**
+ * Inscriptos mínimos para listar un formulario huérfano (sin ningún candidato) como "posible
+ * fila faltante en RDV" (`listarFilasFaltantes`). Los de menos no se listan (pedido del 30/09):
+ * con tan pocos inscriptos no vale pedirle al equipo que busque la reunión.
+ */
+const MIN_INSCRIPTOS_FILA_FALTANTE = 10;
+
+/**
+ * Búsqueda inversa del paso 10 (calibración, sólo log): ventana en días alrededor de la fila, y
+ * filas pedidas a mano además de las que el paso 10 ya marca como dudosas. Las de hoy: 527 (96),
+ * 626 (Flores 04/06, 105), 631, 748 (6) y 769 (116).
+ */
+const DIAS_BUSQUEDA_INVERSA = 7;
+const FILAS_BUSQUEDA_INVERSA = [527, 626, 631, 748, 769];
+
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
 const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste', 'Este'];
 
