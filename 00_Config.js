@@ -193,10 +193,27 @@ const PESOS_MATCH = {
  * Versalles, Villa Luro, Villa Real); Liniers; Monserrat, San Telmo, Puerto Madero y Constitución.
  *
  * **Un valor con `?` es eje NO evaluable**, igual que vacío: no puntúa ni descalifica. Cuando el
- * equipo confirma uno, borra el `?` en la celda y el código lo toma solo. El bloque 2e muestra
- * igual qué harían los pendientes si se confirmaran, y lista los "descartaría" a 0-3 días: ésos
- * son los que más importan, porque descartar ahí es perder un match correcto. **Se enciende con
- * ese número delante.**
+ * equipo confirma uno, borra el `?` en la celda y el código lo toma solo.
+ *
+ * ### 🔴 DECISIÓN (30/09): queda APAGADO. No es un pendiente.
+ *
+ * Con la columna I el 2e dio "descartaría 66,4%" (antes 82,5%), pero ese porcentaje cuenta todos
+ * los pares figura + fecha ±21, que en su mayoría no son la reunión correcta. Mirando cada
+ * temático contra su fila a 0-1 días, **el eje descartaría matches CORRECTOS**:
+ *
+ *   fila 645, Macri 16/06 Almagro (Centro)  ← "Temático Educación - Eje Oeste": el destino tiene
+ *                                             498, los inscriptos de ese temático (paso 10);
+ *   fila 613, Macri 28/05 Balvanera (Centro) ← "Ciudad Atractiva 28/5 - Eje Este";
+ *   fila 665, Macri 25/06 Monserrat ("Este?") ← "Ciudad Atractiva / Cultura - Eje Sur", si se
+ *                                             confirmara.
+ *
+ * **Hipótesis:** la tabla del equipo es de *sedes* donde se hacen los temáticos de cada eje, no
+ * una partición barrio → eje (tiene barrios repetidos). Y el desempate por evidencia
+ * (`DESEMPATE_POR_EVIDENCIA`) ya resuelve los casos que el eje venía a resolver.
+ *
+ * La columna I y la convención del `?` se quedan: no molestan, y si algún día se revisa, el mapeo
+ * ya está. El 2e ahora mide primero **cuántas filas perderían a su ganador actual por el eje**,
+ * que es la única cifra que dice si hace daño; el % de pares queda como dato secundario.
  */
 const EJE_COMO_UBICACION = false;
 
@@ -221,6 +238,29 @@ const EJE_COMO_UBICACION = false;
  */
 const SIN_FIGURA_POR_UBICACION = true;
 const DIAS_SIN_FIGURA_POR_UBICACION = 1;
+
+/**
+ * **Desempate por evidencia** (el paso 9, implementado el 30/09). Cuando el mejor candidato de una
+ * fila le gana al segundo por menos de MARGEN_MINIMO, la normalización borró cuánta evidencia
+ * hay detrás de cada score (el `"1 a 1"` con figura + fecha exacta + comuna contra un temático
+ * con figura + fecha a 1 día y sin ubicación: los dos dan 1,0). Orden, en `evaluarCandidatos_`:
+ *
+ *   1) más señales evaluadas y coincidentes (la fecha cuenta sólo si es plena, ±3)
+ *   2) menor distancia en días
+ *   3) más inscriptos DEL FORMULARIO (nunca los del destino: en régimen los escribe el sistema)
+ *
+ * Gana sólo el estrictamente mejor en el primer criterio que distinga; si empatan en los tres,
+ * sigue en REVISAR_MATCH por margen_chico. El ganador tiene que llegar al umbral por sí mismo y
+ * no ser multi_figura. La traza (`form_nivel`) dice por qué criterio se desempató.
+ *
+ * Medido antes (26/09 17:44-17:51): 39 de 39 margen_chico resueltas; contra los inscriptos del
+ * destino el desempate coincide en 36 de 38 (de los 2 que no, uno lo arregla el invariante "un
+ * formulario, una fila" y el otro tiene destino 0, sin dato).
+ */
+const DESEMPATE_POR_EVIDENCIA = true;
+
+/** Tope de vueltas del invariante "un formulario, una fila", para que no cicle. */
+const MAX_VUELTAS_FORMULARIO_UNICO = 10;
 
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
 const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste', 'Este'];

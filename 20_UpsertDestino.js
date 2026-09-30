@@ -848,35 +848,145 @@ function chequearFormularioUnico_(dest, vivos, comunas, porFila) {
   return { choques: choques, formularios: formsV, filas: filasAfect, sim: sim };
 }
 
-function _logInvariante_(inv) {
-  Logger.log('--- 0. INVARIANTE: un formulario, una fila (chequeo fijo) ---');
-  if (!inv || !inv.choques.length) {
-    Logger.log('  OK: ningún formulario gana dos filas con veredicto escribiría.');
-    return;
-  }
-  Logger.log('  >>> ROTO: %s formularios ganan 2+ filas (%s filas afectadas). Sus inscriptos se',
-             _dc_(inv.formularios), _dc_(inv.filas));
-  Logger.log('      escribirían en todas. BLOQUEANTE para DRY_RUN = false.');
-  Logger.log('  Simulación (NO implementada): un formulario por fila, desempate por evidencia.');
-  Logger.log('    filas que se quedan el formulario ....... %s', _dc_(inv.sim.seQueda));
-  Logger.log('    filas re-evaluadas que toman otro ....... %s', _dc_(inv.sim.reasignada));
-  Logger.log('    filas a REVISAR por formulario_compartido %s', _dc_(inv.sim.compartido));
-  inv.choques.slice().sort(function (a, b) { return a.ev === b.ev ? 0 : (a.ev ? -1 : 1); })
-    .forEach(function (x) {
-      Logger.log('  [%s] %s (ins=%s)', x.ev ? 'ventana' : 'histor.', x.c.nombre,
-                 x.c.inscriptos || 0);
-      x.pares.forEach(function (sc) {
-        const o = x.otras.filter(function (y) { return y.sc === sc; })[0];
-        let destino;
-        if (sc === x.ganador) destino = 'SE LO QUEDA (por ' + _nombreCriterio_(x.porQue) + ')';
-        else if (o.destino === 'toma otro') {
-          destino = 'toma otro: ' + o.nuevo.c.nombre + ' (' + o.nuevo.score + ')';
-        } else destino = 'REVISAR: formulario_compartido';
-        Logger.log('      fila %s | %s | %s | %s señales, %s días → %s', sc.fila.fila,
-                   fmtFecha_(sc.fila.fecha), sc.fila.barrio || 'sin barrio',
-                   _senalesCoincidentes_(sc), sc.dist === null ? '?' : sc.dist, destino);
-      });
+/**
+ * **El invariante "un formulario, una fila", aplicado** (desde el 30/09). Va entre las dos vueltas
+ * de `calcularPlan_`: después del desempate por evidencia, sobre todo el plan.
+ *
+ * Si un formulario lo ganan 2+ filas con veredicto `escribiria`:
+ *
+ *   - se lo queda la fila con mejor evidencia, con el mismo orden del desempate
+ *     (`_desempatePorEvidencia_`: señales, distancia; los inscriptos del formulario empatan, es el
+ *     mismo formulario). Los inscriptos del DESTINO no entran;
+ *   - las otras se RE-EVALÚAN sin ese formulario, con las mismas reglas de siempre (umbral,
+ *     margen, sin figura por ubicación, desempate). Si su nuevo mejor también está tomado, se
+ *     repite, hasta que no quede ningún choque o se llegue a MAX_VUELTAS_FORMULARIO_UNICO;
+ *   - si al re-evaluar no queda un ganador claro, o si ninguna fila es estrictamente mejor, van a
+ *     REVISAR_MATCH con motivo `formulario_compartido`. Al tope de vueltas, lo que quede, también.
+ *
+ * Un formulario que ya tiene dueño por `RDV_UID` no lo gana ninguna otra fila: todas las que lo
+ * reclamen se re-evalúan sin él. Modifica `evals[i].r`; devuelve los casos para el log.
+ */
+function aplicarFormularioUnico_(evals, vivos, comunas, tomadosUid) {
+  const inicial = new Map();
+  evals.forEach(function (x) {
+    inicial.set(x, (x.r.veredicto === 'escribiria' && x.r.mejor) ? x.r.mejor.c : null);
+  });
+  const excluidos = new Map();          // eval → Set de formularios que ya no puede usar
+  const involucradas = new Set();
+  const casos = [];
+  let vueltas = 0, tope = false;
+
+  const aRevisar = function (x, rNuevo) {
+    const base = (rNuevo && rNuevo.mejor) ? rNuevo : x.r;
+    x.r = { mejor: base.mejor, segundoScore: base.segundoScore || 0, margen: base.margen || 0,
+            veredicto: 'REVISAR_MATCH', motivo: 'formulario_compartido', contendientes: null };
+  };
+
+  for (;;) {
+    const porForm = new Map();
+    evals.forEach(function (x) {
+      if (x.r.veredicto !== 'escribiria' || !x.r.mejor) return;
+      const c = x.r.mejor.c;
+      if (!porForm.has(c)) porForm.set(c, []);
+      porForm.get(c).push(x);
     });
+    const choques = [];
+    porForm.forEach(function (lista, c) {
+      if (lista.length >= 2 || tomadosUid[c.fila]) choques.push({ c: c, lista: lista });
+    });
+    if (!choques.length) break;
+
+    if (vueltas >= MAX_VUELTAS_FORMULARIO_UNICO) {
+      tope = true;
+      choques.forEach(function (ch) {
+        ch.lista.forEach(function (x) { involucradas.add(x); aRevisar(x, null); });
+      });
+      break;
+    }
+    vueltas++;
+
+    choques.forEach(function (ch) {
+      const c = ch.c, lista = ch.lista, porUid = !!tomadosUid[c.fila];
+      let ganador = null, porQue = null;
+      if (!porUid) {
+        const pares = lista.map(function (x) { return x.r.mejor; });
+        const d = _desempatePorEvidencia_(pares);
+        if (d.ganador) { ganador = lista[pares.indexOf(d.ganador)]; porQue = d.porQue; }
+      }
+      const caso = { c: c, vuelta: vueltas, porUid: porUid, porQue: porQue, pares: [],
+                     ganador: null, ev: lista.some(function (x) { return x.ev; }) };
+      lista.forEach(function (x) {
+        involucradas.add(x);
+        const sc = x.r.mejor;
+        sc.fila = x.f;
+        caso.pares.push(sc);
+        if (x === ganador) { caso.ganador = sc; return; }
+        const s = excluidos.get(x) || new Set();
+        s.add(c);
+        excluidos.set(x, s);
+        if (!ganador && !porUid) { aRevisar(x, null); return; }   // nadie es estrictamente mejor
+        const r2 = evaluarCandidatos_(x.f, vivos.filter(function (v) { return !s.has(v); }), comunas);
+        if (r2.veredicto === 'escribiria') { r2.porInvariante = true; x.r = r2; }
+        else aRevisar(x, r2);
+      });
+      casos.push(caso);
+    });
+  }
+
+  const stats = { seQueda: contador_(), reasignada: contador_(), compartido: contador_() };
+  involucradas.forEach(function (x) {
+    const fin = (x.r.veredicto === 'escribiria' && x.r.mejor) ? x.r.mejor.c : null;
+    if (x.r.motivo === 'formulario_compartido') sumar_(stats.compartido, x.ev);
+    else if (fin && fin === inicial.get(x)) sumar_(stats.seQueda, x.ev);
+    else if (fin) sumar_(stats.reasignada, x.ev);
+  });
+  return { casos: casos, vueltas: vueltas, tope: tope, stats: stats };
+}
+
+/**
+ * El bloque 0 del log: el invariante, **aplicado y chequeado**. La aplicación dice qué se resolvió;
+ * el chequeo, sobre el resultado final, tiene que dar 0 formularios con 2+ filas escritas.
+ */
+function _logInvariante_(plan) {
+  const inv = plan.invariante || {};
+  const ap = inv.aplicacion, ch = inv.chequeo;
+  Logger.log('--- 0. INVARIANTE: un formulario, una fila (aplicado y chequeado) ---');
+  if (ap) {
+    Logger.log('  aplicado: %s choques resueltos en %s vueltas%s', ap.casos.length, ap.vueltas,
+               ap.tope ? ' — LLEGÓ AL TOPE (MAX_VUELTAS_FORMULARIO_UNICO): lo que quedaba va a REVISAR' : '');
+    Logger.log('    filas que se quedan su formulario ....... %s', _dc_(ap.stats.seQueda));
+    Logger.log('    filas re-evaluadas que toman otro ....... %s', _dc_(ap.stats.reasignada));
+    Logger.log('    filas a REVISAR por formulario_compartido %s', _dc_(ap.stats.compartido));
+    ap.casos.slice().sort(function (a, b) { return a.ev === b.ev ? 0 : (a.ev ? -1 : 1); })
+      .forEach(function (x) {
+        Logger.log('  [%s] vuelta %s | %s (ins=%s)%s', x.ev ? 'ventana' : 'histor.', x.vuelta,
+                   x.c.nombre, x.c.inscriptos || 0, x.porUid ? ' — ya tiene dueño por RDV_UID' : '');
+        x.pares.forEach(function (sc) {
+          const pf = plan.porFila[sc.fila.fila] || {};
+          let fin;
+          if (sc === x.ganador) fin = 'SE LO QUEDA (por ' + _nombreCriterio_(x.porQue) + ')';
+          else if (pf.motivo === 'formulario_compartido') fin = 'REVISAR: formulario_compartido';
+          else if (pf.veredicto === 'escribiria' && pf.cand) {
+            fin = 'toma otro: ' + pf.cand.nombre + ' (' + pf.score + ')';
+          } else fin = (pf.veredicto || '?') + (pf.motivo ? ' / ' + pf.motivo : '');
+          Logger.log('      fila %s | %s | %s | %s señales, %s días → %s', sc.fila.fila,
+                     fmtFecha_(sc.fila.fecha), sc.fila.barrio || 'sin barrio',
+                     _senalesCoincidentes_(sc), sc.dist === null ? '?' : sc.dist, fin);
+        });
+      });
+  }
+  if (!ch) return;
+  if (!ch.choques.length) {
+    Logger.log('  CHEQUEO: 0 formularios con 2+ filas escritas. OK.');
+  } else {
+    Logger.log('  >>> CHEQUEO FALLIDO: %s FORMULARIOS SIGUEN GANANDO 2+ FILAS (%s FILAS). EL',
+               _dc_(ch.formularios), _dc_(ch.filas));
+    Logger.log('      INVARIANTE NO SE CUMPLE: DRY_RUN = false QUEDA BLOQUEADO.');
+    ch.choques.forEach(function (x) {
+      Logger.log('      %s → filas %s', x.c.nombre,
+                 x.pares.map(function (sc) { return sc.fila.fila; }).join(', '));
+    });
+  }
 }
 
 // ===================== Validación contra los inscriptos del destino =====================
@@ -920,25 +1030,29 @@ function medirValidacionInscriptos() {
   }
 
   // --- cobertura ---
-  const evaluables = contador_(), conDato = contador_();
+  // Un destino con 0 inscriptos es una fila SIN CARGAR, no una diferencia: no es dato.
+  const evaluables = contador_(), conDato = contador_(), sinCargar = contador_();
   dest.filas.forEach(function (f) {
     const pf = porFila[f.fila];
     if (!pf || pf.veredicto === 'futura') return;
     const ev = enVentanaAnalisis_(f.fecha);
     sumar_(evaluables, ev);
-    if (insDest(f) !== null) sumar_(conDato, ev);
+    const d = insDest(f);
+    if (d === 0) sumar_(sinCargar, ev);
+    else if (d !== null) sumar_(conDato, ev);
   });
 
   // --- las que se escribirían: destino contra formulario elegido ---
   const bandas = { exacto: contador_(), p5: contador_(), p20: contador_(), mas: contador_() };
   const grandes = [];
-  const escritasConDato = contador_();
+  const escritasConDato = contador_(), escritasSinCargar = contador_();
   dest.filas.forEach(function (f) {
     const pf = porFila[f.fila];
     if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
     const d = insDest(f);
     if (d === null) return;
     const ev = enVentanaAnalisis_(f.fecha);
+    if (d === 0) { sumar_(escritasSinCargar, ev); return; }   // sin cargar: fuera de las bandas
     sumar_(escritasConDato, ev);
     const x = dif(d, pf.cand.inscriptos);
     const k = x === 0 ? 'exacto' : x <= 0.05 ? 'p5' : x <= 0.20 ? 'p20' : 'mas';
@@ -946,14 +1060,22 @@ function medirValidacionInscriptos() {
     if (k === 'mas') grandes.push({ f: f, ev: ev, d: d, c: pf.cand, x: x });
   });
 
-  // --- los resueltos del paso 9 ---
-  const r9 = _resolverMargenChico_(plan);
+  // --- los desempates por evidencia (implementados): el ganador contra sus rivales ---
+  const resueltos = [];
+  dest.filas.forEach(function (f) {
+    const pf = porFila[f.fila];
+    if (!pf || !pf.desempate || !pf.contendientes || !pf.cand) return;
+    const ganador = pf.contendientes.filter(function (sc) { return sc.c === pf.cand; })[0];
+    if (!ganador) return;             // la fila tomó otro formulario después (invariante)
+    resueltos.push({ f: f, ev: enVentanaAnalisis_(f.fecha), conts: pf.contendientes,
+                     ganador: ganador, porQue: pf.desempate });
+  });
   const v9 = { conDato: contador_(), ganadorMejor: contador_(), rivalMejor: contador_(),
                empate: contador_() };
   const desac9 = [];
-  r9.resueltos.forEach(function (x) {
+  resueltos.forEach(function (x) {
     const d = insDest(x.f);
-    if (d === null) return;
+    if (d === null || d === 0) return;                         // sin dato o sin cargar
     sumar_(v9.conDato, x.ev);
     const dg = dif(d, x.ganador.c.inscriptos);
     let mejorRival = null;
@@ -969,15 +1091,16 @@ function medirValidacionInscriptos() {
     } else sumar_(v9.empate, x.ev);
   });
 
-  // --- los choques del invariante ---
-  const inv = plan.invariante || { choques: [] };
+  // --- los choques del invariante, tal como los resolvió aplicarFormularioUnico_ ---
+  const casosInv = (plan.invariante && plan.invariante.aplicacion)
+    ? plan.invariante.aplicacion.casos : [];
   const vInv = { conDato: 0, reglaAcierta: 0, reglaErra: 0, sinGanador: 0 };
   const detInv = [];
-  inv.choques.forEach(function (ch) {
+  casosInv.forEach(function (ch) {
     let mejor = null;
     ch.pares.forEach(function (sc) {
       const d = insDest(sc.fila);
-      if (d === null) return;
+      if (d === null || d === 0) return;   // un 0 del destino no "coincide" con un formulario de 0
       const x = dif(d, ch.c.inscriptos);
       if (!mejor || x < mejor.x) mejor = { sc: sc, x: x, d: d };
     });
@@ -991,10 +1114,11 @@ function medirValidacionInscriptos() {
 
   // ===================== el log =====================
   Logger.log('--- cobertura: filas evaluables con inscriptos cargados en el destino ---');
-  Logger.log('  %s de %s', _dc_(conDato), _dc_(evaluables));
+  Logger.log('  %s de %s  (más %s con 0 = destino SIN CARGAR, que no es dato)', _dc_(conDato),
+             _dc_(evaluables), _dc_(sinCargar));
 
-  Logger.log('--- las que se escribirían (%s con dato): destino vs formulario elegido ---',
-             _dc_(escritasConDato));
+  Logger.log('--- las que se escribirían (%s con dato; %s con destino sin cargar, aparte) ---',
+             _dc_(escritasConDato), _dc_(escritasSinCargar));
   Logger.log('  exacto ..... %s', _dcp_(bandas.exacto, escritasConDato));
   Logger.log('  <= 5%% ...... %s', _dcp_(bandas.p5, escritasConDato));
   Logger.log('  <= 20%% ..... %s', _dcp_(bandas.p20, escritasConDato));
@@ -1007,7 +1131,7 @@ function medirValidacionInscriptos() {
                x.c.nombre);
   });
 
-  Logger.log('--- los RESUELTOS del paso 9 (%s con dato): ¿el ganador coincide con el destino? ---',
+  Logger.log('--- los DESEMPATES por evidencia (%s con dato): ¿el ganador coincide con el destino? ---',
              _dc_(v9.conDato));
   Logger.log('  el ganador coincide mejor ... %s', _dc_(v9.ganadorMejor));
   Logger.log('  UN RIVAL coincide mejor ..... %s', _dc_(v9.rivalMejor));
@@ -1020,7 +1144,7 @@ function medirValidacionInscriptos() {
     Logger.log('        rival:        ins=%s | %s', y.rival.c.inscriptos || 0, y.rival.c.nombre);
   });
 
-  Logger.log('--- los choques del invariante (%s con dato): ¿la regla simulada eligió la fila',
+  Logger.log('--- los choques del invariante (%s con dato): ¿la regla aplicada eligió la fila',
              vInv.conDato);
   Logger.log('    que coincide con los inscriptos del formulario? ---');
   Logger.log('  acierta %s | erra %s | la regla no eligió ninguna %s', vInv.reglaAcierta,
@@ -1191,6 +1315,10 @@ function calcularPlan_(enSeco) {
     sumar_(motivos[m], ev);
   };
 
+  /*
+   * --- vuelta 1: evaluar cada fila, con el desempate por evidencia adentro ---
+   */
+  const evals = [];
   for (let i = 0; i < dest.filas.length; i++) {
     const f = dest.filas[i];
     const ev = enVentanaAnalisis_(f.fecha);
@@ -1211,8 +1339,26 @@ function calcularPlan_(enSeco) {
       }
       continue;
     }
+    evals.push({ f: f, ev: ev, r: evaluarCandidatos_(f, cands.vivos, comunas) });
+  }
 
-    const r = evaluarCandidatos_(f, cands.vivos, comunas);
+  /*
+   * --- el invariante "un formulario, una fila", después del desempate y sobre todo el plan ---
+   * Cambia `r` de las filas que pierden un formulario compartido (re-evaluadas, o a revisión).
+   */
+  const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, usados);
+
+  // Cuántas margen_chico resolvió el desempate por evidencia, y cuántas no por el umbral.
+  const desempateCnt = { senales: contador_(), distancia: contador_(), inscriptos: contador_(),
+                         bajoUmbral: contador_() };
+
+  /*
+   * --- vuelta 2: con el resultado final de cada fila ---
+   */
+  for (let i = 0; i < evals.length; i++) {
+    const f = evals[i].f, ev = evals[i].ev, r = evals[i].r;
+    if (r.desempate) sumar_(desempateCnt[r.desempate], ev);
+    if (r.desempateBajoUmbral) sumar_(desempateCnt.bajoUmbral, ev);
 
     /*
      * `sin_formulario_propio`: **toda reunión tiene formulario** (CLAUDE.md 1, confirmado el
@@ -1230,7 +1376,8 @@ function calcularPlan_(enSeco) {
     porFila[f.fila] = { veredicto: r.veredicto, motivo: r.motivo || '',
                         cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
                         segundo: r.segundoScore == null ? null : r.segundoScore,
-                        contendientes: r.contendientes || null };
+                        contendientes: r.contendientes || null, desempate: r.desempate || null,
+                        porInvariante: r.porInvariante || null };
 
     // --- cobertura de EVENTO contra el mejor candidato ---
     const tieneEvento = !!normalizarEvento_(f.evento);
@@ -1272,8 +1419,12 @@ function calcularPlan_(enSeco) {
     if (r.veredicto === 'escribiria') {
       sumar_(res.escribiria, ev);
       if (r.mejor.porSinFigura) sumar_(porSinFigEscribe, ev);
+      // La traza dice por qué ganó: el desempate por evidencia, y si la fila tomó otro formulario
+      // porque el suyo lo ganó otra fila (invariante "un formulario, una fila").
+      const traza = r.mejor.nivel + (r.desempate ? '+desempate_por_' + _nombreCriterio_(r.desempate) : '') +
+                    (r.porInvariante ? '+formulario_unico' : '');
       decisiones.push({ fila: f, cand: r.mejor.c, score: r.mejor.score,
-                        nivel: r.mejor.nivel, dist: r.mejor.dist });
+                        nivel: traza, dist: r.mejor.dist });
       usados[r.mejor.c.fila] = true;
     } else if (r.veredicto === 'REVISAR_MATCH') {
       if (r.mejor.porSinFigura) sumar_(porSinFigRevisa, ev);
@@ -1314,14 +1465,15 @@ function calcularPlan_(enSeco) {
     if (normalizarEvento_(f.evento)) sumar_(evBase, enVentanaAnalisis_(f.fecha));
   });
 
-  const ejes = medirEjes_(dest, cands, comunas);
+  const ejes = medirEjes_(dest, cands, comunas, porFila);
 
-  // El invariante "un formulario, una fila": se chequea siempre (bloque 0 del log). Sólo mide y
-  // simula; no cambia ningún veredicto.
-  const invariante = chequearFormularioUnico_(dest, cands.vivos, comunas, porFila);
+  // El invariante "un formulario, una fila": ya se aplicó entre las dos vueltas. Acá se CHEQUEA
+  // sobre el resultado final: tiene que dar 0 formularios con 2+ filas escritas.
+  const invariante = { aplicacion: aplicacion,
+                       chequeo: chequearFormularioUnico_(dest, cands.vivos, comunas, porFila) };
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
-           invariante: invariante,
+           invariante: invariante, desempateCnt: desempateCnt,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
            porSinFigEscribe: porSinFigEscribe, porSinFigRevisa: porSinFigRevisa,
@@ -1433,7 +1585,7 @@ function logResumen_(plan) {
   Logger.log('  Si las dos columnas difieren mucho, la de la derecha describe un origen que ya');
   Logger.log('  no existe y no sirve para decidir nada.');
 
-  _logInvariante_(plan.invariante);
+  _logInvariante_(plan);
 
   Logger.log('--- 1. VEREDICTOS (base: %s | %s filas, sin las %s futuras) ---',
              base.v, base.t, _dc_(r.futuras));
@@ -1448,6 +1600,13 @@ function logResumen_(plan) {
   Object.keys(plan.motivos).sort().forEach(function (m) {
     Logger.log('    %s: %s', m, _dc_(plan.motivos[m]));
   });
+  const dc = plan.desempateCnt;
+  if (dc) {
+    Logger.log('  desempate por evidencia (DESEMPATE_POR_EVIDENCIA = %s): por señales %s | por ' +
+               'distancia %s | por inscriptos %s', DESEMPATE_POR_EVIDENCIA, _dc_(dc.senales),
+               _dc_(dc.distancia), _dc_(dc.inscriptos));
+    Logger.log('    ganador bajo el umbral o multi_figura (sigue en revisión): %s', _dc_(dc.bajoUmbral));
+  }
   Logger.log('  por la regla sin_figura_por_ubicacion (SIN_FIGURA_POR_UBICACION = %s): escribiría %s' +
              ' | a revisar %s', SIN_FIGURA_POR_UBICACION, _dc_(plan.porSinFigEscribe || contador_()),
              _dc_(plan.porSinFigRevisa || contador_()));
@@ -1748,7 +1907,7 @@ function _logEvento_(plan, b, e) {
  *      los que más importan, porque descartar ahí es perder un match correcto;
  *   c) los formularios temáticos: ¿hay ALGUNA fila de su figura a ± DIAS_TEMATICA_CERCANA?
  */
-function medirEjes_(dest, cands, comunas) {
+function medirEjes_(dest, cands, comunas, porFila) {
   // --- a) la columna del eje ---
   const col = infoColumnaEje_();
   const porEje = {}, pendientes = [], sinEje = [];
@@ -1836,7 +1995,32 @@ function medirEjes_(dest, cands, comunas) {
     }
   }
 
-  return { col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, porForma: porForma,
+  /*
+   * --- LA MÉTRICA QUE IMPORTA: ¿cuántas filas perderían a su ganador actual por el eje? ---
+   *
+   * El % de pares que descartaría cuenta todos los pares figura + fecha ±21, que en su mayoría
+   * NO son la reunión correcta: sube o baja sin decir si el eje hace daño. Lo que sí lo dice es
+   * cuántas filas que hoy se escriben —con su ganador, o con el del desempate— lo perderían
+   * porque el eje del formulario no es el del barrio de la fila. Los pendientes (`?`), aparte.
+   */
+  const pierde = { total: contador_(), confirmado: contador_(), siSeConfirma: contador_(),
+                   casos: [] };
+  dest.filas.forEach(function (f) {
+    const pf = porFila && porFila[f.fila];
+    if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
+    const e = pf.cand.eje;
+    if (!e || e.tipo !== 'eje') return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    sumar_(pierde.total, ev);
+    const info = ejeInfoDeBarrio_(f.barrio);
+    if (!info.eje || info.eje === e.eje) return;
+    sumar_(info.pendiente ? pierde.siSeConfirma : pierde.confirmado, ev);
+    pierde.casos.push({ f: f, ev: ev, c: pf.cand, ejeForm: e.eje, ejeFila: info.raw,
+                        pendiente: info.pendiente, desempate: pf.desempate });
+  });
+
+  return { pierde: pierde,
+           col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, porForma: porForma,
            conEje: conEje, desconocidos: desconocidos, pares: pares, cruce: cruce,
            detalle: detalle, descartaCerca: descartaCerca, tem: tem };
 }
@@ -1969,8 +2153,25 @@ function _padD_(s, n) {
 /** El bloque 2e del log. Ver `medirEjes_`. */
 function _logEjes_(m) {
   Logger.log('--- 2e. EL EJE GEOGRÁFICO (temáticas sin barrio ni comuna) ---');
-  Logger.log('  EJE_COMO_UBICACION = %s  (peso si se enciende: %s; un eje distinto DESCALIFICA)',
+  Logger.log('  EJE_COMO_UBICACION = %s  (DECISIÓN del 30/09: queda apagado; peso si se encendiera %s,',
              EJE_COMO_UBICACION, PESOS_MATCH.ejeSinComuna);
+  Logger.log('  y un eje distinto DESCALIFICARÍA)');
+
+  // La métrica principal: filas que perderían a su ganador actual por el eje.
+  const pi = m.pierde;
+  if (pi) {
+    Logger.log('  >>> FILAS QUE PERDERÍAN A SU GANADOR ACTUAL POR EL EJE (la cifra que dice si hace daño):');
+    Logger.log('      de %s filas escritas con un formulario con eje:', _dc_(pi.total));
+    Logger.log('        con eje confirmado ....... %s', _dc_(pi.confirmado));
+    Logger.log('        si se confirmaran los "?" %s', _dc_(pi.siSeConfirma));
+    _ordenarPorFila_(pi.casos).forEach(function (x) {
+      Logger.log('      [%s] fila %s %s | %s | %s (eje %s%s) ← gana hoy%s: %s (Eje %s)',
+                 x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura,
+                 x.f.barrio || 'sin barrio', x.ejeFila, x.pendiente ? ', PENDIENTE' : '',
+                 x.desempate ? ' por desempate' : '', x.c.nombre, x.ejeForm);
+    });
+    if (!pi.casos.length) Logger.log('      ninguna: el eje no le sacaría el ganador a ninguna fila.');
+  }
 
   // a) la columna del eje
   Logger.log('  a) Comunas, columna %s: encabezado "%s" → %s', COMUNAS_COL_EJE,
@@ -2002,10 +2203,11 @@ function _logEjes_(m) {
     Logger.log('     eje no reconocido "%s" | %s', d.forma, d.nombre);
   });
   const p = m.pares;
+  Logger.log('     (dato secundario: los pares figura + fecha ±21 no son, en su mayoría, la reunión correcta)');
   Logger.log('     pares figura + fecha ±%s contra filas del destino: %s', VENTANA_EMPAREJAR_DIAS,
              _dc_(p.total));
   Logger.log('       el eje coincide ...... %s', _dcp_(p.coincide, p.total));
-  Logger.log('       el eje DESCARTARÍA ... %s   (25/09, con la Zona: 82,5%% de la ventana)',
+  Logger.log('       el eje DESCARTARÍA ... %s   (dato secundario: 25/09 con la Zona 82,5%%; 29/09 con la columna I 66,4%%)',
              _dcp_(p.descarta, p.total));
   Logger.log('       no evaluable ......... %s  (el barrio del destino no tiene eje)',
              _dcp_(p.noEvaluable, p.total));
@@ -2453,15 +2655,41 @@ function evaluarCandidatos_(f, candidatos, comunas) {
 
   /*
    * Los contendientes: todos los que quedan a menos de MARGEN_MINIMO del mejor, el mejor
-   * incluido. Sólo se guardan para `margen_chico` —es lo que mide medirDesempatePorEvidencia()—
-   * y no deciden nada: el veredicto ya está tomado arriba.
+   * incluido. Se guardan cuando el margen es chico: los usan el desempate de abajo, el paso 9 y
+   * el paso 10.
    */
   const contendientes = (motivo === 'margen_chico')
     ? compiten.filter(function (s) { return mejor.score - s.score < MARGEN_MINIMO; })
     : null;
 
+  /*
+   * --- desempate por evidencia (DESEMPATE_POR_EVIDENCIA, 00_Config.js) ---
+   *
+   * Cuando el margen es chico, la normalización borró cuánta evidencia hay detrás de cada score.
+   * Se ordena a los contendientes por `_desempatePorEvidencia_` (señales, distancia, inscriptos
+   * DEL FORMULARIO) y gana el estrictamente mejor en el primer criterio que distinga. Si empatan
+   * en los tres, sigue en REVISAR_MATCH por margen_chico.
+   *
+   * Salvaguarda: el ganador tiene que llegar al umbral por sí mismo y no ser multi_figura. Un
+   * contendiente a menos de MARGEN_MINIMO del mejor puede estar bajo 0,88; ganarle la fila por
+   * señales sería escribir con un score que no alcanza. Ese caso sigue en revisión.
+   */
+  let desempate = null, desempateBajoUmbral = false;
+  if (DESEMPATE_POR_EVIDENCIA && motivo === 'margen_chico') {
+    const d = _desempatePorEvidencia_(contendientes);
+    if (d.ganador && d.ganador.score >= UMBRAL_MATCH && !d.ganador.multiFigura) {
+      mejor = d.ganador;
+      veredicto = 'escribiria';
+      motivo = '';
+      desempate = d.porQue;
+    } else if (d.ganador) {
+      desempateBajoUmbral = true;
+    }
+  }
+
   return { mejor: mejor, segundoScore: s2, margen: margen, veredicto: veredicto, motivo: motivo,
-           contendientes: contendientes };
+           contendientes: contendientes, desempate: desempate,
+           desempateBajoUmbral: desempateBajoUmbral };
 }
 
 /** El score de un candidato contra una fila del destino. */

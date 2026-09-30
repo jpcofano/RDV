@@ -21,25 +21,23 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> PRÓXIMO, en este orden (los tres sólo leen, ninguno toca el destino):
- *      1. paso2_upsertEnSeco(). Primera corrida con SIN_FIGURA_POR_UBICACION (la variante D-C) y
- *         el tope de 3 pares por fila. PREDICCIÓN anotada antes (ventana): escribiría ≈ 241,
- *         revisar ≈ 39, sin match ≈ 25. El bloque 0 del log es el chequeo del invariante
- *         "un formulario, una fila": si dice ROTO, DRY_RUN = false queda BLOQUEADO. El 2e usa
- *         el mapeo nuevo de ejes (Comunas, columna I; "?" = pendiente, no se evalúa).
- *      2. paso9_medirDesempatePorEvidencia(). El criterio 3 ahora es "más inscriptos del
- *         formulario"; lista los "Genérico" aparte. Sus números se leen antes de implementar.
- *      3. paso10_validarContraInscriptos(). Calibración de una vez contra los inscriptos que hoy
- *         tiene el destino. NO entra en el score ni en ningún desempate.
+ *  >>> PRÓXIMO, en este orden (los dos sólo leen, ninguno toca el destino):
+ *      1. paso2_upsertEnSeco(). Primera corrida con el DESEMPATE POR EVIDENCIA y el INVARIANTE
+ *         "un formulario, una fila" aplicados. PREDICCIÓN anotada antes (ventana): escribiría
+ *         ≈ 272-278, revisar ≈ 2-8, sin match ≈ 24; invariante (bloque 0): 0 formularios con 2+
+ *         filas. Si el chequeo del bloque 0 da 0, el invariante deja de ser bloqueante.
+ *      2. paso10_validarContraInscriptos(). Control final: calibración contra los inscriptos que
+ *         hoy tiene el destino (un destino con 0 es "sin cargar", no una diferencia). NO entra
+ *         en el score ni en ningún desempate.
  *
- *  LÍNEA BASE vigente: la corrida en seco del 26/09 16:45, con B actualizada (807 formularios).
- *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE), 304 evaluables:
+ *  LÍNEA BASE vigente: la corrida en seco del 26/09 17:44 (ya con D-C y el tope de 3). Corte de
+ *  ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE):
  *
- *        escribiría   229 (ventana)
- *        a revisar     38 (ventana)
- *        sin match     37 (ventana) = score_bajo 23 + sin_formulario_propio 14
+ *        escribiría   241 (ventana)     predicción era 241
+ *        a revisar     39 (ventana)                    39
+ *        sin match     24 (ventana)                    25
  *
- *      Las anteriores (25/09 18:13, 26/09 11:36 y 14:21) están en docs/ESTADO.md y CLAUDE.md.
+ *      Las anteriores (25/09 18:13, 26/09 11:36, 14:21 y 16:45) están en docs/ESTADO.md y CLAUDE.md.
  *
  *  La secuencia, en orden:
  *
@@ -65,8 +63,7 @@
  *                                                sólo log. Lee además Hoja1 del origen (3) por
  *                                                openById, sólo lectura.
  *   (paso 8 ya corrió: rehacer_medirVariantesSinFigura(), en YA CORRIDOS.)
- *   paso9_medirDesempatePorEvidencia() → medirDesempatePorEvidencia()   NO escribe en ninguna
- *                                                planilla: sólo log. Recalcula el plan en memoria.
+ *   (paso 9 ya corrió y se implementó: rehacer_medirDesempatePorEvidencia(), en YA CORRIDOS.)
  *   paso10_validarContraInscriptos() → medirValidacionInscriptos()   NO escribe en ninguna
  *                                                planilla: sólo log. Calibración de una vez.
  *
@@ -144,16 +141,6 @@ function paso7_formulariosFaltantes() {
   return diagFormulariosFaltantes();
 }
 
-function paso9_medirDesempatePorEvidencia() {
-  _anunciar_('paso 9 — desempate por evidencia',
-             'medirDesempatePorEvidencia()  [20_UpsertDestino.js]',
-             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
-             'sólo el log: las REVISAR_MATCH por margen_chico que se resolverían por señales, ' +
-             'distancia o inscriptos, los casos para confirmar a mano, y los formularios con 0 ' +
-             'inscriptos que hoy ganan una fila');
-  return medirDesempatePorEvidencia();
-}
-
 function paso10_validarContraInscriptos() {
   _anunciar_('paso 10 — validación contra los inscriptos del destino (calibración de una vez)',
              'medirValidacionInscriptos()  [20_UpsertDestino.js]',
@@ -205,6 +192,19 @@ function rehacer_medirVariantesSinFigura() {
              'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
              'sólo el log: por variante, filas objetivo que llegan, costo y los casos');
   return medirVariantesSinFigura();
+}
+
+/**
+ * El desempate por evidencia. Corrió el 26/09 17:06 y 17:44 (39 de 39 resueltas; 36 de 38
+ * coinciden con el destino) y se implementó (DESEMPATE_POR_EVIDENCIA). Queda como registro: ahora
+ * mide sólo las margen_chico que el desempate implementado NO resolvió.
+ */
+function rehacer_medirDesempatePorEvidencia() {
+  _anunciar_('ya corrido — desempate por evidencia',
+             'medirDesempatePorEvidencia()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: las margen_chico que siguen en revisión, y los "Genérico"');
+  return medirDesempatePorEvidencia();
 }
 
 /** Fase 1, los cinco juntos: el hueco de sexo/edades contra los dos saltos del staging. */

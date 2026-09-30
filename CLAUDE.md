@@ -345,10 +345,24 @@ Hasta ahora los cuatro competían igual.
     ningún barrio y el bloque 2e lo avisa: una tabla que no es la esperada no puede descalificar.
 - Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
   contiene varias comunas, y **descalifica** si el barrio del destino es de otro eje, igual que
-  `comuna_distinta`. **Sigue detrás de `EJE_COMO_UBICACION = false`**: el bloque 2e mide con el
-  mapeo nuevo cuánto descartaría (contra el 82,5% del 25/09 con la `Zona`), muestra aparte qué
-  harían los pendientes si se confirmaran, y lista los "descartaría" a 0-3 días —los que más
-  importan, porque descartar ahí es perder un match correcto—. Se enciende con ese número delante.
+  `comuna_distinta`.
+- **🔴 DECISIÓN (30/09): `EJE_COMO_UBICACION = false` queda apagado. No es un pendiente.** Con la
+  columna I el 2e dio "descartaría 66,4%" de los pares (antes 82,5% con la `Zona`), pero esos
+  pares figura + fecha ±21 son en su mayoría otras reuniones. Mirando cada temático contra su fila
+  a 0-1 días, **el eje descartaría matches correctos**:
+
+  | fila | reunión | el formulario que gana | por qué es correcto |
+  |---|---|---|---|
+  | 645 | Macri 16/06 Almagro (Centro) | `Temático Educación - Eje Oeste` | el destino tiene 498 = sus inscriptos (paso 10) |
+  | 613 | Macri 28/05 Balvanera (Centro) | `Ciudad Atractiva 28/5 - Eje Este` | misma fecha y figura |
+  | 665 | Macri 25/06 Monserrat (`Este?`) | `Ciudad Atractiva / Cultura - Eje Sur` | lo perdería si se confirmara |
+
+  **Hipótesis, sin medir:** la tabla del equipo es de **sedes donde se hacen los temáticos de cada
+  eje**, no una partición barrio → eje (tiene barrios repetidos). Además, **el desempate por
+  evidencia ya resuelve los casos que el eje venía a resolver** (el `"1 a 1"` contra el temático).
+  La columna I y la convención del `?` **se quedan**: no molestan, y si algún día se revisa, el
+  mapeo ya está. El 2e mide primero **cuántas filas perderían a su ganador actual por el eje** —la
+  única cifra que dice si hace daño— y deja el % de pares como dato secundario.
 
 > **Y ojo con la fecha de ese caso.** Los cuatro candidatos de la fila 730 están a **7, 7, 11 y
 > 13 días** del formulario. Descartar Coghlan no hace que ninguno de los otros tres sea la
@@ -806,6 +820,18 @@ sola fila; si varias lo reclaman, se lo queda la de mejor evidencia (el mismo
 `_desempatePorEvidencia_` del paso 9); las otras se re-evalúan sin ese formulario, y si no les
 queda nada claro van a REVISAR_MATCH con motivo `formulario_compartido`. Los inscriptos del
 destino no entran. **Mientras el bloque 0 diga ROTO, no se pasa a `DRY_RUN = false`.**
+
+> **Implementado (30/09): `aplicarFormularioUnico_`**, entre las dos vueltas de `calcularPlan_`,
+> después del desempate por evidencia. Si un formulario lo ganan 2+ filas, se lo queda la de mejor
+> evidencia; las otras se **re-evalúan sin él con las mismas reglas** (umbral, margen, sin figura
+> por ubicación, desempate) y, si su nuevo mejor también está tomado, se repite, hasta que no
+> quede ningún choque o se llegue a `MAX_VUELTAS_FORMULARIO_UNICO`. Sin un ganador claro →
+> REVISAR_MATCH por `formulario_compartido`. La traza lleva `+formulario_unico`. El bloque 0 pasa
+> de simulación a **chequeo**: sobre el resultado final tiene que dar **0** formularios con 2+
+> filas escritas; si no, lo dice en mayúsculas. Probado en Node: la 648 se queda con
+> `1 a 1 - Comuna 5 17/6` y la 645 termina en `Encuentro Temático Educación - Eje Oeste`;
+> Ricardes `Comuna 9 29/6` → 671 (no la 669); Muzzio `11/9 Recoleta` → 785 (no la 778).
+> **Deja de ser bloqueante cuando el chequeo del bloque 0 del próximo paso 2 dé 0.**
 
 ### 3.2 Calidad de datos, medida
 
@@ -1403,8 +1429,25 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   1), para resolver la fila 708 (1344 contra 1) y la 134 (72 contra 2). El log marca en cada
   resuelto si el ganador es el mejor de hoy u "OTRO", y lista aparte los formularios
   **"Genérico"** (`Jorge Macri - Genérico 2026`, 774 inscriptos): no está claro que un genérico
-  deba matchear. **Sigue sin implementarse** hasta ver el paso 10, que contrasta los resueltos con
-  los inscriptos que hoy tiene el destino.
+  deba matchear. ~~Sigue sin implementarse hasta ver el paso 10~~.
+
+  **Implementado (30/09), detrás de `DESEMPATE_POR_EVIDENCIA = true`,** con los números delante
+  (26/09 17:44-17:51): el paso 9 resolvió **39 de 39** margen_chico, y el paso 10 dio que el
+  desempate coincide con los inscriptos del destino en **36 de 38**. De los dos que no, la fila
+  645 la arregla el invariante "un formulario, una fila" (3.1.j) y la otra tiene destino 0, sin
+  dato. Vive en `evaluarCandidatos_`; el ganador tiene que llegar al umbral por sí mismo y no ser
+  `multi_figura`, y si empatan en los tres criterios la fila sigue en REVISAR por margen_chico. La
+  traza lleva `+desempate_por_<criterio>`.
+
+- **El destino cargado por el legado NO es verdad absoluta.** El paso 10 lo usa para validar, pero
+  hay casos donde el que parece equivocado es el destino:
+
+  | fila | reunión | destino | el matcher nuevo le asigna | estado |
+  |---|---|---|---|---|
+  | 769 | Tapia Retiro 03/09 | 116 = los inscriptos de `Comuna 1 Sur - 3/9` | `Tapia - Comuna 1 Norte - 3/9` (88) | **consultado al equipo, pendiente** |
+  | 748 | Tapia Villa Real 20/08 | 6 | un formulario con 113 | **consultado al equipo, pendiente** |
+
+  Una diferencia contra el destino es una pregunta, no un error del matcher.
 
 ### 3.4 `STATUS REUNIÓN` y `Asistentes`, leídos del código
 
@@ -1712,8 +1755,24 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    La traza lo dice: `form_nivel` (y la columna de señales de `REVISAR_MATCH`) lleva
    `sin_figura_por_ubicacion`, y el log cuenta cuántas filas se escriben o van a revisión por la
-   regla. Medido antes (paso 8, variante D-C): 12 de 14 objetivos, costo 0 | 0. **El desempate
-   por evidencia del paso 9 es otra cosa y NO está implementado.**
+   regla. Medido antes (paso 8, variante D-C): 12 de 14 objetivos, costo 0 | 0. El desempate
+   por evidencia (paso 9) es otra regla, implementada aparte el 30/09 (`DESEMPATE_POR_EVIDENCIA`):
+   decide entre contendientes a menos de `MARGEN_MINIMO`, con o sin figura.
+
+   #### Desempate por evidencia y "un formulario, una fila" (desde el 30/09)
+
+   Dos reglas más, en este orden, las dos con el mismo orden por evidencia
+   (`_desempatePorEvidencia_`: 1) señales evaluadas y coincidentes, 2) menor distancia, 3) más
+   inscriptos DEL FORMULARIO):
+
+   1. **Desempate** (`evaluarCandidatos_`): cuando el mejor le gana al segundo por menos de
+      `MARGEN_MINIMO`, gana el estrictamente mejor en el primer criterio que distinga, si llega al
+      umbral y no es `multi_figura`. Si empatan en los tres, REVISAR por margen_chico.
+   2. **Un formulario, una fila** (`aplicarFormularioUnico_`, sobre todo el plan): si un
+      formulario lo ganan varias filas, se lo queda la de mejor evidencia; las otras se re-evalúan
+      sin él, iterando; sin ganador claro, REVISAR por `formulario_compartido` (3.1.j).
+
+   Los inscriptos del destino no entran en ninguna de las dos (sección 1).
 
    #### `EVENTO`: la ubicación de las reuniones temáticas — **DESCARTADO por medición**
 
