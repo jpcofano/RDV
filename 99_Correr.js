@@ -25,7 +25,8 @@
  *      1. paso2_upsertEnSeco(). Primera corrida con SIN_FIGURA_POR_UBICACION (la variante D-C) y
  *         el tope de 3 pares por fila. PREDICCIÓN anotada antes (ventana): escribiría ≈ 241,
  *         revisar ≈ 39, sin match ≈ 25. El bloque 0 del log es el chequeo del invariante
- *         "un formulario, una fila": si dice ROTO, DRY_RUN = false queda BLOQUEADO.
+ *         "un formulario, una fila": si dice ROTO, DRY_RUN = false queda BLOQUEADO. El 2e usa
+ *         el mapeo nuevo de ejes (Comunas, columna I; "?" = pendiente, no se evalúa).
  *      2. paso9_medirDesempatePorEvidencia(). El criterio 3 ahora es "más inscriptos del
  *         formulario"; lista los "Genérico" aparte. Sus números se leen antes de implementar.
  *      3. paso10_validarContraInscriptos(). Calibración de una vez contra los inscriptos que hoy

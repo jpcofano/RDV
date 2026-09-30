@@ -158,15 +158,29 @@ reconocimiento sólo explica lo que caiga en `posible_grafia`.
 Bloque **3**. La puerta es `figura Y (fecha±21 O comuna)` —sin evento—. La **densidad** tiene
 que volver a 2-4 pares por fila (con el evento había subido a 8,2). Si pasa de 5 el log avisa.
 
-### g) ¿La `Zona` de `Comunas` es el eje? ¿Se enciende `EJE_COMO_UBICACION`?
+### g) ¿Se enciende `EJE_COMO_UBICACION`? — ahora con el mapeo del equipo
 
-Bloque **2e**, punto a). Vuelca cada valor de la columna 8 de `Comunas` con sus barrios. Si
-nombran `Norte/Sur/Centro/Oeste` **y los barrios se ven bien**, el mapeo está; si no, hay que
-escribirlo, y el punto b) —cada formulario con eje contra los barrios del destino con los que
-se emparejaría, más el cruce eje × zona— es el material para armarlo. Hoy en `false`.
+~~¿La `Zona` de `Comunas` es el eje?~~ No lo era (25/09: sin `Oeste`, descartaba el 82,5% de los
+pares de la ventana). **Desde el 29/09 el mapeo está en `Comunas`, columna I, `Eje geográfico`**:
+18 barrios los definió el equipo, 30 se completaron por comuna, y **12 están pendientes**, con el
+valor terminado en `?` (Villa Crespo; la Comuna 10 entera; Liniers; Monserrat, San Telmo, Puerto
+Madero y Constitución). La columna H (`Zona`) no se usa para el eje.
 
-> `Comuna 1 Norte` / `Comuna 1N` **no son eje** (subdivisiones de la Comuna 1): las lee
-> `detectComuna_` como comuna 1.
+**Convención del `?`:** pendiente = eje no evaluable (no puntúa ni descalifica). Cuando el equipo
+confirma un barrio, borra el `?` en la celda y el código lo toma solo, sin tocar el repo.
+
+Bloque **2e** del paso 2:
+
+- **a)** el encabezado de la columna I (si no dice `Eje geográfico`, el eje no se evalúa y lo
+  avisa), los barrios de cada eje, y los pendientes aparte;
+- **b)** los pares formulario con eje × fila del destino: coincide / **descartaría** / no
+  evaluable, con el 82,5% del 25/09 al lado para comparar, y **una línea aparte para los
+  pendientes** —"coincidiría N / descartaría M"— para que el equipo sepa qué está confirmando;
+- la lista de los **"descartaría" a 0-3 días**, ventana primero: son los que más importan,
+  porque descartar ahí es perder un match correcto.
+
+`EJE_COMO_UBICACION` **sigue en `false`**. Se enciende si el descarte baja mucho respecto del
+82,5% y la lista de 0-3 días no tiene matches correctos.
 
 ### h) ¿Los formularios temáticos tienen alguna reunión cerca?
 

@@ -1735,31 +1735,39 @@ function _logEvento_(plan, b, e) {
 /**
  * El bloque 2e, en memoria: **el eje geográfico, medido antes de darle peso**.
  *
- * Contesta tres cosas, sin que el flag `EJE_COMO_UBICACION` cambie nada:
+ * El mapeo barrio → eje vive en la planilla: `Comunas`, columna I (`COMUNAS_COL_EJE`), encabezado
+ * `Eje geográfico`. 18 barrios los definió el equipo, 30 se completaron por comuna; los pendientes
+ * terminan en `?` y **no se evalúan** (no puntúan ni descalifican). Contesta, sin que
+ * `EJE_COMO_UBICACION` cambie nada:
  *
- *   a) ¿La `Zona` de `Comunas` es el eje? Vuelca sus valores con los barrios de cada uno.
- *   b) Los formularios con eje, y con qué filas del destino se estarían emparejando (misma
- *      figura, dentro de `VENTANA_EMPAREJAR_DIAS`) — con la zona de cada barrio, para confirmar
- *      el mapeo a mano y ver qué candidatos el eje descartaría.
- *   c) Los formularios temáticos: ¿hay ALGUNA fila del destino de su figura a ±
- *      `DIAS_TEMATICA_CERCANA`? Si no hay ninguna, es un huérfano real y ningún peso lo salva.
+ *   a) la columna I: encabezado, y los barrios de cada eje (con los pendientes aparte);
+ *   b) los formularios con eje contra las filas del destino con que se emparejarían (misma
+ *      figura, a ±VENTANA_EMPAREJAR_DIAS): cuántos pares coincide / descartaría / no evaluable,
+ *      y los PENDIENTES en una línea aparte (qué harían si se confirmaran). Se compara contra el
+ *      82,5% de descarte del 25/09 con la Zona, y se listan los "descartaría" a 0-3 días: ésos son
+ *      los que más importan, porque descartar ahí es perder un match correcto;
+ *   c) los formularios temáticos: ¿hay ALGUNA fila de su figura a ± DIAS_TEMATICA_CERCANA?
  */
 function medirEjes_(dest, cands, comunas) {
-  // --- a) la columna Zona de Comunas ---
-  const porZona = {};
+  // --- a) la columna del eje ---
+  const col = infoColumnaEje_();
+  const porEje = {}, pendientes = [], sinEje = [];
   _listas_().barrios.forEach(function (b) {
-    const z = b.zona || '(vacía)';
-    if (!porZona[z]) porZona[z] = { zona: z, eje: ejeDeZona_(b.zona), barrios: [], comunas: {} };
-    porZona[z].barrios.push(b.canon);
-    if (b.comuna != null) porZona[z].comunas[b.comuna] = true;
+    const info = ejeInfoDeBarrio_(b.canon);
+    if (!info.eje) { sinEje.push(b.canon + (b.ejeRaw ? ' ("' + b.ejeRaw + '")' : '')); return; }
+    if (info.pendiente) { pendientes.push(b.canon + ' (' + info.raw + ')'); return; }
+    if (!porEje[info.eje]) porEje[info.eje] = { barrios: [], comunas: {} };
+    porEje[info.eje].barrios.push(b.canon);
+    if (b.comuna != null) porEje[info.eje].comunas[b.comuna] = true;
   });
 
   // --- b) formularios con eje ---
   const porForma = {};
-  const cruce = {};              // eje del formulario × zona del barrio del destino → pares
+  const cruce = {};              // eje del formulario × eje del barrio del destino → pares
   const pares = { total: contador_(), coincide: contador_(), descarta: contador_(),
-                  noEvaluable: contador_() };
-  const detalle = [];
+                  noEvaluable: contador_(), pendCoincide: contador_(),
+                  pendDescarta: contador_() };
+  const detalle = [], descartaCerca = [];
   const conEje = contador_(), desconocidos = [];
 
   // --- c) temáticos ---
@@ -1788,22 +1796,28 @@ function medirEjes_(dest, cands, comunas) {
         const dist = distanciaFecha_(f.fecha, c.det);
         if (dist === null || dist > VENTANA_EMPAREJAR_DIAS) continue;
 
-        const zona = zonaDeBarrio_(f.barrio);
-        const ejeDest = ejeDeZona_(zona);
-        let veredicto = 'no_evaluable';
-        if (e.tipo === 'eje' && ejeDest) veredicto = (ejeDest === e.eje) ? 'coincide' : 'descarta';
+        const info = ejeInfoDeBarrio_(f.barrio);
+        let veredicto;
+        if (!info.eje) veredicto = 'no_evaluable';
+        else if (info.pendiente) veredicto = (info.eje === e.eje) ? 'pend_coincide' : 'pend_descarta';
+        else veredicto = (info.eje === e.eje) ? 'coincide' : 'descarta';
 
-        if (e.tipo === 'eje') {
-          sumar_(pares.total, ev);
-          sumar_(pares[veredicto === 'no_evaluable' ? 'noEvaluable' : veredicto], ev);
-          const kc = e.eje + ' × ' + (zona || '(sin zona)');
-          cruce[kc] = (cruce[kc] || 0) + 1;
-        }
+        sumar_(pares.total, ev);
+        const kv = { coincide: 'coincide', descarta: 'descarta', no_evaluable: 'noEvaluable',
+                     pend_coincide: 'pendCoincide', pend_descarta: 'pendDescarta' }[veredicto];
+        sumar_(pares[kv], ev);
+        const kc = e.eje + ' × ' + (info.eje ? info.eje + (info.pendiente ? '?' : '') : '(sin eje)');
+        cruce[kc] = (cruce[kc] || 0) + 1;
+
         const comunaDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
-        filas.push({ fila: f.fila, barrio: f.barrio, comuna: comunaDest, zona: zona, dist: dist,
-                     veredicto: veredicto });
+        const x = { fila: f.fila, fecha: f.fecha, figura: f.figura, barrio: f.barrio,
+                    comuna: comunaDest, ejeDest: info.raw, dist: dist, veredicto: veredicto };
+        filas.push(x);
+        if ((veredicto === 'descarta' || veredicto === 'pend_descarta') && dist <= 3) {
+          descartaCerca.push({ c: c, ev: ev, x: x });
+        }
       }
-      filas.sort(function (x, y) { return x.dist - y.dist; });
+      filas.sort(function (a, b) { return a.dist - b.dist; });
       detalle.push({ c: c, ev: ev, filas: filas });
     }
 
@@ -1822,9 +1836,9 @@ function medirEjes_(dest, cands, comunas) {
     }
   }
 
-  return { encabezadoZona: encabezadoZonaComunas_(), porZona: porZona, porForma: porForma,
-           conEje: conEje, desconocidos: desconocidos,
-           pares: pares, cruce: cruce, detalle: detalle, tem: tem };
+  return { col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, porForma: porForma,
+           conEje: conEje, desconocidos: desconocidos, pares: pares, cruce: cruce,
+           detalle: detalle, descartaCerca: descartaCerca, tem: tem };
 }
 
 /** Dentro del 2b: el desvío real del grupo bajo, día por día, y las tres poblaciones. */
@@ -1958,27 +1972,25 @@ function _logEjes_(m) {
   Logger.log('  EJE_COMO_UBICACION = %s  (peso si se enciende: %s; un eje distinto DESCALIFICA)',
              EJE_COMO_UBICACION, PESOS_MATCH.ejeSinComuna);
 
-  // a) ¿Zona == eje?
-  Logger.log('  a) Comunas, columna %s: encabezado "%s"', COMUNAS_COL_ZONA,
-             m.encabezadoZona || '(la tabla no llega a esa columna)');
-  const zonas = Object.keys(m.porZona).sort();
-  let zonasConEje = 0;
-  zonas.forEach(function (z) {
-    const x = m.porZona[z];
-    if (x.eje) zonasConEje++;
-    Logger.log('     %s  → eje %s | comunas %s | %s barrios: %s', z, x.eje || '(ninguno)',
+  // a) la columna del eje
+  Logger.log('  a) Comunas, columna %s: encabezado "%s" → %s', COMUNAS_COL_EJE,
+             m.col.encabezado || '(la tabla no llega a esa columna)',
+             m.col.valido ? 'OK' : 'NO es "' + COMUNAS_ENCABEZADO_EJE + '": el eje NO se evalúa');
+  if (!m.col.valido) {
+    Logger.log('  >>> Sin la columna "%s", ningún barrio tiene eje evaluable. Revisar la columna %s',
+               COMUNAS_ENCABEZADO_EJE, COMUNAS_COL_EJE);
+    Logger.log('      de Comunas antes de mirar el resto de este bloque.');
+  }
+  Object.keys(m.porEje).sort().forEach(function (k) {
+    const x = m.porEje[k];
+    Logger.log('     %s → comunas %s | %s barrios: %s', k,
                Object.keys(x.comunas).sort(function (p, q) { return p - q; }).join(',') || '-',
                x.barrios.length, x.barrios.join(', '));
   });
-  if (!zonas.length || zonasConEje === 0) {
-    Logger.log('  >>> La Zona de Comunas NO nombra ningún eje. El mapeo eje → comunas no existe en');
-    Logger.log('      el proyecto: hay que escribirlo a mano. Mirar el punto b) para armarlo.');
-  } else if (zonasConEje < zonas.length) {
-    Logger.log('  >>> %s de %s valores de Zona nombran un eje. Los otros quedan sin evaluar.',
-               zonasConEje, zonas.length);
-  } else {
-    Logger.log('  >>> Todos los valores de Zona nombran un eje. Si los barrios de cada uno se ven');
-    Logger.log('      bien, el mapeo está y se puede encender el flag. CONFIRMARLO mirando la lista.');
+  Logger.log('     PENDIENTES ("?", no se evalúan): %s%s', m.pendientes.length,
+             m.pendientes.length ? ' — ' + m.pendientes.join(', ') : '');
+  if (m.sinEje.length) {
+    Logger.log('     sin eje reconocible: %s — %s', m.sinEje.length, m.sinEje.join(', '));
   }
 
   // b) formularios con eje
@@ -1989,30 +2001,47 @@ function _logEjes_(m) {
   m.desconocidos.forEach(function (d) {
     Logger.log('     eje no reconocido "%s" | %s', d.forma, d.nombre);
   });
-  Logger.log('     pares figura + fecha ±%s contra filas del destino: %s',
-             VENTANA_EMPAREJAR_DIAS, _dc_(m.pares.total));
-  Logger.log('       el eje coincide ...... %s', _dcp_(m.pares.coincide, m.pares.total));
-  Logger.log('       el eje DESCARTARÍA ... %s', _dcp_(m.pares.descarta, m.pares.total));
-  Logger.log('       no evaluable ......... %s  (el barrio del destino no tiene zona con eje)',
-             _dcp_(m.pares.noEvaluable, m.pares.total));
-  Logger.log('     cruce eje del formulario × zona del barrio del destino (para confirmar el mapeo):');
+  const p = m.pares;
+  Logger.log('     pares figura + fecha ±%s contra filas del destino: %s', VENTANA_EMPAREJAR_DIAS,
+             _dc_(p.total));
+  Logger.log('       el eje coincide ...... %s', _dcp_(p.coincide, p.total));
+  Logger.log('       el eje DESCARTARÍA ... %s   (25/09, con la Zona: 82,5%% de la ventana)',
+             _dcp_(p.descarta, p.total));
+  Logger.log('       no evaluable ......... %s  (el barrio del destino no tiene eje)',
+             _dcp_(p.noEvaluable, p.total));
+  Logger.log('       pendientes: coincidiría %s / descartaría %s  (si se confirmaran tal cual)',
+             _dc_(p.pendCoincide), _dc_(p.pendDescarta));
+  Logger.log('     cruce eje del formulario × eje del barrio del destino ("?" = pendiente):');
   Object.keys(m.cruce).sort().forEach(function (k) {
     Logger.log('       %s: %s', k, m.cruce[k]);
+  });
+
+  // Los descartes que más importan: a 0-3 días, donde descartar es perder un match correcto.
+  const cerca = m.descartaCerca.slice().sort(function (a, b) {
+    if (a.ev !== b.ev) return a.ev ? -1 : 1;
+    return a.x.dist - b.x.dist;
+  });
+  Logger.log('     --- "descartaría" a 0-3 días (ventana primero): %s ---', cerca.length);
+  Logger.log('     (son los que más importan: descartar ahí es perder un match correcto)');
+  cerca.slice(0, 40).forEach(function (y) {
+    Logger.log('       [%s] %s días | fila %s %s | %s | %s (eje %s%s) ← Eje %s: %s',
+               y.ev ? 'ventana' : 'histor.', y.x.dist, y.x.fila, fmtFecha_(y.x.fecha), y.x.figura,
+               y.x.barrio || 'sin barrio', y.x.ejeDest,
+               y.x.veredicto === 'pend_descarta' ? ', PENDIENTE' : '', y.c.eje.eje, y.c.nombre);
   });
 
   const lim = 30;
   Logger.log('     --- %s formularios con eje, con sus filas candidatas (primeros %s) ---',
              m.detalle.length, lim);
   m.detalle.slice(0, lim).forEach(function (d) {
-    Logger.log('     [%s] B fila %s | %s | %s | %s', d.ev ? 'ventana' : 'histor.', d.c.fila,
-               d.c.eje.tipo === 'eje' ? 'Eje ' + d.c.eje.eje : d.c.eje.forma,
-               fmtFecha_(d.c.det.mejor) || 'sin fecha', d.c.nombre);
+    Logger.log('     [%s] B fila %s | Eje %s | %s | %s', d.ev ? 'ventana' : 'histor.', d.c.fila,
+               d.c.eje.eje, fmtFecha_(d.c.det.mejor) || 'sin fecha', d.c.nombre);
     if (!d.filas.length) Logger.log('         (ninguna fila de la figura a ±%s días)',
                                     VENTANA_EMPAREJAR_DIAS);
     d.filas.forEach(function (x) {
-      Logger.log('         fila %s  %s días  %s | comuna %s | zona %s → %s', x.fila, x.dist,
+      Logger.log('         fila %s  %s días  %s | comuna %s | eje %s → %s', x.fila, x.dist,
                  x.barrio || 'sin barrio', x.comuna == null ? '-' : x.comuna,
-                 x.zona || '-', x.veredicto);
+                 x.ejeDest || '-', x.veredicto);
     });
   });
 

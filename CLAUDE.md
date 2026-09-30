@@ -278,7 +278,8 @@ JORGE MACRI - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte - 16/0
 
 `Eje Norte` no es un barrio ni una comuna, y `Orden Público / Seguridad` es **el tema**. ~~Para
 estas filas **la ubicación no existe como concepto**.~~ *[Corregido: el eje sí acota la
-geografía, pero el mapeo eje → comunas no existe en el proyecto. Ver más abajo.]*
+geografía. El mapeo barrio → eje lo armó el equipo el 29/09, en `Comunas` columna I. Ver más
+abajo.]*
 
 > **No confundirla con el barrio ausente de 3.3.b.** Son dos cosas distintas y llevan a arreglos
 > distintos:
@@ -326,11 +327,28 @@ Hasta ahora los cuatro competían igual.
   (comunas 1,3,5,6,7,10,11,15), `Norte` (1,2,12,13,14), `Sur` (4,8,9)— y **no tiene `Oeste`**,
   aunque 6 formularios dicen `Eje Oeste` (cruce: `Oeste × Centro 29 · × Norte 13 · × Sur 12`);
   un formulario dice `Eje Este`, que tampoco está. Encendido, el eje descartaría el **82,5%** de
-  los pares de la ventana, incluidos candidatos a 0 días. **Queda descartado por falta de
-  mapeo** hasta que el equipo pase uno (docs/HANDOFF-2026-09-25.md, sección 4).
+  los pares de la ventana, incluidos candidatos a 0 días. ~~Queda descartado por falta de
+  mapeo~~ *[superado: el mapeo existe desde el 29/09, abajo]*.
+- **El mapeo barrio → eje (29/09) vive en la planilla, no en el repo:** `Comunas`, **columna I**
+  (`COMUNAS_COL_EJE = 9`), encabezado **`Eje geográfico`**, una fila por barrio (la misma de la
+  columna A). Se lee en tiempo de ejecución, como el resto de `Comunas`. La columna H (`Zona`)
+  **no se toca ni se usa para el eje**: la lee la fórmula `AG` del destino.
+  - **Cómo se armó:** **18 barrios los definió el equipo**; **los otros 30 se completaron por
+    comuna** (cada uno toma el eje de los barrios de su comuna que definió el equipo).
+  - **Valores:** `Norte`, `Sur`, `Centro`, `Oeste`, `Este` (`Este` se sumó a `EJES_CONOCIDOS`).
+  - **Convención del `?`:** un valor que termina en `?` (`Oeste?`) está **pendiente de
+    confirmación** y es **eje NO evaluable** —no puntúa ni descalifica, igual que vacío—. Cuando el
+    equipo confirma uno, **borra el `?` en la celda y el código lo toma solo**. Hoy son **12**:
+    Villa Crespo; la Comuna 10 entera (Floresta, Monte Castro, Vélez Sarsfield, Versalles, Villa
+    Luro, Villa Real); Liniers; Monserrat, San Telmo, Puerto Madero y Constitución.
+  - **Si el encabezado de la columna I no dice `Eje geográfico`**, el eje no se evalúa para
+    ningún barrio y el bloque 2e lo avisa: una tabla que no es la esperada no puede descalificar.
 - Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
   contiene varias comunas, y **descalifica** si el barrio del destino es de otro eje, igual que
-  `comuna_distinta`. Detrás de `EJE_COMO_UBICACION = false` hasta confirmar el mapeo.
+  `comuna_distinta`. **Sigue detrás de `EJE_COMO_UBICACION = false`**: el bloque 2e mide con el
+  mapeo nuevo cuánto descartaría (contra el 82,5% del 25/09 con la `Zona`), muestra aparte qué
+  harían los pendientes si se confirmaran, y lista los "descartaría" a 0-3 días —los que más
+  importan, porque descartar ahí es perder un match correcto—. Se enciende con ese número delante.
 
 > **Y ojo con la fecha de ese caso.** Los cuatro candidatos de la fila 730 están a **7, 7, 11 y
 > 13 días** del formulario. Descartar Coghlan no hace que ninguno de los otros tres sea la

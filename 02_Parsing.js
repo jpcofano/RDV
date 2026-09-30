@@ -89,11 +89,17 @@ function leerBarrios_() {
 
   const nFilas = sh.getLastRow();
   if (nFilas < 2) throw new Error('La tabla "' + RDV_HOJA_COMUNAS + '" está vacía.');
-  // La columna de zona, si la tabla llega hasta ahí. Si no, `zona` queda vacía y el eje del
-  // destino no se puede evaluar — que es ausencia, no desacuerdo.
-  const nCols = Math.min(sh.getLastColumn(), COMUNAS_COL_ZONA);
-  const vals = sh.getRange(2, 1, nFilas - 1, Math.max(2, nCols)).getValues();
+  // Hasta la columna del eje, si la tabla llega. Si no llega, el eje del destino no se puede
+  // evaluar para nadie — que es ausencia, no desacuerdo.
+  const hasta = Math.max(COMUNAS_COL_ZONA, COMUNAS_COL_EJE);
+  const nCols = Math.min(sh.getLastColumn(), hasta);
+  const bloque = sh.getRange(1, 1, nFilas, Math.max(2, nCols)).getValues();
+  const vals = bloque.slice(1);
   const conZona = nCols >= COMUNAS_COL_ZONA;
+  const conEje = nCols >= COMUNAS_COL_EJE;
+  const encabezadoEje = conEje ? str(bloque[0][COMUNAS_COL_EJE - 1]) : '';
+  // El eje se evalúa sólo si la columna I dice lo que tiene que decir.
+  const ejeValido = conEje && normalizeText_(encabezadoEje) === normalizeText_(COMUNAS_ENCABEZADO_EJE);
 
   const out = [];
   const vistos = {};
@@ -104,20 +110,24 @@ function leerBarrios_() {
     if (!norm || vistos[norm]) continue;
     vistos[norm] = true;
     out.push({ canon: canon, norm: norm, comuna: numComuna_(vals[i][1]),
-               zona: conZona ? str(vals[i][COMUNAS_COL_ZONA - 1]) : '' });
+               zona: conZona ? str(vals[i][COMUNAS_COL_ZONA - 1]) : '',
+               ejeRaw: conEje ? str(vals[i][COMUNAS_COL_EJE - 1]) : '' });
   }
   out.sort(function (a, b) { return b.norm.length - a.norm.length; });
+  // Metadatos de la columna del eje, en el mismo cache que los barrios.
+  out.encabezadoEje = encabezadoEje;
+  out.ejeValido = ejeValido;
   return out;
 }
 
 /**
- * El encabezado de la columna `COMUNAS_COL_ZONA` de `Comunas`, o `''` si la tabla no llega.
- * Sólo para que el bloque 2e pueda decir si esa columna es de verdad `Zona`.
+ * La columna del eje de `Comunas`: `{ encabezado, valido }`. `valido` es que el encabezado de la
+ * columna `COMUNAS_COL_EJE` diga `COMUNAS_ENCABEZADO_EJE`. Si no, ningún barrio tiene eje
+ * evaluable, y el bloque 2e lo avisa.
  */
-function encabezadoZonaComunas_() {
-  const sh = SpreadsheetApp.openById(RDV_SS_DESTINO).getSheetByName(RDV_HOJA_COMUNAS);
-  if (!sh || sh.getLastColumn() < COMUNAS_COL_ZONA) return '';
-  return str(sh.getRange(1, COMUNAS_COL_ZONA).getValue());
+function infoColumnaEje_() {
+  const b = _listas_().barrios;
+  return { encabezado: b.encabezadoEje || '', valido: !!b.ejeValido };
 }
 
 /**
@@ -329,35 +339,41 @@ function comunaDeBarrio_(barrio) {
   return null;
 }
 
-/** La zona de un barrio según `Comunas` (columna `COMUNAS_COL_ZONA`). `''` si no se sabe. */
-function zonaDeBarrio_(barrio) {
-  const canon = canonizarBarrio_(barrio);
-  if (!canon) return '';
+/**
+ * El eje de un barrio del destino según `Comunas`, columna `Eje geográfico` (`COMUNAS_COL_EJE`):
+ *
+ *   { eje, pendiente, raw }
+ *     eje        el de EJES_CONOCIDOS que nombra la celda, SIN el `?` final ('' si ninguno)
+ *     pendiente  la celda termina en `?`: el equipo todavía no lo confirmó
+ *     raw        la celda tal cual
+ *
+ * Si el encabezado de la columna no es `COMUNAS_ENCABEZADO_EJE`, devuelve eje '' para todos.
+ * **No usar `eje` directo para puntuar**: para eso está `ejeDeBarrio_`, que descarta los
+ * pendientes. `eje` con `pendiente` sirve sólo para mostrar qué pasaría si se confirmara.
+ */
+function ejeInfoDeBarrio_(barrio) {
+  const vacio = { eje: '', pendiente: false, raw: '' };
   const barrios = _listas_().barrios;
+  if (!barrios.ejeValido) return vacio;
+  const canon = canonizarBarrio_(barrio);
+  if (!canon) return vacio;
   for (let i = 0; i < barrios.length; i++) {
-    if (barrios[i].canon === canon) return barrios[i].zona || '';
+    if (barrios[i].canon !== canon) continue;
+    const raw = barrios[i].ejeRaw || '';
+    const pendiente = /\?\s*$/.test(raw);
+    return { eje: _canonEje_(raw.replace(/\?+\s*$/, '').trim()), pendiente: pendiente, raw: raw };
   }
-  return '';
+  return vacio;
 }
 
 /**
- * El eje que nombra un valor de `Zona` —`Norte`, `Zona Norte`, `Eje Norte`— o `''` si no nombra
- * ninguno de `EJES_CONOCIDOS`. **Si la `Zona` de `Comunas` resulta ser otra cosa** (una región
- * sanitaria, un nombre propio), esto devuelve `''` para todo y el eje no se puede evaluar: el
- * bloque 2e lo dice en vez de inventar un mapeo.
+ * El eje **evaluable** de un barrio del destino: `''` si no se sabe o si está **pendiente**
+ * (termina en `?`). Un eje no evaluable no puntúa ni descalifica: es ausencia, no desacuerdo.
+ * Cuando el equipo borra el `?` en la celda, el barrio pasa a evaluarse solo.
  */
-function ejeDeZona_(zona) {
-  const t = normalizeText_(zona);
-  if (!t) return '';
-  for (let i = 0; i < EJES_CONOCIDOS.length; i++) {
-    if (_contienePalabra_(t, normalizeText_(EJES_CONOCIDOS[i]))) return EJES_CONOCIDOS[i];
-  }
-  return '';
-}
-
-/** El eje de un barrio del destino, subiéndolo por `Comunas`. `''` si no se sabe. */
 function ejeDeBarrio_(barrio) {
-  return ejeDeZona_(zonaDeBarrio_(barrio));
+  const x = ejeInfoDeBarrio_(barrio);
+  return x.pendiente ? '' : x.eje;
 }
 
 /**

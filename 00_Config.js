@@ -180,17 +180,23 @@ const PESOS_MATCH = {
  *   eje del formulario != eje del barrio del destino  → DESCALIFICA, como comuna_distinta
  *   no se sabe el eje de alguno de los dos             → no puntúa ni cuenta al denominador
  *
- * El eje del destino sale de **subir su barrio** por la tabla `Comunas`, columna `Zona`
- * (`COMUNAS_COL_ZONA`), igual que la comuna. Nunca se deduce el barrio del eje.
+ * El eje del destino sale de **subir su barrio** por la tabla `Comunas`, columna **`Eje
+ * geográfico`** (`COMUNAS_COL_EJE`, la I). Nunca se deduce el barrio del eje.
  *
- * ### Arranca APAGADO, y esta vez por un motivo concreto
+ * ### El mapeo (desde el 29/09) y por qué sigue APAGADO
  *
- * **No sabemos todavía si la `Zona` de `Comunas` es lo mismo que el eje del formulario.** La
- * correspondencia eje → comunas no estaba escrita en ningún lado del proyecto. El bloque **2e**
- * del log vuelca los valores de `Zona` con sus barrios, y los formularios con eje con los
- * barrios del destino con los que se estarían emparejando, para confirmar el mapeo a mano.
- * Encender esto con el mapeo sin confirmar es descalificar candidatos con una tabla que puede
- * significar otra cosa — y el descarte es justo lo que no se recupera solo.
+ * La `Zona` de la columna H **no era el eje** (no tiene `Oeste`; encendido con ella se descartaba
+ * el 82,5% de los pares de la ventana, 25/09). El equipo armó el mapeo en la columna I: **18
+ * barrios los definió el equipo, 30 se completaron por comuna** (cada uno toma el eje de los
+ * barrios de su comuna que definió el equipo). **12 están pendientes**, con el valor terminado en
+ * `?` (`Oeste?`): Villa Crespo; la Comuna 10 entera (Floresta, Monte Castro, Vélez Sarsfield,
+ * Versalles, Villa Luro, Villa Real); Liniers; Monserrat, San Telmo, Puerto Madero y Constitución.
+ *
+ * **Un valor con `?` es eje NO evaluable**, igual que vacío: no puntúa ni descalifica. Cuando el
+ * equipo confirma uno, borra el `?` en la celda y el código lo toma solo. El bloque 2e muestra
+ * igual qué harían los pendientes si se confirmaran, y lista los "descartaría" a 0-3 días: ésos
+ * son los que más importan, porque descartar ahí es perder un match correcto. **Se enciende con
+ * ese número delante.**
  */
 const EJE_COMO_UBICACION = false;
 
@@ -217,14 +223,24 @@ const SIN_FIGURA_POR_UBICACION = true;
 const DIAS_SIN_FIGURA_POR_UBICACION = 1;
 
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
-const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste'];
+const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste', 'Este'];
 
 /**
  * La columna de `Comunas` que la fórmula de `AG (Zona)` del destino lee:
- * `VLOOKUP(B2:B2374, Comunas!A:Z, 8, FALSE)` → columna 8, `H`. Se usa por posición porque es
- * como la usa la planilla; si el encabezado de esa columna no dice `Zona`, el bloque 2e avisa.
+ * `VLOOKUP(B2:B2374, Comunas!A:Z, 8, FALSE)` → columna 8, `H`. **No se usa para el eje**
+ * (no lo es: ver `EJE_COMO_UBICACION`) y no se toca: la lee la fórmula del destino.
  */
 const COMUNAS_COL_ZONA = 8;
+
+/**
+ * **El eje geográfico de cada barrio**: `Comunas`, columna I (9), una fila por barrio (la misma
+ * fila que la columna A). Valores: `Norte`, `Sur`, `Centro`, `Oeste`, `Este`; terminado en `?`
+ * si está pendiente de confirmación (no se evalúa). Se lee en tiempo de ejecución: el mapeo vive
+ * en la planilla, no en el repo. Si el encabezado no es `COMUNAS_ENCABEZADO_EJE`, el eje no se
+ * evalúa para ningún barrio y el bloque 2e avisa.
+ */
+const COMUNAS_COL_EJE = 9;
+const COMUNAS_ENCABEZADO_EJE = 'Eje geográfico';
 
 /**
  * La distancia que el bloque 2e usa para decir si un formulario temático tiene **alguna** fila
