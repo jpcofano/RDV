@@ -306,6 +306,20 @@ const MIN_INSCRIPTOS_SIN_FILA = 10;
 const DIAS_BUSQUEDA_INVERSA = 7;
 const FILAS_BUSQUEDA_INVERSA = [527, 626, 631];
 
+/**
+ * **Subzonas de la Comuna 1** (dato del equipo, 01/10; regla de negocio 10). **No son ejes.** Los
+ * títulos de los formularios las usan ("Comuna 1 Sur - 3/9"). Un formulario con subzona contra una
+ * fila de un barrio de la Comuna 1 **coincide** si el barrio está en esa subzona y está en
+ * **desacuerdo** si está en la otra (y entonces, regla 8: a revisión, nunca descartar). Un barrio de
+ * la Comuna 1 que no esté en ninguna de las dos listas, o un formulario sin subzona: como antes,
+ * comuna contra comuna.
+ */
+const COMUNA1_SUBZONAS = {
+  Norte: ['Puerto Madero', 'Retiro', 'San Nicolás'],
+  // 'Montserrat' es la otra grafía de Monserrat que tiene el destino (CLAUDE.md 3.1.h): mismo barrio.
+  Sur:   ['Constitución', 'Monserrat', 'Montserrat', 'San Telmo']
+};
+
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
 const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste', 'Este'];
 

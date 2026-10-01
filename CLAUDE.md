@@ -320,7 +320,8 @@ Hasta ahora los cuatro competían igual.
 - `detectEje_` (`02_Parsing.js`) reconoce `Eje Norte/Sur/Centro/Oeste`. **`Comuna 1 Norte` /
   `Comuna 1N` no son eje** (confirmado): son subdivisiones de la Comuna 1, que está en el
   centro, y tratarlas como Eje Norte descartaría candidatos buenos. Las lee `detectComuna_`
-  como **comuna 1**, descartando el sufijo; `Comuna 1N` antes no la tomaba ninguna regex.
+  como **comuna 1**; `Comuna 1N` antes no la tomaba ninguna regex. **Desde el 01/10 la subzona
+  no se descarta**: son **subzonas de la Comuna 1** y sí deciden la ubicación (regla 10, sección 1).
 - **La correspondencia eje → comunas no estaba escrita en ningún lado del proyecto.** La
   candidata era la columna `Zona` de `Comunas` (la 8, la que lee la fórmula de `AG`).
   **Medido (bloque 2e, 25/09): `Zona` no es el eje.** Tiene tres valores —`Centro`
@@ -333,19 +334,17 @@ Hasta ahora los cuatro competían igual.
   (`COMUNAS_COL_EJE = 9`), encabezado **`Eje geográfico`**, una fila por barrio (la misma de la
   columna A). Se lee en tiempo de ejecución, como el resto de `Comunas`. La columna H (`Zona`)
   **no se toca ni se usa para el eje**: la lee la fórmula `AG` del destino.
-  - **Cómo se armó:** **18 barrios los definió el equipo**; **los otros 30 se completaron por
-    comuna** (cada uno toma el eje de los barrios de su comuna que definió el equipo).
+  - **Son ejes PRIORIZADOS (dato del equipo, 01/10).** Sólo **18 barrios tienen eje**: los que
+    definió el equipo. **Los otros 30 no pertenecen a ningún eje: la celda va VACÍA, y vacío quiere
+    decir "no pertenece", no "pendiente".** ~~Los otros 30 se completaron por comuna~~ — eso fue
+    un error nuestro: **no se completa por comuna.** El usuario corrigió la columna I el 01/10:
+    sacó los 30 completados y los 12 `?`. **No hay pendientes.**
   - **Valores:** `Norte`, `Sur`, `Centro`, `Oeste`, `Este` (`Este` se sumó a `EJES_CONOCIDOS`).
-  - **Convención del `?`:** un valor que termina en `?` (`Oeste?`) está **pendiente de
-    confirmación** y es **eje NO evaluable** —no puntúa ni descalifica, igual que vacío—. Cuando el
-    equipo confirma uno, **borra el `?` en la celda y el código lo toma solo**. ~~Hoy son **12**:
-    Villa Crespo; la Comuna 10 entera (Floresta, Monte Castro, Vélez Sarsfield, Versalles, Villa
-    Luro, Villa Real); Liniers; Monserrat, San Telmo, Puerto Madero y Constitución.~~
-    **01/10: los 12 propuestos quedan como definitivos** y el usuario les saca el `?` en la solapa
-    `Comunas`. Si el equipo actualiza alguno, se cambia la celda. **La convención del `?` sigue
-    valiendo para el futuro**: un eje nuevo dudoso se carga con `?` y no se evalúa hasta que se
-    confirme. Con más ejes evaluables, el último desempate (abajo) puede empezar a decidir alguna
-    fila: el paso 2 lo cuenta.
+  - **Convención del `?`, sólo como posibilidad:** un valor que termina en `?` (`Oeste?`) sería
+    **pendiente de confirmación** y **no evaluable** —no puntúa ni descalifica, igual que vacío—.
+    Hoy no hay ninguno; el código lo sigue soportando por si el equipo lo necesita.
+  - El bloque 2e del paso 2 lo cuenta: **barrios con eje 18 | sin eje 30**, y lista aparte cualquier
+    valor que no reconozca. El eje sigue siendo **sólo último desempate** (abajo).
   - **Si el encabezado de la columna I no dice `Eje geográfico`**, el eje no se evalúa para
     ningún barrio y el bloque 2e lo avisa: una tabla que no es la esperada no puede descalificar.
 - Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
@@ -407,7 +406,7 @@ Hasta ahora los cuatro competían igual.
   guarda de transición del 30/09 los usaba para frenar escrituras: se **eliminó** el 01/10, ver
   decisión 2.)
 
-**Dos reglas más, confirmadas por el equipo (01/10):**
+**Tres reglas más, confirmadas por el equipo (01/10):**
 
 8. **Una reunión puede cambiar de lugar después de creado el formulario.** Queda un formulario
    viejo —con inscriptos— y, a veces, uno nuevo. Los casos de **figura + fecha + inscriptos
@@ -425,6 +424,18 @@ Hasta ahora los cuatro competían igual.
    **cancelada**, o reubicada (regla 8). El paso 13 (`paso13_formulariosSinFila()`, "formularios
    sin fila: canceladas o reubicadas") es **informativo** y separa "posible reemplazo" de "sin
    fila (posible cancelada)".
+10. **Las subzonas de la Comuna 1 no son ejes** (dato del equipo, 01/10): **Comuna 1 Norte** =
+   Puerto Madero, Retiro, San Nicolás; **Comuna 1 Sur** = Constitución, Monserrat, San Telmo
+   (`COMUNA1_SUBZONAS`). Los títulos las usan (`Comuna 1 Sur - 3/9`). En el código:
+   - `detectComuna_` sigue dando el número (1) y `detectSubzonaComuna1_` conserva la subzona
+     (`Comuna 1 Norte/Sur`, `1N`, `C1S`), que viaja en el candidato;
+   - un formulario con subzona contra una fila de un barrio de la Comuna 1 **coincide** si el barrio
+     está en esa subzona y está en **desacuerdo** si está en la otra —y entonces, regla 8: a
+     revisión, nunca descartar—. Sin subzona, o barrio de la Comuna 1 fuera de las dos listas:
+     comuna contra comuna, como antes (`comparaComuna_`, en `02_Parsing.js`);
+   - el paso 2 tiene una línea fija con los pares que decidió la subzona. Probado en Node: el 3/9
+     queda igual (Landerreche ← `Comuna 1 Sur`, Tapia ← `Comuna 1 Norte`) y `Comuna 1 Sur - 1/10`
+     va a **Monserrat (808)** en vez de empatar con Retiro.
 
 **e) Qué hace B2 hoy, y qué queda de cada cosa.** B2 hace **cuatro** cosas distintas, y tienen
 destinos distintos. Están escritas acá antes de tocar nada, porque dos de ellas son lógica de
@@ -1794,6 +1805,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    |---|---|
    | barrio presente y **igual** | **+0,25** |
    | barrio **ausente**, comuna presente y coincide | **+0,15** |
+   | ídem en la **Comuna 1** con subzona (`Comuna 1 Norte/Sur`): el barrio del destino en esa subzona | **+0,15**; en la otra subzona, **desacuerdo** (regla 10) |
    | sin barrio ni comuna, **eje** del formulario = eje del barrio del destino | **+0,10** (detrás de `EJE_COMO_UBICACION`, ver 1.d) |
    | ~~sin barrio, comuna ni eje, **`EVENTO` del destino en el nombre del formulario**~~ | ~~+0,25~~ **descartado**: `EVENTO` es una categoría (718/802), flag en `false` |
    | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
@@ -2995,8 +3007,8 @@ origen", que llevan a trabajos completamente distintos.
 - **El activador diario del upsert va a las 18:00, nunca antes de las 17** (regla del equipo,
   01/10): los formularios se cierran y los barrios de RDV se cargan a lo largo del día, y matchear
   antes es hacerlo contra datos a medio cargar. Un formulario del día cuya fila todavía no tiene
-  barrio (`Comuna 1 Sur - 1/10`, que calza con dos filas del 1/10 —Retiro y Monserrat— todavía
-  incompletas) se resuelve solo cuando RDV lo tenga. El paso 2 tiene una línea fija con las filas
+  barrio se resuelve solo cuando RDV lo tenga (caso: `Comuna 1 Sur - 1/10`, que calzaba con Retiro
+  y Monserrat; con los barrios cargados la subzona, regla 10, la manda a Monserrat). El paso 2 tiene una línea fija con las filas
   de hoy o de ayer sin barrio, y mide —sin implementarla— la propuesta de no evaluar una fila sin
   barrio con menos de 1 día.
 - **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después

@@ -79,9 +79,9 @@ function diagFormulariosFaltantes() {
 
     const bF = normalizeText_(m.c.barrio), bD = normalizeText_(f.barrio);
     x.barrioIgual = !!(bF && bD && bF === bD);
-    x.comunaIgual = m.c.comuna != null && cDest != null && m.c.comuna === cDest;
-    x.ubicDistinta = (bF && bD && bF !== bD) ||
-                     (m.c.comuna != null && cDest != null && m.c.comuna !== cDest);
+    const cmp = comparaComuna_(f.barrio, cDest, m.c);    // con la subzona de la Comuna 1 (regla 10)
+    x.comunaIgual = !!(cmp && cmp.coincide);
+    x.ubicDistinta = (bF && bD && bF !== bD) || !!(cmp && !cmp.coincide);
     x.deOtra = deFila[m.c.fila] || null;
 
     if (x.deOtra) {

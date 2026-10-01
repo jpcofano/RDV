@@ -71,7 +71,9 @@ guarda (≈ 267 | 13 | 25) **no llegó a correrse**: la guarda se eliminó antes
   **14 → 2** en ventana): ≈ 12 filas que eran `sin_formulario_propio` ahora tienen formulario;
 - la reubicación a revisión (v) saca de `SIN_MATCH` las filas con figura + fecha + comuna en
   desacuerdo: **≈ 9 | 27** (predicción del usuario);
-- RDV se corrigió (Comuna 1 del 3/9) y los 12 ejes perdieron el `?`;
+- RDV se corrigió (Comuna 1 del 3/9) y la columna I quedó con **sólo los 18 ejes priorizados**
+  (los 30 completados por comuna y los 12 `?` salieron);
+- las **subzonas de la Comuna 1** deciden la ubicación (regla 10, decisión aa);
 - se eliminó la guarda: la 748 vuelve a escribirse (113).
 
 ```
@@ -80,7 +82,10 @@ escribiría          277 | 746          ≈ 283-290 | ≈ 755-765   (los formula
 a revisar             3 |  15          ≈  10-16  | ≈  38-48    (≈ 9 | 27 ubicacion_en_desacuerdo)
 sin match            25 |  44          ≈   3-8   | ≈   5-15
 ubicacion_en_desacuerdo (motivo)       ≈ 9 | 27
-decididas por el eje                   0-2       (más ejes evaluables sin el "?")
+decididas por el eje                   0         (menos barrios con eje: sólo los 18 priorizados)
+subzona de la Comuna 1                 "Comuna 1 Sur - 1/10" → Monserrat (808); el 3/9 igual
+                                       (Landerreche ← Sur, Tapia ← Norte)
+2e                                     barrios con eje 18 | sin eje 30 | pendientes 0
 invariante (bloque 0)                  0 formularios con 2+ filas
 filas de hoy/ayer sin barrio           ≥ 2      (Retiro y Monserrat del 1/10, si siguen sin barrio)
 ```
@@ -160,7 +165,8 @@ leído los números de la corrida en seco.
 | **Bereciartua 29/7** | **reunión reubicada** | la fila **714** (Flores) se escribe con `Comuna 7 - 29/7` (185); `Comuna 6 - 29/7` (169) es el **formulario viejo** de la misma reunión. No era un typo ni un faltante |
 | **(5)** comuna del formulario ≠ barrio de RDV (587, 590, 592, 543, 716 + 380, 393, 425, 443, 468, 247) | **reuniones reubicadas que no se actualizaron de un lado** | **regla 8 confirmada** (CLAUDE.md 1). El dato vigente es el barrio de RDV. Implementado: van a revisión, nunca se escriben solos (v). La medición "sin ambigüedad" sigue en pie para decidir cuáles se escribirían solos |
 | **(4)** formularios con inscriptos sin fila en RDV | **probablemente reuniones canceladas** (o reubicadas) | **regla 9**: no es un faltante a reclamar. El paso 13 pasa a "formularios sin fila: canceladas o reubicadas", informativo (w) |
-| **(7)** ejes dudosos | **los 12 propuestos quedan definitivos** | el usuario les saca el `?` en `Comunas`. La convención del `?` sigue para el futuro (g) |
+| **(7)** ejes dudosos | **son ejes PRIORIZADOS: sólo 18 barrios tienen eje** | los otros 30 no pertenecen a ningún eje: celda **vacía** (= no pertenece, no pendiente). El usuario corrigió la columna I: sacó los 30 completados por comuna y los 12 `?`. **No hay pendientes**; el `?` queda sólo como posibilidad (g). ~~Los 12 propuestos quedan definitivos~~ (corregido el mismo 01/10) |
+| subzonas de la **Comuna 1** | **Norte = Puerto Madero, Retiro, San Nicolás; Sur = Constitución, Monserrat, San Telmo** | no son ejes; deciden la ubicación de los formularios "Comuna 1 Norte/Sur" (regla 10, decisión aa) |
 | **Lombardi 2026** | **consulta de `Hoja1` corregida** | **verificado** con el paso 7 (01/10 14:11, `B` con 825 formularios): faltantes **14 \| 16 → 2 \| 3** (decisión o) |
 
 Los 2 faltantes que quedan en ventana —**Sánchez Zinny 19/06 Caballito** y **Muzzio 28/08
@@ -171,8 +177,9 @@ reubicaciones o filas duplicadas en RDV, no faltantes de la consulta. Quedan ano
 **Regla operativa (01/10): el match del día corre después de las 17.** Los formularios se cierran
 y los barrios de RDV se cargan a lo largo del día. El activador diario del upsert, cuando exista
 (Fase 7), va a las **18:00**, nunca antes de las 17; las corridas a mano, también después de las
-17. `Comuna 1 Sur - 1/10` (125), que calza con dos filas del 1/10 (Retiro y Monserrat) todavía sin
-barrio, se resuelve sola cuando RDV los tenga. El paso 2 tiene una línea fija con las filas de hoy
+17. `Comuna 1 Sur - 1/10` (125) calzaba con dos filas del 1/10 (Retiro y Monserrat): con los barrios
+cargados, la **subzona** (regla 10) la manda a **Monserrat (808)** —Sur— y deja a Retiro en
+desacuerdo. El paso 2 tiene una línea fija con las filas de hoy
 o de ayer sin barrio, y mide —sin implementarla— la propuesta de no evaluar una fila sin barrio con
 menos de 1 día.
 
@@ -332,10 +339,13 @@ Respeta la salvaguarda del desempate (umbral propio, no `multi_figura`). Traza:
 (los tres criterios anteriores ya resuelven todo lo que se vio). Si da más de 0, mirar esas filas
 con `paso12_explicarFila()` antes de confiar.
 
-**Ejes definitivos (01/10):** los 12 que estaban con `?` quedan como **definitivos**; el usuario les
-saca el `?` en `Comunas`. Si el equipo actualiza alguno, se cambia la celda. La convención del `?`
-sigue valiendo para el futuro. Con más barrios con eje evaluable, el último desempate puede decidir
-alguna fila: la línea fija del paso 2 lo dice (predicción 0-2).
+**Ejes PRIORIZADOS (01/10, dato del equipo):** sólo **18 barrios tienen eje**, los que definió el
+equipo. Los otros 30 **no pertenecen a ningún eje**: la celda va **vacía**, y vacío = "no
+pertenece", no "pendiente". **No se completa por comuna** —lo habíamos hecho y era un error— y **no
+hay pendientes**: el usuario sacó de la columna I los 30 completados y los 12 `?`. La convención
+del `?` queda sólo como posibilidad. El eje sigue siendo **sólo último desempate**. El 2e dice
+"barrios con eje 18 | sin eje 30". (Lo que se anotó un rato antes —"los 12 quedan definitivos"—
+quedó corregido.)
 
 ### h) ¿Los formularios temáticos tienen alguna reunión cerca?
 
@@ -860,6 +870,25 @@ Fase 9   retiro del staging  ── última
 La Fase 2 **no cierra hasta el final de la Fase 5**, y no es un descuido: tres archivos del
 legado no se pueden archivar todavía porque el único activador vivo los necesita. El detalle está
 en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
+
+### aa) Las subzonas de la Comuna 1 — implementadas (01/10, regla 10)
+
+**No son ejes.** Comuna 1 **Norte** = Puerto Madero, Retiro, San Nicolás; **Sur** = Constitución,
+Monserrat, San Telmo (`COMUNA1_SUBZONAS`, con `Montserrat` como grafía alternativa). Los títulos
+las usan (`Comuna 1 Sur - 3/9`).
+
+- `detectComuna_` sigue devolviendo el número; `detectSubzonaComuna1_` conserva la subzona
+  (`Comuna 1 Norte/Sur`, `1N`, `C1S`), que viaja en el candidato como `subzona`. Antes se
+  descartaba.
+- Ubicación (`comparaComuna_`): formulario con subzona contra una fila de un barrio de la Comuna 1
+  → **coincide** si el barrio está en esa subzona, **desacuerdo** si está en la otra (y con la
+  regla 8: a revisión, nunca descartar). Sin subzona, o barrio de la Comuna 1 fuera de las listas:
+  como antes. La usan también la puerta de `EMPAREJAR_MANUAL`, `cercanosDeFila_`, el paso 7 y
+  las herramientas de revisión.
+- **Línea fija en el paso 2**: pares que decidió la subzona `[ventana | total]`, con los casos.
+- **Probado en Node**: el 3/9 queda igual (Landerreche 768 ← `Comuna 1 Sur - 3/9`, Tapia 769 ←
+  `Tapia - Comuna 1 Norte - 3/9`) y `Comuna 1 Sur - 1/10` (125) va a **Monserrat (808)**; Retiro
+  (807) queda en desacuerdo.
 
 ---
 

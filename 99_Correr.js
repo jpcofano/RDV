@@ -29,7 +29,8 @@
  *      1. paso2_upsertEnSeco(). SIN la guarda de transición (eliminada), con las reubicaciones
  *         a revisión y las opciones en REVISAR_MATCH / EMPAREJAR_MANUAL. Ventana: escribiría
  *         ≈ 283-290, revisar ≈ 10-16 (≈ 9 | 27 ubicacion_en_desacuerdo), sin match ≈ 3-8.
- *         Invariante 0; eje 0-2.
+ *         Invariante 0; eje 0. Subzona de la Comuna 1: "Comuna 1 Sur - 1/10" → Monserrat (808),
+ *         el 3/9 igual. 2e: barrios con eje 18 | sin eje 30.
  *      2. paso13_formulariosSinFila(). Informativo: "posible reemplazo" (Bereciartua C6 29/7)
  *         y "sin fila (posible cancelada)".
  *      3. paso10_validarContraInscriptos(). Con la búsqueda inversa y la medición de los

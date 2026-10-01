@@ -1993,6 +1993,41 @@ function _logSinBarrioReciente_(plan) {
   }
 }
 
+/**
+ * Línea fija del paso 2 (regla 10): cuántos pares decidió la subzona de la Comuna 1 —formulario
+ * "Comuna 1 Norte/Sur" contra una fila de un barrio con subzona, a ±TOLERANCIA_REPROGRAMACION_DIAS—,
+ * [ventana | total], con los casos y en qué quedó la fila. Se espera que "Comuna 1 Sur - 1/10"
+ * quede para Monserrat (808) y que el 3/9 siga igual (Landerreche ← Sur, Tapia ← Norte).
+ */
+function _logSubzona_(plan) {
+  const coincide = contador_(), desac = contador_(), casos = [];
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
+    if (!pf || pf.veredicto === 'futura' || !subzonaDeBarrio_(f.barrio)) return;
+    const cDest = plan.comunas.get(normalizeText_(f.barrio));
+    if (cDest !== 1) return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    plan.cands.vivos.forEach(function (c) {
+      if (c.comuna !== 1 || !c.subzona) return;
+      const d = distanciaFecha_(f.fecha, c.det);
+      if (d === null || d > TOLERANCIA_REPROGRAMACION_DIAS) return;
+      const cmp = comparaComuna_(f.barrio, cDest, c);
+      sumar_(cmp.coincide ? coincide : desac, ev);
+      casos.push({ f: f, ev: ev, c: c, d: d, cmp: cmp, pf: pf });
+    });
+  });
+  Logger.log('  pares que decidió la SUBZONA de la Comuna 1 (regla 10, a ±%s días): coincide %s | ' +
+             'desacuerdo %s', TOLERANCIA_REPROGRAMACION_DIAS, _dc_(coincide), _dc_(desac));
+  _ordenarPorFila_(casos).slice(0, 30).forEach(function (x) {
+    Logger.log('    [%s] fila %s | %s | %s | %s (Comuna 1 %s) ↔ %s: %s, %s días | la fila: %s%s%s',
+               x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio,
+               x.cmp.subzonaDestino, x.c.nombre, x.cmp.coincide ? 'coincide' : 'DESACUERDO', x.d,
+               x.pf.veredicto || '?', x.pf.motivo ? '/' + x.pf.motivo : '',
+               x.pf.cand === x.c ? (x.pf.veredicto === 'escribiria' ? ' (es el elegido)' : ' (es su mejor candidato)')
+                                 : (x.pf.cand ? ' ← ' + x.pf.cand.nombre : ''));
+  });
+}
+
 function logResumen_(plan) {
   const r = plan.res;
   const base = { v: r.enVentana - r.futuras.v, t: plan.dest.filas.length - r.futuras.t };
@@ -2039,6 +2074,7 @@ function logResumen_(plan) {
                EJE_COMO_DESEMPATE, _dc_(dc.eje));
   }
   _logSinBarrioReciente_(plan);
+  _logSubzona_(plan);
   Logger.log('  por la regla sin_figura_por_ubicacion (SIN_FIGURA_POR_UBICACION = %s): escribiría %s' +
              ' | a revisar %s', SIN_FIGURA_POR_UBICACION, _dc_(plan.porSinFigEscribe || contador_()),
              _dc_(plan.porSinFigRevisa || contador_()));
@@ -2342,10 +2378,13 @@ function _logEvento_(plan, b, e) {
 function medirEjes_(dest, cands, comunas, porFila) {
   // --- a) la columna del eje ---
   const col = infoColumnaEje_();
-  const porEje = {}, pendientes = [], sinEje = [];
+  // Ejes PRIORIZADOS (01/10): sólo los barrios que definió el equipo tienen eje. Celda vacía =
+  // "no pertenece a ningún eje", no "pendiente". Un valor que no se reconoce se reporta aparte.
+  const porEje = {}, pendientes = [], sinEje = [], noPertenece = [];
   _listas_().barrios.forEach(function (b) {
     const info = ejeInfoDeBarrio_(b.canon);
-    if (!info.eje) { sinEje.push(b.canon + (b.ejeRaw ? ' ("' + b.ejeRaw + '")' : '')); return; }
+    if (!info.eje && !b.ejeRaw) { noPertenece.push(b.canon); return; }
+    if (!info.eje) { sinEje.push(b.canon + ' ("' + b.ejeRaw + '")'); return; }
     if (info.pendiente) { pendientes.push(b.canon + ' (' + info.raw + ')'); return; }
     if (!porEje[info.eje]) porEje[info.eje] = { barrios: [], comunas: {} };
     porEje[info.eje].barrios.push(b.canon);
@@ -2452,7 +2491,8 @@ function medirEjes_(dest, cands, comunas, porFila) {
   });
 
   return { pierde: pierde,
-           col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, porForma: porForma,
+           col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, noPertenece: noPertenece,
+           porForma: porForma,
            conEje: conEje, desconocidos: desconocidos, pares: pares, cruce: cruce,
            detalle: detalle, descartaCerca: descartaCerca, tem: tem };
 }
@@ -2620,10 +2660,14 @@ function _logEjes_(m) {
                Object.keys(x.comunas).sort(function (p, q) { return p - q; }).join(',') || '-',
                x.barrios.length, x.barrios.join(', '));
   });
-  Logger.log('     PENDIENTES ("?", no se evalúan): %s%s', m.pendientes.length,
+  const conEjeN = Object.keys(m.porEje).reduce(function (s, k) { return s + m.porEje[k].barrios.length; }, 0);
+  Logger.log('     barrios CON eje (priorizados): %s | SIN eje (celda vacía = no pertenece a ningún ' +
+             'eje): %s   (se esperan 18 | 30)', conEjeN, (m.noPertenece || []).length);
+  Logger.log('     pendientes ("?", sólo como posibilidad; no se evalúan): %s%s', m.pendientes.length,
              m.pendientes.length ? ' — ' + m.pendientes.join(', ') : '');
   if (m.sinEje.length) {
-    Logger.log('     sin eje reconocible: %s — %s', m.sinEje.length, m.sinEje.join(', '));
+    Logger.log('     valor NO reconocido en la columna (revisar la celda): %s — %s', m.sinEje.length,
+               m.sinEje.join(', '));
   }
 
   // b) formularios con eje
@@ -2885,7 +2929,8 @@ function cercanosDeFila_(f, vivos, comunas) {
     if (x === null || x > tol) continue;
     if (c.figurasNorm.indexOf(figNorm) !== -1) tomar('conFig', c, x);
     else if (!c.figurasNorm.length) {
-      const otra = c.comuna != null && cDest != null && c.comuna !== cDest;
+      const cmp = comparaComuna_(f.barrio, cDest, c);
+      const otra = !!(cmp && !cmp.coincide);
       tomar(otra ? 'sinFigOtra' : 'sinFigMisma', c, x);
     } else tomar('otraFig', c, x);
   }
@@ -3158,8 +3203,10 @@ function _detalleDesacuerdo_(f, c, comunas) {
   const bDest = normalizeText_(f.barrio), bCand = normalizeText_(c.barrio);
   const cDest = bDest ? comunas.get(bDest) : null;
   if (bDest && bCand) return 'form dice ' + c.barrio + ' / RDV dice ' + f.barrio;
-  return 'form dice Comuna ' + (c.comuna == null ? '?' : c.comuna) + ' / RDV dice ' +
-         (f.barrio || '(sin barrio)') + ' (Comuna ' + (cDest == null ? '?' : cDest) + ')';
+  const szDest = cDest === 1 ? subzonaDeBarrio_(f.barrio) : '';
+  return 'form dice Comuna ' + (c.comuna == null ? '?' : c.comuna) + (c.subzona ? ' ' + c.subzona : '') +
+         ' / RDV dice ' + (f.barrio || '(sin barrio)') + ' (Comuna ' + (cDest == null ? '?' : cDest) +
+         (szDest ? ' ' + szDest : '') + ')';
 }
 
 /** El score de un candidato contra una fila del destino. */
@@ -3195,6 +3242,7 @@ function puntuar_(f, c, comunas) {
    */
   let desacuerdo = false;
   let pesoUbic = 0;
+  let porSubzona = false;    // la ubicación la decidió la subzona de la Comuna 1
   const bDest = normalizeText_(f.barrio);
   const bCand = normalizeText_(c.barrio);
   const cDest = bDest ? comunas.get(bDest) : null;
@@ -3208,10 +3256,15 @@ function puntuar_(f, c, comunas) {
     if (bDest === bCand) { sUbic = pesoUbic; senales.push('barrio'); }
     else desacuerdo = true;
   } else if (c.comuna != null && cDest != null) {
+    // Comuna contra comuna; en la Comuna 1, también la subzona si el formulario la dice (regla 10).
+    const cmp = comparaComuna_(f.barrio, cDest, c);
+    porSubzona = cmp.porSubzona;
     pesoUbic = PESOS_MATCH.comunaSinBarrio;
     alcanzable += pesoUbic;
-    if (cDest === c.comuna) { sUbic = pesoUbic; senales.push('comuna'); }
-    else desacuerdo = true;
+    if (cmp.coincide) {
+      sUbic = pesoUbic;
+      senales.push(cmp.porSubzona ? 'comuna1_' + c.subzona.toLowerCase() : 'comuna');
+    } else desacuerdo = true;
   } else if (EJE_COMO_UBICACION && c.eje && c.eje.tipo === 'eje' && ejeDeBarrio_(f.barrio)) {
     /*
      * El eje: un eje contiene varias comunas, así que confirma menos (0,10) — pero un eje
@@ -3288,7 +3341,8 @@ function puntuar_(f, c, comunas) {
    * destino. Sigue siendo **Y** en la figura, que es lo que evitó los 1.883 pares.
    */
   const distOk   = (dist !== null && dist <= VENTANA_EMPAREJAR_DIAS);
-  const comunaOk = (c.comuna != null && cDest != null && cDest === c.comuna);
+  const cmpOk = comparaComuna_(f.barrio, cDest, c);
+  const comunaOk = !!(cmpOk && cmpOk.coincide);
   const ejeOk    = EJE_COMO_UBICACION && !!(c.eje && c.eje.tipo === 'eje' &&
                    ejeDeBarrio_(f.barrio) === c.eje.eje);
   const proponible = (sFig > 0) && (distOk || comunaOk || ejeOk);
@@ -3347,6 +3401,7 @@ function puntuar_(f, c, comunas) {
     // barrio de la fila. No puntúa ni descalifica: sólo lo lee _desempatePorEvidencia_.
     ejeCoincide: !!(c.eje && c.eje.tipo === 'eje' && ejeDeBarrio_(f.barrio) &&
                     ejeDeBarrio_(f.barrio) === c.eje.eje),
+    porSubzona: porSubzona,
     dist: dist,
     relevante: relevante,
     proponible: proponible,
@@ -3841,6 +3896,7 @@ function leerCandidatos_() {
       figurasNorm: figurasEnTexto_(nombre).map(normalizeText_),
       barrio: detectBarrio_(limpio),
       comuna: detectComuna_(limpio),
+      subzona: detectSubzonaComuna1_(limpio),     // Comuna 1 Norte / Sur (regla 10)
       eje: detectEje_(limpio),
       tematico: esFormularioTematico_(limpio),
       horaMin: _horaEnMinutos_(limpio),

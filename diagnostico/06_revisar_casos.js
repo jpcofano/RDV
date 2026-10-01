@@ -92,8 +92,9 @@ function explicarFila(n) {
     if (d === null || d > VENTANA_EMPAREJAR_DIAS) return;
     if (c.figurasNorm.indexOf(figNorm) !== -1) { lista.push({ c: c, d: d }); return; }
     if (c.figurasNorm.length) return;
+    const cmp = comparaComuna_(f.barrio, cDest, c);
     const ubicOk = (f.barrio && c.barrio && normalizeText_(f.barrio) === normalizeText_(c.barrio)) ||
-                   (c.comuna != null && cDest != null && c.comuna === cDest);
+                   !!(cmp && cmp.coincide);
     if (ubicOk || d <= TOLERANCIA_REPROGRAMACION_DIAS) lista.push({ c: c, d: d });
   });
   lista.sort(function (a, b) { return a.d - b.d; });
@@ -231,8 +232,9 @@ function _explicarUnFormulario_diag6(ctx, c) {
     }
     // sin figura: las filas cercanas o de su misma ubicación
     const cDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
+    const cmp = comparaComuna_(f.barrio, cDest, c);
     const ubicOk = (f.barrio && c.barrio && normalizeText_(f.barrio) === normalizeText_(c.barrio)) ||
-                   (c.comuna != null && cDest != null && c.comuna === cDest);
+                   !!(cmp && cmp.coincide);
     if (ubicOk || d <= TOLERANCIA_REPROGRAMACION_DIAS) lista.push({ f: f, d: d });
   });
   lista.sort(function (a, b) { return a.d - b.d; });
@@ -275,8 +277,10 @@ function _logPar_diag6(ctx, f, c, sangria) {
     L('  ubicación ... barrio: destino ' + f.barrio + ' vs formulario ' + c.barrio +
       (bDest === bCand ? ' → coincide' : ' → DESACUERDO'));
   } else if (c.comuna != null && cDest != null) {
-    L('  ubicación ... comuna: destino ' + cDest + ' vs formulario ' + c.comuna +
-      (cDest === c.comuna ? ' → coincide' : ' → DESACUERDO'));
+    const cmp = comparaComuna_(f.barrio, cDest, c);
+    L('  ubicación ... comuna: destino ' + cDest + (cmp.subzonaDestino ? ' ' + cmp.subzonaDestino : '') +
+      ' vs formulario ' + c.comuna + (c.subzona ? ' ' + c.subzona : '') +
+      (cmp.coincide ? ' → coincide' : ' → DESACUERDO') + (cmp.porSubzona ? ' (por la subzona, regla 10)' : ''));
   } else {
     L('  ubicación ... no evaluable (barrio del formulario: ' + (c.barrio || '-') + ', comuna: ' +
       (c.comuna == null ? '-' : c.comuna) + ', comuna del destino: ' + (cDest == null ? '-' : cDest) + ')');

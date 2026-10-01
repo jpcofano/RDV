@@ -418,10 +418,10 @@ function esFormularioTematico_(texto) {
  * Número de comuna mencionado en el texto: `Comuna 6`, `COMUNA 06`, `C6` → `6`.
  * El origen dejó de mandar barrio y pasó a mandar comuna (CLAUDE.md 3.3.b).
  *
- * Las subdivisiones de la Comuna 1 —`Comuna 1 Norte`, `Comuna 1N`, `Comuna 1 Sur`, `C1S`— se
- * leen como **comuna 1**, descartando el sufijo. `Comuna 1 Norte` ya se leía así; `Comuna 1N`,
- * con el sufijo pegado, no la tomaba ninguna de las dos regex y la fila quedaba sin ninguna señal
- * de ubicación. Recupera cobertura; no cambia lo que ya se leía.
+ * Las subzonas de la Comuna 1 —`Comuna 1 Norte`, `Comuna 1N`, `Comuna 1 Sur`, `C1S`— se leen
+ * como **comuna 1**; desde el 01/10 la subzona **no se pierde**: la lee `detectSubzonaComuna1_`
+ * sobre el mismo texto y viaja en el candidato como `subzona` (regla 10, `COMUNA1_SUBZONAS`).
+ * Se mantiene el número como valor de retorno porque lo usan una docena de lugares.
  */
 function detectComuna_(texto) {
   const t = String(texto == null ? '' : texto);
@@ -430,6 +430,48 @@ function detectComuna_(texto) {
   if (!m) return null;
   const n = parseInt(m[1], 10);
   return (n >= 1 && n <= 15) ? n : null;
+}
+
+/**
+ * La subzona de la Comuna 1 que dice el texto: 'Norte' | 'Sur' | null. `Comuna 1 Norte`,
+ * `Comuna 1N`, `Comuna 1 Sur`, `C1S`. No son ejes (regla 10).
+ */
+function detectSubzonaComuna1_(texto) {
+  const t = String(texto == null ? '' : texto);
+  let m = /\bcomuna\s*0?1\s*(norte|sur|n|s)\b/i.exec(t);
+  if (!m) m = /\bc0?1(n|s)\b/i.exec(t);
+  if (!m) return null;
+  return /^n/i.test(m[1]) ? 'Norte' : 'Sur';
+}
+
+/** La subzona de la Comuna 1 de un barrio del destino, según `COMUNA1_SUBZONAS`; '' si no tiene. */
+function subzonaDeBarrio_(barrio) {
+  const canon = canonizarBarrio_(barrio) || barrio;
+  const n = _expandirAbreviaturas_(normalizeText_(canon));
+  if (!n) return '';
+  const zonas = Object.keys(COMUNA1_SUBZONAS);
+  for (let i = 0; i < zonas.length; i++) {
+    const lista = COMUNA1_SUBZONAS[zonas[i]];
+    for (let j = 0; j < lista.length; j++) {
+      if (_expandirAbreviaturas_(normalizeText_(lista[j])) === n) return zonas[i];
+    }
+  }
+  return '';
+}
+
+/**
+ * Comuna del formulario contra la del destino, con la subzona de la Comuna 1 (regla 10).
+ * Devuelve `null` si no se puede evaluar, o `{ coincide, porSubzona, subzonaDestino }`:
+ * misma comuna y, si es la 1 y las dos subzonas se conocen, misma subzona.
+ */
+function comparaComuna_(barrioDestino, comunaDestino, c) {
+  if (c.comuna == null || comunaDestino == null) return null;
+  if (c.comuna !== comunaDestino) return { coincide: false, porSubzona: false, subzonaDestino: '' };
+  if (c.comuna === 1 && c.subzona) {
+    const sz = subzonaDeBarrio_(barrioDestino);
+    if (sz) return { coincide: sz === c.subzona, porSubzona: true, subzonaDestino: sz };
+  }
+  return { coincide: true, porSubzona: false, subzonaDestino: '' };
 }
 
 /**
