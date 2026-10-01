@@ -1020,8 +1020,9 @@ aclara que la lista es para que el equipo confirme.
 - ~~**Tolerancia asimétrica para los formularios con fuente `fecha_fin`**~~: **implementada el
   01/10** (decisión s).
 
-**Handoff del 01/10:** [docs/HANDOFF-2026-10-01.md](HANDOFF-2026-10-01.md). Lo redactó Claude al
-cierre, porque el texto del usuario no llegó; si llega, se integra ahí.
+**Handoff del 01/10:** [docs/HANDOFF-2026-10-01.md](HANDOFF-2026-10-01.md), el texto del usuario
+(01/10 noche), guardado tal cual. Es una foto: su "Pendiente para Code" (puntos 1 a 4) ya está
+hecho en `5f84cc1`; lo que sigue es correr el paso 2 y el paso 10.
 
 ---
 
