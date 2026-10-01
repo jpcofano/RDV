@@ -388,7 +388,10 @@ Hasta ahora los cuatro competían igual.
 > nombraba a nadie. Con la figura buscada sobre el texto completo, ya tienen fila. Quedan
 > **B 421 y 448**, que nombran figuras sólo por apellido (`Lombardi-Tapia-Piragine`):
 > **hipótesis, sin medir**, que sea la grafía y no la falta de reunión. El handoff no se corrige:
-> es una foto.
+> es una foto. **Confirmado el 01/10**: los formularios nuevos de Lombardi nombran a las figuras
+> sólo por apellido, y la búsqueda inversa del paso 10 los encontró a 0 días con los inscriptos
+> exactos del destino (510, 542, 620, 658, 686, 755, 798; 470 y 444 en el histórico). Se
+> reconocen desde el 01/10 con `FIGURA_POR_APELLIDO` (decisión 2).
 
 **Tres reglas de negocio más, confirmadas por el usuario (26/09):**
 
@@ -741,7 +744,8 @@ pesa cada una antes de elegir por dónde empezar.
 > No hay texto que reconocer. La rama "ampliar listas" sólo aplica a la **figura**. Ahí
 > `limpiarPrefijos_` quedó medido y descartado (25/09: 18 formularios en ventana perdían la
 > figura, 0 ganaban algo) y ya no se aplica a la figura; las **variantes de grafía** siguen como
-> candidata, **sin medir** (docs/HANDOFF-2026-09-25.md, sección 3).
+> candidata, **sin medir** (docs/HANDOFF-2026-09-25.md, sección 3). **01/10: portadas del legado**
+> —`FIGURAS_VARIANTES` y `BARRIOS_VARIANTES`— y medidas en una línea del paso 2 (decisión 2).
 
 `DIAG_CORTE_B` (Fase 1b) mide el reparto. **Las 23 claves incompletas no alcanzan a explicar 72
 filas**, así que hay que esperar las dos causas mezcladas y dimensionar cada una, no elegir la
@@ -1760,7 +1764,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
    | señal | puntaje |
    |---|---|
-   | figura mencionada en el texto del evento | **0,35** |
+   | figura mencionada en el texto del evento (nombre completo, o **apellido único** — abajo) | **0,35** |
    | fecha exacta **o a ±3 días** (`TOLERANCIA_REPROGRAMACION_DIAS`) | **0,30** |
    | fecha ±7 días | 0,06 |
 
@@ -1784,6 +1788,42 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    (1.c). `fecha_fin` entra **sólo como respaldo**, cuando el texto no dio ninguna ocurrencia
    aceptable. No se compara contra las dos quedándose con la más cercana: `fecha_fin` es el
    cierre del formulario, no la reunión, y coincidir con él no es evidencia (3.3.c, corrección).
+
+   **Ventana asimétrica para los formularios sin fecha en el texto (01/10, `FECHA_FIN_ASIMETRICA`).**
+   Cuando el respaldo es `fecha_fin`, la tolerancia no es ±3: como el cierre de la inscripción cae
+   **antes** de la reunión, (fila − `fecha_fin`) en **[0, +6]** (`FECHA_FIN_VENTANA`) puntúa pleno,
+   **hacia atrás puntúa cero**, y más allá de +6 sigue la escala. Sale de una medición (paso 10,
+   01/10): el **100%** de las reuniones confirmadas por inscriptos cae en o después del cierre, con
+   **p90 = +6**. Traza `fecha_fin+N`. Los formularios con fecha en el texto no cambian. Caso: la 626
+   (Flores 04/06) ↔ `1 a 1 - Comuna 7` (cierre a +6, 105 = 105). Lo calcula `puntajeFechaCandidato_`
+   (`02_Parsing.js`), que usan el score y `cercanosDeFila_`.
+
+   **Figuras sólo por apellido (01/10, `FIGURA_POR_APELLIDO`).** Los formularios nuevos de Lombardi
+   dicen *"RDV - Eje norte, Lombardi-Tapia-Piragine- 30/3"*. En `figurasEnTexto_`, un apellido
+   suelto cuenta como figura **sólo si es único** entre todas las figuras del destino —la última
+   palabra del nombre, que no aparezca en el nombre de ninguna otra figura—: Lombardi → Hernán
+   Lombardi, Tapia → Gabino Tapia, Piragine → Gustavo Arengo Piragine. Uno que comparten dos figuras
+   no cuenta. Traza `figura_por_apellido`; el paso 2 lista qué formularios suman figuras así. Con
+   tres figuras el formulario es `multi_figura` → REVISAR_MATCH: lo decide una persona con las
+   opciones, igual que los históricos `HERNÁN LOMBARDI-GUSTAVO ARENGO PIRAGINE`.
+
+   **Variantes de grafía, portadas del legado (01/10, `FIGURAS_VARIANTES`).** La tabla de regex de
+   `detectPersona_` (`_archivo/Código.js`), una por figura, en `00_Config.js` con su origen:
+   Piñeiro/Pineiro, Baistrocchi/Biastrocchi, Quirós/Quiroz, "Gustavo Arengo" con o sin "Piragine",
+   Landerreche/Landereche; más dos casos vistos en el 2b: "Horacio Lombardi" → Hernán Lombardi y
+   "Arengo Peragine" → Gustavo Arengo Piragine. `figurasEnTexto_` las usa **además** de la lista del
+   destino; el canon se resuelve contra la columna Figura. Traza `figura_por_variante`. Orden: nombre
+   completo, después variante, después apellido único.
+
+   **Variantes de barrio, portadas del legado (`BARRIOS_VARIANTES`).** Las de `detectBarrio_`
+   (Vélez, Paternal, Pompeya, Lugano, …) entran **sólo si la lista de `Comunas` no reconoció
+   ninguno**, con el canon resuelto contra `Comunas`. De paso se arregló `_expandirAbreviaturas_`:
+   `gral.` quedaba `general.` (con el punto) y "Villa Gral. Mitre" no coincidía nunca con "Villa
+   Gral Mitre" ni con "Villa General Mitre".
+
+   El paso 2 tiene una línea fija con los formularios que suman figuras por variante o por apellido
+   (y cuántos de ésos quedan con 2+ figuras → `multi_figura` → revisión), y los que sacan el barrio
+   de una variante, con los casos.
 
    #### Dos puertas de relevancia, con anchos distintos
 
@@ -1936,8 +1976,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
      de pares por fila no lo corta;
    - **nunca se escribe solo.** `medirDesacuerdoUbicacion()` (paso 11) mide cuáles son **sin
      ambigüedad** (la figura tiene un solo formulario ese día ±1 y la fila un solo candidato con
-     figura y fecha) y, de ésos, cuántos coinciden en inscriptos con el destino (calibración). Si
-     se escriben solos con traza `posible_reubicacion` lo decide el usuario con esos números.
+     figura y fecha) y, de ésos, cuántos coinciden en inscriptos con el destino (calibración).
+     **Decidido el 01/10, con los números (sin ambigüedad 2 | 4): NO se escriben solos.** Quedan en
+     revisión, con las opciones y sus puntajes, y los resuelve una persona.
 
    > **Cae la medición de colisiones dentro de la comuna** que estaba pedida antes. Con la regla
    > de la sección 1.a no puede haber dos reuniones de la misma figura el mismo día, así que no

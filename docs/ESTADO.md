@@ -60,11 +60,56 @@ inscriptos); la **626** (Flores 04/06) perdió tres formularios en cascada y ter
 **Landerreche 03/09** con el `Comuna 1 Sur` de 116: **aceptado** (regla de negocio), atado a la
 respuesta del equipo sobre la fila **769**.
 
-**Línea base vigente: la corrida del 30/09 14:19**, ventana **277 | 3 | 25**. La predicción con la
-guarda (≈ 267 | 13 | 25) **no llegó a correrse**: la guarda se eliminó antes (decisión t).
+### Resultados del 01/10 18:04–18:07 (`e921457`): **línea base vigente**
 
-**Predicciones del 01/10, anotadas antes de correr** (después de las 17, en este orden: 2, 13, 10,
-11). Desde la línea base cambiaron cuatro cosas a la vez, así que son rangos y la confianza es
+| | resultado | predicción |
+|---|---|---|
+| paso 2 (ventana) | **284 \| 9 \| 16** | 283-290 \| 10-16 \| 3-8 |
+| invariante | **0** | 0 |
+| decididas por el eje | **0** | 0 |
+| `ubicacion_en_desacuerdo` | **6 \| 15** | ≈ 9 \| 27 |
+| subzona de la Comuna 1 | **19 \| 32 pares coinciden** | 1/10 → Monserrat; 3/9 igual |
+| paso 10 | **97,4% exacto** en ventana; desempates **35 de 35** | 769 fuera de "más" |
+| paso 11 | sin ambigüedad **2 \| 4** | ≥ 5 en ventana |
+| paso 13 | **Bereciartua `Comuna 6 - 29/7` como reemplazo** | ídem |
+| `fecha_fin` (paso 10) | **100%** de las reuniones en o después del cierre; **p90 = +6** | — |
+
+Lo que se apartó: **sin match 16** contra 3-8. La explicación está en la búsqueda inversa: **9
+filas de la ventana** tienen su formulario a 0 días con los inscriptos exactos, pero el formulario
+nombra a las figuras **sólo por apellido** (Lombardi-Tapia-Piragine) y el matcher no las reconocía
+(punto 1 de abajo). Y **sin ambigüedad 2 | 4** quedó por debajo de lo previsto.
+
+**Dos decisiones del usuario con esos números:**
+
+- **las reubicaciones NO se escriben solas**: quedan en revisión con las opciones (decisión v);
+- **la ventana asimétrica SÍ se implementa** para los formularios con fuente `fecha_fin` (decisión s).
+
+**Predicciones para la próxima corrida (puntos 1 y 2), anotadas antes de correr** —paso 2 y paso
+10, después de las 17—:
+
+```
+(ventana)            01/10 18:04     predicción
+escribiría               284         ≈ 285       (+ la 626 por la ventana asimétrica; puede
+                                                  sumar alguna más con fuente fecha_fin)
+a revisar                  9         ≈ 18        (+ ≈ 9 multi_figura: los formularios de Lombardi
+                                                  por apellido, como los históricos)
+sin match                 16         ≈ 7
+formularios con figura sólo por apellido (línea nueva del paso 2): los de Lombardi-Tapia-Piragine
+  de la ventana (≈ 9) y del histórico; ninguno que no sea de una figura real
+invariante                 0         0
+```
+
+- **paso 10**: el bloque de `fecha_fin` muestra la **626 como elegida** (`1 a 1 - Comuna 7`,
+  105 = 105, +6 días), y la fila pasa a escribiría;
+- **paso 13** (cuando se corra): las filas de Lombardi-Tapia-Piragine **salen de "sin fila"**;
+  "Primera Persona 12/8 con Nicolás Vázquez" (425) sigue en "posible reemplazo" pero marcada
+  **DUDOSO** (tiene más inscriptos que su "nuevo", `1 a 1 - 12/8 Parque Avellaneda`, 128).
+
+La línea base anterior, 30/09 14:19: ventana **277 | 3 | 25**. La predicción con la guarda (≈ 267 |
+13 | 25) no llegó a correrse (decisión t).
+
+**Predicciones del 01/10 para `e921457`, anotadas antes de correr** (ya corridas: resultado arriba;
+se dejan para comparar). Desde la línea base cambiaron cuatro cosas a la vez, así que son rangos y la confianza es
 **baja** en el paso 2:
 
 - `B` pasó a **825** formularios y la consulta de Lombardi se corrigió (paso 7: faltantes
@@ -190,8 +235,22 @@ menos de 1 día.
 **`DRY_RUN` lo cambia el usuario, no el código ni Claude.** Esto es la lista de lo que tiene que
 estar en verde antes, y el orden de la primera escritura real. Nada de esto está hecho todavía.
 
+**Lo que queda antes de la primera escritura real (al 01/10):**
+
+1. **Los puntos 1 y 2 del 01/10 corridos y verificados** —figuras por apellido y ventana
+   asimétrica— con el **paso 2** (sin match ≈ 7, revisar ≈ 18, la línea de apellidos sin basura) y
+   el **paso 10** (la 626 elegida en el bloque de `fecha_fin`).
+2. **Backup** según [docs/backup.md](backup.md).
+3. **Invariante en 0** en el bloque 0 del paso 2.
+4. **El usuario revisa `REVISAR_MATCH` con las opciones** (decisión y): las `ubicacion_en_desacuerdo`
+   y las `multi_figura` de Lombardi no se escriben solas.
+
+El detalle, como lista de chequeo:
+
 **Antes (todo en verde, o no se pasa):**
 
+- [ ] **Puntos 1 y 2 del 01/10 verificados** con el paso 2 y el paso 10 (arriba).
+- [ ] **`REVISAR_MATCH` revisada por el usuario**, con las opciones y sus puntajes.
 - [ ] **Backup completo** según [docs/backup.md](backup.md): copias de (1), (2) y (4) con fecha;
       el **texto** de las once fórmulas en `docs/formulas-legado.md`; foto de `Comunas` **A:I**
       (ahora incluye la columna I del eje); los números de control; el conteo de `#4F81BD` de hoy.
@@ -617,6 +676,14 @@ de la inscripción, que cae **antes** de la reunión (caso: fila 626 Flores 04/0
 fila − `fecha_fin`) día por día. Si en la ventana es sistemáticamente ≥ 0 (≥ 80% de al menos 5
 casos), **propone** una tolerancia asimétrica `[0, p90]` para esos formularios. No implementa nada.
 
+**Medido el 01/10 18:04: el 100% de las reuniones confirmadas cae en o después del cierre, p90 =
++6. Decisión del usuario: se implementa** (`FECHA_FIN_ASIMETRICA = true`, `FECHA_FIN_VENTANA =
+[0, +6]`). Para los formularios con fuente `fecha_fin`: pleno de 0 a +6 días, **cero hacia atrás**,
+y más allá de +6 la escala de siempre. Traza `fecha_fin+N`. Los formularios con fecha en el texto
+no cambian. Probado en Node: la 626 (Flores 04/06) se escribe con `1 a 1 - Comuna 7` (cierre a
++6), y un cierre posterior a la reunión puntúa 0 en fecha. Predicción: el bloque de `fecha_fin`
+del próximo paso 10 muestra la 626 como elegida.
+
 ### t) ~~La guarda de transición: `TRANSICION_RESPETAR_DESTINO`~~ — ELIMINADA (01/10)
 
 > **Decisión del usuario (01/10): se eliminó del código** —la constante, el bloque de
@@ -693,6 +760,10 @@ con figura y fecha (±7)— y cuántos ambiguos, `[ventana | total]` con los cas
 ambigüedad, cuántos tienen inscriptos del formulario iguales a los del destino (calibración). Con
 esos números el usuario decide si los sin ambigüedad se escriben solos con traza
 `posible_reubicacion`.
+
+**Medido el 01/10 18:04: `ubicacion_en_desacuerdo` 6 | 15 (predicción ≈ 9 | 27); sin ambigüedad
+2 | 4. Decisión del usuario: NO se escriben solas.** Quedan en revisión, con las opciones y sus
+puntajes (decisión y), y las resuelve una persona.
 
 ### w) Herramientas para revisar casos uno por uno — `diagnostico/06_revisar_casos.js`
 
@@ -830,6 +901,8 @@ correrlo**: el ancla está descartada (3.3.c).
 - [docs/triggers-legado.md](triggers-legado.md) — inventario de activadores. **Prerrequisito de
   cualquier decisión de archivado**
 - [docs/backup.md](backup.md) — las copias de las planillas
+- [docs/HANDOFF-2026-09-25.md](HANDOFF-2026-09-25.md) y [docs/HANDOFF-2026-10-01.md](HANDOFF-2026-10-01.md)
+  — fotos de cierre de sesión; no se corrigen
 - [docs/prompts/](prompts/) — los prompts que originaron cada fase
 
 ---
@@ -889,6 +962,47 @@ las usan (`Comuna 1 Sur - 3/9`).
 - **Probado en Node**: el 3/9 queda igual (Landerreche 768 ← `Comuna 1 Sur - 3/9`, Tapia 769 ←
   `Tapia - Comuna 1 Norte - 3/9`) y `Comuna 1 Sur - 1/10` (125) va a **Monserrat (808)**; Retiro
   (807) queda en desacuerdo.
+- **Corrió el 01/10 18:04**: 19 | 32 pares coinciden por la subzona.
+
+### bb) Figuras nombradas sólo por apellido — implementado (01/10)
+
+Los formularios nuevos de Lombardi (*"RDV - Eje norte, Lombardi-Tapia-Piragine- 30/3"*, *"Encuentro
+con comerciantes 24/6 Eje Oeste"*, …) nombran a las figuras **sólo por apellido**. El matcher no
+las reconocía y esas filas quedaban SIN_MATCH aunque el formulario estuviera a 0 días con los
+inscriptos exactos del destino: la búsqueda inversa del 01/10 marcó **510, 542, 620, 658, 686,
+755, 798** (y 470, 444 en el histórico). **Son 9 filas de la ventana.**
+
+`FIGURA_POR_APELLIDO = true`: en `figurasEnTexto_`, un apellido suelto cuenta como figura **sólo
+si es único** entre las figuras del destino (la última palabra del nombre, que no aparezca en el
+nombre de ninguna otra figura; mínimo 4 letras; las entradas que juntan varias figuras no cuentan).
+Lombardi → Hernán Lombardi, Tapia → Gabino Tapia, Piragine → Gustavo Arengo Piragine. Uno compartido
+no cuenta. Traza `figura_por_apellido`. **Línea nueva del paso 2**: qué formularios suman figuras
+así, para ver que no entre basura.
+
+Con tres figuras el formulario es `multi_figura` → REVISAR_MATCH, como los históricos
+`HERNÁN LOMBARDI-GUSTAVO ARENGO PIRAGINE`: lo decide una persona con las opciones. **Probado en
+Node**: `"RDV - Eje norte, Lombardi-Tapia-Piragine- 30/3"` → 3 figuras → multi_figura; un
+apellido compartido ("Miguel", de Mercedes Miguel y Miguel Sabor) no suma. **Predicción**: sin match
+en ventana 16 → ≈ 7, revisar 9 → ≈ 18.
+
+**Variantes del legado (01/10, pedido aparte del mismo día).** Se portó la tabla de
+`detectPersona_` de `_archivo/Código.js` a `00_Config.js` como **`FIGURAS_VARIANTES`** (una regex
+por figura, con su origen), y `figurasEnTexto_` la usa además de la lista del destino: Piñeiro /
+Pineiro, Baistrocchi / Biastrocchi, Quirós / Quiroz, "Gustavo Arengo" con o sin "Piragine",
+Landerreche / Landereche, y los dos casos del 2b: **"Horacio Lombardi" → Hernán Lombardi** y
+**"Arengo Peragine" → Gustavo Arengo Piragine**. Traza `figura_por_variante` (o
+`figura_por_apellido`). También se portaron las variantes de barrio (**`BARRIOS_VARIANTES`**:
+Vélez, Paternal, Pompeya, Lugano…), que entran sólo si `Comunas` no reconoció ningún barrio. La
+línea del paso 2 cuenta y lista las dos cosas. **Bug arreglado de paso**: `_expandirAbreviaturas_`
+dejaba el punto de `gral.`, y "Villa Gral. Mitre" no coincidía nunca con "Villa Gral Mitre". Probado
+en Node (Pineiro, Landereche, Horacio Lombardi, Arengo Peragine, Quiroz, Biastrocchi, Pompeya,
+Velez, Paternal, Lugano, Villa Gral Mitre). La predicción no cambia: **sin match 16 → ≈ 7, revisar
+≈ +9**; la línea de variantes puede sumar algún formulario más, y eso es lo que hay que mirar.
+
+**Paso 13** (01/10): "Primera Persona 12/8 con Nicolás Vázquez" (425) salió como reemplazado por
+`1 a 1 - 12/8 Parque Avellaneda` (128), y puede ser otra reunión del mismo día. Queda en la lista,
+marcado **DUDOSO** cuando el formulario "viejo" tiene más inscriptos que el "nuevo"; el encabezado
+aclara que la lista es para que el equipo confirme.
 
 ---
 
@@ -899,15 +1013,15 @@ las usan (`Comuna 1 Sur - 3/9`).
   viejo) y para **detectar filas que faltan en RDV** (una reunión agendada y realizada sin fila).
   El destino ya trae un texto de agenda por fila. Sin medir: es una fuente a cruzar cuando toque la
   Fase 8, no una regla.
-- **Escribir solas las reubicaciones sin ambigüedad**, con traza `posible_reubicacion`: lo decide
-  el usuario con la medición 2b del paso 11 (decisión v).
+- ~~**Escribir solas las reubicaciones sin ambigüedad**~~: **descartado el 01/10** (sin ambigüedad
+  2 | 4): quedan en revisión (decisión v).
 - **No evaluar una fila sin barrio con menos de 1 día** (regla de las 17): medida en el paso 2, sin
   implementar (1a).
-- **Tolerancia asimétrica para los formularios con fuente `fecha_fin`**: la propone el paso 10 si
-  los datos la sostienen (decisión s).
+- ~~**Tolerancia asimétrica para los formularios con fuente `fecha_fin`**~~: **implementada el
+  01/10** (decisión s).
 
-**Pendiente de guardar:** el handoff del 01/10 como `docs/HANDOFF-2026-10-01.md`; el usuario lo
-pasa aparte.
+**Handoff del 01/10:** [docs/HANDOFF-2026-10-01.md](HANDOFF-2026-10-01.md). Lo redactó Claude al
+cierre, porque el texto del usuario no llegó; si llega, se integra ahí.
 
 ---
 

@@ -24,29 +24,28 @@
  *  >>> CORRER DESPUÉS DE LAS 17 (regla operativa del 01/10: formularios y barrios se cargan a lo
  *      largo del día). Sin pendientes con el equipo: docs/ESTADO.md, 1a.
  *
- *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino). Predicciones en
+ *  >>> PRÓXIMO, en este orden (los dos sólo leen, ninguno toca el destino). Predicciones en
  *      docs/ESTADO.md, sección 1, anotadas antes de correr:
- *      1. paso2_upsertEnSeco(). SIN la guarda de transición (eliminada), con las reubicaciones
- *         a revisión y las opciones en REVISAR_MATCH / EMPAREJAR_MANUAL. Ventana: escribiría
- *         ≈ 283-290, revisar ≈ 10-16 (≈ 9 | 27 ubicacion_en_desacuerdo), sin match ≈ 3-8.
- *         Invariante 0; eje 0. Subzona de la Comuna 1: "Comuna 1 Sur - 1/10" → Monserrat (808),
- *         el 3/9 igual. 2e: barrios con eje 18 | sin eje 30.
- *      2. paso13_formulariosSinFila(). Informativo: "posible reemplazo" (Bereciartua C6 29/7)
- *         y "sin fila (posible cancelada)".
- *      3. paso10_validarContraInscriptos(). Con la búsqueda inversa y la medición de los
- *         formularios con fecha_fin (626 a +6 días).
- *      4. paso11_desacuerdoUbicacion(). Reubicaciones y cuáles son sin ambigüedad.
+ *      1. paso2_upsertEnSeco(). Primera corrida con las FIGURAS POR VARIANTE Y POR APELLIDO
+ *         (Lombardi-Tapia-Piragine) y la VENTANA ASIMÉTRICA de fecha_fin. Ventana: sin match
+ *         16 → ≈ 7, revisar 9 → ≈ 18 (multi_figura), escribiría 284 → ≈ 285 (la 626). Mirar la
+ *         línea nueva de variantes/apellidos/barrios: que no entre basura. Invariante 0.
+ *      2. paso10_validarContraInscriptos(). El bloque de fecha_fin tiene que mostrar la 626 como
+ *         elegida ("1 a 1 - Comuna 7", 105 = 105, +6 días).
+ *      Después, cuando se quiera: paso13_formulariosSinFila() (Lombardi sale de "sin fila";
+ *      Primera Persona 12/8 marcada DUDOSO) y paso11_desacuerdoUbicacion().
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
  *      editando CASO_A_EXPLICAR (más abajo). paso14_formulasDestino() cuando se quiera.
  *
- *  LÍNEA BASE vigente: la corrida en seco del 30/09 14:19 (desempate + invariante aplicados).
- *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE):
+ *  LÍNEA BASE vigente: la corrida en seco del 01/10 18:04 (e921457). Corte de ventana FIJO en
+ *  26/03/2026 (VENTANA_ANALISIS_DESDE):
  *
- *        escribiría   277 | 746     predicción era 272-278
- *        a revisar      3 |  15                    2-8
- *        sin match     25 |  44                    ~24
+ *        escribiría   284     predicción era 283-290
+ *        a revisar      9                    10-16
+ *        sin match     16                    3-8    (las 9 de Lombardi por apellido)
  *
- *      Las anteriores (25/09 18:13, 26/09 11:36, 14:21, 16:45 y 17:44) están en docs/ESTADO.md.
+ *      Las anteriores (25/09 18:13, 26/09 11:36, 14:21, 16:45, 17:44 y 30/09 14:19) están en
+ *      docs/ESTADO.md.
  *
  *  La secuencia, en orden:
  *

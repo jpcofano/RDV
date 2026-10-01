@@ -137,11 +137,13 @@ function infoColumnaEje_() {
  */
 function _expandirAbreviaturas_(norm) {
   return String(norm)
-    .replace(/\bgral\.?\b/g, 'general')
-    .replace(/\bgra\.?\b/g, 'general')
-    .replace(/\bsta\.?\b/g, 'santa')
-    .replace(/\bsto\.?\b/g, 'santo')
-    .replace(/\bpque\.?\b/g, 'parque')
+    // Antes era `\bgral\.?\b`, que no se comía el punto: "gral. mitre" quedaba "general. mitre"
+    // y nunca coincidía con "gral mitre". Ahora el `\.?` va después del `\b` (01/10).
+    .replace(/\bgral\b\.?/g, 'general')
+    .replace(/\bgra\b\.?/g, 'general')
+    .replace(/\bsta\b\.?/g, 'santa')
+    .replace(/\bsto\b\.?/g, 'santo')
+    .replace(/\bpque\b\.?/g, 'parque')
     .replace(/\bvilla\s+gral\b/g, 'villa general')
     .replace(/\s+/g, ' ').trim();
 }
@@ -235,7 +237,98 @@ function esFormularioAnulado_(texto) {
  * perdían su única figura (18 en ventana, todos `JORGE MACRI - ...` sin repetir el nombre).
  */
 function figurasEnTexto_(texto) {
-  return _figurasEnNormalizado_(normalizeText_(texto));
+  const t = normalizeText_(texto);
+  const out = _figurasEnNormalizado_(t);
+  const varian = _figurasPorVarianteEn_(t, out);
+  const conVar = out.concat(varian);
+  return FIGURA_POR_APELLIDO ? conVar.concat(_figurasPorApellidoEn_(t, conVar)) : conVar;
+}
+
+/**
+ * Las figuras que el texto nombra con **otra grafía**, según `FIGURAS_VARIANTES` (la tabla del
+ * legado, 01/10): Pineiro, Biastrocchi, Quiroz, "Gustavo Arengo" sin Piragine, Landereche,
+ * "Horacio Lombardi", "Arengo Peragine". No incluye las que ya aparecen por nombre completo. La
+ * traza de `puntuar_` lo dice: `figura_por_variante`.
+ */
+function figurasPorVariante_(texto) {
+  const t = normalizeText_(texto);
+  return _figurasPorVarianteEn_(t, _figurasEnNormalizado_(t));
+}
+
+function _figurasPorVarianteEn_(t, yaEstan) {
+  if (!t || typeof FIGURAS_VARIANTES === 'undefined') return [];
+  const out = [];
+  for (let i = 0; i < FIGURAS_VARIANTES.length; i++) {
+    const v = FIGURAS_VARIANTES[i];
+    if (!v.re.test(t)) continue;
+    const canon = _canonFiguraDestino_(v.canon);
+    if (canon && yaEstan.indexOf(canon) === -1 && out.indexOf(canon) === -1) out.push(canon);
+  }
+  return out;
+}
+
+/** La grafía del destino de una figura, por normalización; '' si el destino no la tiene. */
+function _canonFiguraDestino_(nombre) {
+  const n = normalizeText_(nombre);
+  const figuras = _listas_().figuras;
+  for (let i = 0; i < figuras.length; i++) if (figuras[i].norm === n) return figuras[i].canon;
+  return '';
+}
+
+/**
+ * Las figuras que el texto nombra **sólo por apellido** (01/10). Los formularios nuevos de
+ * Lombardi dicen "Lombardi-Tapia-Piragine" y el nombre completo no aparece. Un apellido suelto
+ * cuenta como figura **sólo si es único** entre todas las figuras del destino (ver
+ * `_apellidosUnicos_`); uno que comparten dos figuras no cuenta. No incluye las que ya aparecen por
+ * nombre completo. La traza de `puntuar_` lo dice: `figura_por_apellido`.
+ */
+function figurasPorApellido_(texto) {
+  if (!FIGURA_POR_APELLIDO) return [];
+  const t = normalizeText_(texto);
+  const ya = _figurasEnNormalizado_(t);
+  return _figurasPorApellidoEn_(t, ya.concat(_figurasPorVarianteEn_(t, ya)));
+}
+
+function _figurasPorApellidoEn_(t, yaEstan) {
+  if (!t) return [];
+  const out = [];
+  _apellidosUnicos_().forEach(function (canon, apellido) {
+    if (yaEstan.indexOf(canon) === -1 && out.indexOf(canon) === -1 && _contienePalabra_(t, apellido)) {
+      out.push(canon);
+    }
+  });
+  return out;
+}
+
+/**
+ * apellido normalizado → figura, para los apellidos ÚNICOS. El apellido es la última palabra del
+ * nombre de la figura; es único si esa palabra no aparece en el nombre de ninguna otra figura
+ * (ni como nombre ni como apellido). Se cuentan sólo las figuras simples: una entrada del destino
+ * que junta varias ("A - B", "A y B") no aporta apellido ni lo vuelve ambiguo. Mínimo
+ * `MIN_LARGO_APELLIDO` letras, para que una palabra corta no entre como figura.
+ */
+function _apellidosUnicos_() {
+  const l = _listas_();
+  if (l.apellidos) return l.apellidos;
+  const simples = l.figuras.filter(function (f) { return !/[-,\/+&]| y /.test(f.norm); });
+  const cuenta = {};
+  simples.forEach(function (f) {
+    const vistos = {};
+    f.norm.split(/\s+/).forEach(function (p) {
+      if (!p || vistos[p]) return;
+      vistos[p] = true;
+      cuenta[p] = (cuenta[p] || 0) + 1;
+    });
+  });
+  const mapa = new Map();
+  simples.forEach(function (f) {
+    const partes = f.norm.split(/\s+/);
+    if (partes.length < 2) return;                 // sin apellido separable
+    const ap = partes[partes.length - 1];
+    if (ap.length >= MIN_LARGO_APELLIDO && cuenta[ap] === 1) mapa.set(ap, f.canon);
+  });
+  l.apellidos = mapa;
+  return mapa;
 }
 
 /**
@@ -303,13 +396,37 @@ function compararLimpiezaPrefijo_(texto) {
   return { clase: clase, prefijo: prefijo, enPrefijo: enPrefijo, sin: sin, con: con };
 }
 
-/** El barrio mencionado, en la grafía de `Comunas`. `''` si no reconoce ninguno. */
+/**
+ * El barrio mencionado, en la grafía de `Comunas`. `''` si no reconoce ninguno. Primero la lista
+ * de `Comunas`; si no reconoce nada, las variantes del legado (`BARRIOS_VARIANTES`, 01/10).
+ */
 function detectBarrio_(texto) {
+  return _barrioPorLista_(texto) || barrioPorVariante_(texto);
+}
+
+function _barrioPorLista_(texto) {
   const t = _expandirAbreviaturas_(normalizeText_(texto));
   if (!t) return '';
   const barrios = _listas_().barrios;
   for (let i = 0; i < barrios.length; i++) {
     if (_contienePalabra_(t, barrios[i].norm)) return barrios[i].canon;
+  }
+  return '';
+}
+
+/**
+ * El barrio que sale **sólo** de una variante del legado (Vélez, Paternal, Pompeya, Lugano…),
+ * cuando la lista de `Comunas` no reconoció ninguno. En la grafía de `Comunas`, o '' si no.
+ */
+function barrioPorVariante_(texto) {
+  if (typeof BARRIOS_VARIANTES === 'undefined' || _barrioPorLista_(texto)) return '';
+  const t = normalizeText_(texto);
+  if (!t) return '';
+  for (let i = 0; i < BARRIOS_VARIANTES.length; i++) {
+    if (BARRIOS_VARIANTES[i].re.test(t)) {
+      const canon = canonizarBarrio_(BARRIOS_VARIANTES[i].canon);
+      if (canon) return canon;
+    }
   }
   return '';
 }
@@ -535,6 +652,38 @@ function distanciaFecha_(fechaDestino, det) {
  * con las otras señales — porque la fecha dejó de ser parte de la clave y pasó a ser una
  * señal más (CLAUDE.md, decisión 2).
  */
+/**
+ * El puntaje de fecha de UN candidato contra una fila: `{ dist, puntaje, asimetrica, delta }`.
+ *
+ * Con fecha en el texto, la escala de siempre sobre la distancia. Con fuente `fecha_fin` y
+ * `FECHA_FIN_ASIMETRICA`, la ventana asimétrica (01/10): `fecha_fin` es el cierre de la
+ * inscripción y cae antes de la reunión, así que (fila − fecha_fin) en [min, max] puntúa pleno,
+ * hacia atrás puntúa cero, y más allá de max sigue la escala. `dist` es siempre la distancia en
+ * valor absoluto: la usan las puertas y el desempate, que no cambian.
+ */
+function puntajeFechaCandidato_(fechaDestino, det) {
+  const dist = distanciaFecha_(fechaDestino, det);
+  if (dist === null) return { dist: null, puntaje: 0, asimetrica: false, delta: null };
+  if (FECHA_FIN_ASIMETRICA && det.fuente === 'fecha_fin' && det.fechaFin) {
+    const delta = diasEntre_(fechaDestino, det.fechaFin);
+    const v = FECHA_FIN_VENTANA;
+    const p = delta < v.min ? 0 : delta <= v.max ? BANDAS_FECHA[0].peso : puntajeFecha_(delta);
+    return { dist: dist, puntaje: p, asimetrica: true, delta: delta };
+  }
+  return { dist: dist, puntaje: puntajeFecha_(dist), asimetrica: false, delta: null };
+}
+
+/**
+ * ¿El formulario está "cerca" de la fila en fecha, para decidir si es su formulario propio?
+ * ±tolerancia con fecha en el texto; la ventana asimétrica con fuente `fecha_fin`.
+ */
+function fechaCercana_(fechaDestino, det, tol) {
+  const x = puntajeFechaCandidato_(fechaDestino, det);
+  if (x.dist === null) return false;
+  if (x.asimetrica) return x.delta >= FECHA_FIN_VENTANA.min && x.delta <= FECHA_FIN_VENTANA.max;
+  return x.dist <= tol;
+}
+
 function puntajeFecha_(dias) {
   if (dias === null || dias === undefined) return 0;
   for (let i = 0; i < BANDAS_FECHA.length; i++) {

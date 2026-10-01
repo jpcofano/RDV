@@ -172,14 +172,22 @@ function listarFormulariosSinFila() {
 
   Logger.log('--- POSIBLE REEMPLAZO / REUNIÓN REUBICADA: otro formulario de la figura a ±%s día(s) ' +
              'ya se escribe con la ubicación coincidente ---', DIAS_REUBICACION);
+  Logger.log('  Es una lista PARA QUE EL EQUIPO CONFIRME, no una conclusión: puede ser otra reunión del');
+  Logger.log('  mismo día. Se marca DUDOSO cuando el formulario "viejo" tiene MÁS inscriptos que el "nuevo".');
   Logger.log('  con %s inscriptos o más: %s   (con menos: %s, no se listan)', min,
              _dc_(cnt.reemplazo), _dc_(cnt.chicosReemplazo));
+  let dudosos = 0;
   reemplazos.forEach(function (x) {
-    Logger.log(linea(x));
-    Logger.log('      reemplazado por B fila %s (ins=%s), que se escribe en la fila %s (%s, %s) | %s',
+    const dudoso = (x.c.inscriptos || 0) > (x.de.g.inscriptos || 0);
+    if (dudoso) dudosos++;
+    Logger.log(linea(x) + (dudoso ? '   ← DUDOSO' : ''));
+    Logger.log('      reemplazado por B fila %s (ins=%s), que se escribe en la fila %s (%s, %s) | %s%s',
                x.de.g.fila, x.de.g.inscriptos || 0, x.de.f.fila, x.de.f.barrio || 'sin barrio',
-               fmtFecha_(x.de.f.fecha), x.de.g.nombre);
+               fmtFecha_(x.de.f.fecha), x.de.g.nombre,
+               dudoso ? ' — el "viejo" tiene más inscriptos: puede ser otra reunión' : '');
   });
+  Logger.log('  dudosos (el "viejo" con más inscriptos que el "nuevo"): %s de %s listados', dudosos,
+             reemplazos.length);
 
   Logger.log('--- SIN FILA (posible cancelada) ---');
   Logger.log('  con %s inscriptos o más: %s   (con menos: %s, no se listan)', min,

@@ -288,6 +288,83 @@ const EJE_COMO_DESEMPATE = true;
 const UBICACION_DESACUERDO_A_REVISION = true;
 const DIAS_REUBICACION = 1;
 
+/**
+ * **Figuras nombradas sólo por apellido** (01/10). "RDV - Eje norte, Lombardi-Tapia-Piragine- 30/3"
+ * no trae ningún nombre completo. Un apellido suelto cuenta como figura **sólo si es único** entre
+ * todas las figuras del destino (Lombardi → Hernán Lombardi, Tapia → Gabino Tapia, Piragine →
+ * Gustavo Arengo Piragine); uno que comparten dos figuras no cuenta. Traza
+ * `figura_por_apellido`. El paso 2 lista qué formularios suman figuras así, para ver que no entre
+ * basura. Con 2+ figuras el formulario es multi_figura → REVISAR_MATCH, y lo decide una persona.
+ */
+const FIGURA_POR_APELLIDO = true;
+const MIN_LARGO_APELLIDO = 4;
+
+/**
+ * **Variantes de grafía de las figuras** (01/10), portadas del legado: la tabla de regex de
+ * `detectPersona_` en `_archivo/Código.js` (líneas 44-65), una por figura. Se aplican sobre el
+ * texto normalizado (minúsculas, sin acentos) y **se suman** a la lista del destino: una figura
+ * que el texto nombra con otra grafía cuenta igual, con traza `figura_por_variante`. El `canon`
+ * se resuelve contra la columna Figura del destino (por normalización); si el destino no la
+ * tiene, la variante no aporta nada. Las dos últimas son casos vistos en el 2b del 01/10.
+ */
+const FIGURAS_VARIANTES = [
+  // --- legado: _archivo/Código.js, detectPersona_ ---
+  { canon: 'Diego Kravetz',           re: /\bdiego\s+kravetz\b/ },
+  { canon: 'Gabriel Mraida',          re: /\bgabriel\s+mraida\b/ },
+  { canon: 'Mercedes Miguel',         re: /\bmercedes\s+miguel\b/ },
+  { canon: 'Ezequiel Daglio',         re: /\bezequiel\s+daglio\b/ },
+  { canon: 'Maximiliano Gallucci',    re: /\bmaximiliano\s+gallucci\b/ },
+  { canon: 'Hernán Lombardi',         re: /\bhernan\s+lombardi\b/ },
+  { canon: 'Jorge Macri',             re: /\bjorge\s+macri\b/ },
+  { canon: 'Maximiliano Piñeiro',     re: /\bmaximiliano\s+pin(?:eiro|n?eiro)\b/ },      // Piñeiro / Pineiro
+  { canon: 'Ignacio Baistrocchi',     re: /\bignacio\s+b(?:ia|ai)strocchi\b/ },          // Baistrocchi / Biastrocchi
+  { canon: 'Gabino Tapia',            re: /\bgabino\s+tapia\b/ },
+  { canon: 'Fernán Quirós',           re: /\bfernan\s+quiro(?:s|z)\b/ },                 // Quirós / Quiroz
+  { canon: 'Laura Alonso',            re: /\blaura\s+alonso\b/ },
+  { canon: 'Gustavo Arengo Piragine', re: /\bgustavo\s+arengo(?:\s+piragin[ei])?\b/ },   // con o sin "Piragine"
+  { canon: 'Horacio Giménez',         re: /\bhoracio\s+gimenez\b/ },
+  { canon: 'Ezequiel Sabor',          re: /\bezequiel\s+sabor\b/ },
+  { canon: 'Clara Muzzio',            re: /\bclara\s+muzzio\b/ },
+  { canon: 'Gabriel Sánchez Zinny',   re: /\bgabriel\s+sanchez\s+zinny\b/ },
+  { canon: 'Pablo Bereciartua',       re: /\bpablo\s+bereciartua\b/ },
+  { canon: 'Gabriela Ricardes',       re: /\bgabriela\s+ricardes\b/ },
+  { canon: 'Ruth Landerreche',        re: /\bruth\s+lander+eche\b/ },                    // Landerreche / Landereche
+  // --- vistos en el 2b del 01/10 ---
+  { canon: 'Hernán Lombardi',         re: /\bhoracio\s+lombardi\b/ },                    // "Horacio Lombardi"
+  { canon: 'Gustavo Arengo Piragine', re: /\barengo\s+p[ei]ragin[ei]\b/ }                // "Arengo Peragine"
+];
+
+/**
+ * **Variantes de barrio** (01/10), portadas del legado: `VARIANTS` de `detectBarrio_` en
+ * `_archivo/Código.js` (líneas 75-86). Entran **sólo si la lista de `Comunas` no reconoció
+ * ningún barrio** en el texto, y el `canon` se resuelve contra `Comunas` (`canonizarBarrio_`).
+ * Las que la normalización ya cubre (Núñez, San Cristóbal, San Nicolás, Villa Gral. Mitre, Villa
+ * Pueyrredón) quedan por fidelidad al legado; las que agregan algo son las formas cortas: Vélez,
+ * Paternal, Pompeya, Lugano. Se miden en una línea del paso 2.
+ */
+const BARRIOS_VARIANTES = [
+  { canon: 'Núñez',               re: /\bnunez\b/ },
+  { canon: 'Vélez Sarsfield',     re: /\bvelez(?:\s+sarsfield)?\b/ },
+  { canon: 'San Cristóbal',       re: /\bsan\s+cristobal\b/ },
+  { canon: 'San Nicolás',         re: /\bsan\s+nicolas\b/ },
+  { canon: 'Villa General Mitre', re: /\bvilla\s+(?:general|gral\.?)\s+mitre\b/ },
+  { canon: 'La Paternal',         re: /\b(?:la\s+)?paternal\b/ },
+  { canon: 'Nueva Pompeya',       re: /\b(?:nueva\s+)?pompeya\b/ },
+  { canon: 'Villa Pueyrredón',    re: /\bvilla\s+pueyrredon\b/ },
+  { canon: 'Villa Lugano',        re: /(?:^|\s)(?:villa\s+)?lugano(?:\s|$)/ }
+];
+
+/**
+ * **Ventana asimétrica para los formularios sin fecha en el texto** (01/10, decisión del usuario).
+ * Esos formularios usan `fecha_fin`, el CIERRE de la inscripción, que cae antes de la reunión.
+ * Medido en el paso 10 (01/10): el 100% de las reuniones confirmadas cae en o después del cierre,
+ * p90 = +6. Para fuente `fecha_fin`: fecha plena si (fila − fecha_fin) está en [min, max]; **cero**
+ * hacia atrás; más allá de max, la escala de siempre. Los formularios con fecha en el texto no
+ * cambian (±TOLERANCIA_REPROGRAMACION_DIAS).
+ */
+const FECHA_FIN_ASIMETRICA = true;
+const FECHA_FIN_VENTANA = { min: 0, max: 6 };
+
 /** Cuántos formularios candidatos se muestran por fila en REVISAR_MATCH y EMPAREJAR_MANUAL. */
 const OPCIONES_REVISION = 3;
 

@@ -2028,6 +2028,42 @@ function _logSubzona_(plan) {
   });
 }
 
+/**
+ * Línea fija del paso 2: cuántos formularios suman figuras **por variante de grafía**
+ * (FIGURAS_VARIANTES) o **sólo por apellido** (FIGURA_POR_APELLIDO), y cuántos sacan el barrio de
+ * una **variante** (BARRIOS_VARIANTES), y cuáles, para ver que no entre basura. [ventana | total]
+ * por la fecha del formulario.
+ */
+function _logFigurasPorApellido_(plan) {
+  const cnt = { variante: contador_(), apellido: contador_(), barrio: contador_(), multi: contador_() };
+  const casos = [], barrios = [];
+  plan.cands.vivos.forEach(function (c) {
+    const ev = enVentanaAnalisis_(c.det && c.det.mejor);
+    const nv = (c.figurasVarianteNorm || []).length, na = (c.figurasApellidoNorm || []).length;
+    if (nv) sumar_(cnt.variante, ev);
+    if (na) sumar_(cnt.apellido, ev);
+    if ((nv || na) && c.figurasNorm.length >= 2) sumar_(cnt.multi, ev);
+    if (nv || na) casos.push({ c: c, ev: ev });
+    if (c.barrioPorVariante) { sumar_(cnt.barrio, ev); barrios.push({ c: c, ev: ev }); }
+  });
+  Logger.log('  formularios con figuras por VARIANTE de grafía: %s | sólo por APELLIDO (FIGURA_POR_APELLIDO = %s): %s',
+             _dc_(cnt.variante), FIGURA_POR_APELLIDO, _dc_(cnt.apellido));
+  Logger.log('    de ésos, con 2+ figuras (→ multi_figura → revisión): %s', _dc_(cnt.multi));
+  const orden = function (a, b) { return a.ev === b.ev ? 0 : (a.ev ? -1 : 1); };
+  casos.sort(orden).slice(0, 40).forEach(function (x) {
+    const v = figurasPorVariante_(x.c.nombre), a = figurasPorApellido_(x.c.nombre);
+    Logger.log('    [%s] B fila %s | %s →%s%s | todas: %s', x.ev ? 'ventana' : 'histor.', x.c.fila, x.c.nombre,
+               v.length ? ' por variante: ' + v.join(' + ') : '', a.length ? ' por apellido: ' + a.join(' + ') : '',
+               figurasEnTexto_(x.c.nombre).join(' + '));
+  });
+  if (casos.length > 40) Logger.log('    ... y %s más', casos.length - 40);
+  Logger.log('  formularios con el barrio sacado de una VARIANTE del legado (Vélez, Paternal, Pompeya, ' +
+             'Lugano…): %s', _dc_(cnt.barrio));
+  barrios.sort(orden).slice(0, 30).forEach(function (x) {
+    Logger.log('    [%s] B fila %s | %s → %s', x.ev ? 'ventana' : 'histor.', x.c.fila, x.c.nombre, x.c.barrioPorVariante);
+  });
+}
+
 function logResumen_(plan) {
   const r = plan.res;
   const base = { v: r.enVentana - r.futuras.v, t: plan.dest.filas.length - r.futuras.t };
@@ -2075,6 +2111,7 @@ function logResumen_(plan) {
   }
   _logSinBarrioReciente_(plan);
   _logSubzona_(plan);
+  _logFigurasPorApellido_(plan);
   Logger.log('  por la regla sin_figura_por_ubicacion (SIN_FIGURA_POR_UBICACION = %s): escribiría %s' +
              ' | a revisar %s', SIN_FIGURA_POR_UBICACION, _dc_(plan.porSinFigEscribe || contador_()),
              _dc_(plan.porSinFigRevisa || contador_()));
@@ -2926,7 +2963,7 @@ function cercanosDeFila_(f, vivos, comunas) {
   for (let j = 0; j < vivos.length; j++) {
     const c = vivos[j];
     const x = distanciaFecha_(f.fecha, c.det);
-    if (x === null || x > tol) continue;
+    if (x === null || !fechaCercana_(f.fecha, c.det, tol)) continue;   // asimétrica con fecha_fin
     if (c.figurasNorm.indexOf(figNorm) !== -1) tomar('conFig', c, x);
     else if (!c.figurasNorm.length) {
       const cmp = comparaComuna_(f.barrio, cDest, c);
@@ -3220,14 +3257,18 @@ function puntuar_(f, c, comunas) {
   if (figNorm && c.figurasNorm.indexOf(figNorm) !== -1) {
     sFig = PESOS_MATCH.figura;
     senales.push('figura');
+    // La figura salió de una variante de grafía o sólo del apellido: la traza lo dice.
+    if (c.figurasVarianteNorm && c.figurasVarianteNorm.indexOf(figNorm) !== -1) senales.push('figura_por_variante');
+    if (c.figurasApellidoNorm && c.figurasApellidoNorm.indexOf(figNorm) !== -1) senales.push('figura_por_apellido');
   }
 
-  // --- fecha: señal con tolerancia, nunca descarta (3.3.c) ---
-  const dist = distanciaFecha_(f.fecha, c.det);
+  // --- fecha: señal con tolerancia, nunca descarta (3.3.c); asimétrica con fuente fecha_fin ---
+  const pf = puntajeFechaCandidato_(f.fecha, c.det);
+  const dist = pf.dist;
   if (dist !== null) {
     alcanzable += PESOS_MATCH.fechaExacta;
-    sFecha = puntajeFecha_(dist);
-    if (sFecha > 0) senales.push('fecha±' + dist);
+    sFecha = pf.puntaje;
+    if (sFecha > 0) senales.push(pf.asimetrica ? 'fecha_fin' + (pf.delta >= 0 ? '+' : '') + pf.delta : 'fecha±' + dist);
   }
 
   /*
@@ -3894,7 +3935,10 @@ function leerCandidatos_() {
       fila: k + 1,
       nombre: nombre,                         // literal, sin normalizar: es la trazabilidad
       figurasNorm: figurasEnTexto_(nombre).map(normalizeText_),
+      figurasApellidoNorm: figurasPorApellido_(nombre).map(normalizeText_),   // sólo por apellido
+      figurasVarianteNorm: figurasPorVariante_(nombre).map(normalizeText_),   // por variante de grafía
       barrio: detectBarrio_(limpio),
+      barrioPorVariante: barrioPorVariante_(limpio),                          // sólo si Comunas no lo vio
       comuna: detectComuna_(limpio),
       subzona: detectSubzonaComuna1_(limpio),     // Comuna 1 Norte / Sur (regla 10)
       eje: detectEje_(limpio),
