@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-09-30
+# Estado de la migración — al 2026-10-01
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -128,6 +128,35 @@ leído los números de la corrida en seco.
 > El pipeline legado está **frenado a propósito**: un solo activador vivo,
 > `syncAgendaSheetInBaseFromAgenda_2`. Ver el recuadro de la sección 2 de `CLAUDE.md`. No
 > encender nada sin leerlo.
+
+---
+
+## 1a. Consultas al equipo (al 01/10)
+
+**Cerradas el 01/10:**
+
+| caso | respuesta | qué cambia |
+|---|---|---|
+| **748** (Tapia Villa Real 20/08, destino 6) | **RDV tenía el error; 113 confirmado** | el formulario de 113 que elige el matcher es el correcto. Mientras el destino siga con 6, la guarda de transición (t) la frena: corregir el destino o confirmarla en `REVISAR_MATCH` |
+| **Comuna 1 del 3/9** (769 Tapia Retiro, Landerreche) | **RDV corregido** | el destino ya tiene el dato bueno; la 769 debería salir de la banda "más" en el próximo paso 10 |
+| **Bereciartua 29/7** (Flores 185 vs `Comuna 6 - 29/7` 169) | **reunión reubicada: dos formularios, vale el nuevo** | el desacuerdo de ubicación era real. Que el caso se generalice (reubicada → vale el formulario nuevo) **no está dicho**: no se convierte en regla del matcher sin confirmarlo |
+
+**Pendientes de respuesta:**
+
+- **(4)** reuniones con inscriptos **sin fila en RDV** — la lista de `paso13_filasFaltantesEnRDV()`;
+- **(5)** formularios cuya **comuna no coincide con el barrio de RDV**: filas **587, 590, 592, 543,
+  716** más el histórico (`paso11_desacuerdoUbicacion()`). **Hay que corregir una de las dos
+  fuentes**; el matcher no elige cuál;
+- **(7)** ejes dudosos, y si la tabla de la columna I es **de sedes** (decisión g).
+
+**Regla nueva (01/10): el match diario corre después de las 17.** Los formularios y los barrios se
+cargan tarde; correr antes es matchear contra datos a medio cargar. Aplica a los activadores de la
+Fase 7. Mientras tanto, las corridas a mano también conviene hacerlas después de esa hora.
+`Comuna 1 Sur - 1/10` queda **pendiente hasta que RDV tenga los barrios** del día.
+
+**Consulta de `Hoja1` corregida (01/10)**: faltaban los formularios de Hernán Lombardi de 2026
+(decisión o). **Verificar con `paso7_formulariosFaltantes()`** que llegaron: las 8 filas de
+Lombardi en ventana sin formulario tienen que dejar de aparecer como faltantes.
 
 ---
 
@@ -414,6 +443,9 @@ Las filas con la reunión hace menos de 7 días salen marcadas como **posible "t
 importado"** —las 2 de Jorge Macri del 29/09 son el caso—: volver a mirarlas en unos días antes
 de reclamarlas.
 
+**01/10: la consulta de `Hoja1` se corrigió** para traer los formularios de Hernán Lombardi de
+2026. Correr el paso 7 de nuevo para verificar que llegaron (1a).
+
 ### p) ~~¿Qué variante del cambio "sin figura" rescata sin costo?~~ CERRADA: D-C, implementada
 
 `paso8_…` corrió el **26/09 16:46** (hoy en YA CORRIDOS como `rehacer_medirVariantesSinFigura()`).
@@ -537,10 +569,10 @@ destino en 36 de 38.** Cambios desde entonces:
 - los desempates y los choques que valida son los **implementados** (leídos del plan), no una
   simulación.
 
-**El destino no es verdad absoluta** (CLAUDE.md): la fila 769 (Tapia Retiro 3/9) tiene 116 —los
+**El destino no es verdad absoluta** (CLAUDE.md): la fila 769 (Tapia Retiro 3/9) tenía 116 —los
 inscriptos de `Comuna 1 Sur - 3/9`— y el matcher le asigna `Tapia - Comuna 1 Norte - 3/9` (88); la
-748 (Tapia Villa Real 20/08) tiene 6 contra un formulario de 113. Las dos, **consultadas al
-equipo, pendientes**.
+748 (Tapia Villa Real 20/08) tiene 6 contra un formulario de 113. **Cerradas el 01/10** (1a): en la
+748 RDV tenía el error y vale 113; la Comuna 1 del 3/9 se corrigió en RDV.
 
 **Corrió el 30/09 14:23: 96,2% exacto en ventana (253 de 263), 2,7% ≤ 5%, 3 en "más" (527, 748,
 769). Desempates 33 de 33. Choques 8 de 9.**
@@ -592,6 +624,10 @@ descalificado ni siquiera llega a REVISAR (sólo va si es lo único que hay).
   `EMPAREJAR_MANUAL`; **nunca se escribe solo**. Cuenta cuántas filas y pares cambiarían.
 
 El 185 contra 169 lo mira la búsqueda inversa (u). Se decide con los números.
+
+**Cerrado el 01/10 (1a): la reunión se reubicó; hay dos formularios y vale el nuevo.** El
+desacuerdo era real, no un barrio mal cargado. Los otros casos de la medición (587, 590, 592, 543,
+716 y el histórico) siguen en consulta: hay que corregir una de las dos fuentes.
 
 ### w) Herramientas para revisar casos uno por uno — `diagnostico/06_revisar_casos.js`
 

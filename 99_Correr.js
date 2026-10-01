@@ -12,7 +12,7 @@
  * **Se mantiene al día en el mismo commit** en que cambia qué hay que correr (CLAUDE.md §6).
  *
  * ============================================================================================
- *  DÓNDE ESTAMOS — al 2026-09-30                                  (detalle: docs/ESTADO.md)
+ *  DÓNDE ESTAMOS — al 2026-10-01                                  (detalle: docs/ESTADO.md)
  * ============================================================================================
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
@@ -20,6 +20,10 @@
  *  DRY_RUN = true   en 20_UpsertDestino.js. El upsert NO puede tocar el destino.
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
+ *
+ *  >>> 01/10: correr DESPUÉS DE LAS 17 (formularios y barrios se cargan tarde).
+ *      Primero paso7_formulariosFaltantes(): la consulta de Hoja1 se corrigió; verificar que
+ *      llegaron los formularios de Lombardi 2026. Respuestas del equipo: docs/ESTADO.md, 1a.
  *
  *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino):
  *      1. paso14_formulasDestino(). Confirma que las once derivadas siguen siendo fórmula y que

@@ -1427,7 +1427,7 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
   **8 filas en ventana** sin formulario. Es un faltante de la consulta que llena `Hoja1` en
   (3), no nuestro: toda reunión tiene formulario (sección 1). La misma actualización de `B`
   **sí resolvió** los faltantes de Jorge Macri posteriores al 14/08 (el formato `"1 a 1"`,
-  abajo).
+  abajo). **01/10: la consulta se corrigió**; falta verificar con `paso7_…` que llegaron.
 - **`JORGE MACRI - Encuentro "1 a 1" - Día d/m Barrio` ES la reunión de Macri**, no una lista de
   espera (confirmado por el usuario). Son los formularios que faltaban después del 14/08: 17/9
   Belgrano, 24/9 Floresta, 29/9 Villa Santa Rita y Belgrano. Antes de saberlo, esas filas
@@ -1468,8 +1468,14 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
   | fila | reunión | destino | el matcher nuevo le asigna | estado |
   |---|---|---|---|---|
-  | 769 | Tapia Retiro 03/09 | 116 = los inscriptos de `Comuna 1 Sur - 3/9` | `Tapia - Comuna 1 Norte - 3/9` (88) | **consultado al equipo, pendiente** |
-  | 748 | Tapia Villa Real 20/08 | 6 | un formulario con 113 | **consultado al equipo, pendiente** |
+  | 769 | Tapia Retiro 03/09 | 116 = los inscriptos de `Comuna 1 Sur - 3/9` | `Tapia - Comuna 1 Norte - 3/9` (88) | **cerrado 01/10: RDV corregido** (la Comuna 1 del 3/9) |
+  | 748 | Tapia Villa Real 20/08 | 6 | un formulario con 113 | **cerrado 01/10: RDV tenía el error; 113 confirmado** |
+
+  Y un caso de ubicación: **Bereciartua 29/07 Flores** (185) contra `Comuna 6 - 29/7` (169) era
+  una **reunión reubicada: hay dos formularios y vale el nuevo** (01/10). El desacuerdo de
+  ubicación era real. Que valga como regla general no está confirmado. Los otros desacuerdos
+  de comuna contra barrio (filas 587, 590, 592, 543, 716 y el histórico) **siguen en consulta: hay
+  que corregir una de las dos fuentes**.
 
   Una diferencia contra el destino es una pregunta, no un error del matcher.
 
@@ -2937,6 +2943,10 @@ origen", que llevan a trabajos completamente distintos.
 - **Dar de baja los activadores viejos del pipeline de inscriptos** (ahora sí, con el inventario de Fase 0 a mano).
 - Crear los nuevos apuntando a `99_Pipeline.js`.
 - Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
+- **El match diario corre después de las 17** (regla del equipo, 01/10): los formularios y los
+  barrios se cargan tarde, y matchear antes es hacerlo contra datos a medio cargar. Un formulario
+  del día cuya fila todavía no tiene barrio (`Comuna 1 Sur - 1/10`) queda pendiente hasta que RDV
+  lo tenga.
 - **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después
   del upsert y del recálculo de derivadas. Hasta entonces se corre a mano con
   `correrAlertaCambios()`.
