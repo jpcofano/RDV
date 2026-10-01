@@ -27,15 +27,15 @@ Y después, en el editor, abrir **[99_Correr.js](../99_Correr.js)** y correr en 
 | # | qué correr | llama a | qué hace | escribe? |
 |---|---|---|---|---|
 | 1 | `paso1_columnasDeTraza()` | `correrFase2b()` | agrega los encabezados de las 5 columnas de traza al final del destino | sí, sólo encabezados. **Ya corrió** (el destino tiene las cinco) |
-| 14 | `paso14_formulasDestino()` | `diagFormulasDestino()` | las once derivadas siguen siendo fórmula, las siete de lookup leen la columna correcta de `Comunas`, y sus valores son los de `Comunas` de hoy (decisión x) | **no escribe en ninguna planilla**; sólo log. **← PRÓXIMO, primero** (es rápido) |
-| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 30/09 14:19. **← PRÓXIMO**: primera corrida con la guarda de transición (t) y el eje como último desempate (g) |
-| 10 | `paso10_validarContraInscriptos()` | `medirValidacionInscriptos()` | calibración contra los inscriptos que hoy tiene el destino (decisión s), ahora con la **búsqueda inversa** (u) | **no escribe en ninguna planilla**; sólo log. **No entra en el score**. Última: 30/09 14:23 |
-| 11 | `paso11_desacuerdoUbicacion()` | `medirDesacuerdoUbicacion()` | pares figura + fecha 0-1 con la ubicación en desacuerdo, y la propuesta simulada (decisión v) | **no escribe en ninguna planilla**; sólo log |
-| 13 | `paso13_filasFaltantesEnRDV()` | `listarFilasFaltantes()` | la lista para el equipo: formularios huérfanos con 10+ inscriptos (decisión w) | **no escribe en ninguna planilla**; sólo log |
+| 2 | `paso2_upsertEnSeco()` | `correrEnSeco()` | el upsert completo en `DRY_RUN` | **no toca el destino**; escribe 3 solapas de reporte en la intermedia. Última: 30/09 14:19. **← PRÓXIMO (después de las 17)**: sin la guarda (t, eliminada), con la reubicación a revisión (v) y las opciones en los reportes (y) |
+| 13 | `paso13_formulariosSinFila()` | `listarFormulariosSinFila()` | formularios sin fila: **canceladas o reubicadas**, informativo, en dos listas (decisión w, reglas 8 y 9) | **no escribe en ninguna planilla**; sólo log. **← después del 2** |
+| 10 | `paso10_validarContraInscriptos()` | `medirValidacionInscriptos()` | calibración contra los inscriptos que hoy tiene el destino (decisión s), con la búsqueda inversa (u) y la medición de los formularios con `fecha_fin` | **no escribe en ninguna planilla**; sólo log. **No entra en ninguna decisión**. Última: 30/09 14:23. **← después del 13** |
+| 11 | `paso11_desacuerdoUbicacion()` | `medirDesacuerdoUbicacion()` | reubicaciones: figura + fecha 0-1 con la ubicación en desacuerdo, y cuáles son sin ambigüedad (decisión v) | **no escribe en ninguna planilla**; sólo log. **← último** |
+| 14 | `paso14_formulasDestino()` | `diagFormulasDestino()` | las once derivadas siguen siendo fórmula y muestran lo que dice `Comunas` (decisión x) | **no escribe en ninguna planilla**; sólo log |
 | 12 | `paso12_explicarFormulario()` / `paso12_explicarFila()` | `explicarFormulario()` / `explicarFila()` | un caso, señal por señal; leen `CASO_A_EXPLICAR` (decisión w) | **no escribe en ninguna planilla**; sólo log. Cuando haga falta |
 | 3 | `paso3_medirReglaDelMes()` | `diagCorteB()` | mide las `desfase_reprogramacion`: texto = `fecha_fin` y destino corrido 1-3 días | no toca el destino; escribe `DIAG_CORTE_B` |
 | 6 | `paso6_medirFormulariosSinFigura()` | `medirFormulariosSinFigura()` | el tamaño de sacar la figura del denominador (decisión k) | sólo log. Corrió el 26/09 |
-| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio (decisión o) | sólo log. Corrió el 26/09 16:42 |
+| 7 | `paso7_formulariosFaltantes()` | `diagFormulariosFaltantes()` | las filas sin formulario propio (decisión o) | sólo log. Corrió el 01/10 14:11: faltantes 2 \| 3 (antes 14 \| 16) |
 
 Los pasos 8 y 9 ya corrieron y quedaron implementados (decisiones p y q); están en YA CORRIDOS
 como `rehacer_medirVariantesSinFigura()` y `rehacer_medirDesempatePorEvidencia()`.
@@ -60,24 +60,42 @@ inscriptos); la **626** (Flores 04/06) perdió tres formularios en cascada y ter
 **Landerreche 03/09** con el `Comuna 1 Sur` de 116: **aceptado** (regla de negocio), atado a la
 respuesta del equipo sobre la fila **769**.
 
-**Línea base vigente: la corrida del 30/09 14:19**, ventana **277 | 3 | 25**. Y la **predicción**
-para el próximo paso 2, anotada **antes** de correrlo:
+**Línea base vigente: la corrida del 30/09 14:19**, ventana **277 | 3 | 25**. La predicción con la
+guarda (≈ 267 | 13 | 25) **no llegó a correrse**: la guarda se eliminó antes (decisión t).
+
+**Predicciones del 01/10, anotadas antes de correr** (después de las 17, en este orden: 2, 13, 10,
+11). Desde la línea base cambiaron cuatro cosas a la vez, así que son rangos y la confianza es
+**baja** en el paso 2:
+
+- `B` pasó a **825** formularios y la consulta de Lombardi se corrigió (paso 7: faltantes
+  **14 → 2** en ventana): ≈ 12 filas que eran `sin_formulario_propio` ahora tienen formulario;
+- la reubicación a revisión (v) saca de `SIN_MATCH` las filas con figura + fecha + comuna en
+  desacuerdo: **≈ 9 | 27** (predicción del usuario);
+- RDV se corrigió (Comuna 1 del 3/9) y los 12 ejes perdieron el `?`;
+- se eliminó la guarda: la 748 vuelve a escribirse (113).
 
 ```
 (ventana | total)   30/09 14:19        predicción próximo paso 2
-escribiría          277 | 746          ≈ 267 | 687   (la guarda frena ≈ 10 | 59)
-a revisar             3 |  15          ≈  13 |  74   (las frenadas, con motivo difiere_del_destino)
-sin match            25 |  44             25 |  44   (no cambia)
-decididas por el eje                        0        (último desempate: no debería decidir nada)
-invariante (bloque 0)                       0 formularios con 2+ filas
+escribiría          277 | 746          ≈ 283-290 | ≈ 755-765   (los formularios nuevos)
+a revisar             3 |  15          ≈  10-16  | ≈  38-48    (≈ 9 | 27 ubicacion_en_desacuerdo)
+sin match            25 |  44          ≈   3-8   | ≈   5-15
+ubicacion_en_desacuerdo (motivo)       ≈ 9 | 27
+decididas por el eje                   0-2       (más ejes evaluables sin el "?")
+invariante (bloque 0)                  0 formularios con 2+ filas
+filas de hoy/ayer sin barrio           ≥ 2      (Retiro y Monserrat del 1/10, si siguen sin barrio)
 ```
 
-El ≈ 10 | 59 sale del paso 10: son las que se escribirían con el destino cargado y **distinto** del
-formulario (263 − 253 = 10 en ventana). `EMPAREJAR_MANUAL` puede crecer un poco: las frenadas
-quedan sin resolver y sus formularios libres, así que reciben pares.
+- **paso 13**: en **posible reemplazo** al menos **Bereciartua `Comuna 6 - 29/7` (169)**; en **sin
+  fila (posible cancelada)**, en ventana, ≈ 5: Mraida Comuna 3 20/7 y 22/7, Primera Persona 12/8,
+  Sánchez Zinny San Cristóbal 8/4, Miguel Comuna 15 22/4 (si alguno resulta reemplazo, pasa de
+  lista);
+- **paso 10**: la 769 sale de la banda "más" (RDV corregido); la 748 también si RDV ya tiene 113.
+  Banda "más" ≈ **1-2** (la 527). El bloque de `fecha_fin` lista la 626 (+6 días);
+- **paso 11**: REVISAR por `ubicacion_en_desacuerdo` ≈ **9 | 27**; sin ambigüedad, al menos los 5
+  de la ventana (587, 590, 592, 543, 716), y en ellos **inscriptos iguales al destino** (es como el
+  equipo los describió).
 
-Después del paso 2, el 10 (con la búsqueda inversa), el 11 y el 13. Si el paso 2 se aleja mucho
-de la predicción, mirar antes de seguir.
+Si el paso 2 se aleja mucho de los rangos, mirar antes de seguir.
 
 La corrida del 26/09 17:44 (D-C y tope de 3): **241 | 39 | 24** en ventana, predicción 241 | 39 |
 25; paso 10 del 26/09 17:51: 94,4% exacto (221 de 234), desempate 36 de 38.
@@ -131,32 +149,32 @@ leído los números de la corrida en seco.
 
 ---
 
-## 1a. Consultas al equipo (al 01/10)
+## 1a. Consultas al equipo (al 01/10): todas cerradas
 
-**Cerradas el 01/10:**
+**No hay pendientes con el equipo.** Cerradas el 01/10:
 
 | caso | respuesta | qué cambia |
 |---|---|---|
-| **748** (Tapia Villa Real 20/08, destino 6) | **RDV tenía el error; 113 confirmado** | el formulario de 113 que elige el matcher es el correcto. Mientras el destino siga con 6, la guarda de transición (t) la frena: corregir el destino o confirmarla en `REVISAR_MATCH` |
-| **Comuna 1 del 3/9** (769 Tapia Retiro, Landerreche) | **RDV corregido** | el destino ya tiene el dato bueno; la 769 debería salir de la banda "más" en el próximo paso 10 |
-| **Bereciartua 29/7** (Flores 185 vs `Comuna 6 - 29/7` 169) | **reunión reubicada: dos formularios, vale el nuevo** | el desacuerdo de ubicación era real. Que el caso se generalice (reubicada → vale el formulario nuevo) **no está dicho**: no se convierte en regla del matcher sin confirmarlo |
+| **748** (Tapia Villa Real 20/08, destino 6) | **RDV tenía el error; vale 113** | el matcher ya elige el de 113, y el sistema escribe 113. La guarda que la frenaba se eliminó (t) |
+| **Comuna 1 del 3/9** (769 Tapia Retiro) | **RDV corregido** | la 769 sale de la banda "más" del paso 10. **Landerreche 768**: el match con `Comuna 1 Sur - 3/9` es correcto |
+| **Bereciartua 29/7** | **reunión reubicada** | la fila **714** (Flores) se escribe con `Comuna 7 - 29/7` (185); `Comuna 6 - 29/7` (169) es el **formulario viejo** de la misma reunión. No era un typo ni un faltante |
+| **(5)** comuna del formulario ≠ barrio de RDV (587, 590, 592, 543, 716 + 380, 393, 425, 443, 468, 247) | **reuniones reubicadas que no se actualizaron de un lado** | **regla 8 confirmada** (CLAUDE.md 1). El dato vigente es el barrio de RDV. Implementado: van a revisión, nunca se escriben solos (v). La medición "sin ambigüedad" sigue en pie para decidir cuáles se escribirían solos |
+| **(4)** formularios con inscriptos sin fila en RDV | **probablemente reuniones canceladas** (o reubicadas) | **regla 9**: no es un faltante a reclamar. El paso 13 pasa a "formularios sin fila: canceladas o reubicadas", informativo (w) |
+| **(7)** ejes dudosos | **los 12 propuestos quedan definitivos** | el usuario les saca el `?` en `Comunas`. La convención del `?` sigue para el futuro (g) |
+| **Lombardi 2026** | **consulta de `Hoja1` corregida** | **verificado** con el paso 7 (01/10 14:11, `B` con 825 formularios): faltantes **14 \| 16 → 2 \| 3** (decisión o) |
 
-**Pendientes de respuesta:**
+Los 2 faltantes que quedan en ventana —**Sánchez Zinny 19/06 Caballito** y **Muzzio 28/08
+Recoleta**— tienen el formulario de su figura tomado por otra fila, a 7 y 14 días: posibles
+reubicaciones o filas duplicadas en RDV, no faltantes de la consulta. Quedan anotados; con la regla
+9 no hay consulta abierta por ellos.
 
-- **(4)** reuniones con inscriptos **sin fila en RDV** — la lista de `paso13_filasFaltantesEnRDV()`;
-- **(5)** formularios cuya **comuna no coincide con el barrio de RDV**: filas **587, 590, 592, 543,
-  716** más el histórico (`paso11_desacuerdoUbicacion()`). **Hay que corregir una de las dos
-  fuentes**; el matcher no elige cuál;
-- **(7)** ejes dudosos, y si la tabla de la columna I es **de sedes** (decisión g).
-
-**Regla nueva (01/10): el match diario corre después de las 17.** Los formularios y los barrios se
-cargan tarde; correr antes es matchear contra datos a medio cargar. Aplica a los activadores de la
-Fase 7. Mientras tanto, las corridas a mano también conviene hacerlas después de esa hora.
-`Comuna 1 Sur - 1/10` queda **pendiente hasta que RDV tenga los barrios** del día.
-
-**Consulta de `Hoja1` corregida (01/10)**: faltaban los formularios de Hernán Lombardi de 2026
-(decisión o). **Verificar con `paso7_formulariosFaltantes()`** que llegaron: las 8 filas de
-Lombardi en ventana sin formulario tienen que dejar de aparecer como faltantes.
+**Regla operativa (01/10): el match del día corre después de las 17.** Los formularios se cierran
+y los barrios de RDV se cargan a lo largo del día. El activador diario del upsert, cuando exista
+(Fase 7), va a las **18:00**, nunca antes de las 17; las corridas a mano, también después de las
+17. `Comuna 1 Sur - 1/10` (125), que calza con dos filas del 1/10 (Retiro y Monserrat) todavía sin
+barrio, se resuelve sola cuando RDV los tenga. El paso 2 tiene una línea fija con las filas de hoy
+o de ayer sin barrio, y mide —sin implementarla— la propuesta de no evaluar una fila sin barrio con
+menos de 1 día.
 
 ---
 
@@ -175,21 +193,20 @@ estar en verde antes, y el orden de la primera escritura real. Nada de esto est�
       ninguno apunta a `upsertDestino` ([docs/triggers-legado.md](triggers-legado.md)).
 - [ ] **`paso14_formulasDestino()`** da `CONFIRMADO`: las once derivadas conservan su fórmula y
       muestran lo que dice `Comunas`.
-- [ ] **Guarda de transición encendida**: `TRANSICION_RESPETAR_DESTINO = true` en
-      `00_Config.js`, y el paso 2 lo muestra en su línea ("guarda de transición … frenadas N").
 - [ ] **Invariante en 0**: el bloque 0 del paso 2 dice 0 formularios con 2+ filas escritas.
-- [ ] **El paso 2 cerca de la predicción** (arriba). Decididas por el eje: 0.
-- [ ] **El paso 10 revisado**: la banda "más" y la búsqueda inversa miradas caso por caso. Una
-      fila de "más" que la guarda no frena no existe (la guarda frena todo lo distinto), pero sí
-      hay que mirar las que tienen destino **sin cargar**: ésas se escriben.
+- [ ] **El paso 2 cerca de la predicción** (arriba).
+- [ ] **El paso 10 revisado**: la banda "más" y la búsqueda inversa miradas caso por caso.
+      **Ya no hay guarda**: lo que el paso 10 marque como dudoso y se escriba, se escribe.
+- [ ] **Las `ubicacion_en_desacuerdo` vistas**: no se escriben solas; quedan en revisión.
 - [ ] **El grep del invariante**: `grep -rn "setValue\|setValues" 20_UpsertDestino.js` da sólo
       `escribirHoja_` (intermedia).
+- [ ] **Después de las 17**, por la regla operativa (1a).
 
 **La primera escritura, en este orden:**
 
 1. El usuario pone `DRY_RUN = false` en `20_UpsertDestino.js`; `clasp push`.
-2. En el editor, **a mano**, `upsertDestino()` **una sola vez**. El log dice cuántas celdas y
-   cuántos `RDV_UID` escribió.
+2. En el editor, **a mano y después de las 17**, `upsertDestino()` **una sola vez**. El log dice
+   cuántas celdas y cuántos `RDV_UID` escribió.
 3. Sugerido: volver a `DRY_RUN = true` y `clasp push` hasta terminar la verificación.
 4. Verificar:
    - `paso14_formulasDestino()` sigue dando `CONFIRMADO` (ninguna derivada se rompió);
@@ -198,13 +215,10 @@ estar en verde antes, y el orden de la primera escritura real. Nada de esto est�
    - `paso2_upsertEnSeco()`: las que se escribieron ahora entran **por `RDV_UID`**, y el resto
      queda igual.
 
-**Dos cosas a saber antes de la primera escritura:**
-
-- **La traza de los descartados también se escribe**, y por `setSiDelSistema_` queda **fija**: la
-  próxima corrida no la reescribe. Una fila frenada hoy queda con `form_nivel =
-  descartado:difiere_del_destino` aunque después se resuelva.
-- **`TRANSICION_RESPETAR_DESTINO` se apaga (`false`) después del backfill** (Fase 6): es un
-  seguro de migración, no una regla del régimen.
+**A saber antes de la primera escritura:** una fila que **no** se escribe no se toca —ni
+`RDV_UID`, ni datos, ni traza— (decisión z). Su motivo y su mejor candidato están en
+`REVISAR_MATCH` / `SIN_MATCH`, que se recalculan en cada corrida. La traza del destino es sólo de
+las filas escritas.
 
 ---
 
@@ -317,6 +331,11 @@ Respeta la salvaguarda del desempate (umbral propio, no `multi_figura`). Traza:
 `+desempate_por_eje`. El paso 2 tiene una línea fija con cuántas filas decidió: **se espera 0**
 (los tres criterios anteriores ya resuelven todo lo que se vio). Si da más de 0, mirar esas filas
 con `paso12_explicarFila()` antes de confiar.
+
+**Ejes definitivos (01/10):** los 12 que estaban con `?` quedan como **definitivos**; el usuario les
+saca el `?` en `Comunas`. Si el equipo actualiza alguno, se cambia la celda. La convención del `?`
+sigue valiendo para el futuro. Con más barrios con eje evaluable, el último desempate puede decidir
+alguna fila: la línea fija del paso 2 lo dice (predicción 0-2).
 
 ### h) ¿Los formularios temáticos tienen alguna reunión cerca?
 
@@ -443,8 +462,11 @@ Las filas con la reunión hace menos de 7 días salen marcadas como **posible "t
 importado"** —las 2 de Jorge Macri del 29/09 son el caso—: volver a mirarlas en unos días antes
 de reclamarlas.
 
-**01/10: la consulta de `Hoja1` se corrigió** para traer los formularios de Hernán Lombardi de
-2026. Correr el paso 7 de nuevo para verificar que llegaron (1a).
+**CERRADO el 01/10: Lombardi.** La consulta de `Hoja1` se corrigió y el paso 7 (01/10 14:11,
+`B` con 825 formularios) lo verificó: faltantes **14 | 16 → 2 | 3**. Los 2 de la ventana
+(Sánchez Zinny 19/06 Caballito, Muzzio 28/08 Recoleta) tienen el formulario de su figura tomado por
+otra fila a 7 y 14 días: posibles reubicaciones o filas duplicadas en RDV, no faltantes de la
+consulta (1a).
 
 ### p) ~~¿Qué variante del cambio "sin figura" rescata sin costo?~~ CERRADA: D-C, implementada
 
@@ -577,9 +599,23 @@ inscriptos de `Comuna 1 Sur - 3/9`— y el matcher le asigna `Tapia - Comuna 1 N
 **Corrió el 30/09 14:23: 96,2% exacto en ventana (253 de 263), 2,7% ≤ 5%, 3 en "más" (527, 748,
 769). Desempates 33 de 33. Choques 8 de 9.**
 
-Se vuelve a correr después del próximo paso 2, ahora **con la búsqueda inversa** (u) al final.
+Se vuelve a correr después del próximo paso 2, ahora **con la búsqueda inversa** (u) al final y
+con la medición de los **formularios sin fecha en el texto** (01/10): usan `fecha_fin`, el cierre
+de la inscripción, que cae **antes** de la reunión (caso: fila 626 Flores 04/06 ↔ `1 a 1 - Comuna
+7`, 105 = 105, a 6 días). Sobre los pares confirmados por la calibración —inscriptos iguales, con
+`MIN_INSCRIPTOS_CALIBRACION_FECHA_FIN` (10) o más para no contar casualidades— mide (fecha de la
+fila − `fecha_fin`) día por día. Si en la ventana es sistemáticamente ≥ 0 (≥ 80% de al menos 5
+casos), **propone** una tolerancia asimétrica `[0, p90]` para esos formularios. No implementa nada.
 
-### t) La guarda de transición: `TRANSICION_RESPETAR_DESTINO` — implementada (30/09)
+### t) ~~La guarda de transición: `TRANSICION_RESPETAR_DESTINO`~~ — ELIMINADA (01/10)
+
+> **Decisión del usuario (01/10): se eliminó del código** —la constante, el bloque de
+> `calcularPlan_`, el motivo `difiere_del_destino` y su línea del paso 2—, no sólo se apagó. Los
+> inscriptos del destino son **sólo validación; nunca señal, desempate ni guarda** (CLAUDE.md 1):
+> el sistema no va a tener ese dato. La 748, su caso, la cerró el equipo (vale 113) y se escribe.
+> Revisado: el destino no entra en ningún otro punto del flujo de escritura (`_insDestino_` sólo
+> lo leen el paso 10, el paso 11 y `explicarFila`, que sólo loguean). La predicción ≈ 10 | 59 no
+> llegó a medirse. Lo de abajo queda como registro.
 
 **Regla de transición, no del matcher.** Sólo para filas con veredicto `escribiria`: si el destino
 tiene inscriptos cargados (≠ 0) y son **distintos** de los del formulario elegido, **no se
@@ -599,15 +635,15 @@ de nivel (`… | destino N vs formulario M`). Igual o sin cargar → se escribe 
 
 Para cada fila dudosa —la banda "más", los choques resueltos al revés, los desempates donde un
 rival coincide mejor, las que no se escriben con dato en el destino, y las de
-`FILAS_BUSQUEDA_INVERSA` (527, 626, 631, 748, 769)—, los formularios **de su figura** (o sin
+`FILAS_BUSQUEDA_INVERSA` (527, 626, 631; la 748 y la 769 salieron el 01/10, cerradas)—, los formularios **de su figura** (o sin
 figura) a ±`DIAS_BUSQUEDA_INVERSA` (7) con **exactamente** los inscriptos del destino: *"el
 destino tiene N: coincide con este formulario"*, y si ese formulario es el elegido, está libre o ya
-lo toma otra fila. Bereciartua 29/07 Flores (185 vs 169) entra por "no se escribe".
+lo toma otra fila.
 
 **Sólo log; no entra en el score.** Un número igual puede ser casualidad, sobre todo con números
 chicos: propone dónde mirar.
 
-### v) Ubicación en desacuerdo con figura y fecha coincidentes — medición (30/09)
+### v) Ubicación en desacuerdo con figura y fecha coincidentes — reubicación: implementada a revisión (01/10)
 
 Caso: **Bereciartua**, fila 29/07/2026 **Flores (Comuna 7)**, 185 ins, contra *"VÍNCULO CIUDADANO -
 Encuentro con vecinos - Pablo Bereciartua - Comuna 6 - 29/7"* (169). Figura y fecha exactas; la
@@ -623,11 +659,30 @@ descalificado ni siquiera llega a REVISAR (sólo va si es lo único que hay).
   un ganador mejor → REVISAR_MATCH con motivo `ubicacion_en_desacuerdo`; el par aparece siempre en
   `EMPAREJAR_MANUAL`; **nunca se escribe solo**. Cuenta cuántas filas y pares cambiarían.
 
-El 185 contra 169 lo mira la búsqueda inversa (u). Se decide con los números.
+**Corrección (01/10):** la fila de Bereciartua 29/07 es la **714** (Flores) y **se escribe** con
+`Comuna 7 - 29/7` (185). `Comuna 6 - 29/7` (169) es el **formulario viejo** de la misma reunión,
+que se reubicó: no hay ningún 185 contra 169 que resolver, y no es un faltante.
 
-**Cerrado el 01/10 (1a): la reunión se reubicó; hay dos formularios y vale el nuevo.** El
-desacuerdo era real, no un barrio mal cargado. Los otros casos de la medición (587, 590, 592, 543,
-716 y el histórico) siguen en consulta: hay que corregir una de las dos fuentes.
+**Regla 8, confirmada por el equipo (01/10):** figura + fecha + inscriptos iguales + comuna
+distinta en el título = **reunión reubicada que no se actualizó de un lado**. El dato vigente es el
+barrio de RDV. Casos: 587 ↔ `Comuna 3 13/5` (250), 590 ↔ `Comuna 7 - 14/05` (119), 592 ↔
+`Comuna 6 - 14/5` (92), 543 ↔ `Comuna 1 - 20/4` (236), 716 ↔ `Comuna 13 - 30/7` (147); en el
+histórico 380, 393, 425, 443, 468 y 247.
+
+**Implementado (01/10), `UBICACION_DESACUERDO_A_REVISION = true`:** el par figura + fecha a
+±`DIAS_REUBICACION` (1) + ubicación en desacuerdo **no se descarta**. Si la fila no tiene un
+ganador mejor → REVISAR_MATCH con motivo `ubicacion_en_desacuerdo` y el texto *"form dice Comuna
+N / RDV dice Barrio (Comuna M) — posible reubicación"*; el par aparece **siempre** en
+`EMPAREJAR_MANUAL` (el tope no lo corta). **Nunca se escribe solo.** Arreglado lo que encontró la
+medición: el descalificado llega a revisión **aunque la fila tenga candidatos más flojos**.
+**Predicción, antes de correr: ≈ 9 | 27 filas a revisar por este motivo.**
+
+**La medición 2b sigue en pie** (`paso11_desacuerdoUbicacion()`, bloque b): de esos pares, cuántos
+son **sin ambigüedad** —la figura tiene un solo formulario ese día ±1, y la fila un solo candidato
+con figura y fecha (±7)— y cuántos ambiguos, `[ventana | total]` con los casos; y de los sin
+ambigüedad, cuántos tienen inscriptos del formulario iguales a los del destino (calibración). Con
+esos números el usuario decide si los sin ambigüedad se escriben solos con traza
+`posible_reubicacion`.
 
 ### w) Herramientas para revisar casos uno por uno — `diagnostico/06_revisar_casos.js`
 
@@ -642,12 +697,38 @@ Sólo lectura, sólo log.
   traza, sus contendientes y cómo ganó.
 - Los dos leen **`CASO_A_EXPLICAR`** en `99_Correr.js`: número de fila de B o texto del nombre
   (formulario), o número de fila del destino (fila).
-- **`listarFilasFaltantes`** (`paso13_filasFaltantesEnRDV()`): **la lista para el equipo**.
-  Formularios **sin ningún candidato** con `MIN_INSCRIPTOS_FILA_FALTANTE` (10) o más, como *"posible
-  fila faltante en RDV"*, ventana primero. Los de menos de 10 sólo se cuentan. Se esperan en
-  ventana: Mraida Comuna 3 20/7 (103) y 22/7 (129), Bereciartua Comuna 6 29/7 (169), Primera
-  Persona 12/8 con Nicolás Vázquez (425), Sánchez Zinny San Cristóbal 8/4 (91), Miguel Comuna 15
-  22/4 (46).
+- **`listarFormulariosSinFila`** (`paso13_formulariosSinFila()`, antes `listarFilasFaltantes`):
+  **"formularios sin fila: canceladas o reubicadas"**, **informativo** (regla 9: un formulario sin
+  fila no es un faltante a reclamar). Formularios **sin ningún candidato** con
+  `MIN_INSCRIPTOS_SIN_FILA` (10) o más, ventana primero, en dos listas:
+  - **posible reemplazo / reunión reubicada** (regla 8): hay otro formulario de la misma figura a
+    ±1 día que **ya se escribe** en una fila con la ubicación coincidente. Ej.: Bereciartua
+    `Comuna 6 - 29/7` (169), reemplazado por `Comuna 7 - 29/7` en la 714;
+  - **sin fila (posible cancelada)**: el resto. Del 30/09 se esperaban Mraida Comuna 3 20/7 (103) y
+    22/7 (129), Primera Persona 12/8 (425), Sánchez Zinny San Cristóbal 8/4 (91), Miguel Comuna 15
+    22/4 (46).
+
+### y) Revisión con opciones y puntajes — implementada (01/10)
+
+Principio del usuario: **lo que el sistema no resuelve, se lo presenta a una persona con las
+opciones y sus puntajes.** En `REVISAR_MATCH` (todos los motivos), después de las columnas de
+siempre, y en `EMPAREJAR_MANUAL`, en un bloque nuevo al final (*"POR FILA DEL DESTINO"*), cada fila
+del destino muestra hasta `OPCIONES_REVISION` (3) formularios candidatos en el orden del sistema,
+con seis columnas por opción: `formulario`, `fila_B`, `inscriptos` (**del formulario**), `score`,
+`senales` (`figura ✓ · fecha 1 d · ubicación coincide (comuna) | DESACUERDO (…) | no evaluable ·
+eje …`) y `tomado_por` (`libre` / `esta fila` / `fila N`). Al final, una columna vacía
+**`elegido`**: el formato de la herramienta manual, **todavía no se lee**. Del destino no se muestra
+nada más que lo que ya muestra la fila. Lo que había no cambia: las columnas viejas siguen en su
+lugar y `leerConfirmaciones_` no lee el bloque nuevo (columnas A e I vacías).
+
+### z) La traza de las filas no escritas se recalcula en cada corrida (01/10)
+
+Antes, `aplicarDecisiones_` escribía la traza también para los descartados, y como
+`setSiDelSistema_` escribe sólo en celda vacía, **quedaba fija** con la decisión de la primera
+corrida. Corregido: **una fila que no se escribe no se toca** —ni `RDV_UID`, ni datos, ni traza—.
+Su motivo y su mejor candidato viven en `REVISAR_MATCH` / `SIN_MATCH`, que se regeneran en cada
+corrida. **Probado en Node** con una hoja simulada: las filas no escritas no reciben ninguna
+escritura, y en una segunda corrida con datos cambiados su decisión cambia.
 
 ### x) Las derivadas del destino leen `Comunas` B-H — chequeo (30/09)
 
@@ -724,7 +805,7 @@ sobre las 802 históricas. Están marcadas también en `CLAUDE.md`:
 | [diagnostico/03_muestras_mail.js](../diagnostico/03_muestras_mail.js) | `diagMuestrasMail()` |
 | [diagnostico/04_legado_fechas.js](../diagnostico/04_legado_fechas.js) | `diagLegToDate()` — qué `legToDate_` gana y qué le llega (`rehacer_verificarLegToDate()`, corrido el 25/09) |
 | [diagnostico/05_formularios_faltantes.js](../diagnostico/05_formularios_faltantes.js) | `diagFormulariosFaltantes()` — faltantes y mal fechados (`paso7_…`) |
-| [diagnostico/06_revisar_casos.js](../diagnostico/06_revisar_casos.js) | `explicarFormulario()`, `explicarFila()` (`paso12_…`), `listarFilasFaltantes()` (`paso13_…`) — decisión w |
+| [diagnostico/06_revisar_casos.js](../diagnostico/06_revisar_casos.js) | `explicarFormulario()`, `explicarFila()` (`paso12_…`), `listarFormulariosSinFila()` (`paso13_…`, informativo) — decisión w |
 | [diagnostico/07_formulas_destino.js](../diagnostico/07_formulas_destino.js) | `diagFormulasDestino()` — las derivadas contra `Comunas` (`paso14_…`) — decisión x |
 
 Todos tienen su `rehacer_…` en [99_Correr.js](../99_Correr.js).
@@ -779,6 +860,25 @@ Fase 9   retiro del staging  ── última
 La Fase 2 **no cierra hasta el final de la Fase 5**, y no es un descuido: tres archivos del
 legado no se pueden archivar todavía porque el único activador vivo los necesita. El detalle está
 en *"Por qué la Fase 2 no cierra"*, en `CLAUDE.md`.
+
+---
+
+## 7b. Ideas para después
+
+- **La Agenda (Fase 8) tiene el lugar final de cada reunión.** Sirve para **confirmar
+  reubicaciones** (regla 8: si la Agenda dice el barrio de RDV, el formulario con otra comuna es el
+  viejo) y para **detectar filas que faltan en RDV** (una reunión agendada y realizada sin fila).
+  El destino ya trae un texto de agenda por fila. Sin medir: es una fuente a cruzar cuando toque la
+  Fase 8, no una regla.
+- **Escribir solas las reubicaciones sin ambigüedad**, con traza `posible_reubicacion`: lo decide
+  el usuario con la medición 2b del paso 11 (decisión v).
+- **No evaluar una fila sin barrio con menos de 1 día** (regla de las 17): medida en el paso 2, sin
+  implementar (1a).
+- **Tolerancia asimétrica para los formularios con fuente `fecha_fin`**: la propone el paso 10 si
+  los datos la sostienen (decisión s).
+
+**Pendiente de guardar:** el handoff del 01/10 como `docs/HANDOFF-2026-10-01.md`; el usuario lo
+pasa aparte.
 
 ---
 

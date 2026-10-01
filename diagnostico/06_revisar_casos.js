@@ -11,8 +11,10 @@
  *                             (y si no, por qué).
  *   explicarFila(n)           lo mismo desde el lado de una fila del destino, más su veredicto y
  *                             su traza.
- *   listarFilasFaltantes()    formularios SIN NINGÚN candidato con MIN_INSCRIPTOS_FILA_FALTANTE o
- *                             más: "posible fila faltante en RDV", para el equipo. Ventana primero.
+ *   listarFormulariosSinFila() formularios SIN NINGÚN candidato con MIN_INSCRIPTOS_SIN_FILA o más,
+ *                             INFORMATIVO (regla 9: no es un faltante a reclamar), en dos listas:
+ *                             "posible reemplazo / reunión reubicada" (regla 8) y "sin fila
+ *                             (posible cancelada)". Ventana primero.
  *
  * `caso` es un número de fila de B, o un texto que se busca (normalizado) dentro del nombre del
  * formulario. En 99_Correr.js los wrappers lo leen de la constante CASO_A_EXPLICAR.
@@ -106,40 +108,83 @@ function explicarFila(n) {
   return { formularios: lista.length };
 }
 
-function listarFilasFaltantes() {
-  Logger.log('=== listarFilasFaltantes — sólo lectura, no escribe nada ===');
+function listarFormulariosSinFila() {
+  Logger.log('=== listarFormulariosSinFila — sólo lectura, no escribe nada (INFORMATIVO) ===');
   const ctx = _contexto_diag6();
-  const huerf = ctx.plan.emp.huerfanos || [];
-  const min = MIN_INSCRIPTOS_FILA_FALTANTE;
-  const items = huerf.map(function (c) {
+  const plan = ctx.plan, comunas = plan.comunas, vivos = plan.cands.vivos;
+  const huerf = plan.emp.huerfanos || [];
+  const min = MIN_INSCRIPTOS_SIN_FILA;
+  const porNumero = {};
+  plan.dest.filas.forEach(function (f) { porNumero[f.fila] = f; });
+
+  /*
+   * Regla 8 (reubicación): un formulario de la misma figura y fecha (±DIAS_REUBICACION) que otro
+   * que YA se escribe en una fila con la ubicación coincidente es el formulario VIEJO de una
+   * reunión que cambió de lugar: "posible reemplazo", no un formulario sin fila.
+   */
+  const reemplazoDe = function (c) {
+    if (!c.figurasNorm.length || !c.det || !c.det.mejor) return null;
+    for (let j = 0; j < vivos.length; j++) {
+      const g = vivos[j];
+      if (g === c || !g.det || !g.det.mejor) continue;
+      const filaN = ctx.tomadoPor[g.fila];
+      if (filaN == null) continue;
+      if (!g.figurasNorm.some(function (n) { return c.figurasNorm.indexOf(n) !== -1; })) continue;
+      if (Math.abs(diasEntre_(g.det.mejor, c.det.mejor)) > DIAS_REUBICACION) continue;
+      const f = porNumero[filaN];
+      const sc = f ? puntuar_(f, g, comunas) : null;
+      if (!sc || !sc.evaluables.ubic || sc.desacuerdo) continue;   // ubicación coincidente
+      return { g: g, f: f, sc: sc };
+    }
+    return null;
+  };
+
+  const reemplazos = [], sinFila = [];
+  const cnt = { reemplazo: contador_(), sinFila: contador_(), chicosReemplazo: contador_(),
+                chicosSinFila: contador_() };
+  huerf.forEach(function (c) {
     const fecha = c.det && c.det.mejor;
-    return { c: c, fecha: fecha, ev: enVentanaAnalisis_(fecha) };
+    const x = { c: c, fecha: fecha, ev: enVentanaAnalisis_(fecha), de: reemplazoDe(c) };
+    const chico = (c.inscriptos || 0) < min;
+    if (x.de) { sumar_(chico ? cnt.chicosReemplazo : cnt.reemplazo, x.ev); if (!chico) reemplazos.push(x); }
+    else { sumar_(chico ? cnt.chicosSinFila : cnt.sinFila, x.ev); if (!chico) sinFila.push(x); }
   });
-  const listar = items.filter(function (x) { return (x.c.inscriptos || 0) >= min; });
-  const chicos = contador_(), cnt = contador_();
-  items.forEach(function (x) { if ((x.c.inscriptos || 0) < min) sumar_(chicos, x.ev); });
-  listar.forEach(function (x) { sumar_(cnt, x.ev); });
-  listar.sort(function (a, b) {
+  const orden = function (a, b) {
     if (a.ev !== b.ev) return a.ev ? -1 : 1;
     return (a.fecha ? a.fecha.getTime() : 0) - (b.fecha ? b.fecha.getTime() : 0);
-  });
+  };
+  reemplazos.sort(orden); sinFila.sort(orden);
+  const linea = function (x) {
+    const c = x.c;
+    return Utilities.formatString('  [%s] %s | ins=%s | figura %s | barrio %s | comuna %s | B fila %s | %s',
+      x.ev ? 'ventana' : 'histor.', fmtFecha_(x.fecha) || '(sin fecha)', c.inscriptos || 0,
+      figurasEnTexto_(c.nombre).join(' + ') || '(ninguna)', c.barrio || '-',
+      c.comuna == null ? '-' : c.comuna, c.fila, c.nombre);
+  };
 
   Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
              fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_());
   Logger.log('Formularios de B SIN NINGÚN candidato en el destino (ni fila escrita, ni par en ' +
              'EMPAREJAR_MANUAL): %s', huerf.length);
-  Logger.log('  con %s inscriptos o más → POSIBLE FILA FALTANTE EN RDV: %s', min, _dc_(cnt));
-  Logger.log('  con menos de %s: %s (no se listan)', min, _dc_(chicos));
-  Logger.log('  "Posible": el formulario existe y nadie en RDV lo reclama. Puede ser una reunión que');
-  Logger.log('  no se cargó, o una fila cargada con otra figura/fecha. Lo decide el equipo.');
-  listar.forEach(function (x) {
-    const c = x.c;
-    Logger.log('  [%s] %s | ins=%s | figura %s | barrio %s | comuna %s | B fila %s | %s',
-               x.ev ? 'ventana' : 'histor.', fmtFecha_(x.fecha) || '(sin fecha)', c.inscriptos || 0,
-               figurasEnTexto_(c.nombre).join(' + ') || '(ninguna)', c.barrio || '-',
-               c.comuna == null ? '-' : c.comuna, c.fila, c.nombre);
+  Logger.log('  Regla 9 (01/10): un formulario sin fila NO es un faltante a reclamar. Lo más probable es');
+  Logger.log('  una reunión CANCELADA, o REUBICADA (regla 8). Esta lista es informativa.');
+
+  Logger.log('--- POSIBLE REEMPLAZO / REUNIÓN REUBICADA: otro formulario de la figura a ±%s día(s) ' +
+             'ya se escribe con la ubicación coincidente ---', DIAS_REUBICACION);
+  Logger.log('  con %s inscriptos o más: %s   (con menos: %s, no se listan)', min,
+             _dc_(cnt.reemplazo), _dc_(cnt.chicosReemplazo));
+  reemplazos.forEach(function (x) {
+    Logger.log(linea(x));
+    Logger.log('      reemplazado por B fila %s (ins=%s), que se escribe en la fila %s (%s, %s) | %s',
+               x.de.g.fila, x.de.g.inscriptos || 0, x.de.f.fila, x.de.f.barrio || 'sin barrio',
+               fmtFecha_(x.de.f.fecha), x.de.g.nombre);
   });
-  return { listados: cnt, chicos: chicos };
+
+  Logger.log('--- SIN FILA (posible cancelada) ---');
+  Logger.log('  con %s inscriptos o más: %s   (con menos: %s, no se listan)', min,
+             _dc_(cnt.sinFila), _dc_(cnt.chicosSinFila));
+  sinFila.forEach(function (x) { Logger.log(linea(x)); });
+  return cnt;
 }
 
 // ===================== helpers =====================

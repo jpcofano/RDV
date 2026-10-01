@@ -273,31 +273,38 @@ const MAX_VUELTAS_FORMULARIO_UNICO = 10;
 const EJE_COMO_DESEMPATE = true;
 
 /**
- * **Guarda de transición para la primera escritura** (30/09). Sólo para filas con veredicto
- * `escribiria`: si el destino tiene inscriptos cargados (≠ 0) y son DISTINTOS de los del
- * formulario elegido, **no se escribe**: va a REVISAR_MATCH con motivo `difiere_del_destino`, con
- * los dos valores. Destino igual o sin cargar → se escribe como siempre.
+ * **Ubicación en desacuerdo con figura y fecha coincidentes → revisión, no descarte** (01/10).
  *
- * **No toca el matching**: los inscriptos del destino siguen fuera del score y de los desempates
- * (CLAUDE.md 1). Es un seguro de migración, para que la primera escritura no pise una carga del
- * legado que puede ser la correcta (filas 769 y 748). **Se apaga (false) después del backfill.**
+ * Regla de negocio 8 (CLAUDE.md 1), confirmada por el equipo: una reunión puede cambiar de lugar
+ * después de creado el formulario, y entonces el título del formulario dice una comuna y RDV otra.
+ * **El dato vigente es el barrio de RDV.** Un candidato que nombra la figura, está a
+ * ±`DIAS_REUBICACION` días y tiene la ubicación en desacuerdo **no se descarta**:
+ *   - si la fila no tiene un ganador mejor → REVISAR_MATCH con motivo `ubicacion_en_desacuerdo`
+ *     ("form dice Comuna N / RDV dice Barrio (Comuna M) — posible reubicación");
+ *   - el par aparece siempre en EMPAREJAR_MANUAL (no lo corta el tope);
+ *   - **nunca se escribe solo.** Cuáles se podrían escribir solos lo decide el usuario con la
+ *     medición `medirDesacuerdoUbicacion()` (paso 11, "sin ambigüedad").
  */
-const TRANSICION_RESPETAR_DESTINO = true;
+const UBICACION_DESACUERDO_A_REVISION = true;
+const DIAS_REUBICACION = 1;
+
+/** Cuántos formularios candidatos se muestran por fila en REVISAR_MATCH y EMPAREJAR_MANUAL. */
+const OPCIONES_REVISION = 3;
 
 /**
- * Inscriptos mínimos para listar un formulario huérfano (sin ningún candidato) como "posible
- * fila faltante en RDV" (`listarFilasFaltantes`). Los de menos no se listan (pedido del 30/09):
- * con tan pocos inscriptos no vale pedirle al equipo que busque la reunión.
+ * Inscriptos mínimos para listar un formulario sin fila (sin ningún candidato) en
+ * `listarFormulariosSinFila` (paso 13, "formularios sin fila: canceladas o reubicadas"). Los de menos
+ * sólo se cuentan. Es informativo: un formulario sin fila no es un faltante a reclamar (regla 9).
  */
-const MIN_INSCRIPTOS_FILA_FALTANTE = 10;
+const MIN_INSCRIPTOS_SIN_FILA = 10;
 
 /**
  * Búsqueda inversa del paso 10 (calibración, sólo log): ventana en días alrededor de la fila, y
  * filas pedidas a mano además de las que el paso 10 ya marca como dudosas. Las de hoy: 527 (96),
- * 626 (Flores 04/06, 105), 631, 748 (6) y 769 (116).
+ * 626 (Flores 04/06, 105) y 631. La 748 y la 769 salieron el 01/10: cerradas con el equipo.
  */
 const DIAS_BUSQUEDA_INVERSA = 7;
-const FILAS_BUSQUEDA_INVERSA = [527, 626, 631, 748, 769];
+const FILAS_BUSQUEDA_INVERSA = [527, 626, 631];
 
 /** Los ejes que reconoce `detectEje_`. Un `Eje X` fuera de esta lista se reporta, no se usa. */
 const EJES_CONOCIDOS = ['Norte', 'Sur', 'Centro', 'Oeste', 'Este'];

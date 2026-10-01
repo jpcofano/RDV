@@ -21,27 +21,22 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> 01/10: correr DESPUÉS DE LAS 17 (formularios y barrios se cargan tarde).
- *      Primero paso7_formulariosFaltantes(): la consulta de Hoja1 se corrigió; verificar que
- *      llegaron los formularios de Lombardi 2026. Respuestas del equipo: docs/ESTADO.md, 1a.
+ *  >>> CORRER DESPUÉS DE LAS 17 (regla operativa del 01/10: formularios y barrios se cargan a lo
+ *      largo del día). Sin pendientes con el equipo: docs/ESTADO.md, 1a.
  *
- *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino):
- *      1. paso14_formulasDestino(). Confirma que las once derivadas siguen siendo fórmula y que
- *         Comuna..Zona muestran lo que dice Comunas HOY (después de corregir E-G). Rápido.
- *      2. paso2_upsertEnSeco(). Primera corrida con la GUARDA DE TRANSICIÓN y el EJE como último
- *         desempate. PREDICCIÓN: la guarda frena ≈ 10 | 59 (pasan de escribiría a revisar con
- *         motivo difiere_del_destino) → escribiría ≈ 267 | 687, revisar ≈ 13 | 74, sin match
- *         25 | 44 igual. Decididas por el eje: 0. Invariante: 0. EMPAREJAR_MANUAL puede crecer
- *         un poco: las frenadas quedan libres y reciben pares.
- *      3. paso10_validarContraInscriptos(). Ahora con la BÚSQUEDA INVERSA al final: para cada
- *         fila dudosa, los formularios de su figura a ±7 con los mismos inscriptos del destino.
- *      4. paso11_desacuerdoUbicacion(). Pares figura + fecha 0-1 con la ubicación en desacuerdo
- *         (Bereciartua 29/07 Flores), y la propuesta simulada.
- *      5. paso13_filasFaltantesEnRDV(). La lista para el equipo: formularios huérfanos con 10+
- *         inscriptos. Se esperan en ventana: Mraida C3 20/7 y 22/7, Bereciartua C6 29/7,
- *         Primera Persona 12/8, Sánchez Zinny San Cristóbal 8/4, Miguel C15 22/4.
+ *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino). Predicciones en
+ *      docs/ESTADO.md, sección 1, anotadas antes de correr:
+ *      1. paso2_upsertEnSeco(). SIN la guarda de transición (eliminada), con las reubicaciones
+ *         a revisión y las opciones en REVISAR_MATCH / EMPAREJAR_MANUAL. Ventana: escribiría
+ *         ≈ 283-290, revisar ≈ 10-16 (≈ 9 | 27 ubicacion_en_desacuerdo), sin match ≈ 3-8.
+ *         Invariante 0; eje 0-2.
+ *      2. paso13_formulariosSinFila(). Informativo: "posible reemplazo" (Bereciartua C6 29/7)
+ *         y "sin fila (posible cancelada)".
+ *      3. paso10_validarContraInscriptos(). Con la búsqueda inversa y la medición de los
+ *         formularios con fecha_fin (626 a +6 días).
+ *      4. paso11_desacuerdoUbicacion(). Reubicaciones y cuáles son sin ambigüedad.
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
- *      editando CASO_A_EXPLICAR (más abajo).
+ *      editando CASO_A_EXPLICAR (más abajo). paso14_formulasDestino() cuando se quiera.
  *
  *  LÍNEA BASE vigente: la corrida en seco del 30/09 14:19 (desempate + invariante aplicados).
  *  Corte de ventana FIJO en 26/03/2026 (VENTANA_ANALISIS_DESDE):
@@ -83,7 +78,7 @@
  *   paso11_desacuerdoUbicacion() → medirDesacuerdoUbicacion()   sólo log.
  *   paso12_explicarFormulario() / paso12_explicarFila() → diagnostico/06_revisar_casos.js
  *                                                sólo log. Leen CASO_A_EXPLICAR.
- *   paso13_filasFaltantesEnRDV() → listarFilasFaltantes()   sólo log.
+ *   paso13_formulariosSinFila() → listarFormulariosSinFila()   sólo log, informativo.
  *   paso14_formulasDestino() → diagFormulasDestino()   sólo log; lee el destino y Comunas.
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
@@ -170,11 +165,12 @@ function paso10_validarContraInscriptos() {
 }
 
 function paso11_desacuerdoUbicacion() {
-  _anunciar_('paso 11 — ubicación en desacuerdo con figura y fecha coincidentes',
+  _anunciar_('paso 11 — reubicaciones: figura y fecha coincidentes, ubicación en desacuerdo',
              'medirDesacuerdoUbicacion()  [20_UpsertDestino.js]',
              'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
              'sólo el log: pares figura + fecha 0-1 + ubicación en desacuerdo, en qué quedó cada ' +
-             'fila, si el par está en EMPAREJAR_MANUAL, y la propuesta simulada (no implementada)');
+             'fila, si el par está en EMPAREJAR_MANUAL, y cuáles son sin ambigüedad (para decidir ' +
+             'si se escriben solos)');
   return medirDesacuerdoUbicacion();
 }
 
@@ -203,13 +199,13 @@ function paso12_explicarFila() {
   return explicarFila(CASO_A_EXPLICAR);
 }
 
-function paso13_filasFaltantesEnRDV() {
-  _anunciar_('paso 13 — posibles filas faltantes en RDV (lista para el equipo)',
-             'listarFilasFaltantes()  [diagnostico/06_revisar_casos.js]',
+function paso13_formulariosSinFila() {
+  _anunciar_('paso 13 — formularios sin fila: canceladas o reubicadas (INFORMATIVO)',
+             'listarFormulariosSinFila()  [diagnostico/06_revisar_casos.js]',
              'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
-             'sólo el log: formularios sin ningún candidato con MIN_INSCRIPTOS_FILA_FALTANTE o ' +
-             'más, ventana primero');
-  return listarFilasFaltantes();
+             'sólo el log: formularios sin ningún candidato con MIN_INSCRIPTOS_SIN_FILA o más, en ' +
+             'dos listas: "posible reemplazo / reunión reubicada" y "sin fila (posible cancelada)"');
+  return listarFormulariosSinFila();
 }
 
 function paso14_formulasDestino() {
