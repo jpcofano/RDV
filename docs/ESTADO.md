@@ -64,6 +64,14 @@ respuesta del equipo sobre la fila **769**.
 
 Mismos datos que a las 18:04. Contra la predicción (284 → ≈ 285 | 9 → ≈ 18 | 16 → ≈ 7):
 
+| (ventana \| total) | 18:23 |
+|---|---|
+| escribiría | **284 \| 753** |
+| a revisar | **19 \| 43** — `multi_figura` 11 \| 22 · `ubicacion_en_desacuerdo` 5 \| 15 · `formulario_compartido` 3 \| 6 |
+| sin match | **6 \| 13** — `sin_formulario_propio` 4 \| 6 · `score_bajo` 2 \| 7 |
+| `sin_figura_por_ubicacion` | escribiría 15 \| 15 |
+| paso 10 | exacto **261/268 (97,4%)** \| 674/730 (92,3%); desempates **35/35** \| 59/59; invariante **6/6**; `fecha_fin` **10 \| 27** confirmados, **0 negativos** |
+
 - **✓ a revisar** y **✓ sin match**: las figuras por apellido mandaron a las LTP a revisión
   (`multi_figura`) y sacaron a las de Lombardi de `SIN_MATCH`;
 - **✗ escribiría quedó en 284**: entró la 626 (ventana asimétrica ✓) y **salió la 801**.
@@ -86,6 +94,8 @@ sola sigue en revisión.
 
 **Predicción (ventana), antes de correr:** paso 2 → **escribiría 285, revisar 18, sin match 6**.
 Paso 13 → **B fila 806** (Seguridad Comuna 13 24/9) sale de "sin fila"; **quedan 6** en ventana.
+**`sin_figura_por_ubicacion` pasa de 15 | 15 a 16 | 16** (sólo la 801). Si sube más, es efecto del
+cambio "un `multi_figura` no saca de carrera a otro formulario", y se revisa fila por fila.
 
 **sin_formulario_propio subió de 2 a 4.** La línea de motivos del paso 2 ahora las lista una por
 una y marca las que con la regla simétrica de antes (±3 para todos) tenían formulario propio —o
@@ -244,6 +254,15 @@ leído los números de la corrida en seco.
 - **Mraida Comuna 3 20/7 y 22/7**: sin fila, los dos con más de 100 inscriptos.
 - **Ejes**: el paso 2 cuenta **19 barrios con eje** y se esperaban 18. Sospecha del usuario: **San
   Nicolás en Este**. No se cambia nada; lo confirma el usuario con el equipo (el 2e lo marca).
+  **Lista vigente al 01/10, a confirmar con el equipo (se esperaban 18):**
+
+  | eje | barrios |
+  |---|---|
+  | Centro | Balvanera, Caballito, Almagro, Boedo |
+  | Este | San Nicolás |
+  | Norte | Villa Urquiza, Belgrano, Recoleta, Palermo, Retiro, Núñez |
+  | Oeste | Parque Chacabuco, Villa Ortúzar, Chacarita, La Boca |
+  | Sur | Parque Patricios, Constitución, Barracas, Floresta |
 
 **Cerradas el 01/10:**
 

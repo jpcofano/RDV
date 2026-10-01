@@ -28,7 +28,7 @@
  *      docs/ESTADO.md, sección 1, anotadas antes de correr:
  *      1. paso2_upsertEnSeco(). Con el VETO multi_figura sobre el ganador del desempate (la 801
  *         se escribe con "Seguridad - Comuna 13 - 24/9"). Ventana: escribiría 285, revisar 18,
- *         sin match 6. Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
+ *         sin match 6; sin_figura_por_ubicacion 15 → 16 (sólo la 801; si sube más, revisar). Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
  *         una (marca las que antes eran score_bajo), y el 2e avisa si los barrios con eje no
  *         son 18 (hoy 19; sospecha San Nicolás en Este).
  *      2. paso10_validarContraInscriptos().
@@ -38,8 +38,8 @@
  *      editando CASO_A_EXPLICAR (más abajo). paso11 y paso14 cuando se quiera.
  *
  *  LÍNEA BASE vigente: la corrida en seco del 01/10 18:23 (5f84cc1). Corte de ventana FIJO en
- *  26/03/2026 (VENTANA_ANALISIS_DESDE): escribiría 284 (entró la 626, salió la 801 por la
- *  regresión del veto multi_figura); revisar y sin match como se predijo (≈ 18 y ≈ 7).
+ *  26/03/2026 (VENTANA_ANALISIS_DESDE), [ventana | total]: escribiría 284 | 753 (entró la 626,
+ *  salió la 801 por la regresión del veto multi_figura), a revisar 19 | 43, sin match 6 | 13.
  *  La de las 18:04 (e921457), en docs/ESTADO.md:
  *
  *        escribiría   284     predicción era 283-290
