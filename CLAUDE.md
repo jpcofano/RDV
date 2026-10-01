@@ -2026,6 +2026,18 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    > divide? ¿Se asigna a una sola? **No lo resuelve el pipeline por su cuenta.** Hasta que haya
    > una respuesta, estos casos quedan en `REVISAR_MATCH` sin escribir nada.
 
+   **El veto se evalúa sobre el GANADOR, no sobre cualquier empatado (01/10, regresión de la
+   801).** Gabino Tapia 24/09 Núñez tenía su formulario propio (`Seguridad - Comuna 13 - 24/9`, 0
+   días, 143 = 143) empatado a 1,0 con un `Lombardi-Tapia-Piragine - 22/9` (2 días) que, desde que se
+   reconocen los apellidos, es `multi_figura`. El veto se aplicaba antes del desempate y la fila iba
+   a revisión, dejando huérfano al formulario propio. Ahora: con margen chico, primero
+   `DESEMPATE_POR_EVIDENCIA` (señales → distancia → inscriptos → eje); si gana un formulario simple
+   y llega al umbral, se escribe; si gana el `multi_figura` o nadie gana, revisión por
+   `multi_figura` como antes. Con margen, el `multi_figura` ganador va a revisión (la 716). Y un
+   `multi_figura` ya no cuenta como "el que nombra la figura" para `SIN_FIGURA_POR_UBICACION`: no
+   puede sacar de la competencia al formulario sin figura de la fila. El paso 2 cuenta los empates
+   con un `multi_figura` y cómo se resolvieron.
+
    #### Trazabilidad: qué formulario se pasó
 
    Columnas nuevas al final del destino, junto a `RDV_UID`:

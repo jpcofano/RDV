@@ -60,7 +60,43 @@ inscriptos); la **626** (Flores 04/06) perdió tres formularios en cascada y ter
 **Landerreche 03/09** con el `Comuna 1 Sur` de 116: **aceptado** (regla de negocio), atado a la
 respuesta del equipo sobre la fila **769**.
 
-### Resultados del 01/10 18:04–18:07 (`e921457`): **línea base vigente**
+### Resultados del 01/10 18:23 (`5f84cc1`) contra la predicción, y la regresión de la 801
+
+Mismos datos que a las 18:04. Contra la predicción (284 → ≈ 285 | 9 → ≈ 18 | 16 → ≈ 7):
+
+- **✓ a revisar** y **✓ sin match**: las figuras por apellido mandaron a las LTP a revisión
+  (`multi_figura`) y sacaron a las de Lombardi de `SIN_MATCH`;
+- **✗ escribiría quedó en 284**: entró la 626 (ventana asimétrica ✓) y **salió la 801**.
+
+**La regresión.** Fila 801, Gabino Tapia 24/09 Núñez. Su formulario propio, `VÍNCULO CIUDADANO -
+Encuentro con vecinos sobre Seguridad - Comuna 13 - 24/9` (B 806, 0 días, score 1,0, 143 = 143 en
+el paso 10), quedó empatado con `… comerciantes -Lombardi-Tapia-Piragine - Eje Norte - 22/9` (2
+días, 1,0), que desde el 01/10 es `multi_figura` por apellido. El veto `multi_figura` se aplicaba
+**antes** del desempate, y además el LTP —como "nombra la figura"— sacaba al de Seguridad (sin
+figura) de la competencia. Resultado: REVISAR `multi_figura`, y el de Seguridad huérfano en el
+paso 13 como "sin fila (posible cancelada)".
+
+**Corregido (01/10 noche):** el veto se evalúa sobre el **ganador** del desempate por evidencia; un
+`multi_figura` no saca de la competencia a un formulario sin figura. Si el multi_figura gana con
+margen (la 716), sigue en revisión. Línea nueva en el paso 2: *"empates con un candidato
+multi_figura: N | N — resueltos a favor de un formulario simple N | N, siguen en revisión N | N"*,
+con la lista. **Probado en Node**: la 801 se escribe con el de Seguridad 24/9 (desempate por
+distancia, 0 contra 2 días); la 716 sigue en revisión con LTP 29/7 como primera opción; una fila LTP
+sola sigue en revisión.
+
+**Predicción (ventana), antes de correr:** paso 2 → **escribiría 285, revisar 18, sin match 6**.
+Paso 13 → **B fila 806** (Seguridad Comuna 13 24/9) sale de "sin fila"; **quedan 6** en ventana.
+
+**sin_formulario_propio subió de 2 a 4.** La línea de motivos del paso 2 ahora las lista una por
+una y marca las que con la regla simétrica de antes (±3 para todos) tenían formulario propio —o
+sea, las que antes eran `score_bajo`—. **Hipótesis, sin medir:** son las que cambió la ventana
+asimétrica de `fecha_fin` (un cierre posterior a la reunión ya no cuenta como cercano). Lo dice la
+próxima corrida.
+
+**Paso 13 del 01/10 18:28:** las LTP salieron de "sin fila" ✓; "Primera Persona 12/8" marcada
+**DUDOSO** ✓. Los casos nuevos para el equipo, en 1a.
+
+### Resultados del 01/10 18:04–18:07 (`e921457`): línea base anterior
 
 | | resultado | predicción |
 |---|---|---|
@@ -199,9 +235,17 @@ leído los números de la corrida en seco.
 
 ---
 
-## 1a. Consultas al equipo (al 01/10): todas cerradas
+## 1a. Consultas al equipo (al 01/10 noche)
 
-**No hay pendientes con el equipo.** Cerradas el 01/10:
+**Para el equipo (nuevas, del paso 13 del 01/10 18:28):**
+
+- **Flores 29/1** contra **CCV Versalles 29/1**: marcado **DUDOSO**; probablemente dos reuniones.
+- **1 a 1 Villa Riachuelo 11/8** contra **Parque Avellaneda 12/8**: posible reubicación.
+- **Mraida Comuna 3 20/7 y 22/7**: sin fila, los dos con más de 100 inscriptos.
+- **Ejes**: el paso 2 cuenta **19 barrios con eje** y se esperaban 18. Sospecha del usuario: **San
+  Nicolás en Este**. No se cambia nada; lo confirma el usuario con el equipo (el 2e lo marca).
+
+**Cerradas el 01/10:**
 
 | caso | respuesta | qué cambia |
 |---|---|---|

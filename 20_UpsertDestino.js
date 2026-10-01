@@ -1678,7 +1678,8 @@ function calcularPlan_(enSeco) {
                         cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
                         segundo: r.segundoScore == null ? null : r.segundoScore,
                         contendientes: r.contendientes || null, desempate: r.desempate || null,
-                        porInvariante: r.porInvariante || null };
+                        porInvariante: r.porInvariante || null, empateMulti: !!r.empateMulti,
+                        motivoScore: r.motivoScore || null };
 
     // --- cobertura de EVENTO contra el mejor candidato ---
     const tieneEvento = !!normalizarEvento_(f.evento);
@@ -2064,6 +2065,67 @@ function _logFigurasPorApellido_(plan) {
   });
 }
 
+/**
+ * Las filas `sin_formulario_propio`, una por una (01/10: subieron de 2 a 4 en la ventana). Marca
+ * las que con la regla simétrica de antes (±TOLERANCIA_REPROGRAMACION_DIAS para todos) tenían un
+ * formulario propio y por eso eran `score_bajo`: son las que cambió la ventana asimétrica de
+ * `fecha_fin` (un cierre DESPUÉS de la reunión ya no cuenta como cercano).
+ */
+function _logSinPropio_(plan) {
+  const lista = plan.dest.filas.filter(function (f) {
+    const pf = plan.porFila[f.fila];
+    return pf && pf.motivo === 'sin_formulario_propio';
+  });
+  if (!lista.length) return;
+  Logger.log('    sin_formulario_propio, una por una (%s):', lista.length);
+  _ordenarPorFila_(lista.map(function (f) { return { f: f, ev: enVentanaAnalisis_(f.fecha) }; }))
+    .forEach(function (x) {
+      const f = x.f, figNorm = normalizeText_(f.figura);
+      const cDest = f.barrio ? plan.comunas.get(normalizeText_(f.barrio)) : null;
+      // ¿Con la regla simétrica de antes había uno propio?
+      let antes = null;
+      plan.cands.vivos.forEach(function (c) {
+        const d = distanciaFecha_(f.fecha, c.det);
+        if (d === null || d > TOLERANCIA_REPROGRAMACION_DIAS) return;
+        const propio = c.figurasNorm.indexOf(figNorm) !== -1 ||
+          (!c.figurasNorm.length && !(function () { const k = comparaComuna_(f.barrio, cDest, c); return k && !k.coincide; })());
+        if (propio && (!antes || d < antes.d)) antes = { c: c, d: d };
+      });
+      Logger.log('      [%s] fila %s | %s | %s | %s%s', x.ev ? 'ventana' : 'histor.', f.fila,
+                 fmtFecha_(f.fecha), f.figura, f.barrio || 'sin barrio',
+                 antes ? '   ← ANTES score_bajo: con ±' + TOLERANCIA_REPROGRAMACION_DIAS + ' tenía B fila ' +
+                         antes.c.fila + ' (' + antes.d + ' días, fuente ' + (antes.c.det.fuente || '-') + '): ' +
+                         antes.c.nombre : '');
+    });
+}
+
+/**
+ * Línea de medición del paso 2 (01/10, regresión 801): filas con margen chico donde uno de los
+ * empatados es multi_figura. El veto multi_figura se evalúa sobre el ganador del desempate, así
+ * que una fila puede escribirse con un formulario simple aunque haya un multi_figura empatado.
+ */
+function _logEmpatesMulti_(plan) {
+  const total = contador_(), resueltas = contador_(), siguen = contador_(), casos = [];
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
+    if (!pf || !pf.empateMulti) return;
+    const ev = enVentanaAnalisis_(f.fecha);
+    sumar_(total, ev);
+    sumar_(pf.veredicto === 'escribiria' ? resueltas : siguen, ev);
+    casos.push({ f: f, ev: ev, pf: pf });
+  });
+  Logger.log('  empates con un candidato multi_figura: %s — resueltos a favor de un formulario simple %s, ' +
+             'siguen en revisión %s', _dc_(total), _dc_(resueltas), _dc_(siguen));
+  _ordenarPorFila_(casos).forEach(function (x) {
+    const multis = (x.pf.contendientes || []).filter(function (s) { return s.multiFigura; })
+      .map(function (s) { return s.c.nombre; });
+    Logger.log('    [%s] fila %s | %s | %s | %s → %s%s ← %s | multi_figura empatado: %s',
+               x.ev ? 'ventana' : 'histor.', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura,
+               x.f.barrio || 'sin barrio', x.pf.veredicto, x.pf.motivo ? '/' + x.pf.motivo : '',
+               x.pf.cand ? x.pf.cand.nombre : '-', multis.join(' ; '));
+  });
+}
+
 function logResumen_(plan) {
   const r = plan.res;
   const base = { v: r.enVentana - r.futuras.v, t: plan.dest.filas.length - r.futuras.t };
@@ -2100,6 +2162,8 @@ function logResumen_(plan) {
   Object.keys(plan.motivos).sort().forEach(function (m) {
     Logger.log('    %s: %s', m, _dc_(plan.motivos[m]));
   });
+  _logSinPropio_(plan);
+  _logEmpatesMulti_(plan);
   const dc = plan.desempateCnt;
   if (dc) {
     Logger.log('  desempate por evidencia (DESEMPATE_POR_EVIDENCIA = %s): por señales %s | por ' +
@@ -2700,6 +2764,20 @@ function _logEjes_(m) {
   const conEjeN = Object.keys(m.porEje).reduce(function (s, k) { return s + m.porEje[k].barrios.length; }, 0);
   Logger.log('     barrios CON eje (priorizados): %s | SIN eje (celda vacía = no pertenece a ningún ' +
              'eje): %s   (se esperan 18 | 30)', conEjeN, (m.noPertenece || []).length);
+  if (conEjeN !== 18) {
+    /*
+     * Sólo se informa; no se cambia nada (01/10). La lista de los 18 del 30/09 no quedó escrita
+     * en el repo, así que no se puede decir con certeza cuál sobra: se listan los barrios con eje
+     * (arriba, por eje) y se marca la sospecha del usuario. Lo confirma el usuario con el equipo.
+     */
+    const sn = ejeInfoDeBarrio_('San Nicolás');
+    Logger.log('     >>> %s %s respecto de los 18 del 30/09. La lista del 30/09 no está escrita en el repo: ' +
+               'comparar a mano con las listas por eje de arriba.', Math.abs(conEjeN - 18),
+               conEjeN > 18 ? 'SOBRA(N)' : 'FALTA(N)');
+    Logger.log('         Sospecha del usuario: San Nicolás en Este → hoy San Nicolás tiene eje "%s"%s. ' +
+               'Lo confirma el usuario con el equipo; no se cambia nada.', sn.eje || '(ninguno)',
+               sn.eje === 'Este' ? ' (coincide con la sospecha)' : '');
+  }
   Logger.log('     pendientes ("?", sólo como posibilidad; no se evalúan): %s%s', m.pendientes.length,
              m.pendientes.length ? ' — ' + m.pendientes.join(', ') : '');
   if (m.sinEje.length) {
@@ -3137,9 +3215,11 @@ function evaluarCandidatos_(f, candidatos, comunas) {
    *
    * Es la misma selección de siempre (`limpios`), filtrada: no un segundo criterio.
    */
+  // Un multi_figura no cuenta como "el que nombra la figura": no se puede escribir solo, así que
+  // no puede sacar de la competencia al formulario propio de la fila (regresión 801, 01/10).
   let compiten = limpios;
   if (SIN_FIGURA_POR_UBICACION && limpios.some(function (s) {
-    return s.nombraFigura && s.score >= UMBRAL_MATCH;
+    return s.nombraFigura && !s.multiFigura && s.score >= UMBRAL_MATCH;
   })) {
     compiten = limpios.filter(function (s) { return !s.sinFigura; });
   }
@@ -3177,10 +3257,17 @@ function evaluarCandidatos_(f, candidatos, comunas) {
   const s2 = segundo ? segundo.score : 0;
   const margen = redondear_(mejor.score - s2);
 
+  /*
+   * El veto multi_figura se evalúa sobre el GANADOR, después del desempate por evidencia, no
+   * sobre cualquier candidato empatado (regresión 801, 01/10). Con margen chico se desempata
+   * primero: si gana un formulario simple (con su umbral propio), se escribe; si gana el
+   * multi_figura o nadie gana, va a revisión por multi_figura como antes. Con margen, el
+   * multi_figura ganador va a revisión (caso 716).
+   */
   let veredicto, motivo = '';
   if (mejor.score < UMBRAL_MATCH)      { veredicto = 'SIN_MATCH';     motivo = 'score_bajo'; }
-  else if (mejor.multiFigura)          { veredicto = 'REVISAR_MATCH'; motivo = 'multi_figura'; }
   else if (margen < MARGEN_MINIMO)     { veredicto = 'REVISAR_MATCH'; motivo = 'margen_chico'; }
+  else if (mejor.multiFigura)          { veredicto = 'REVISAR_MATCH'; motivo = 'multi_figura'; }
   else                                   veredicto = 'escribiria';
 
   /*
@@ -3205,6 +3292,10 @@ function evaluarCandidatos_(f, candidatos, comunas) {
    * señales sería escribir con un score que no alcanza. Ese caso sigue en revisión.
    */
   let desempate = null, desempateBajoUmbral = false;
+  // ¿Hay un multi_figura entre los empatados? Se mide en el paso 2 (empates con multi_figura).
+  const empateMulti = !!(contendientes && contendientes.length > 1 &&
+                         contendientes.some(function (s) { return s.multiFigura; }));
+  let ganadorEsMulti = false;
   if (DESEMPATE_POR_EVIDENCIA && motivo === 'margen_chico') {
     const d = _desempatePorEvidencia_(contendientes);
     if (d.ganador && d.ganador.score >= UMBRAL_MATCH && !d.ganador.multiFigura) {
@@ -3213,8 +3304,13 @@ function evaluarCandidatos_(f, candidatos, comunas) {
       motivo = '';
       desempate = d.porQue;
     } else if (d.ganador) {
-      desempateBajoUmbral = true;
+      if (d.ganador.multiFigura) { mejor = d.ganador; ganadorEsMulti = true; }
+      else desempateBajoUmbral = true;
     }
+  }
+  // Sin un simple que gane: si el mejor (o el ganador) es multi_figura, revisión por multi_figura.
+  if (veredicto === 'REVISAR_MATCH' && motivo === 'margen_chico' && (ganadorEsMulti || mejor.multiFigura)) {
+    motivo = 'multi_figura';
   }
 
   // Sin ganador limpio (score bajo): la posible reubicación va a revisión en su lugar.
@@ -3224,7 +3320,7 @@ function evaluarCandidatos_(f, candidatos, comunas) {
 
   return { mejor: mejor, segundoScore: s2, margen: margen, veredicto: veredicto, motivo: motivo,
            contendientes: contendientes, desempate: desempate,
-           desempateBajoUmbral: desempateBajoUmbral };
+           desempateBajoUmbral: desempateBajoUmbral, empateMulti: empateMulti };
 }
 
 /**

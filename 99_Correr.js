@@ -22,23 +22,25 @@
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
  *  >>> CORRER DESPUÉS DE LAS 17 (regla operativa del 01/10: formularios y barrios se cargan a lo
- *      largo del día). Sin pendientes con el equipo: docs/ESTADO.md, 1a.
+ *      largo del día). Consultas nuevas para el equipo: docs/ESTADO.md, 1a.
  *
- *  >>> PRÓXIMO, en este orden (los dos sólo leen, ninguno toca el destino). Predicciones en
+ *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino). Predicciones en
  *      docs/ESTADO.md, sección 1, anotadas antes de correr:
- *      1. paso2_upsertEnSeco(). Primera corrida con las FIGURAS POR VARIANTE Y POR APELLIDO
- *         (Lombardi-Tapia-Piragine) y la VENTANA ASIMÉTRICA de fecha_fin. Ventana: sin match
- *         16 → ≈ 7, revisar 9 → ≈ 18 (multi_figura), escribiría 284 → ≈ 285 (la 626). Mirar la
- *         línea nueva de variantes/apellidos/barrios: que no entre basura. Invariante 0.
- *      2. paso10_validarContraInscriptos(). El bloque de fecha_fin tiene que mostrar la 626 como
- *         elegida ("1 a 1 - Comuna 7", 105 = 105, +6 días).
- *      Después, cuando se quiera: paso13_formulariosSinFila() (Lombardi sale de "sin fila";
- *      Primera Persona 12/8 marcada DUDOSO) y paso11_desacuerdoUbicacion().
+ *      1. paso2_upsertEnSeco(). Con el VETO multi_figura sobre el ganador del desempate (la 801
+ *         se escribe con "Seguridad - Comuna 13 - 24/9"). Ventana: escribiría 285, revisar 18,
+ *         sin match 6. Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
+ *         una (marca las que antes eran score_bajo), y el 2e avisa si los barrios con eje no
+ *         son 18 (hoy 19; sospecha San Nicolás en Este).
+ *      2. paso10_validarContraInscriptos().
+ *      3. paso13_formulariosSinFila(). B fila 806 (Seguridad Comuna 13 24/9) sale de "sin fila";
+ *         quedan 6 en ventana.
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
- *      editando CASO_A_EXPLICAR (más abajo). paso14_formulasDestino() cuando se quiera.
+ *      editando CASO_A_EXPLICAR (más abajo). paso11 y paso14 cuando se quiera.
  *
- *  LÍNEA BASE vigente: la corrida en seco del 01/10 18:04 (e921457). Corte de ventana FIJO en
- *  26/03/2026 (VENTANA_ANALISIS_DESDE):
+ *  LÍNEA BASE vigente: la corrida en seco del 01/10 18:23 (5f84cc1). Corte de ventana FIJO en
+ *  26/03/2026 (VENTANA_ANALISIS_DESDE): escribiría 284 (entró la 626, salió la 801 por la
+ *  regresión del veto multi_figura); revisar y sin match como se predijo (≈ 18 y ≈ 7).
+ *  La de las 18:04 (e921457), en docs/ESTADO.md:
  *
  *        escribiría   284     predicción era 283-290
  *        a revisar      9                    10-16
