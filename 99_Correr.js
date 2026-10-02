@@ -12,10 +12,20 @@
  * **Se mantiene al día en el mismo commit** en que cambia qué hay que correr (CLAUDE.md §6).
  *
  * ============================================================================================
- *  DÓNDE ESTAMOS — al 2026-10-01                                  (detalle: docs/ESTADO.md)
+ *  DÓNDE ESTAMOS — al 2026-10-02                                  (detalle: docs/ESTADO.md)
  * ============================================================================================
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
+ *
+ *  !!! 02/10: RDV_HOJA_DESTINO APUNTA A LA COPIA "AAA NOBORRAR" (TEMPORAL, 00_Config.js). !!!
+ *      La primera escritura real (14:50) se cortó a los 6 minutos; la escritura se rehízo en lote
+ *      y se prueba sobre la copia (el equipo trabaja en la real). Secuencia y predicción:
+ *      docs/ESTADO.md, sección 0:
+ *        1. paso16_verificarEscritura()  → línea de base de la copia (anotarla en LINEA_BASE_AZULES)
+ *        2. upsertDestino() una vez       [20_UpsertDestino.js]
+ *        3. paso16_verificarEscritura()  → invariante 0, azules manuales sin subir, 0 incompletas
+ *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
+ *      El activador NO se instala hasta volver y verificar la escritura real.
  *
  *  DRY_RUN = FALSE  en 20_UpsertDestino.js, desde el 02/10 (decisión del usuario, backup hecho).
  *                   upsertDestino() ESCRIBE en el destino (siempre por setSiDelSistema_).
@@ -362,6 +372,7 @@ function _anunciar_(que, llama, escribe, salida) {
   Logger.log('  escribe ....... %s', escribe);
   Logger.log('  la salida ..... %s', salida);
   Logger.log('  DRY_RUN ....... %s  (20_UpsertDestino.js)', DRY_RUN);
+  Logger.log('  destino ....... %s  (RDV_HOJA_DESTINO, 00_Config.js)', descripcionHojaDestino_());
 }
 
 function _anunciarDiag_(llama, salida) {

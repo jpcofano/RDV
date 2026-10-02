@@ -16,7 +16,21 @@ const RDV_SS_ORIGEN     = '1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg'; // (3)
 const RDV_SS_AGENDA     = '1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U'; // (4) Agenda
 
 // --- solapas de (1), el destino ---
-const RDV_HOJA_DESTINO   = 'RVD JM-CM - ES';   // el único destino
+/**
+ * La solapa que el upsert, los pasos y los diagnósticos leen y escriben como destino. **Es la única
+ * referencia**: nada lleva el nombre escrito a mano. El log de cada paso dice a cuál apunta.
+ *
+ * TEMPORAL 02/10 — revertir a 'RVD JM-CM - ES' (RDV_HOJA_DESTINO_REAL). Apunta a la copia
+ * "AAA NOBORRAR" para probar la escritura en lote mientras el equipo trabaja en la solapa real
+ * (docs/ESTADO.md, "Prueba de escritura sobre la copia"). Para volver: cambiar el valor, commit,
+ * git push y clasp push. El activador no se instala hasta volver y verificar la escritura real.
+ */
+const RDV_HOJA_DESTINO   = 'AAA NOBORRAR';     // TEMPORAL 02/10 — revertir a 'RVD JM-CM - ES'
+/**
+ * El destino real. Sólo para la guarda (`verificarHojaDestino_`): si RDV_HOJA_DESTINO apunta a otra
+ * solapa, sus encabezados tienen que ser exactamente los de ésta; si no, el upsert no corre.
+ */
+const RDV_HOJA_DESTINO_REAL = 'RVD JM-CM - ES';
 const RDV_HOJA_ASISTENTES_SRC = 'RDV CONJUNTO'; // origen de asistentes. NO se modifica
 const RDV_HOJA_COMUNAS   = 'Comunas';          // lookup barrio → comuna, A:H
 const RDV_HOJA_STAGING   = 'Para Revisar';     // staging legado. Se retira en la Fase 9
@@ -32,16 +46,44 @@ const RDV_HOJA_ALERTAS  = 'ALERTA_CAMBIOS';
 const RDV_HOJA_REGISTRO = 'REGISTRO_UPSERT';   // una línea por corrida del upsert (02/10)
 
 /**
- * La línea de base de los `#4F81BD` del destino, tomada ANTES de la primera escritura real
- * (docs/backup.md §8.1, paso 6) con `paso16_verificarEscritura()`. La usa la verificación posterior:
- * los de las COLUMNAS_MANUALES no pueden subir. `null` = todavía no anotada.
+ * La línea de base de los `#4F81BD`, **por solapa**, tomada ANTES de escribir con
+ * `paso16_verificarEscritura()` (docs/backup.md §8.1, paso 6). La usa la verificación posterior: los
+ * de las COLUMNAS_MANUALES no pueden subir. `null` = todavía no anotada.
+ *
+ * Por solapa (02/10): la copia de prueba tiene la suya, y la del destino real no se pisa.
  */
-// Tomada el 02/10 12:44 con paso16_verificarEscritura() (OK), antes de la primera escritura real.
-const LINEA_BASE_AZULES_MANUALES = 605;
-const LINEA_BASE_AZULES_TOTAL = 5749;
+const LINEA_BASE_AZULES = {
+  // 02/10 12:44, paso 16 OK, antes de la primera escritura real. Después de la corrida cortada de
+  // las 14:50 (123 filas) el destino real quedó en 605 / 6368: los manuales no subieron.
+  'RVD JM-CM - ES': { manuales: 605, total: 5749 },
+  // La copia de prueba (TEMPORAL 02/10): se anota con el paso 16 antes de escribir en ella.
+  'AAA NOBORRAR':   { manuales: null, total: null }
+};
 
 /** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
 const ESPERA_BLOQUEO_MS = 30000;
+
+/*
+ * --- La escritura en lote (02/10) ---
+ * La primera escritura real (02/10 14:50) se cortó a los 6 minutos de Apps Script: escribía celda
+ * por celda (leer, escribir, pintar), y cada lectura obliga a vaciar la cola de escrituras. Ahora
+ * escribe por TANDAS de filas: una lectura fresca de la tanda, `setValues` por bloque y los fondos en
+ * un solo `RangeList`. Y se corta sola antes del límite: lo que falta lo completa la corrida
+ * siguiente (las filas ya escritas entran por RDV_UID y sólo se completan sus celdas vacías).
+ */
+/** Filas del destino por tanda de escritura. */
+const UPSERT_FILAS_POR_TANDA = 50;
+/**
+ * Corte propio, medido desde que arranca la ejecución: no se empieza una tanda si con ella se pasaría
+ * de acá. Deja margen para los reportes y REGISTRO_UPSERT antes de los 6 minutos de Apps Script.
+ */
+const UPSERT_CORTE_PROPIO_MS = 4.5 * 60 * 1000;
+/**
+ * Propiedad del script donde una escritura cortada deja "hasta dónde llegó" (hora, solapa, filas
+ * hechas de cuántas). No es un cursor: la corrida siguiente no lo necesita para seguir —las filas ya
+ * escritas entran por RDV_UID—; es para que el log lo diga. Se borra al terminar completa.
+ */
+const PROP_ESCRITURA_INCOMPLETA = 'UPSERT_ESCRITURA_INCOMPLETA';
 
 // --- solapas de (3) y (4) ---
 const RDV_HOJA_ORIGEN = 'Hoja1';   // en (3). NO somos dueños, no se modifica

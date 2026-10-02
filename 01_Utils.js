@@ -256,6 +256,24 @@ function esColumnaDerivada_(nombre) {
   return COLUMNAS_DERIVADAS.some(function (c) { return normalizeHeader_(c) === n; });
 }
 
+// ===================== La solapa destino =====================
+
+/**
+ * Para la cabecera de cada log: a qué solapa apunta `RDV_HOJA_DESTINO`, y si NO es el destino real
+ * lo dice en mayúsculas (02/10: la copia de prueba "AAA NOBORRAR").
+ */
+function descripcionHojaDestino_() {
+  return RDV_HOJA_DESTINO === RDV_HOJA_DESTINO_REAL
+    ? '"' + RDV_HOJA_DESTINO + '" (el destino real)'
+    : '"' + RDV_HOJA_DESTINO + '" — COPIA TEMPORAL, NO el destino real ("' + RDV_HOJA_DESTINO_REAL + '")';
+}
+
+/** La línea de base de azules de la solapa a la que apunta RDV_HOJA_DESTINO: `{manuales, total}`. */
+function lineaBaseAzules_() {
+  const b = LINEA_BASE_AZULES[RDV_HOJA_DESTINO];
+  return { manuales: b ? b.manuales : null, total: b ? b.total : null };
+}
+
 // ===================== Clave natural =====================
 
 /**

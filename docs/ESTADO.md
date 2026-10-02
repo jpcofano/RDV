@@ -1,10 +1,177 @@
-# Estado de la migración — al 2026-10-01
+# Estado de la migración — al 2026-10-02
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
 máquina y arrancar sin releer todo.
 
 Rama: **`migracion`**. `main` queda intacto como referencia.
+
+---
+
+## 0. Prueba de escritura sobre la copia "AAA NOBORRAR" (02/10) — EN CURSO
+
+> ⚠️ **`RDV_HOJA_DESTINO` apunta a la copia, no al destino real. TEMPORAL.** Ver f) para volver.
+> El activador **no se instala** hasta volver y verificar la escritura real
+> (`instalarActivadorDiario_` se niega mientras apunte a la copia).
+
+### a) Por qué
+
+La primera escritura real (`upsertDestino()` con `DRY_RUN = false`, 02/10 14:50) **se cortó por
+"Exceeded maximum execution time"** (6 minutos de Apps Script). El cálculo terminó a las 14:52:41
+(leer `B` tardó ~1 minuto); el resto fue escritura hasta el corte, a las 14:56:56. No llegó a
+`REGISTRO_UPSERT` ni a los reportes.
+
+La causa: escribía **celda por celda** —leer, escribir, pintar—, y cada lectura obliga a Apps
+Script a vaciar la cola de escrituras: un viaje completo al servicio por celda, ~2 segundos por
+fila. Se reescribió **en lote** (abajo). Como **el equipo está trabajando en la solapa real**, las
+pruebas de escritura se hacen sobre la copia hasta que la escritura en lote quede verificada.
+
+### b) El destino real al empezar la prueba (no se revierte)
+
+Paso 16 del 02/10 15:13, después del corte: **123 filas con `RDV_UID`**, 0 sin `form_origen`,
+invariante 0, fórmulas bien, **azules manuales 605** (= línea de base), **totales 6368** (base 5749,
++619 ≈ 123 × 5). **Esas 123 se dejan como están**: cuando se vuelva a correr sobre el real, entran
+por `RDV_UID` y sólo se completa lo que les falte (punto 2 del pedido, abajo).
+
+Si están **completas** —todas las celdas que el plan escribía en esa fila, no sólo `RDV_UID` y la
+traza— lo dice el paso 16 nuevo (bloque 4, "INCOMPLETAS"). Lo esperable: **0 o 1** (la fila donde
+cayó el corte, si quedó a mitad: el orden era traza, `RDV_UID`, datos, STATUS).
+
+### c) Qué tiene la copia
+
+Solapa **"AAA NOBORRAR"** en el mismo archivo del destino (1): copia de "RVD JM-CM - ES", con los
+**inscriptos borrados desde la fila 800**. Puede traer las 123 filas ya escritas (si se copió
+después de las 14:50; los fondos se copian con la solapa).
+
+> **Ojo: el upsert no va a completar esos inscriptos.** `Inscriptos` es una `COLUMNAS_MANUALES`: el
+> pipeline la lee y nunca la escribe, ni vacía (decisión 8). Lo que la copia sí tiene para escribir:
+> traza y `RDV_UID` en todas las filas a escribir que no los tengan, sexo y edades donde falten, y
+> `en agenda` → `Realizada` donde haya asistentes. Para tener más filas "que completar", lo que hay
+> que vaciar en la copia son **sexo/edades y las cinco de traza**, no los inscriptos.
+
+### d) La constante
+
+`RDV_HOJA_DESTINO` en `00_Config.js` = **`'AAA NOBORRAR'`**, con el comentario *"TEMPORAL 02/10 —
+revertir a 'RVD JM-CM - ES'"*. Es **la única referencia** a la solapa destino: la usan el upsert, el
+paso 2, el 10, el 14, el 16, los diagnósticos (el 01 tenía el nombre escrito a mano: ya no) y
+`40_Alertas.js`. Cada paso lo dice en la cabecera del log (`destino ....... "AAA NOBORRAR" — COPIA
+TEMPORAL, NO el destino real`).
+
+**La guarda** (`verificarHojaDestino_`, `05_Escritura.js`): si la solapa no existe, o sus
+encabezados no son exactamente los de "RVD JM-CM - ES" en el mismo orden, el upsert **se frena con
+error antes de calcular**, sin escribir nada.
+
+**La línea de base de azules es por solapa** (`LINEA_BASE_AZULES` en `00_Config.js`): la del real
+(605 / 5749) no se pisa; la de la copia está en `null` hasta el primer paso 16 sobre ella.
+
+Los legados apagados (`Barrio desde Base.js`, `Sinc Base usuario.js`) siguen con el nombre propio:
+no corren y no se tocaron.
+
+### e) La secuencia de la prueba, con la predicción anotada antes de correr
+
+0. `git push` y `clasp push` (hechos con este commit).
+1. **`paso16_verificarEscritura()`** — la línea de base de la copia. Anotar los dos totales de azules
+   en `LINEA_BASE_AZULES['AAA NOBORRAR']` (`00_Config.js`), commit y clasp push.
+   - **Predicción:** si la copia es posterior a las 14:50: **123 con `RDV_UID`**, incompletas **0 o
+     1**, azules **605 / 6368**. Si es anterior: 0 con `RDV_UID`, **605 / 5749**.
+2. **`upsertDestino()`** una vez, a mano (`20_UpsertDestino.js`).
+   - **Predicción:** **completa en una sola corrida**, sin corte propio. La escritura, **menos de 1
+     minuto** (el test en Node da 15 s calibrado; 22 s con el servicio el doble de lento); la
+     ejecución entera, **2 a 3 minutos**, casi todo leer `B` (~1 min) y calcular el plan. El log
+     dice `COMPLETA`, filas tocadas, tandas, ms por tanda, y la **huella de entradas**.
+   - Números del plan: **cerca de 758 | 39 | 13** en total (la escritura de las 14:50), salvo lo que
+     haya cambiado el equipo; si hay 123 con `RDV_UID`, ésas cuentan en "por RDV_UID" y no en
+     escribiría.
+3. **`paso16_verificarEscritura()`** otra vez.
+   - **Predicción:** invariante **0**; azules manuales **sin subir** (= el número del paso 1);
+     totales arriba; con `RDV_UID` **≈ 755-760** (todas las escribiría + las 123); sin `form_origen`
+     **0**; **incompletas 0**; termina en **OK**. El bloque 5 lista las filas con `RDV_UID` que hoy
+     el plan no escribiría igual (ver 0.g).
+
+Si falla algo: frenar (`DRY_RUN = true`, clasp push) y mirar. La copia se puede rehacer.
+
+### f) La lista para volver
+
+1. `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` en `00_Config.js`; commit, **`git push` y `clasp push`**.
+2. En un horario **sin carga del equipo**, la misma secuencia sobre la solapa real:
+   `paso16_verificarEscritura()` (línea de base nueva del real: hoy 605 / 6368; anotarla en
+   `LINEA_BASE_AZULES['RVD JM-CM - ES']`) → `upsertDestino()` una vez → `paso16_verificarEscritura()`
+   hasta **OK** (incompletas 0; las 123 entraron por `RDV_UID`).
+3. Borrar la solapa "AAA NOBORRAR", su entrada en `LINEA_BASE_AZULES` y la línea de CLAUDE.md §1.
+4. **Recién después**, el activador (si el usuario lo decide; `docs/triggers-legado.md` antes).
+
+### g) Lo que cambió en el código (02/10)
+
+- **Escritura en lote** (`aplicarDecisiones_`): por tandas de `UPSERT_FILAS_POR_TANDA` (50) filas.
+  Cada tanda: **una lectura fresca** de sus filas, `setValues` por bloque (sólo celdas a escribir,
+  todas vacías en esa lectura) y los fondos con **un `RangeList`**. La regla es la misma de siempre,
+  en `setSiDelSistemaLote_` (`05_Escritura.js`); la excepción de STATUS, aparte, en
+  `marcarRealizadaLote_`. La lectura fresca por tanda es a propósito: el equipo puede cargar algo
+  entre que se calcula el plan y se escribe, y eso no se pisa (test [4]).
+- **Corte propio** antes de `UPSERT_CORTE_PROPIO_MS` (4,5 min desde el arranque): no se empieza una
+  tanda si con la más lenta vista se pasaría. Se corta **entre tandas, nunca a mitad de una fila**.
+  "Hasta dónde llegó" queda en una propiedad del script (`UPSERT_ESCRITURA_INCOMPLETA`) y en
+  `REGISTRO_UPSERT` (`escritura_completa`, `filas_por_escribir`); la corrida siguiente **sigue sola**:
+  las filas ya escritas entran por `RDV_UID` y sólo se completan sus celdas vacías. No hay cursor por
+  número de fila (regla del 02/10).
+- **Se lee una sola vez**: `B` una vez (como antes) y el destino una vez para el plan —las figuras
+  conocidas salen del mismo bloque, ya no de una segunda lectura—. Las filas que en esa lectura ya
+  tienen todo lleno ni se vuelven a leer. Lo único que se relee es cada tanda, justo antes de
+  escribirla. **Leer `B` sigue tardando ~1 minuto** (es el `QUERY` sobre el `IMPORTRANGE`): lo
+  arregla la decisión 1 (`openById`), pendiente.
+- **Las filas con `RDV_UID`** completan sólo datos y STATUS; su traza es la de la decisión original
+  y no se rellena con `rdv_uid` / 1.
+- **Paso 16**: línea de base por solapa; **filas incompletas** (con `celdasDeDecision_`, la misma
+  función que usa la escritura); **la lista de las filas con `RDV_UID`** (fila, figura, fecha,
+  formulario; hasta 300, después sólo las que difieren) y, para cada una, **si hoy el plan la
+  escribiría igual**.
+- **Huellas** en el log de cada plan y en `REGISTRO_UPSERT`: un hash corto del destino, de `B`, de
+  las figuras y de `Comunas`, y uno del plan (punto 3, abajo).
+
+**Test en Node** (`node tests/escritura_lote.test.js [--viejo]`, no sube a Apps Script; datos
+sintéticos, 800 filas; reloj simulado donde cada lectura vacía la cola de escrituras):
+
+| | resultado |
+|---|---|
+| código viejo, mismo modelo | se corta por el límite con 169 filas; escalado a la velocidad medida el 02/10 (123 filas / 255 s) → factor 1,38 |
+| **código nuevo, 800 filas, calibrado** | **escritura 15,1 s**, ejecución 122 s (leer B 60 s y calcular 45 s, supuestos); 16 tandas, 38 lecturas y 233 escrituras al servicio |
+| con el servicio el doble de lento | escritura 21,8 s |
+| con el servicio 50 veces más lento | se corta sola 3 veces, ninguna corrida pasa de 278 s, termina en la 4ª, nada pisado |
+| reanudación sobre lo que deja el viejo | las cortadas conservan su `RDV_UID`, se completa lo que falta, 0 incompletas |
+| el equipo escribe en el medio | no se pisa ni se pinta |
+| guarda | sin la copia, o con un encabezado distinto: error y nada escrito |
+| seco contra real, mismas entradas | mismos números y misma huella |
+
+El modelo de tiempo está calibrado contra **un** dato (la corrida del 02/10): es una estimación. La
+medición real es la del paso e)2, que deja los ms por tanda en el log.
+
+### h) Punto 3: el paso 2 (14:35) y la escritura (14:50) dieron distinto
+
+Total **755 | 42 | 13** en seco contra **758 | 39 | 13** en la escritura: las 3 filas de "Seguridad
+en tu barrio" del 02/10/2025 (Landerreche, Piñeiro, Tapia) pasaron de `multi_figura` a escribiría.
+
+**Lo que se puede afirmar leyendo el código:** los dos caminos calculan el plan con **la misma
+función** (`calcularPlan_`); `enSeco` sólo decide si después se escribe. El plan no depende de la
+hora salvo por el día (`_hoy_`, el mismo a las 14:35 y a las 14:50), ni de nada aleatorio. El test
+[6] lo confirma: con las mismas entradas, seco y real dan los mismos números y el mismo plan. **Así
+que entre las 14:35 y las 14:50 cambió una entrada.** Cuál, no se puede saber sin los datos de ese
+momento. Las candidatas, sin medir:
+
+1. **`B`**: es un `QUERY` sobre `IMPORTRANGE`, se recalcula solo, y los formularios entran a lo
+   largo del día. Se ve comparando la primera línea de los dos logs: *"candidatos en B: N"*.
+2. **El destino**: el equipo estaba trabajando en la solapa real. Dos ediciones alcanzan para
+   cambiar esas tres filas: un **barrio** cargado (un formulario propio sin figura, por comuna, sólo
+   compite si la fila tiene barrio —`SIN_FIGURA_POR_UBICACION`—, y entonces el desempate por
+   evidencia le gana al `multi_figura`), o una **figura nueva** en la columna `Figura` (cambia qué
+   apellidos son únicos, y con eso qué formulario cuenta como `multi_figura`). **Hipótesis.**
+
+**Desde ahora queda medido**: cada plan loguea su huella de entradas y la deja en `REGISTRO_UPSERT`.
+Si dos corridas dan distinto, la huella dice cuál de las cuatro entradas se movió.
+
+**¿Alguna de esas 3 está entre las 123?** No se puede saber desde el repo. La escritura iba en
+**orden de fila del destino**, así que las 123 son las primeras 123 filas a escribir de la planilla.
+El paso 16 nuevo lo dice: lista las 123 con fila, figura y fecha, y marca `<<< HOY: …` las que el plan
+de ahora no escribiría igual. Para mirar una: `paso12_explicarFila()` con su número de fila.
 
 ---
 
@@ -311,7 +478,7 @@ estar en verde antes, y el orden de la primera escritura real. Nada de esto est�
   <https://docs.google.com/spreadsheets/d/1QLDcmTb01LC_pw4DRXBqIWOEcutvOBeOkVwvQd4OGEY/edit?gid=705217578#gid=705217578>
 - **Línea de base de azules** (`paso16_verificarEscritura()` del 02/10 12:44, **OK**): **605** en las
   `COLUMNAS_MANUALES`, **5749** en todo el destino. Anotada en `00_Config.js`
-  (`LINEA_BASE_AZULES_MANUALES` / `_TOTAL`).
+  (`LINEA_BASE_AZULES`, por solapa desde el 02/10).
 - **Paso 10 con B ordenado** (02/10 12:43): candidatos **825** (3 `NO USAR`); exacto **262/269 =
   97,4%**; desempates **36/36**; invariante **6/6**. Los inscriptos siguen alineados con su
   formulario: el orden de `B` no cambió las elecciones.
@@ -320,6 +487,10 @@ estar en verde antes, y el orden de la primera escritura real. Nada de esto est�
   manuales S, T, U (CLAUDE.md 1 y 3.3).
 
 **Lo que falta, en este orden:**
+
+> **02/10 14:50: el punto 1 corrió y se cortó a los 6 minutos con 123 filas escritas.** La escritura
+> se rehízo en lote y se prueba sobre la copia "AAA NOBORRAR": ver la **sección 0**. Los puntos de
+> abajo se retoman sobre la solapa real con la lista de 0.f.
 
 1. **`upsertDestino()`**, a mano, **una vez** (`20_UpsertDestino.js`). Qué escribe: más abajo, en
    "El pase a `DRY_RUN = false`".
@@ -395,7 +566,7 @@ indistinguibles. **Probado en Node:** con B invertido y renumerado, el plan da *
   en el destino (ningún formulario en 2+ filas con `RDV_UID`), el paso 14, los azules de las
   `COLUMNAS_MANUALES` contra la línea de base (no pueden subir) y las filas con `RDV_UID` (todas con
   `form_origen`). **Correrlo también ANTES de escribir** y anotar los dos totales de azules en
-  `00_Config.js` (`LINEA_BASE_AZULES_MANUALES` / `_TOTAL`): es la línea de base.
+  `00_Config.js` (`LINEA_BASE_AZULES`, por solapa desde el 02/10): es la línea de base.
 
 **Lo que queda antes de la primera escritura real (al 02/10):**
 

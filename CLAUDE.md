@@ -59,6 +59,14 @@ que escribe **sólo si la celda está vacía**, y que pinta `#4F81BD` al escribi
 No hay `setValue` ni `setValues` sueltos contra el destino. Ninguno. Si aparece uno en un
 diff, el diff está mal.
 
+**Tiene una versión en lote, con la misma regla: `setSiDelSistemaLote_(sh, hdr, escrituras)`**
+(02/10). La primera escritura real se cortó a los 6 minutos de Apps Script escribiendo celda por
+celda (cada lectura vacía la cola de escrituras: un viaje al servicio por celda). La versión en lote
+lee **fresco**, justo antes de escribir, el rectángulo de la tanda; escribe con `setValues` **sólo
+bloques de celdas vacías en esa lectura** —nunca reescribe una celda ajena "con el mismo valor"—, y
+pinta con un `RangeList` exactamente esos bloques. Una columna manual o derivada en la lista es un
+error y no se escribe nada. Vive en `05_Escritura.js` como la otra: el grep sigue valiendo.
+
 ### La única excepción: `STATUS REUNIÓN`
 
 Hay **una** escritura que la regla general no puede hacer y que igual hace falta. Está acá
@@ -163,6 +171,8 @@ antes de que nadie haya cargado nada en ellas.
 Solapas que importan:
 
 - **(1) `RVD JM-CM - ES`** → destino final, 41 columnas, 802 filas con datos. **Es el único destino.**
+- **(1) `AAA NOBORRAR`** → copia temporal del destino para pruebas de escritura (02/10). Se borra al
+  terminar. Mientras dure, `RDV_HOJA_DESTINO` (`00_Config.js`) apunta acá (docs/ESTADO.md, sección 0).
 - **(1) `RDV CONJUNTO`** → origen de asistentes (12 col).
 - **(1) `Comunas`** → tabla de lookup, A:H. Estable, no cambia.
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
@@ -2310,7 +2320,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    Único lugar con literales.                                   ← ya escrito
 01_Utils.js        toDate_, normalizeText_, normalizeHeader_, findIdxOr_, str, num   ← ya escrito
 02_Parsing.js      detectPersona_/Barrio_/Comuna_/Fecha_, listas derivadas de datos ← ya escrito
-05_Escritura.js    setSiDelSistema_ + marcarRealizada_. El único que escribe en el destino.  ← ya escrito
+05_Escritura.js    setSiDelSistema_ + marcarRealizada_ (y sus versiones en lote), la guarda de la
+                   solapa destino. El único que escribe en el destino.               ← ya escrito
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  B+A2 → destino, match uuid→score, 3 reportes   ← ya escrito (DRY_RUN)
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
@@ -2320,6 +2331,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
                    hora), PREPARADO Y NO INSTALADO (upsertDiario, instalar/borrar)      ← preparado
 diagnostico/       reportes de sólo lectura de las Fases 1 y 1b                 ← ya escrito
+tests/             tests en Node con datos sintéticos (no sube: .claspignore)   ← escritura en lote
 _archivo/          código muerto, fuera del scope global
 ```
 
@@ -2689,6 +2701,18 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 > azules anotada (docs/ESTADO.md, 1b; docs/backup.md §8). `upsertDestino()` escribe por
 > `setSiDelSistema_`; `paso2_upsertEnSeco()` sigue forzando la corrida en seco. Lo que sigue en este
 > recuadro describe cómo se calibró, con `DRY_RUN = true`.
+>
+> **02/10 14:50: la primera escritura real se cortó a los 6 minutos** con 123 filas escritas (celda
+> por celda: ~2 s por fila). **La escritura se rehízo en lote** (`aplicarDecisiones_`): tandas de
+> `UPSERT_FILAS_POR_TANDA` filas, una lectura fresca por tanda, `setValues` por bloque y fondos con
+> `RangeList` (sección 0, `setSiDelSistemaLote_`), y un **corte propio** entre tandas antes de
+> `UPSERT_CORTE_PROPIO_MS`: lo que falta lo sigue la corrida siguiente, porque las filas escritas
+> entran por `RDV_UID` y sólo se completan sus celdas vacías. `celdasDeDecision_` es el único lugar
+> que dice qué escribe el plan en una fila: la usan la escritura y el paso 16 ("filas incompletas").
+> Cada plan deja una **huella** de sus entradas (destino, `B`, figuras, `Comunas`) y del resultado en
+> el log y en `REGISTRO_UPSERT`: seco y real calculan con el mismo código, así que si dan distinto
+> cambió una entrada, y la huella dice cuál. Se prueba sobre la copia `AAA NOBORRAR`
+> (docs/ESTADO.md, sección 0); test en Node: `tests/escritura_lote.test.js`.
 >
 > **`20_UpsertDestino.js` ya está en el repo, con `DRY_RUN = true`.** Calcula todo, llena
 > `SIN_MATCH`, `REVISAR_MATCH` y `EMPAREJAR_MANUAL`, y **no escribe una sola celda del destino**.
@@ -3116,7 +3140,9 @@ origen", que llevan a trabajos completamente distintos.
   18:00, nunca antes de las 17" del 01/10). Preparado y **no instalado**: `99_Pipeline.js` tiene
   `upsertDiario` (respeta `DRY_RUN`), `instalarActivadorDiario_` y `borrarActivadorDiario_`; los
   wrappers `fase7_…` de `99_Correr.js` están comentados. Antes de instalarlo, anotarlo en
-  `docs/triggers-legado.md`.
+  `docs/triggers-legado.md`. **No se instala mientras `RDV_HOJA_DESTINO` apunte a la copia de
+  prueba** (02/10): `instalarActivadorDiario_` se niega; primero se revierte y se verifica la
+  escritura real (docs/ESTADO.md, 0.f).
 - **Lo que protege a las filas del día ya no es la hora, es `pendiente_barrio`** (02/10,
   `PENDIENTE_BARRIO_RECIENTE`): los formularios se cierran y los barrios de RDV se cargan a lo largo
   del día; una fila de **hoy o de ayer sin barrio** que se escribiría o iría a revisión **no se
@@ -3233,7 +3259,7 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Un `const` top-level por nombre en todo el proyecto. Antes de `clasp push`, verificar
   que no hay duplicados en el scope global.
 - **`.claspignore` decide qué entra al scope global.** Deja afuera `_archivo/`, cualquier clon
-  anidado del repo, `docs/`, `fixtures/` y los `.md`. Sin él, `clasp push` sube `_archivo/` y
+  anidado del repo, `docs/`, `fixtures/`, `tests/` y los `.md`. Sin él, `clasp push` sube `_archivo/` y
   el código archivado vuelve a competir por nombre (3.1.c). Antes de cada push:
   `clasp show-file-status` — tienen que aparecer sólo `appsscript.json`, los `.js` de la raíz y
   los de `diagnostico/`. Un archivo que se archiva sale del proyecto de Apps Script en el push

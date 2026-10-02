@@ -44,7 +44,7 @@
 const DIAG_ID_DESTINO    = '1ZpHO6Ru1uY2r9WfBF_yFtu5z7ip7F3Q6VOoRJN5vLAo'; // (1) destino final
 const DIAG_ID_INTERMEDIA = '1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM'; // (2) base intermedia
 
-const DIAG_HOJA_DESTINO = 'RVD JM-CM - ES';
+// La solapa destino es RDV_HOJA_DESTINO (00_Config.js): una sola referencia en todo el proyecto (02/10).
 const DIAG_HOJA_PR      = 'Para Revisar';
 const DIAG_HOJA_B2      = 'B2';
 
@@ -134,7 +134,7 @@ function diagProcedencia()      { return generarProcedencia_diag(nuevoCache_diag
 /** Vuelca los encabezados reales de las cuatro hojas al log, para completar fixtures/. */
 function diagEsquemas() {
   const hojas = [
-    [DIAG_ID_DESTINO, DIAG_HOJA_DESTINO],
+    [DIAG_ID_DESTINO, RDV_HOJA_DESTINO],
     [DIAG_ID_DESTINO, DIAG_HOJA_PR],
     [DIAG_ID_INTERMEDIA, DIAG_HOJA_B2],
     [DIAG_ID_INTERMEDIA, 'A2']
@@ -183,12 +183,12 @@ function cachePR_diag(cache) {
 function leerDestino_diag() {
   const t0 = new Date();
   const ssDest = SpreadsheetApp.openById(DIAG_ID_DESTINO);
-  const shDest = ssDest.getSheetByName(DIAG_HOJA_DESTINO);
-  if (!shDest) throw new Error('No existe la hoja "' + DIAG_HOJA_DESTINO + '".');
+  const shDest = ssDest.getSheetByName(RDV_HOJA_DESTINO);
+  if (!shDest) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');
 
   const filasDest = shDest.getLastRow();
   const colsDest  = shDest.getLastColumn();
-  if (filasDest < 2) throw new Error('La hoja "' + DIAG_HOJA_DESTINO + '" no tiene datos.');
+  if (filasDest < 2) throw new Error('La hoja "' + RDV_HOJA_DESTINO + '" no tiene datos.');
 
   const bloqueDest = shDest.getRange(1, 1, filasDest, colsDest).getValues();
   const hdrDest    = bloqueDest[0];

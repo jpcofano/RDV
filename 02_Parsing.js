@@ -35,9 +35,21 @@
 var _cacheParsing_ = null;
 
 function _listas_() {
-  if (_cacheParsing_) return _cacheParsing_;
-  _cacheParsing_ = { figuras: leerFiguras_(), barrios: leerBarrios_() };
+  if (!_cacheParsing_) _cacheParsing_ = {};
+  if (!_cacheParsing_.figuras) _cacheParsing_.figuras = leerFiguras_();
+  if (!_cacheParsing_.barrios) _cacheParsing_.barrios = leerBarrios_();
   return _cacheParsing_;
+}
+
+/**
+ * Carga las figuras desde un bloque del destino **ya leído** (encabezado + filas), sin volver a
+ * leer la solapa. Lo llama `leerDestino_()`: el destino se lee una sola vez por corrida (02/10).
+ * Mismo criterio que `leerFiguras_()`, que usa la misma función.
+ */
+function usarFigurasDelBloque_(hdr, filas) {
+  if (!_cacheParsing_) _cacheParsing_ = {};
+  _cacheParsing_.figuras = _figurasDeColumna_(filas, findIdxOr_(hdr, aliasColumna_('Figura')));
+  delete _cacheParsing_.apellidos;   // se derivan de las figuras
 }
 
 /** Para los tests y para forzar una relectura si cambió el destino en la misma corrida. */
@@ -58,11 +70,14 @@ function leerFiguras_() {
   if (nFilas < 2) return [];
   const hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   const iFig = findIdxOr_(hdr, aliasColumna_('Figura'));
-  const col = sh.getRange(2, iFig + 1, nFilas - 1, 1).getValues();
+  return _figurasDeColumna_(sh.getRange(2, iFig + 1, nFilas - 1, 1).getValues(), 0);
+}
 
+/** Las figuras de la columna `iFig` de `filas` (sin encabezado): ver `leerFiguras_`. */
+function _figurasDeColumna_(filas, iFig) {
   const vistas = new Map();
-  for (let i = 0; i < col.length; i++) {
-    const canon = str(col[i][0]);
+  for (let i = 0; i < filas.length; i++) {
+    const canon = str(filas[i][iFig]);
     if (!canon) continue;
     const norm = normalizeText_(canon);
     // Se queda con la primera grafía vista. El destino es la referencia, no el texto libre.

@@ -1484,6 +1484,7 @@ function medirDesacuerdoUbicacion() {
 function _correrUpsert_(enSeco) {
   const t0 = new Date();
   Logger.log('=== upsertDestino (%s) ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL');
+  Logger.log('  solapa destino: %s', descripcionHojaDestino_());
 
   /*
    * Una corrida por vez (02/10): el activador corre cada hora y alguien puede correrlo a mano al
@@ -1502,14 +1503,43 @@ function _correrUpsert_(enSeco) {
 }
 
 function _correrUpsertConBloqueo_(enSeco, t0) {
+  // La guarda (02/10): la solapa destino existe y, si es la copia, tiene los encabezados del real.
+  // Si no, error ANTES de calcular: no se escribe nada.
+  verificarHojaDestino_(ssDestino_());
+
+  // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas
+  // que ya escribió tienen RDV_UID y entran por ahí; sólo se completan sus celdas vacías.
+  const props = PropertiesService.getScriptProperties();
+  const anterior = props.getProperty(PROP_ESCRITURA_INCOMPLETA);
+  if (anterior) {
+    Logger.log('>>> La escritura anterior quedó a mitad: %s. Ésta sigue desde ahí: las filas ya ' +
+               'escritas entran por RDV_UID y se completan; las que faltan, se escriben.', anterior);
+  }
+
   const plan = calcularPlan_(enSeco);
   logResumen_(plan);                 // ← ANTES de escribir nada
 
   if (!enSeco) {
-    const w = aplicarDecisiones_(plan.dest, plan.decisiones);
+    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0);
     plan.res.escritas = w.celdas;
     plan.res.uidsEstampados = w.uids;
-    Logger.log('>>> Escritas %s celdas en el destino, %s uuids estampados.', w.celdas, w.uids);
+    plan.res.escritura = w;
+    Logger.log('>>> Escritura en "%s": %s filas tocadas de %s con algo que escribir, en %s tandas (%s ms; ' +
+               'la más lenta %s ms).', RDV_HOJA_DESTINO, w.filasHechas, w.filasPendientes, w.tandas,
+               w.msEscritura, w.tandaMax);
+    Logger.log('    celdas de dato %s | traza %s | uuids estampados %s | STATUS → Realizada %s',
+               w.celdas, w.trazas, w.uids, w.realizadas);
+    if (w.completa) {
+      props.deleteProperty(PROP_ESCRITURA_INCOMPLETA);
+      Logger.log('    COMPLETA: no queda ninguna fila con algo que escribir.');
+    } else {
+      const estado = Utilities.formatDate(new Date(), RDV_TZ, 'dd/MM HH:mm') + ' en "' + RDV_HOJA_DESTINO +
+                     '", ' + w.filasHechas + ' de ' + w.filasPendientes + ' filas';
+      props.setProperty(PROP_ESCRITURA_INCOMPLETA, estado);
+      Logger.log('    CORTE PROPIO a los %s ms (límite %s): quedan %s filas para la próxima corrida. ' +
+                 'Nada quedó a medias: se corta entre tandas.', new Date() - t0, UPSERT_CORTE_PROPIO_MS,
+                 w.filasPendientes - w.filasHechas);
+    }
   } else {
     Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones calculadas y no ' +
                'aplicadas.', plan.decisiones.length);
@@ -1539,18 +1569,27 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
     const r = plan.res;
     const ss = ssIntermedia_();
     let sh = ss.getSheetByName(RDV_HOJA_REGISTRO);
+    // Las columnas 16 en adelante se sumaron el 02/10 (escritura en lote): si la solapa ya existía,
+    // se completa el encabezado, sin tocar las filas.
+    const encabezado = ['hora', 'modo', 'filas_escritas', 'celdas_escritas', 'uids_estampados',
+                        'escribiria_ventana', 'escribiria_total', 'pendiente_barrio_ventana',
+                        'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
+                        'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
+                        'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
+                        'huella_entradas', 'huella_plan'];
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
-      sh.appendRow(['hora', 'modo', 'filas_escritas', 'celdas_escritas', 'uids_estampados',
-                    'escribiria_ventana', 'escribiria_total', 'pendiente_barrio_ventana',
-                    'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
-                    'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms']);
+      sh.appendRow(encabezado);
+    } else if (sh.getLastColumn() < encabezado.length) {
+      sh.getRange(1, 1, 1, encabezado.length).setValues([encabezado]);
     }
-    const filasEscritas = enSeco ? 0 : plan.decisiones.filter(function (d) { return !d.noEscribir; }).length;
-    sh.appendRow([new Date(), enSeco ? 'en seco' : 'ESCRITURA', filasEscritas, r.escritas || 0,
+    const w = r.escritura || null;
+    sh.appendRow([new Date(), enSeco ? 'en seco' : 'ESCRITURA', w ? w.filasHechas : 0, r.escritas || 0,
                   r.uidsEstampados || 0, r.escribiria.v, r.escribiria.t, r.pendienteBarrio.v,
                   r.pendienteBarrio.t, r.revisar.v, r.revisar.t, r.sinMatch.v, r.sinMatch.t,
-                  (fallaron || []).join(', '), new Date() - t0]);
+                  (fallaron || []).join(', '), new Date() - t0,
+                  RDV_HOJA_DESTINO, w ? _sn_(w.completa) : '', w ? w.filasPendientes : '',
+                  w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan]);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }
@@ -1869,7 +1908,12 @@ function calcularPlan_(enSeco) {
   const invariante = { aplicacion: aplicacion,
                        chequeo: chequearFormularioUnico_(dest, cands.vivos, comunas, porFila) };
 
+  const huellas = huellasDelPlan_(dest, cands, comunas, porFila);
+  Logger.log('Huella de entradas: %s  (destino %s | B %s | figuras %s | Comunas %s) — plan: %s',
+             huellas.entradas, huellas.destino, huellas.b, huellas.figuras, huellas.comunas, huellas.plan);
+
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
+           huellas: huellas,
            invariante: invariante, desempateCnt: desempateCnt,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
@@ -1884,6 +1928,47 @@ function calcularPlan_(enSeco) {
 }
 
 function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
+
+/**
+ * Las huellas de una corrida (02/10): un hash corto de cada entrada del plan, y uno del plan.
+ *
+ * Existen por el paso 2 de las 14:35 contra la escritura de las 14:50 del 02/10, que dieron
+ * distinto (755 | 42 | 13 contra 758 | 39 | 13). Los dos caminos calculan el plan con el MISMO
+ * código —`calcularPlan_`; `enSeco` sólo decide si después se escribe—, y el plan no depende de la
+ * hora salvo por el día. Así que si dos corridas dan distinto, cambió una entrada. Con estas huellas
+ * en el log y en REGISTRO_UPSERT se ve cuál: misma huella de entradas → mismo plan, siempre.
+ *
+ *   destino   por fila: figura, barrio, fecha, hora, evento, si tiene RDV_UID, form_origen
+ *   B         por formulario: nombre, Fecha_Fin, inscriptos y los datos que se escribirían
+ *   figuras   la lista que sale de la columna Figura (decide figuras por apellido y multi_figura)
+ *   Comunas   barrio → comuna
+ *   plan      por fila: veredicto, motivo y formulario elegido
+ */
+function huellasDelPlan_(dest, cands, comunas, porFila) {
+  const d = dest.filas.map(function (f) {
+    return [f.fila, f.figura, f.barrio, f.fecha ? ymd_(f.fecha) : '', f.horaMin, f.evento,
+            f.uid ? 'u' : '', f.formOrigen].join('|');
+  }).join('\n');
+  const b = cands.vivos.map(function (c) {
+    return [c.clave, c.inscriptos, JSON.stringify(c.datos)].join('|');
+  }).join('\n');
+  const fig = _listas_().figuras.map(function (x) { return x.norm; }).join('|');
+  const com = [];
+  comunas.forEach(function (v, k) { com.push(k + '=' + v); });
+  const p = Object.keys(porFila).map(Number).sort(function (x, y) { return x - y; }).map(function (k) {
+    const x = porFila[k];
+    return k + ':' + x.veredicto + ':' + (x.motivo || '') + ':' + (x.cand ? x.cand.clave : '');
+  }).join('\n');
+  const h = { destino: _md5corto_(d), b: _md5corto_(b), figuras: _md5corto_(fig),
+              comunas: _md5corto_(com.sort().join('|')), plan: _md5corto_(p) };
+  h.entradas = _md5corto_([h.destino, h.b, h.figuras, h.comunas].join('|'));
+  return h;
+}
+
+function _md5corto_(s) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s, Utilities.Charset.UTF_8);
+  return bytes.slice(0, 4).map(function (x) { return ('0' + ((x + 256) % 256).toString(16)).slice(-2); }).join('');
+}
 
 // ===================== Opciones para la revisión manual =====================
 
@@ -3953,54 +4038,108 @@ function leerConfirmaciones_() {
  * Las `COLUMNAS_MANUALES` ni se intentan, y las `COLUMNAS_DERIVADAS` tampoco: hasta la Fase 3
  * son fórmulas de array y escribir en una rompe el bloque entero (3.1.b).
  */
-function aplicarDecisiones_(dest, decisiones) {
+function aplicarDecisiones_(dest, decisiones, t0) {
   const sh = dest.sh;
-  let celdas = 0, uids = 0;
+  const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
+  const conStatus = iSt != null && iAs != null;
+  const inicio = t0 ? t0.getTime() : Date.now();
 
-  for (let i = 0; i < decisiones.length; i++) {
-    const d = decisiones[i];
-    const fila = d.fila.fila;
+  /*
+   * Una fila que NO se escribe no se toca: ni RDV_UID, ni datos, ni traza (01/10).
+   *
+   * Antes la traza se escribía también para los descartados. Pero setSiDelSistema_ escribe sólo
+   * en celda vacía, así que esa traza quedaba FIJA con la decisión de la primera corrida aunque
+   * después la fila se resolviera. La traza de los descartados vive en REVISAR_MATCH y SIN_MATCH,
+   * que se regeneran en cada corrida.
+   *
+   * Y una fila que, en lo leído para el plan, ya tiene llenas todas las celdas que el plan escribiría
+   * tampoco: una celda llena no se escribe nunca, así que no hace falta volver a leerla. En régimen
+   * (todas con RDV_UID y completas) esto deja la escritura en cero lecturas.
+   */
+  const pendientes = decisiones.filter(function (d) {
+    if (d.noEscribir) return false;
+    const c = celdasDeDecision_(dest, d, d.fila.valores, true);
+    return c.celdas.length > 0 || c.status;
+  }).sort(function (a, b) { return a.fila.fila - b.fila.fila; });
 
-    /*
-     * Una fila que NO se escribe no se toca: ni RDV_UID, ni datos, ni traza (01/10).
-     *
-     * Antes la traza se escribía también para los descartados. Pero setSiDelSistema_ escribe sólo
-     * en celda vacía, así que esa traza quedaba FIJA con la decisión de la primera corrida aunque
-     * después la fila se resolviera. La traza de los descartados vive en REVISAR_MATCH y SIN_MATCH,
-     * que se regeneran en cada corrida.
-     */
-    if (d.noEscribir) continue;
+  /*
+   * Por tandas de filas (02/10). Cada tanda: una lectura fresca de sus filas (adentro de los
+   * helpers), `setValues` por bloque, fondos con RangeList, flush. Antes de cada tanda, el corte
+   * propio: si con la tanda más lenta vista hasta ahora se pasaría de UPSERT_CORTE_PROPIO_MS, se
+   * corta acá —entre tandas, nunca a mitad de una fila— y la corrida siguiente sigue.
+   */
+  const w = { celdas: 0, trazas: 0, uids: 0, realizadas: 0, filasPendientes: pendientes.length,
+              filasHechas: 0, tandas: 0, tandaMax: 0, msEscritura: 0, completa: true };
+  const tEsc = Date.now();
+  for (let i = 0; i < pendientes.length; i += UPSERT_FILAS_POR_TANDA) {
+    if (Date.now() - inicio + w.tandaMax > UPSERT_CORTE_PROPIO_MS) { w.completa = false; break; }
+    const tTanda = Date.now();
+    const tanda = pendientes.slice(i, i + UPSERT_FILAS_POR_TANDA);
 
-    if (dest.T.origen != null) {
-      setSiDelSistema_(sh.getRange(fila, dest.T.origen + 1), d.cand.nombre);
-      setSiDelSistema_(sh.getRange(fila, dest.T.score + 1), d.score);
-      setSiDelSistema_(sh.getRange(fila, dest.T.nivel + 1), d.nivel);
-      if (d.dist !== null && dest.T.fechaMatch != null) {
-        setSiDelSistema_(sh.getRange(fila, dest.T.fechaMatch + 1), d.dist);
-      }
-    }
-    if (dest.T.uid != null && !d.fila.uid) {
-      const uid = Utilities.getUuid();
-      if (setSiDelSistema_(sh.getRange(fila, dest.T.uid + 1), uid)) uids++;
-    }
-
-    for (let k = 0; k < CAMPOS_DATO_.length; k++) {
-      const campo = CAMPOS_DATO_[k];
-      if (esColumnaManual_(campo) || esColumnaDerivada_(campo)) continue;
-      const idx = dest.D[campo];
-      if (idx == null) continue;
-      const v = d.cand.datos[campo];
-      if (v === '' || v === null || v === undefined) continue;
-      if (setSiDelSistema_(sh.getRange(fila, idx + 1), v)) celdas++;
-    }
-
+    const esc = [], filasStatus = [];
+    tanda.forEach(function (d) {
+      const c = celdasDeDecision_(dest, d, d.fila.valores, false);
+      c.celdas.forEach(function (x) {
+        esc.push({ fila: d.fila.fila, col: x.col, valor: x.valor, tipo: x.tipo });
+      });
+      if (c.status) filasStatus.push(d.fila.fila);
+    });
+    setSiDelSistemaLote_(sh, dest.hdr, esc).forEach(function (e) {
+      if (e.tipo === 'dato') w.celdas++;
+      else if (e.tipo === 'uid') w.uids++;
+      else w.trazas++;
+    });
     // La única excepción a la regla general (CLAUDE.md, sección 0 y decisión 12).
-    if (dest.D['Asistentes'] != null && dest.D['STATUS REUNIÓN'] != null) {
-      const asis = numOcero_(d.fila.valores[dest.D['Asistentes']]);
-      marcarRealizada_(sh.getRange(fila, dest.D['STATUS REUNIÓN'] + 1), asis);
+    if (conStatus) w.realizadas += marcarRealizadaLote_(sh, filasStatus, iSt + 1, iAs + 1).length;
+    SpreadsheetApp.flush();
+
+    w.tandas++;
+    w.filasHechas += tanda.length;
+    w.tandaMax = Math.max(w.tandaMax, Date.now() - tTanda);
+  }
+  w.msEscritura = Date.now() - tEsc;
+  return w;
+}
+
+/**
+ * **Lo que el plan escribe en la fila de una decisión**, sobre `valores` (la fila como está): las
+ * celdas VACÍAS que escribiría, `[{col (1-based), valor, tipo}]` con tipo `traza` / `uid` / `dato`,
+ * y si toca la transición de STATUS. Es el único lugar que lo define: lo usan la escritura y el
+ * paso 16 ("fila incompleta" = le queda algo de esto), así que no pueden divergir.
+ *
+ *   - decisión nueva: traza (form_origen, form_score, form_nivel y form_fecha_match si hay
+ *     distancia), RDV_UID, los datos del formulario (sexo y edades) y la transición de STATUS;
+ *   - fila que ya tiene RDV_UID (`nivel = 'rdv_uid'`): sólo datos y STATUS. Su traza es la de la
+ *     decisión original y no se completa con otra cosa.
+ *
+ * Las COLUMNAS_MANUALES y las derivadas no están en la lista nunca.
+ *
+ * @param {boolean} callar  no loguear STATUS desconocidos (para los pre-chequeos)
+ */
+function celdasDeDecision_(dest, d, valores, callar) {
+  const out = [];
+  const agregar = function (idx, valor, tipo) {
+    if (idx == null || valor === '' || valor === null || valor === undefined) return;
+    if (esVacio_(valores[idx])) out.push({ col: idx + 1, valor: valor, tipo: tipo });
+  };
+  if (d.nivel !== 'rdv_uid') {
+    agregar(dest.T.origen, d.cand.nombre, 'traza');
+    agregar(dest.T.score, d.score, 'traza');
+    agregar(dest.T.nivel, d.nivel, 'traza');
+    if (d.dist !== null && d.dist !== undefined) agregar(dest.T.fechaMatch, d.dist, 'traza');
+    if (!d.fila.uid && dest.T.uid != null && esVacio_(valores[dest.T.uid])) {
+      out.push({ col: dest.T.uid + 1, valor: Utilities.getUuid(), tipo: 'uid' });
     }
   }
-  return { celdas: celdas, uids: uids };
+  for (let k = 0; k < CAMPOS_DATO_.length; k++) {
+    const campo = CAMPOS_DATO_[k];
+    if (esColumnaManual_(campo) || esColumnaDerivada_(campo)) continue;
+    agregar(dest.D[campo], d.cand.datos[campo], 'dato');
+  }
+  const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
+  const status = iSt != null && iAs != null &&
+                 _decideRealizada_(valores[iSt], numOcero_(valores[iAs]), callar);
+  return { celdas: out, status: status };
 }
 
 /** Las columnas de dato que el upsert escribe. Las manuales y las derivadas no están. */
@@ -4015,6 +4154,8 @@ function leerDestino_() {
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const bloque = sh.getRange(1, 1, nFilas, nCols).getValues();
   const hdr = bloque[0];
+  // Las figuras conocidas salen de este mismo bloque: el destino se lee una sola vez (02/10).
+  usarFigurasDelBloque_(hdr, bloque.slice(1));
 
   const D = {};
   ['Figura', 'Barrio', 'FECHA', 'HORA', 'Inscriptos', 'Asistentes', 'STATUS REUNIÓN', 'EVENTO',
@@ -4066,7 +4207,7 @@ function leerDestino_() {
       clave: claveNatural_(figura, fecha)
     });
   }
-  return { sh: sh, D: D, T: T, filas: filas };
+  return { sh: sh, hdr: hdr, D: D, T: T, filas: filas };
 }
 
 /** Candidatos desde `B`, el import crudo. Los `NO USAR` quedan afuera del todo. */

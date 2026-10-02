@@ -17,6 +17,7 @@ RDV/**
 # Documentación y fixtures: no son código.
 docs/**
 fixtures/**
+tests/**
 **/*.md
 **/*.csv
 

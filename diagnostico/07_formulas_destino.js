@@ -27,6 +27,7 @@ const DIAG7_LOOKUP = {
 
 function diagFormulasDestino() {
   Logger.log('=== diagFormulasDestino — sólo lectura, no escribe nada ===');
+  Logger.log('  solapa destino: %s', descripcionHojaDestino_());
   const ss = SpreadsheetApp.openById(RDV_SS_DESTINO);
   const sh = ss.getSheetByName(RDV_HOJA_DESTINO);
   if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');

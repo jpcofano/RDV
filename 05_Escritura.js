@@ -8,15 +8,18 @@
  *
  * Si eso devuelve algo fuera de este archivo que apunte al destino, está mal.
  *
- * Dos funciones, y la segunda es una **excepción explícita** a la primera:
+ * Dos reglas, y la segunda es una **excepción explícita** a la primera. Cada una tiene su versión
+ * en lote (02/10), con el mismo criterio:
  *
- *   setSiDelSistema_(rango, valor)   la regla general: escribe sólo en celda vacía.
- *   marcarRealizada_(...)            la única excepción: una transición de estado.
+ *   setSiDelSistema_(rango, valor)          la regla general: escribe sólo en celda vacía.
+ *   setSiDelSistemaLote_(sh, hdr, lista)    ídem, por bloques (la usa el upsert).
+ *   marcarRealizada_(...)                   la única excepción: una transición de estado.
+ *   marcarRealizadaLote_(...)               ídem, por bloques (la usa el upsert).
  *
  * La excepción está **afuera** de `setSiDelSistema_`, no adentro. Meterla adentro la volvería
  * inauditable: la regla general dejaría de ser cierta y nadie lo vería leyendo el helper.
  *
- * **Todavía no está enganchado al pipeline.** Lo usa el upsert nuevo, en la Fase 5.
+ * Lo usa el upsert nuevo (`20_UpsertDestino.js`, `aplicarDecisiones_`).
  */
 
 // ===================== La regla general =====================
@@ -43,6 +46,117 @@ function setSiDelSistema_(rango, valor) {
 
 /** La marca de procedencia. Un solo lugar, para que no haya dos literales del mismo color. */
 const AZUL_SISTEMA_ = '#4F81BD';
+
+/**
+ * **La misma regla que `setSiDelSistema_`, en lote** (02/10). Escribe cada `{fila, col, valor}`
+ * **sólo si la celda está vacía**, y pinta `#4F81BD` lo que escribió. Celda con cualquier valor →
+ * no se toca.
+ *
+ * --- Por qué existe ---
+ * La primera escritura real (02/10 14:50) se cortó a los 6 minutos con 123 filas: celda por celda,
+ * cada `getValue` obliga a Apps Script a vaciar la cola de escrituras pendientes, así que cada celda
+ * costaba un viaje completo al servicio. Acá se lee UNA vez el rectángulo que cubre todas las
+ * escrituras, y se escribe por bloques.
+ *
+ * --- Cómo respeta el invariante ---
+ *   1. la lectura es **fresca**, hecha acá adentro e inmediatamente antes de escribir: lo que el
+ *      equipo haya cargado desde que se calculó el plan, se ve y no se pisa;
+ *   2. los bloques que se escriben (`setValues`) cubren **sólo celdas que se van a escribir**, todas
+ *      vacías en esa lectura: nunca se reescribe una celda ajena "con el mismo valor" (eso borraría
+ *      una fórmula o pisaría lo que alguien escribió en el medio);
+ *   3. los fondos se pintan con un `RangeList` sobre esos mismos bloques, y nada más;
+ *   4. una columna manual o derivada no se escribe nunca: si aparece en `escrituras`, tira error
+ *      antes de escribir nada (sería un bug del que llama, no un caso a tolerar).
+ *
+ * @param {Sheet}  sh          la solapa destino
+ * @param {Array}  hdr         su fila de encabezados (para el chequeo 4)
+ * @param {Array}  escrituras  [{fila, col, valor}], fila y col 1-based
+ * @return {Array} las escrituras que efectivamente se hicieron
+ */
+function setSiDelSistemaLote_(sh, hdr, escrituras) {
+  const pedidas = escrituras.filter(function (e) {
+    return !(e.valor === '' || e.valor === null || e.valor === undefined);
+  });
+  if (!pedidas.length) return [];
+  pedidas.forEach(function (e) {
+    const nombre = hdr[e.col - 1];
+    if (esColumnaManual_(nombre) || esColumnaDerivada_(nombre)) {
+      throw new Error('setSiDelSistemaLote_: la columna "' + nombre + '" es manual o derivada; no se ' +
+                      'escribe nunca. No se escribió nada.');
+    }
+  });
+
+  let f1 = Infinity, f2 = 0, c1 = Infinity, c2 = 0;
+  pedidas.forEach(function (e) {
+    f1 = Math.min(f1, e.fila); f2 = Math.max(f2, e.fila);
+    c1 = Math.min(c1, e.col);  c2 = Math.max(c2, e.col);
+  });
+  const actual = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1).getValues();   // lectura fresca
+
+  // Sólo las celdas vacías AHORA. Una misma celda pedida dos veces: vale la primera.
+  const porFila = {}, vistas = {};
+  const hechas = [];
+  pedidas.forEach(function (e) {
+    const k = e.fila + ':' + e.col;
+    if (vistas[k]) return;
+    vistas[k] = true;
+    const v = actual[e.fila - f1][e.col - c1];
+    if (v !== '' && v !== null && String(v).trim() !== '') return;
+    (porFila[e.fila] = porFila[e.fila] || []).push(e);
+    hechas.push(e);
+  });
+
+  const bloques = _bloquesDeEscritura_(porFila);
+  bloques.forEach(function (b) {
+    sh.getRange(b.fila, b.col, b.valores.length, b.valores[0].length).setValues(b.valores);
+  });
+  _pintarBloques_(sh, bloques);
+  return hechas;
+}
+
+/**
+ * Agrupa las celdas a escribir en rectángulos que contienen SÓLO celdas a escribir: tramos de
+ * columnas contiguas en cada fila, y tramos iguales en filas consecutivas se apilan.
+ */
+function _bloquesDeEscritura_(porFila) {
+  const filas = Object.keys(porFila).map(Number).sort(function (a, b) { return a - b; });
+  const abiertos = {}, bloques = [];
+  filas.forEach(function (fila) {
+    const celdas = porFila[fila].slice().sort(function (a, b) { return a.col - b.col; });
+    const tramos = [];
+    celdas.forEach(function (e) {
+      const t = tramos[tramos.length - 1];
+      if (t && e.col === t.col + t.valores.length) t.valores.push(e.valor);
+      else tramos.push({ col: e.col, valores: [e.valor] });
+    });
+    tramos.forEach(function (t) {
+      const k = t.col + ':' + t.valores.length;
+      const b = abiertos[k];
+      if (b && b.fila + b.valores.length === fila) { b.valores.push(t.valores); return; }
+      const nuevo = { fila: fila, col: t.col, valores: [t.valores] };
+      abiertos[k] = nuevo;
+      bloques.push(nuevo);
+    });
+  });
+  return bloques;
+}
+
+/** Pinta `#4F81BD` los bloques escritos, con `RangeList` (de a tandas: una lista enorme falla). */
+function _pintarBloques_(sh, bloques) {
+  const a1 = bloques.map(function (b) {
+    return _a1_(b.fila, b.col) + ':' + _a1_(b.fila + b.valores.length - 1, b.col + b.valores[0].length - 1);
+  });
+  for (let i = 0; i < a1.length; i += 400) {
+    sh.getRangeList(a1.slice(i, i + 400)).setBackground(AZUL_SISTEMA_);
+  }
+}
+
+/** "AP12" a partir de fila y columna 1-based. */
+function _a1_(fila, col) {
+  let s = '', n = col;
+  while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+  return s + fila;
+}
 
 // ===================== La única excepción =====================
 
@@ -76,27 +190,95 @@ const AZUL_SISTEMA_ = '#4F81BD';
  * @return {boolean} true si avanzó el estado
  */
 function marcarRealizada_(rangoStatus, asistentes) {
+  if (!_decideRealizada_(rangoStatus.getValue(), asistentes)) return false;
+  rangoStatus.setValue(TRANSICION_REALIZADA.hacia);
+  rangoStatus.setBackground(AZUL_SISTEMA_);
+  return true;
+}
+
+/**
+ * **La misma excepción, en lote** (02/10): para cada fila de `filas`, `en agenda` → `Realizada` si
+ * tiene asistentes. Mismo criterio que `marcarRealizada_` —que es la que decide, celda por celda,
+ * sobre los valores leídos acá—, sin pasar por `setSiDelSistemaLote_` (es la excepción, no la regla).
+ *
+ * Lee fresco el bloque de filas × (STATUS y Asistentes) y escribe con un `RangeList`: el valor es el
+ * mismo para todas (`Realizada`) y el fondo también.
+ *
+ * @param {Array}  filas       números de fila (1-based)
+ * @param {number} colStatus   columna de STATUS REUNIÓN (1-based)
+ * @param {number} colAsis     columna de Asistentes (1-based)
+ * @return {Array} las filas que avanzaron
+ */
+function marcarRealizadaLote_(sh, filas, colStatus, colAsis) {
+  if (!filas.length) return [];
+  const f1 = Math.min.apply(null, filas), f2 = Math.max.apply(null, filas);
+  const c1 = Math.min(colStatus, colAsis), c2 = Math.max(colStatus, colAsis);
+  const vals = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1).getValues();   // lectura fresca
+  const avanzan = [];
+  filas.forEach(function (fila) {
+    const r = vals[fila - f1];
+    if (_decideRealizada_(r[colStatus - c1], numOcero_(r[colAsis - c1]))) avanzan.push(fila);
+  });
+  if (!avanzan.length) return [];
+  const a1 = avanzan.map(function (f) { return _a1_(f, colStatus); });
+  for (let i = 0; i < a1.length; i += 400) {
+    const rl = sh.getRangeList(a1.slice(i, i + 400));
+    rl.setValue(TRANSICION_REALIZADA.hacia);
+    rl.setBackground(AZUL_SISTEMA_);
+  }
+  return avanzan;
+}
+
+/**
+ * La decisión de `marcarRealizada_`, sobre valores ya leídos: ¿esta celda de STATUS, con estos
+ * asistentes, avanza a `Realizada`? Sólo desde `en agenda`; un estado desconocido se loguea (salvo
+ * con `callar`) y queda.
+ */
+function _decideRealizada_(status, asistentes, callar) {
   const n = (typeof asistentes === 'number') ? asistentes : Number(asistentes);
   if (!(n >= MIN_ASISTENTES_REALIZADA)) return false;
-
-  const actual = String(rangoStatus.getValue() == null ? '' : rangoStatus.getValue()).trim();
-
+  const actual = String(status == null ? '' : status).trim();
   // Ya está donde queremos: no reescribir (evita repintar y ensuciar la métrica de procedencia).
   if (normStatus_(actual) === normStatus_(TRANSICION_REALIZADA.hacia)) return false;
-
   // La whitelist: un solo estado de origen. Todo lo demás queda como está.
   if (normStatus_(actual) !== normStatus_(TRANSICION_REALIZADA.desde)) {
-    // Un estado que no conocemos es una señal, no un caso borde: alguien empezó a usar algo
-    // nuevo y el pipeline se está quedando viejo. Se avisa, no se toca.
-    if (actual !== '' && !statusConocido_(actual)) {
+    // Un estado que no conocemos es una señal, no un caso borde: se avisa, no se toca.
+    if (!callar && actual !== '' && !statusConocido_(actual)) {
       Logger.log('[escritura] STATUS desconocido, no se tocó: "%s"', actual);
     }
     return false;
   }
-
-  rangoStatus.setValue(TRANSICION_REALIZADA.hacia);
-  rangoStatus.setBackground(AZUL_SISTEMA_);
   return true;
+}
+
+// ===================== La guarda de la solapa destino =====================
+
+/**
+ * La solapa a la que apunta `RDV_HOJA_DESTINO`, **o error sin escribir nada** (02/10). Si no es el
+ * destino real (la copia de prueba), sus encabezados tienen que ser exactamente los del destino
+ * real, en el mismo orden: una solapa que no es la esperada no se escribe.
+ */
+function verificarHojaDestino_(ss) {
+  const sh = ss.getSheetByName(RDV_HOJA_DESTINO);
+  if (!sh) throw new Error('No existe la solapa destino "' + RDV_HOJA_DESTINO + '". No se escribió nada.');
+  if (RDV_HOJA_DESTINO === RDV_HOJA_DESTINO_REAL) return sh;
+
+  const real = ss.getSheetByName(RDV_HOJA_DESTINO_REAL);
+  if (!real) throw new Error('No existe "' + RDV_HOJA_DESTINO_REAL + '" para comparar encabezados. No se escribió nada.');
+  const h = function (s) {
+    const fila = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].map(normalizeHeader_);
+    while (fila.length && !fila[fila.length - 1]) fila.pop();
+    return fila;
+  };
+  const a = h(sh), b = h(real);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i] !== b[i]) {
+      throw new Error('Los encabezados de "' + RDV_HOJA_DESTINO + '" no son los del destino real: ' +
+                      'columna ' + (i + 1) + ' dice "' + (a[i] || '') + '" y en "' + RDV_HOJA_DESTINO_REAL +
+                      '" dice "' + (b[i] || '') + '". No se escribió nada.');
+    }
+  }
+  return sh;
 }
 
 // ===================== Fase 2b: las columnas de traza =====================

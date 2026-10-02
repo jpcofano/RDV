@@ -31,6 +31,12 @@ function upsertDiario() {
 
 /** Crea el activador (cada ACTIVADOR_CADA_HORAS horas). Si ya existe, no crea otro. */
 function instalarActivadorDiario_() {
+  // 02/10: no se instala mientras el destino apunte a la copia de prueba. Primero se revierte
+  // RDV_HOJA_DESTINO y se verifica la escritura real (docs/ESTADO.md).
+  if (RDV_HOJA_DESTINO !== RDV_HOJA_DESTINO_REAL) {
+    throw new Error('RDV_HOJA_DESTINO apunta a "' + RDV_HOJA_DESTINO + '", no al destino real. ' +
+                    'El activador no se instala hasta revertirla y verificar la escritura real.');
+  }
   const ya = _activadoresDiarios_();
   if (ya.length) {
     Logger.log('Ya hay %s activador(es) de %s: no se crea otro.', ya.length, ACTIVADOR_DIARIO_FUNCION);
