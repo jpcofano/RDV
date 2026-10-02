@@ -8,7 +8,7 @@
  *
  * Cinco controles, en este orden:
  *   1) **Invariante en el destino, por grupo de gemelos** (02/10): ningún formulario —ni dos
- *      formularios con el mismo nombre (regla 3)— está en 2+ filas con RDV_UID. El formulario de cada
+ *      gemelos: mismo nombre y cierres a GEMELOS_MAX_DIAS o menos (regla 3)— está en 2+ filas con RDV_UID. El formulario de cada
  *      fila se resuelve por su traza (`form_clave`, si no `form_origen`: `formularioDeTraza_`), no por
  *      la fila de B. Así se detectó la 309/315 de la copia, y así se detecta si vuelve a pasar.
  *   2) **Fórmulas** (el paso 14): las once derivadas siguen siendo fórmula y muestran `Comunas`.
@@ -22,8 +22,8 @@
  *      (gemelos sin `form_clave`: se sabe el nombre, no cuál de los dos).
  *   5) **La lista de las filas con RDV_UID** (fila, figura, fecha, formulario) y, para cada una, si HOY
  *      el plan la escribiría igual. Con **el mismo plan que el upsert** (02/10: `calcularPlan_` entero,
- *      con el invariante, sobre el destino sin sus RDV_UID), y comparando por `form_clave` (o por el
- *      nombre en las filas escritas antes).
+ *      con el invariante, sobre el destino sin sus RDV_UID), contra el formulario que resuelve la
+ *      traza (`form_clave`, o el nombre y el grupo de gemelos en las filas escritas antes).
  */
 /** Hasta cuántas filas con RDV_UID lista el bloque 5 una por una. */
 const MAX_FILAS_LISTA_DIAG8 = 300;
@@ -42,8 +42,8 @@ function verificarEscritura() {
   conUid.forEach(function (f) {
     const t = formularioDeTraza_(f, cands.vivos);
     traza.set(f, t);
-    if (!t.grupo) { sinForm.push(f); return; }
     if (t.ambiguo) ambiguas.push(f);
+    if (!t.grupo) { if (!t.ambiguo) sinForm.push(f); return; }
     if (!porGrupo.has(t.grupo)) porGrupo.set(t.grupo, []);
     porGrupo.get(t.grupo).push(f);
   });
@@ -143,12 +143,12 @@ function verificarEscritura() {
   let distintas = 0;
   conUid.forEach(function (f) {
     const pf = hoy.porFila[f.fila];
-    const igual = !!(pf && pf.veredicto === 'escribiria' && esFormularioDeLaTraza_(f, pf.cand));
+    const igual = !!(pf && pf.veredicto === 'escribiria' && esFormularioDeLaTraza_(traza.get(f), pf.cand));
     if (!igual) distintas++;
     if (!listarTodas && igual) return;
     const texto = igual ? 'igual'
       : '<<< HOY: ' + (pf ? pf.veredicto + (pf.motivo ? ' (' + pf.motivo + ')' : '') +
-                            (pf.cand ? (esFormularioDeLaTraza_(f, pf.cand) ? ', mismo formulario'
+                            (pf.cand ? (esFormularioDeLaTraza_(traza.get(f), pf.cand) ? ', mismo formulario'
                                                                              : ' con "' + pf.cand.nombre + '"') : '')
                          : 'sin veredicto');
     Logger.log('  fila %s | %s | %s | %s | %s', f.fila, f.figura, fmtFecha_(f.fecha),

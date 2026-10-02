@@ -800,7 +800,7 @@ function medirDesempatePorEvidencia() {
 /**
  * **Chequeo del invariante, sobre el resultado final del plan** (bloque 0 del log). Tiene que dar 0.
  *
- * Desde el 02/10 cuenta por **grupo de gemelos** (mismo nombre, regla 3), no por formulario: dos
+ * Desde el 02/10 cuenta por **grupo de gemelos** (mismo nombre y cierres a GEMELOS_MAX_DIAS o menos, regla 3), no por formulario: dos
  * filas con dos formularios distintos del mismo nombre también son un choque (la 309 y la 315 de la
  * copia). Cuentan las filas que se escribirían y las que ya tienen RDV_UID, aunque su traza sea
  * ambigua (en ese caso se sabe el grupo, no el formulario).
@@ -834,8 +834,8 @@ function chequearFormularioUnico_(dest, vivos, comunas, porFila) {
  * desde el 02/10). Va entre las dos vueltas de `calcularPlan_`: después del desempate por evidencia,
  * sobre todo el plan.
  *
- * El grupo de un formulario es su nombre normalizado: por la regla 3, dos formularios con el mismo
- * nombre son la misma reunión, así que **una sola fila puede tener uno de ellos**. Si 2+ filas con
+ * El grupo de un formulario lo arma `marcarGemelos_`: mismo nombre y cierres a GEMELOS_MAX_DIAS o
+ * menos son la misma reunión (regla 3), así que **una sola fila puede tener uno de ellos**. Si 2+ filas con
  * veredicto `escribiria` tienen formularios del mismo grupo (el mismo, o gemelos):
  *
  *   - se queda el grupo la fila con mejor evidencia (`_desempatePorEvidencia_`). Los inscriptos del
@@ -995,12 +995,13 @@ function _logInvariante_(plan) {
 }
 
 /**
- * El bloque 0b del log (02/10): **los gemelos** de `B` —formularios con el mismo nombre— y a qué fila
- * va cada uno. Por la regla 3 son la misma reunión: a lo sumo uno tiene fila. Marca los pares cuyos
- * cierres están a más de una semana, por si alguno fuera de verdad otra reunión con el mismo nombre.
+ * El bloque 0b del log (02/10): **los gemelos** de `B` —mismo nombre y cierres a GEMELOS_MAX_DIAS días
+ * o menos (`marcarGemelos_`, la misma definición que usan el invariante y el paso 16)— y a qué fila va
+ * cada uno. Aparte, los nombres repetidos con cierres más lejos: reuniones distintas, cada una por su
+ * clave (no son un error).
  */
 function _logGemelos_(plan) {
-  const gem = plan.cands.gemelos || { grupos: [], descartados: 0, repetidas: 0 };
+  const gem = plan.cands.gemelos || { grupos: [], distintos: [], descartados: 0, repetidas: 0 };
   const destinos = new Map(), duenoGrupo = new Map();
   Object.keys(plan.porFila).forEach(function (k) {
     const pf = plan.porFila[k];
@@ -1011,30 +1012,36 @@ function _logGemelos_(plan) {
       duenoGrupo.set(pf.grupo, k);
     }
   });
-  const conClave = gem.grupos.filter(function (g) {
-    const cl = g.forms.map(function (c) { return c.clave; });
-    return cl.some(function (x, i) { return cl.indexOf(x) !== i; });
-  }).length;
-  Logger.log('--- 0b. GEMELOS: formularios de B con el mismo nombre (regla 3: la misma reunión) ---');
-  Logger.log('  grupos con 2+ formularios: %s (con la misma clave adentro: %s) | descartados por regla 3 ' +
-             '(casi cero, ≤ %s, misma clave que otro con inscriptos): %s | con clave repetida y los dos con ' +
-             'inscriptos (no se escriben solos): %s', gem.grupos.length, conClave, MAX_INSCRIPTOS_CASI_CERO,
-             gem.descartados, gem.repetidas);
+  const ff = function (c) {
+    return c.finRaw instanceof Date ? Utilities.formatDate(c.finRaw, RDV_TZ, 'dd/MM/yyyy HH:mm')
+                                    : fmtFecha_(c.det && c.det.fechaFin);
+  };
+  const va = function (c) {
+    return c.descartadoRegla3 ? 'descartado por regla 3 (casi cero)'
+                              : (destinos.get(c) || []).join(', ') || 'sin fila';
+  };
+  Logger.log('--- 0b. GEMELOS: mismo nombre y cierres a %s días o menos (regla 3: la misma reunión) ---',
+             GEMELOS_MAX_DIAS);
+  Logger.log('  grupos de gemelos: %s | descartados por regla 3 (≤ %s inscriptos, con otro del grupo con más): ' +
+             '%s | con dos o más con inscriptos (clave_repetida, no se escriben solos): %s',
+             gem.grupos.length, MAX_INSCRIPTOS_CASI_CERO, gem.descartados, gem.repetidas);
   gem.grupos.forEach(function (g) {
-    const fechas = g.forms.map(function (c) { return c.det && c.det.fechaFin ? c.det.fechaFin.getTime() : null; })
-                          .filter(function (x) { return x !== null; });
-    const spread = fechas.length ? Math.round((Math.max.apply(null, fechas) - Math.min.apply(null, fechas)) / 86400000) : 0;
-    Logger.log('  · "%s" — %s formularios%s%s', g.forms[0].nombre, g.forms.length,
-               spread > 7 ? ' — cierres a ' + spread + ' días: ¿otra reunión con el mismo nombre?' : '',
+    Logger.log('  · "%s" — %s formularios%s', g.forms[0].nombre, g.forms.length,
                duenoGrupo.has(g.grupo) ? ' — el grupo es de la fila ' + duenoGrupo.get(g.grupo) +
-                                         ' (RDV_UID, traza sin form_clave: no se sabe cuál de los dos)' : '');
+                                         ' (RDV_UID, traza ambigua: no se sabe cuál)' : '');
     g.forms.forEach(function (c) {
-      const ff = c.finRaw instanceof Date ? Utilities.formatDate(c.finRaw, RDV_TZ, 'dd/MM/yyyy HH:mm')
-                                          : fmtFecha_(c.det && c.det.fechaFin);
-      const va = c.descartadoRegla3 ? 'descartado por regla 3 (casi cero)'
-               : (destinos.get(c) || []).join(', ') || 'sin fila';
-      Logger.log('      B fila %s | Fecha_Fin %s | ins %s%s → %s', c.fila, ff, c.inscriptos || 0,
-                 c.claveRepetida ? ' | CLAVE REPETIDA' : '', va);
+      Logger.log('      B fila %s | Fecha_Fin %s | ins %s%s → %s', c.fila, ff(c), c.inscriptos || 0,
+                 c.claveRepetida ? ' | CLAVE REPETIDA' : '', va(c));
+    });
+  });
+  Logger.log('  mismo nombre, cierres a más de %s días (reuniones DISTINTAS, cada una por su clave): %s',
+             GEMELOS_MAX_DIAS, (gem.distintos || []).length);
+  (gem.distintos || []).forEach(function (x) {
+    Logger.log('  · "%s"', x.nombre);
+    x.grupos.forEach(function (g) {
+      g.forEach(function (c) {
+        Logger.log('      B fila %s | Fecha_Fin %s | ins %s → %s', c.fila, ff(c), c.inscriptos || 0, va(c));
+      });
     });
   });
 }
@@ -4363,54 +4370,70 @@ function leerCandidatos_() {
 }
 
 /**
- * **Los gemelos** (02/10): formularios de `B` con el mismo nombre (normalizado). Por la regla 3 son
- * la misma reunión, así que una sola fila del destino puede tener uno de ellos (lo hace cumplir
- * `aplicarFormularioUnico_`, por grupo).
+ * **Los gemelos** (regla 3; definición ajustada el 02/10): formularios de `B` con **el mismo nombre
+ * (normalizado) y cierres a GEMELOS_MAX_DIAS días o menos** (encadenados). Son la misma reunión, así
+ * que una sola fila del destino puede tener uno de ellos (lo hace cumplir `aplicarFormularioUnico_`,
+ * por grupo). Mismo nombre con cierres más lejos son **reuniones distintas**: grupos distintos, y cada
+ * formulario va por su clave (la Macri "Orden Público" del 16/07 y del 28/07).
  *
- * Dentro de una misma CLAVE (mismo nombre y mismo cierre), además:
- *   - si uno tiene inscriptos y los otros casi cero (≤ MAX_INSCRIPTOS_CASI_CERO), los de casi cero
- *     no se hicieron: se marcan `descartadoRegla3` y salen de los candidatos;
+ * Dentro de un grupo, además:
+ *   - si alguno tiene más de MAX_INSCRIPTOS_CASI_CERO inscriptos, los de casi cero no se hicieron: se
+ *     marcan `descartadoRegla3` y salen de los candidatos (aunque los cierres no sean iguales);
  *   - si quedan dos o más con inscriptos, no hay cómo saber cuál es el de la fila: se marcan
  *     `claveRepetida` y ninguno se escribe solo (`clave_repetida`, a revisión).
  *
- * Marca los formularios y devuelve los grupos de 2+ (con los descartados adentro), para el log.
+ * Pone `c.grupo` a cada formulario (nombre normalizado + el primer cierre del grupo) y devuelve, para
+ * el log, los grupos de 2+ (con los descartados adentro) y los nombres repetidos que quedaron en
+ * grupos distintos.
  */
 function marcarGemelos_(vivos) {
-  const porGrupo = new Map(), porClave = new Map();
+  const porNombre = new Map();
   vivos.forEach(function (c) {
-    if (!porGrupo.has(c.grupo)) porGrupo.set(c.grupo, []);
-    porGrupo.get(c.grupo).push(c);
-    if (!porClave.has(c.clave)) porClave.set(c.clave, []);
-    porClave.get(c.clave).push(c);
+    c.nombreNorm = normalizeText_(c.nombre);
+    if (!porNombre.has(c.nombreNorm)) porNombre.set(c.nombreNorm, []);
+    porNombre.get(c.nombreNorm).push(c);
   });
+  const t = function (c) { return c.det && c.det.fechaFin ? c.det.fechaFin.getTime() : null; };
+  const grupos = [], distintos = [];
   let descartados = 0, repetidas = 0;
-  porClave.forEach(function (lista) {
-    if (lista.length < 2) return;
-    const conIns = lista.filter(function (c) { return (c.inscriptos || 0) > MAX_INSCRIPTOS_CASI_CERO; });
-    if (conIns.length >= 1) {
-      lista.forEach(function (c) {
-        if (conIns.indexOf(c) < 0) { c.descartadoRegla3 = true; descartados++; }
-      });
-    }
-    const quedan = conIns.length ? conIns : lista;
-    if (quedan.length >= 2) quedan.forEach(function (c) { c.claveRepetida = true; repetidas++; });
+  porNombre.forEach(function (lista, n) {
+    // Por cierre; los sin Fecha_Fin, al final y juntos.
+    const orden = lista.slice().sort(function (a, b) {
+      const ta = t(a), tb = t(b);
+      if (ta === null || tb === null) return ta === tb ? 0 : (ta === null ? 1 : -1);
+      return ta - tb;
+    });
+    const tandas = [];
+    orden.forEach(function (c) {
+      const ult = tandas[tandas.length - 1], prev = ult && ult[ult.length - 1];
+      const junto = prev && (t(c) === null ? t(prev) === null
+                                           : t(prev) !== null && (t(c) - t(prev)) / 86400000 <= GEMELOS_MAX_DIAS);
+      if (junto) ult.push(c); else tandas.push([c]);
+    });
+    tandas.forEach(function (g) {
+      const id = n + '|' + (t(g[0]) === null ? 'sin_cierre' : ymd_(g[0].det.fechaFin));
+      g.forEach(function (c) { c.grupo = id; c.gemelos = g.length; });
+      if (g.length < 2) return;
+      const conIns = g.filter(function (c) { return (c.inscriptos || 0) > MAX_INSCRIPTOS_CASI_CERO; });
+      if (conIns.length) {
+        g.forEach(function (c) { if (conIns.indexOf(c) < 0) { c.descartadoRegla3 = true; descartados++; } });
+      }
+      const quedan = conIns.length ? conIns : g;
+      if (quedan.length >= 2) quedan.forEach(function (c) { c.claveRepetida = true; repetidas++; });
+      grupos.push({ grupo: id, forms: g });
+    });
+    if (tandas.length >= 2) distintos.push({ nombre: lista[0].nombre, grupos: tandas });
   });
-  const grupos = [];
-  porGrupo.forEach(function (lista, g) {
-    lista.forEach(function (c) { c.gemelos = lista.length; });
-    if (lista.length >= 2) grupos.push({ grupo: g, forms: lista });
-  });
-  return { grupos: grupos, descartados: descartados, repetidas: repetidas };
+  return { grupos: grupos, distintos: distintos, descartados: descartados, repetidas: repetidas };
 }
 
 /**
  * La clave estable de un formulario: `normalizeText_(Nombre) | AAAAMMDD(Fecha_Fin)` (decisión 3 de
- * CLAUDE.md: sin métricas). No depende de la fila de B. Dos formularios con el mismo nombre y el
- * mismo cierre son, para el negocio, duplicados de la misma reunión (regla 3).
+ * CLAUDE.md: sin métricas). No depende de la fila de B.
  */
 /** Ordena los formularios por su clave estable (ver leerCandidatos_). Modifica y devuelve la lista. */
 function ordenarFormularios_(vivos) {
-  vivos.forEach(function (c) { c.clave = claveFormulario_(c); c.grupo = grupoFormulario_(c); });
+  vivos.forEach(function (c) { c.clave = claveFormulario_(c); });
   vivos.sort(function (a, b) {
     if (a.clave !== b.clave) return a.clave < b.clave ? -1 : 1;
     return ((b.inscriptos || 0) - (a.inscriptos || 0)) || (a.fila - b.fila);
@@ -4430,24 +4453,20 @@ function claveFormulario_(c) {
   return normalizeText_(c.nombre) + '|' + d;
 }
 
-/** El grupo de gemelos de un formulario: su nombre normalizado (regla 3, `marcarGemelos_`). */
-function grupoFormulario_(c) {
-  return normalizeText_(c.nombre);
-}
-
 /**
  * El formulario de una fila que ya tiene RDV_UID, por su traza. Devuelve `{ c, grupo, ambiguo }`:
  *
- *   1. por `form_clave` (02/10): el formulario con esa clave. Si hay dos vivos con la misma clave
- *      (`claveRepetida`), ambiguo;
- *   2. si la fila no tiene `form_clave` (escrita antes del 02/10) o la clave ya no está en B: por
- *      `form_origen`, literal y si no normalizado. Si hay UN formulario con ese nombre, es ése; si hay
- *      gemelos (dos o más con el mismo nombre), **ambiguo**: antes se elegía el más cercano en fecha,
- *      y con dos gemelos en dos filas las dos terminaban apuntando al mismo (la 309 y la 315).
+ *   1. por `form_clave` (02/10): el formulario vivo con esa clave. Si hay dos (`claveRepetida`),
+ *      ambiguo. Si ya no está (p. ej. lo descartó la regla 3), se sigue por el nombre;
+ *   2. por `form_origen` (literal, si no normalizado). Si ese nombre tiene formularios en VARIOS
+ *      grupos (reuniones distintas con el mismo nombre), el grupo más cercano en fecha a la fila; un
+ *      empate entre grupos es ambiguo. Dentro del grupo, si queda UN formulario vivo es ése; si
+ *      quedan dos o más, ambiguo.
  *
- * Ambiguo = se sabe el GRUPO (el nombre), no cuál de los gemelos. El grupo igual queda reservado para
- * esa fila (ninguna otra puede tomar un formulario de ese nombre), pero sus celdas vacías no se
- * completan con los datos de un gemelo elegido a ciegas. No usa la fila de B.
+ * Ambiguo = se sabe el GRUPO, no cuál de los gemelos. El grupo igual queda reservado para esa fila,
+ * pero sus celdas vacías no se completan con los datos de un gemelo elegido a ciegas. No usa la fila
+ * de B. (Antes se elegía el más cercano en fecha entre todos los del nombre, y con dos gemelos en dos
+ * filas las dos apuntaban al mismo: la 309 y la 315.)
  */
 function formularioDeTraza_(f, vivos) {
   const nada = { c: null, grupo: null, ambiguo: false };
@@ -4460,21 +4479,37 @@ function formularioDeTraza_(f, vivos) {
   let lista = vivos.filter(function (c) { return c.nombre === f.formOrigen; });
   if (!lista.length) {
     const n = normalizeText_(f.formOrigen);
-    lista = vivos.filter(function (c) { return c.grupo === n; });
+    lista = vivos.filter(function (c) { return c.nombreNorm === n; });
   }
   if (!lista.length) return nada;
-  if (lista.length === 1) return { c: lista[0], grupo: lista[0].grupo, ambiguo: false };
-  return { c: null, grupo: lista[0].grupo, ambiguo: true };
+  const porGrupo = new Map();
+  lista.forEach(function (c) {
+    if (!porGrupo.has(c.grupo)) porGrupo.set(c.grupo, []);
+    porGrupo.get(c.grupo).push(c);
+  });
+  let grupo = null, dMejor = Infinity, empate = false;
+  porGrupo.forEach(function (forms, g) {
+    const d = Math.min.apply(null, forms.map(function (c) {
+      const x = distanciaFecha_(f.fecha, c.det);
+      return x === null ? Infinity : x;
+    }));
+    if (grupo === null || d < dMejor) { grupo = g; dMejor = d; empate = false; }
+    else if (d === dMejor) empate = true;
+  });
+  if (empate) return { c: null, grupo: null, ambiguo: true };
+  const forms = porGrupo.get(grupo);
+  if (forms.length === 1) return { c: forms[0], grupo: grupo, ambiguo: false };
+  return { c: null, grupo: grupo, ambiguo: true };
 }
 
 /**
- * ¿El formulario `c` es el de la traza de la fila `f`? Por `form_clave` si la fila la tiene; si no,
- * por el grupo (el nombre): una fila escrita antes del 02/10 sólo sabe el nombre.
+ * ¿El formulario `c` es el de la traza `t` (de `formularioDeTraza_`) de una fila? Si la traza resolvió
+ * un formulario, ése; si es ambigua, cualquiera de su grupo.
  */
-function esFormularioDeLaTraza_(f, c) {
-  if (!c) return false;
-  if (f.formClave) return c.clave === f.formClave;
-  return !!f.formOrigen && c.grupo === normalizeText_(f.formOrigen);
+function esFormularioDeLaTraza_(t, c) {
+  if (!c || !t) return false;
+  if (t.c) return c === t.c;
+  return !!t.grupo && c.grupo === t.grupo;
 }
 
 function leerComunasMap_() {

@@ -20,13 +20,10 @@
  *  !!! 02/10: RDV_HOJA_DESTINO APUNTA A LA COPIA "AAA NOBORRAR" (TEMPORAL, 00_Config.js). !!!
  *      La primera escritura real (14:50) se cortó a los 6 minutos; la escritura se rehízo en lote
  *      y se prueba sobre la copia (el equipo trabaja en la real). Secuencia y predicción:
- *      docs/ESTADO.md, sección 0. La prueba de las 17:01 escribió bien (635 filas, 41 s) y destapó
- *      los GEMELOS (309/315). Ahora, en este orden (ESTADO 0.i):
- *        1. paso16_verificarEscritura()  → tal como está: invariante 1, y la línea "traza sin azul"
- *        2. deshacer la fila 309 de la copia a mano (ESTADO 0.i, "cómo se deshace")
- *        3. paso1_columnasDeTraza()      → agrega form_clave a la copia (sólo el encabezado)
- *        4. upsertDestino() una vez       [20_UpsertDestino.js] → la 309 a formulario_gemelo
- *        5. paso16_verificarEscritura()  → invariante 0, 0 "<<< HOY" por gemelos, 0 incompletas
+ *      docs/ESTADO.md, sección 0. La 309 ya está deshecha y form_clave agregada (18:14). Con el
+ *      ajuste de los gemelos (GEMELOS_MAX_DIAS = 7, casi cero fuera del grupo; ESTADO 0.k):
+ *        1. upsertDestino() una vez       [20_UpsertDestino.js] → form_clave en 697, 709, 134, 315, 768
+ *        2. paso16_verificarEscritura()  → invariante 0, traza ambigua 0, 0 "<<< HOY", 0 incompletas
  *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
  *      El activador NO se instala hasta volver y verificar la escritura real.
  *

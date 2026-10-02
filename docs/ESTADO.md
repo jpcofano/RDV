@@ -181,7 +181,7 @@ medición real es la del paso e)2, que deja los ms por tanda en el log.
   comparten el cierre). **Esto es más fino que "si comparten la clave, revisión"**: lo decidí así para
   no mandar a revisión los casos que la regla 3 ya resuelve. Si se prefiere la versión estricta, es
   sacar el descarte en `marcarGemelos_`.
-- **El invariante es por grupo de gemelos** (mismo nombre normalizado = la misma reunión, regla 3):
+- **El invariante es por grupo de gemelos** (mismo nombre; desde 0.k, además cierres a 7 días o menos):
   una sola fila puede tener un formulario de ese nombre. La fila que pierde y tenía un gemelo, o que al
   re-evaluarse cae en un gemelo, va a REVISAR por **`formulario_gemelo`** (motivo nuevo). Un grupo
   con dueño por `RDV_UID` no lo toma ninguna otra fila. El chequeo del bloque 0 también es por grupo.
@@ -255,6 +255,56 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### k) 02/10 18:02–18:14: la 309 deshecha, `form_clave`, y el ajuste de los gemelos
+
+**Resultados** (sobre la copia, todavía con la regla de gemelos de 0.i):
+
+- la **309** quedó deshecha y va a REVISAR por `formulario_gemelo`;
+- **azules: 3.785 celdas de traza con valor, 0 sin azul.** Era **azul sobre azul** en la copia: el
+  `RangeList` pinta bien. La regla es una sola en todas las corridas (0.i);
+- el upsert **bloqueó bien** con el invariante roto: 0 filas escritas;
+- `paso1_columnasDeTraza()` agregó `form_clave` (columna 47); el upsert la escribió en **752 filas** (16
+  tandas, 17 s); paso 16: **0 incompletas, 0 traza sin azul, manuales 605**;
+- quedaban **invariante 1 (697/709)** y **5 trazas ambiguas (134, 315, 697, 709, 768)**.
+
+**El ajuste (regla 3, decisión del usuario):**
+
+1. **Gemelos = mismo nombre normalizado Y cierres (`Fecha_Fin`) a `GEMELOS_MAX_DIAS` (7) días o
+   menos** (encadenados). Mismo nombre con cierres más lejos son **reuniones distintas**: cada formulario
+   va por su clave y el invariante no los junta. Caso: Macri *Encuentro Temático "Orden Público"/
+   Seguridad - Eje Norte*, B 705 (16/07, 73) → fila 697 y B 729 (28/07, 753) → fila 709 (753 = 753 en la
+   calibración). No era un error.
+2. **Dentro de un grupo, el gemelo con ≤ 5 inscriptos sale de los candidatos aunque los cierres
+   difieran** (antes hacía falta la misma clave): 134 (B 123, 2 ins, 18/08 | B 140, 72 ins, 21/08), 315
+   (B 310, 0 | B 317, 49) y 768 (B 785, 0, 27/08 | B 790, 116, 02/09). Cada grupo queda con un solo
+   formulario vivo, y la traza deja de ser ambigua.
+3. **Dos gemelos con más de 5 inscriptos cada uno: `clave_repetida`**, ninguno solo (también si los
+   cierres difieren, dentro de los 7 días).
+4. **El paso 16, el bloque 0b y el invariante usan la misma definición** (`marcarGemelos_`). El bloque
+   0b lista aparte los nombres repetidos con cierres a más de 7 días ("reuniones DISTINTAS").
+
+La traza de una fila escrita sin `form_clave` se resuelve por el nombre: si el nombre tiene varios
+grupos, el más cercano en fecha a la fila (empate entre grupos = ambiguo); dentro del grupo, el
+formulario vivo. **Efecto a tener presente:** si la 315 (o la 134, o la 768) se había escrito con el
+gemelo de casi cero, ahora su traza resuelve al otro, y la próxima corrida completa con los datos de
+ése **sólo sus celdas vacías** (sexo y edades) y le estampa su `form_clave`. Nada se pisa.
+
+Test en Node, escenario [8]: la 309/315 con el de 0 inscriptos, clave repetida con el mismo cierre y
+a 3 días, la 134 (72 contra 2 a 3 días), la Macri "Orden Público" (dos reuniones), la 645, y lo que
+quedó en la copia (invariante 1 detectado; corregida la 309: invariante 0, ambiguas 0, `form_clave` en
+todas). Todo en verde.
+
+**Predicción, anotada antes de correr** (un `upsertDestino()` y el paso 16 en la copia): **invariante
+0, traza ambigua 0**, y `form_clave` estampada en las 5:
+
+```
+697 → B 705 (16/07)   709 → B 729 (28/07)   134 → B 140   315 → B 317   768 → B 790
+```
+
+más: incompletas 0, traza sin azul 0, manuales 605, 0 avisos "<<< HOY", la 309 en revisión. El bloque
+0b: los grupos de gemelos con sus descartados (al menos los de la 134, la 315 y la 768) y la Macri en
+"reuniones DISTINTAS".
 
 ### h) Punto 3: el paso 2 (14:35) y la escritura (14:50) dieron distinto
 

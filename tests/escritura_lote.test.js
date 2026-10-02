@@ -519,11 +519,15 @@ function escenarioGuarda() {
 }
 
 /**
- * Los casos de gemelos del 02/10, con figuras inventadas:
- *   G  la 309/315: dos formularios con el MISMO nombre y cierre distinto; la fila con barrio (como la
- *      315) se lo queda, la sin barrio (como la 309) va a revisión por formulario_gemelo;
+ * Los casos de gemelos del 02/10, con figuras inventadas. Gemelos = mismo nombre y cierres a
+ * GEMELOS_MAX_DIAS (7) días o menos:
+ *   G  la 309/315: dos gemelos, uno con 0 inscriptos (B 310) y otro con 49 (B 317). El de 0 se
+ *      descarta (regla 3): queda uno, se lo queda la fila con barrio y la otra va a revisión;
  *   K  clave repetida: mismo nombre y mismo cierre, los dos con inscriptos → clave_repetida;
- *   C  casi cero: mismo nombre y cierre, 72 contra 2 → el de 2 se descarta y la fila escribe el de 72;
+ *   K2 gemelos con cierres a 3 días, los dos con inscriptos → clave_repetida, nada solo;
+ *   C  la 134: 72 contra 2 con cierres a 3 días → el de 2 se descarta y la fila escribe el de 72;
+ *   M  la Macri "Orden Público": mismo nombre, cierres a 12 días → reuniones DISTINTAS, cada fila con
+ *      el suyo, y el invariante no lo marca;
  *   I  la 645: dos filas quieren el mismo "1 a 1"; el invariante se lo da a la de 0 días y la otra toma
  *      el temático. El paso 16 tiene que decir "igual" para las dos.
  */
@@ -545,16 +549,25 @@ function casosGemelos(E, datos) {
   // G
   fila('Clara Mendieta', 7, 8, 'Recoleta');
   fila('Clara Mendieta', 5, 8, '');
-  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 6, 8, 150);
-  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 4, 8, 90);
+  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 6, 8, 49);
+  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 4, 8, 0);
   // K
   fila('Marcos Iturbe', 10, 8, 'Palermo');
   form('MARCOS ITURBE - Encuentro con vecinos - Comuna 14 - 10/8', 8, 8, 100);
   form('MARCOS ITURBE - Encuentro con vecinos - Comuna 14 - 10/8', 8, 8, 80);
+  // K2
+  fila('Ramiro Quesada', 14, 8, 'Belgrano');
+  form('RAMIRO QUESADA - Encuentro con vecinos - Comuna 13 - 14/8', 13, 8, 60);
+  form('RAMIRO QUESADA - Encuentro con vecinos - Comuna 13 - 14/8', 10, 8, 40);
   // C
-  fila('Tobías Lezcano', 12, 8, 'Flores');
-  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 12/8', 10, 8, 72);
-  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 12/8', 10, 8, 2);
+  fila('Tobías Lezcano', 21, 8, 'Flores');
+  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 21/8', 21, 8, 72);
+  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 21/8', 18, 8, 2);
+  // M
+  fila('Jorge Benavídez', 16, 7, '');
+  fila('Jorge Benavídez', 28, 7, '');
+  form('JORGE BENAVÍDEZ - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte', 16, 7, 73);
+  form('JORGE BENAVÍDEZ - Encuentro Temático "Orden Público"/ Seguridad - Eje Norte', 28, 7, 753);
   // I
   fila('Jorge Benavídez', 17, 8, 'Boedo');
   fila('Jorge Benavídez', 16, 8, 'Almagro');
@@ -563,66 +576,78 @@ function casosGemelos(E, datos) {
 }
 
 function escenarioGemelos() {
-  console.log('\n[8] gemelos (02/10): la 309/315, clave repetida, casi cero y la 645');
+  console.log('\n[8] gemelos (02/10): la 309/315, clave repetida, la 134, la Macri "Orden Público" y la 645');
   const E = crearEntorno();
   const m = montar(E, 200, true, casosGemelos);
   const hoja = m.ssD.hojas['AAA NOBORRAR'];
-  const filaDe = function (fig, d) {
+  const filaDe = function (fig, d, mes) {
     return hoja.v.findIndex(function (r, i) {
-      return i > 0 && r[colD('Figura')] === fig && r[colD('FECHA')] instanceof Date && r[colD('FECHA')].getDate() === d;
+      const f = r[colD('FECHA')];
+      return i > 0 && r[colD('Figura')] === fig && f instanceof Date && f.getDate() === d && f.getMonth() + 1 === mes;
     }) + 1;
   };
-  const F = { g315: filaDe('Clara Mendieta', 7), g309: filaDe('Clara Mendieta', 5), k: filaDe('Marcos Iturbe', 10),
-              c: filaDe('Tobías Lezcano', 12), iX: filaDe('Jorge Benavídez', 17), iY: filaDe('Jorge Benavídez', 16) };
+  const F = { g315: filaDe('Clara Mendieta', 7, 8), g309: filaDe('Clara Mendieta', 5, 8), k: filaDe('Marcos Iturbe', 10, 8),
+              k2: filaDe('Ramiro Quesada', 14, 8), c: filaDe('Tobías Lezcano', 21, 8),
+              m697: filaDe('Jorge Benavídez', 16, 7), m709: filaDe('Jorge Benavídez', 28, 7),
+              iX: filaDe('Jorge Benavídez', 17, 8), iY: filaDe('Jorge Benavídez', 16, 8) };
   const r = E.ejecutar('upsertDestino');
   ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
-  const uid = function (n) { return hoja.v[n - 1][colD('RDV_UID')]; };
+  const uid = function (h, n) { return h.v[n - 1][colD('RDV_UID')]; };
   const val = function (n, c) { return hoja.v[n - 1][colD(c)]; };
   const log = r.logs.join('\n');
-  ok(uid(F.g315) && !uid(F.g309), 'G: la "315" se escribe y la "309" no (' + !!uid(F.g315) + ' / ' + !!uid(F.g309) + ')');
-  ok(new RegExp('fila ' + F.g309 + ' [^\\n]*formulario_gemelo').test(log), 'G: la "309" va a REVISAR por formulario_gemelo');
-  ok(/0b\. GEMELOS/.test(log) && /Clara Mendieta 07\/08 Recoleta" — 2 formularios/.test(log), 'G: el bloque 0b lista el par');
-  ok(!uid(F.k), 'K: clave repetida, no se escribe');
-  ok(/CLAVE REPETIDA/.test(log), 'K: el bloque 0b la marca');
+  const enRevisar = function (lg, n) {
+    return lg.split('\n').some(function (l) { return l.indexOf('fila ' + n + ' ') >= 0 && /REVISAR/.test(l); });
+  };
+  ok(uid(hoja, F.g315) && !uid(hoja, F.g309), 'G: la "315" se escribe y la "309" no');
+  ok(/Clara Mendieta 07\/08 Recoleta" — 2 formularios/.test(log) && /ins 0 → descartado por regla 3/.test(log),
+     'G: el bloque 0b lista el par y descarta el de 0 inscriptos');
+  ok(!uid(hoja, F.k) && !uid(hoja, F.k2) && /CLAVE REPETIDA/.test(log),
+     'K y K2: dos gemelos con inscriptos (mismo cierre, o a 3 días) → clave_repetida, no se escriben');
   // Masculinos del de 72: uni = 58, M = 26 → round(72 × 26 / 58) = 32 (el de 2 daría 1).
-  ok(uid(F.c) && val(F.c, 'Masculinos') === 32, 'C: casi cero: la fila se escribe con el de 72 (Masculinos ' + val(F.c, 'Masculinos') + ')');
-  ok(/descartado por regla 3/.test(log), 'C: el de 2 inscriptos se descarta por regla 3');
+  ok(uid(hoja, F.c) && val(F.c, 'Masculinos') === 32, 'C (la 134): se escribe con el de 72 (Masculinos ' + val(F.c, 'Masculinos') + ')');
+  ok(uid(hoja, F.m697) && uid(hoja, F.m709) && val(F.m697, 'form_clave') !== val(F.m709, 'form_clave'),
+     'M (Macri "Orden Público"): cierres a 12 días, dos reuniones: cada fila con el suyo');
+  ok(/reuniones DISTINTAS, cada una por su clave\): 1/.test(log), 'M: el bloque 0b lo lista como reuniones distintas');
   ok(/1 a 1 - Comuna 5 17\/8/.test(val(F.iX, 'form_origen')) && /Temático Educación/.test(val(F.iY, 'form_origen')),
-     'I: la de 0 días toma el "1 a 1" y la otra el temático (invariante)');
+     'I (la 645): la de 0 días toma el "1 a 1" y la otra el temático (invariante)');
   ok(val(F.g315, 'form_clave') !== '', 'form_clave escrita: ' + val(F.g315, 'form_clave'));
   const v = E.ejecutar('verificarEscritura').resultado;
   ok(v.choques === 0, 'paso 16: invariante 0 (' + v.choques + ')');
   ok(v.distintas === 0, 'paso 16: 0 avisos "<<< HOY" — la "645" incluida, con el mismo plan (' + v.distintas + ')');
-  ok(v.trazaSinAzul === 0 && v.incompletas === 0, 'paso 16: traza toda en azul, 0 incompletas');
+  ok(v.trazaSinAzul === 0 && v.incompletas === 0 && v.ambiguas === 0, 'paso 16: traza en azul, 0 incompletas, 0 ambiguas');
 
-  console.log('  — lo que quedó en la copia: la "309" y la "315" escritas con el mismo nombre, sin form_clave —');
+  console.log('  — lo que quedó en la copia: filas escritas sólo con el nombre (sin form_clave); la "309" con el gemelo —');
   const E2 = crearEntorno();
   const m2 = montar(E2, 200, true, casosGemelos);
   const h2 = m2.ssD.hojas['AAA NOBORRAR'];
   E2.ejecutar('upsertDestino');
-  // Como la corrida de las 17:01: la "309" con el gemelo, y ninguna con form_clave.
+  // Como antes del 02/10 noche: ninguna fila con form_clave, y la "309" escrita con el mismo nombre.
   const nombreG = 'VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta';
-  [F.g315, F.g309].forEach(function (n) {
-    h2.v[n - 1][colD('RDV_UID')] = h2.v[n - 1][colD('RDV_UID')] || 'uid-viejo-' + n;
-    h2.v[n - 1][colD('form_origen')] = nombreG;
-    h2.v[n - 1][colD('form_score')] = 1; h2.v[n - 1][colD('form_nivel')] = 'figura+fecha';
-    h2.v[n - 1][colD('form_clave')] = '';
-    TRAZA.forEach(function (c) { h2.bg[n - 1][colD(c)] = '#4f81bd'; });
-  });
+  for (let i = 1; i < h2.v.length; i++) h2.v[i][colD('form_clave')] = '';
+  const n309 = F.g309;
+  h2.v[n309 - 1][colD('RDV_UID')] = 'uid-viejo-309';
+  h2.v[n309 - 1][colD('form_origen')] = nombreG;
+  h2.v[n309 - 1][colD('form_score')] = 1; h2.v[n309 - 1][colD('form_nivel')] = 'figura+fecha';
+  TRAZA.forEach(function (c) { h2.bg[n309 - 1][colD(c)] = '#4f81bd'; });
   const v1 = E2.ejecutar('verificarEscritura').resultado;
-  ok(v1.choques === 1, 'paso 16 lo detecta: invariante 1 (' + v1.choques + ')');
-  // La corrección (docs/ESTADO.md 0): borrar en la "309" lo que escribió el sistema y sacarle el azul.
+  ok(v1.choques === 1, 'paso 16 lo detecta: invariante 1 (sólo la "309/315"; la Macri no) (' + v1.choques + ')');
+  ok(v1.ambiguas === 0, 'traza ambigua 0: con el de 0 descartado, cada nombre resuelve a un solo formulario (' + v1.ambiguas + ')');
+  // La corrección (docs/ESTADO.md 0.i): borrar en la "309" lo que escribió el sistema y sacarle el azul.
   TRAZA.concat(SEXO_EDADES).forEach(function (c) {
     const k = colD(c);
-    if (String(h2.bg[F.g309 - 1][k]).toLowerCase() === '#4f81bd') { h2.v[F.g309 - 1][k] = ''; h2.bg[F.g309 - 1][k] = '#ffffff'; }
+    if (String(h2.bg[n309 - 1][k]).toLowerCase() === '#4f81bd') { h2.v[n309 - 1][k] = ''; h2.bg[n309 - 1][k] = '#ffffff'; }
   });
   const r2 = E2.ejecutar('upsertDestino');
-  ok(!r2.error && !h2.v[F.g309 - 1][colD('RDV_UID')], 'después de corregir: la "309" no se vuelve a escribir');
-  ok(new RegExp('fila ' + F.g309 + ' [^\\n]*formulario_gemelo').test(r2.logs.join('\n')), 'y va a REVISAR por formulario_gemelo');
+  ok(!r2.error && !uid(h2, n309) && enRevisar(r2.logs.join('\n'), n309), 'después de corregir: la "309" va a REVISAR y no se escribe' +
+     (r2.error ? ' — error: ' + r2.error.message : '') + ' — ' +
+     r2.logs.filter(function (l) { return l.indexOf('fila ' + n309 + ' ') >= 0; }).join(' / '));
+  let conClave = 0, conUid = 0;
+  for (let i = 1; i < h2.v.length; i++) { if (h2.v[i][colD('RDV_UID')]) { conUid++; if (h2.v[i][colD('form_clave')]) conClave++; } }
+  ok(conClave === conUid, 'form_clave completada en todas las filas con RDV_UID (' + conClave + ' de ' + conUid + ')');
   const v2 = E2.ejecutar('verificarEscritura').resultado;
-  ok(v2.choques === 0, 'paso 16: invariante 0');
-  ok(v2.distintas === 0, 'paso 16: 0 avisos "<<< HOY" por gemelos (' + v2.distintas + ')');
-  ok(v2.ambiguas === 1, 'paso 16: la "315" queda con traza ambigua (sin form_clave, con gemelos): ' + v2.ambiguas);
+  ok(v2.choques === 0 && v2.ambiguas === 0 && v2.distintas === 0 && v2.incompletas === 0 && v2.sinClave === 0,
+     'paso 16: invariante 0, ambigua 0, 0 avisos "<<< HOY", 0 incompletas, 0 sin form_clave (' +
+     [v2.choques, v2.ambiguas, v2.distintas, v2.incompletas, v2.sinClave].join('/') + ')');
 }
 
 function escenarioSecoIgualReal() {

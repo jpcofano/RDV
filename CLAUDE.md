@@ -2175,14 +2175,17 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
      la copia). La traza guarda ahora **`form_clave`**, y se enlaza por ella; las filas escritas antes
      se enlazan por el nombre, y si ese nombre tiene gemelos la traza es **ambigua**: se reserva el
      grupo entero y no se completa nada a ciegas;
-   - **los gemelos** (02/10): formularios con **el mismo nombre** son la misma reunión (regla 3), así
-     que **una sola fila puede tener uno de ellos**: el invariante "un formulario, una fila" es **por
-     grupo de gemelos** (`aplicarFormularioUnico_`). La fila que pierde el grupo y tenía un gemelo, o
-     que al re-evaluarse cae en uno, va a REVISAR por **`formulario_gemelo`**. Dentro de una misma
-     clave (mismo nombre y cierre), el de casi cero inscriptos (≤ `MAX_INSCRIPTOS_CASI_CERO`) no se
-     hizo y se descarta como candidato; si los dos tienen inscriptos, ninguno se escribe solo
-     (**`clave_repetida`**). El bloque 0b del log los lista (`marcarGemelos_`, `_logGemelos_`). Si
-     `Fecha_Fin` trae hora, `claveFormulario_` la incluye;
+   - **los gemelos** (02/10): formularios con **el mismo nombre y cierres a `GEMELOS_MAX_DIAS` (7)
+     días o menos** son la misma reunión (regla 3), así que **una sola fila puede tener uno de ellos**:
+     el invariante "un formulario, una fila" es **por grupo de gemelos** (`aplicarFormularioUnico_`).
+     Mismo nombre con cierres más lejos son **reuniones distintas** y van cada una por su clave (la
+     Macri "Orden Público" del 16/07 y del 28/07, filas 697 y 709). La fila que pierde el grupo y tenía
+     un gemelo, o que al re-evaluarse cae en uno, va a REVISAR por **`formulario_gemelo`**. Dentro de un
+     grupo, el gemelo con ≤ `MAX_INSCRIPTOS_CASI_CERO` (5) inscriptos no se hizo y se descarta como
+     candidato, aunque los cierres difieran (134, 315, 768); si quedan dos con inscriptos, ninguno se
+     escribe solo (**`clave_repetida`**). Una sola definición (`marcarGemelos_`) para el plan, el
+     bloque 0b del log (`_logGemelos_`) y el paso 16. Si `Fecha_Fin` trae hora, `claveFormulario_` la
+     incluye;
    - **`elegido`** de EMPAREJAR_MANUAL / REVISAR_MATCH: cuando se lea, se resuelve por el
      `op{n}_formulario` (Nombre) de esa misma línea, nunca por `op{n}_fila_B`, que es informativo.
      `confirmar` ya se leía por nombre + figura + fecha.

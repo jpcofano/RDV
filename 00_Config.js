@@ -746,13 +746,23 @@ const COLUMNAS_TRAZA = [
 ];
 
 /**
- * **Regla 3, dentro de una misma clave** (02/10): de dos formularios con el mismo nombre y el mismo
- * cierre, el que casi no tiene inscriptos no se hizo. Un formulario con hasta este número de
- * inscriptos, que comparte la clave con otro que tiene más, **se descarta** como candidato (no compite
- * por ninguna fila; el log lo lista). Si los que comparten la clave tienen todos más que esto, no hay
- * forma de saber cuál es: ninguno se escribe solo (`clave_repetida`, a revisión).
+ * **Gemelos** (regla 3, ajustada el 02/10): formularios con el **mismo nombre** (normalizado) **y
+ * cierres (`Fecha_Fin`) a GEMELOS_MAX_DIAS días o menos** son la misma reunión. Mismo nombre con
+ * cierres más lejos son **reuniones distintas** y se tratan como formularios distintos, por su clave
+ * (caso: Macri "Encuentro Temático 'Orden Público'/ Seguridad - Eje Norte", cierres 16/07 y 28/07 →
+ * filas 697 y 709). Los cierres se encadenan: a 5 y a 5 días, los tres son un grupo.
+ */
+const GEMELOS_MAX_DIAS = 7;
+
+/**
+ * **Regla 3 dentro de un grupo de gemelos** (02/10): el que casi no tiene inscriptos no se hizo. Un
+ * gemelo con hasta este número de inscriptos, en un grupo donde otro tiene más, **se descarta** como
+ * candidato (no compite por ninguna fila; el bloque 0b lo lista), aunque los cierres no sean iguales.
+ * Si en el grupo quedan dos o más con más que esto, no hay forma de saber cuál es: ninguno se escribe
+ * solo (`clave_repetida`, a revisión).
  *
- * Casos medidos: 1 contra 1344 (fila 708), 2 contra 72 (134), 0 contra 116 (Comuna 1 Sur - 3/9).
+ * Casos: 1 contra 1344 (708), 2 contra 72 (134: B 123 18/08, B 140 21/08), 0 contra 49 (315: B 310,
+ * B 317), 0 contra 116 (768: B 785 27/08, B 790 02/09).
  */
 const MAX_INSCRIPTOS_CASI_CERO = 5;
 
