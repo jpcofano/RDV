@@ -56,8 +56,8 @@ const LINEA_BASE_AZULES = {
   // 02/10 12:44, paso 16 OK, antes de la primera escritura real. Después de la corrida cortada de
   // las 14:50 (123 filas) el destino real quedó en 605 / 6368: los manuales no subieron.
   'RVD JM-CM - ES': { manuales: 605, total: 5749 },
-  // La copia de prueba (TEMPORAL 02/10): se anota con el paso 16 antes de escribir en ella.
-  'AAA NOBORRAR':   { manuales: null, total: null }
+  // La copia de prueba (TEMPORAL 02/10): paso 16 de las 16:59, antes de escribir en ella.
+  'AAA NOBORRAR':   { manuales: 605, total: 6368 }
 };
 
 /** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
@@ -730,16 +730,31 @@ const MARCA_ANULADO = 'NO USAR';
 /**
  * Columnas nuevas al final del destino, junto a `RDV_UID` (CLAUDE.md, decisión 2).
  *
- * **Se escriben también cuando el score NO alcanzó.** Ahí `form_origen` guarda el mejor
- * candidato descartado y `form_nivel` el motivo. Un caso mal resuelto tiene que poder
- * auditarse sin volver a correr nada — y el día que aparezca una fuente de fecha mejor, se
- * puede reprocesar y comparar contra lo que se había decidido en vez de empezar de cero.
+ * ~~Se escriben también cuando el score NO alcanzó.~~ Desde el 01/10, sólo en las filas que se
+ * escriben (decisión z de docs/ESTADO.md).
  *
  * `form_origen` va **literal, sin normalizar**: es la trazabilidad, no una clave.
+ *
+ * **`form_clave` (02/10)** es la clave estable del formulario (`claveFormulario_`: nombre
+ * normalizado + Fecha_Fin). Es lo que enlaza la fila con SU formulario entre corridas: el nombre solo
+ * no alcanza cuando en `B` hay dos formularios con el mismo nombre (la 309 y la 315 de la copia, el
+ * 02/10). Se agrega al final con `paso1_columnasDeTraza()`; las filas escritas antes la completan en la
+ * corrida siguiente, cuando su formulario se puede resolver sin ambigüedad.
  */
 const COLUMNAS_TRAZA = [
-  'RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match'
+  'RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave'
 ];
+
+/**
+ * **Regla 3, dentro de una misma clave** (02/10): de dos formularios con el mismo nombre y el mismo
+ * cierre, el que casi no tiene inscriptos no se hizo. Un formulario con hasta este número de
+ * inscriptos, que comparte la clave con otro que tiene más, **se descarta** como candidato (no compite
+ * por ninguna fila; el log lo lista). Si los que comparten la clave tienen todos más que esto, no hay
+ * forma de saber cuál es: ninguno se escribe solo (`clave_repetida`, a revisión).
+ *
+ * Casos medidos: 1 contra 1344 (fila 708), 2 contra 72 (134), 0 contra 116 (Comuna 1 Sur - 3/9).
+ */
+const MAX_INSCRIPTOS_CASI_CERO = 5;
 
 /** Solapa de propuestas de emparejamiento a mano (CLAUDE.md, decisión 2). */
 const RDV_HOJA_EMPAREJAR = 'EMPAREJAR_MANUAL';

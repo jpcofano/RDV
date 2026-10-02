@@ -271,6 +271,10 @@ function verificarHojaDestino_(ss) {
     return fila;
   };
   const a = h(sh), b = h(real);
+  // La copia puede tener columnas de traza que el real todavía no tiene (form_clave, 02/10: se le
+  // agrega al real con paso1_columnasDeTraza() al volver). Sólo al final, y sólo de COLUMNAS_TRAZA.
+  const traza = COLUMNAS_TRAZA.map(normalizeHeader_);
+  while (a.length > b.length && traza.indexOf(a[a.length - 1]) >= 0) a.pop();
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     if (a[i] !== b[i]) {
       throw new Error('Los encabezados de "' + RDV_HOJA_DESTINO + '" no son los del destino real: ' +
@@ -284,7 +288,7 @@ function verificarHojaDestino_(ss) {
 // ===================== Fase 2b: las columnas de traza =====================
 
 /**
- * Agrega al destino las cinco columnas de `COLUMNAS_TRAZA` que falten. **Correr una sola vez.**
+ * Agrega al destino las columnas de `COLUMNAS_TRAZA` que falten (seis desde el 02/10: `form_clave`).
  *
  * Es idempotente: las que ya están no se tocan, y volver a correrlo no hace nada.
  *
@@ -316,7 +320,7 @@ function correrFase2b() {
              nCols, COLUMNAS_TRAZA.length, faltan.length);
 
   if (!faltan.length) {
-    Logger.log('>>> Nada que hacer: las cinco ya están.');
+    Logger.log('>>> Nada que hacer: las %s ya están.', COLUMNAS_TRAZA.length);
     return { agregadas: 0 };
   }
 

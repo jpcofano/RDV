@@ -259,7 +259,7 @@ const HDR_DESTINO = (function () {
     P: 'Difusión', R: 'Masculinos', S: 'Femeninos', T: '18-24', U: '25-39', V: '40-55', AH: '56-65',
     AI: '66+', AJ: 'Sin identificar' };
   return fx.map(function (h) { const m = /^PENDIENTE_([A-Z]+)$/.exec(h); return m && nombres[m[1]] ? nombres[m[1]] : h; })
-           .concat(['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match']);
+           .concat(['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave']);
 })();
 const HDR_B = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos identificados', 'Inscriptos M', 'Inscriptos F',
   'Inscriptos edades 18-24', 'Inscriptos edades 25-39', 'Inscriptos edades 40-55', 'Inscriptos edades 56-65',
@@ -302,8 +302,9 @@ function generarDatos(E, n) {
   return { dest: dest, b: b, comunas: comunas };
 }
 
-function montar(E, n, conCopia) {
+function montar(E, n, conCopia, casos) {
   const datos = generarDatos(E, n);
+  if (casos) casos(E, datos);
   const ssD = E.planilla(E.cfg('RDV_SS_DESTINO')), ssI = E.planilla(E.cfg('RDV_SS_INTERMEDIA'));
   ssD.hojas['RVD JM-CM - ES'] = new E.Hoja('RVD JM-CM - ES', datos.dest);
   if (conCopia) ssD.hojas['AAA NOBORRAR'] = new E.Hoja('AAA NOBORRAR', datos.dest);
@@ -317,7 +318,7 @@ function montar(E, n, conCopia) {
 let fallas = 0;
 function ok(cond, que) { console.log((cond ? '  ok   ' : '  FALLA ') + que); if (!cond) fallas++; }
 const colD = function (n) { return HDR_DESTINO.indexOf(n); };
-const TRAZA = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match'];
+const TRAZA = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave'];
 
 /** Compara dos fotos del destino: ninguna celda llena cambió (salvo en agenda → Realizada), azul en lo escrito. */
 function auditar(antes, despues) {
@@ -517,6 +518,113 @@ function escenarioGuarda() {
   ok(JSON.stringify(foto(m.ssD.hojas['AAA NOBORRAR'])) === antes, 'y no tocó nada');
 }
 
+/**
+ * Los casos de gemelos del 02/10, con figuras inventadas:
+ *   G  la 309/315: dos formularios con el MISMO nombre y cierre distinto; la fila con barrio (como la
+ *      315) se lo queda, la sin barrio (como la 309) va a revisión por formulario_gemelo;
+ *   K  clave repetida: mismo nombre y mismo cierre, los dos con inscriptos → clave_repetida;
+ *   C  casi cero: mismo nombre y cierre, 72 contra 2 → el de 2 se descarta y la fila escribe el de 72;
+ *   I  la 645: dos filas quieren el mismo "1 a 1"; el invariante se lo da a la de 0 días y la otra toma
+ *      el temático. El paso 16 tiene que decir "igual" para las dos.
+ */
+function casosGemelos(E, datos) {
+  const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+  const fila = function (fig, d, m, barrio) {
+    const r = HDR_DESTINO.map(function () { return ''; });
+    r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = new D(2026, m - 1, d, 12, 0, 0);
+    r[col('HORA')] = '18:00'; r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada';
+    r[col('Asistentes')] = 40; r[col('Inscriptos')] = 100;
+    ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].forEach(function (c) { r[col(c)] = 5; });
+    datos.dest.push(r);
+  };
+  const form = function (nombre, d, m, ins) {
+    const uni = Math.round(ins * 0.8);
+    datos.b.push([nombre, new D(2026, m - 1, d, 12, 0, 0), ins, uni, Math.round(uni * 0.45), Math.round(uni * 0.55),
+                  Math.round(uni * 0.1), Math.round(uni * 0.3), Math.round(uni * 0.3), Math.round(uni * 0.2), Math.round(uni * 0.1)]);
+  };
+  // G
+  fila('Clara Mendieta', 7, 8, 'Recoleta');
+  fila('Clara Mendieta', 5, 8, '');
+  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 6, 8, 150);
+  form('VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta', 4, 8, 90);
+  // K
+  fila('Marcos Iturbe', 10, 8, 'Palermo');
+  form('MARCOS ITURBE - Encuentro con vecinos - Comuna 14 - 10/8', 8, 8, 100);
+  form('MARCOS ITURBE - Encuentro con vecinos - Comuna 14 - 10/8', 8, 8, 80);
+  // C
+  fila('Tobías Lezcano', 12, 8, 'Flores');
+  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 12/8', 10, 8, 72);
+  form('TOBÍAS LEZCANO - Encuentro con vecinos - Comuna 7 - 12/8', 10, 8, 2);
+  // I
+  fila('Jorge Benavídez', 17, 8, 'Boedo');
+  fila('Jorge Benavídez', 16, 8, 'Almagro');
+  form('JORGE BENAVÍDEZ - Encuentro 1 a 1 - Comuna 5 17/8', 15, 8, 200);
+  form('JORGE BENAVÍDEZ - Encuentro Temático Educación - Eje Oeste - 16/8', 14, 8, 498);
+}
+
+function escenarioGemelos() {
+  console.log('\n[8] gemelos (02/10): la 309/315, clave repetida, casi cero y la 645');
+  const E = crearEntorno();
+  const m = montar(E, 200, true, casosGemelos);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const filaDe = function (fig, d) {
+    return hoja.v.findIndex(function (r, i) {
+      return i > 0 && r[colD('Figura')] === fig && r[colD('FECHA')] instanceof Date && r[colD('FECHA')].getDate() === d;
+    }) + 1;
+  };
+  const F = { g315: filaDe('Clara Mendieta', 7), g309: filaDe('Clara Mendieta', 5), k: filaDe('Marcos Iturbe', 10),
+              c: filaDe('Tobías Lezcano', 12), iX: filaDe('Jorge Benavídez', 17), iY: filaDe('Jorge Benavídez', 16) };
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
+  const uid = function (n) { return hoja.v[n - 1][colD('RDV_UID')]; };
+  const val = function (n, c) { return hoja.v[n - 1][colD(c)]; };
+  const log = r.logs.join('\n');
+  ok(uid(F.g315) && !uid(F.g309), 'G: la "315" se escribe y la "309" no (' + !!uid(F.g315) + ' / ' + !!uid(F.g309) + ')');
+  ok(new RegExp('fila ' + F.g309 + ' [^\\n]*formulario_gemelo').test(log), 'G: la "309" va a REVISAR por formulario_gemelo');
+  ok(/0b\. GEMELOS/.test(log) && /Clara Mendieta 07\/08 Recoleta" — 2 formularios/.test(log), 'G: el bloque 0b lista el par');
+  ok(!uid(F.k), 'K: clave repetida, no se escribe');
+  ok(/CLAVE REPETIDA/.test(log), 'K: el bloque 0b la marca');
+  // Masculinos del de 72: uni = 58, M = 26 → round(72 × 26 / 58) = 32 (el de 2 daría 1).
+  ok(uid(F.c) && val(F.c, 'Masculinos') === 32, 'C: casi cero: la fila se escribe con el de 72 (Masculinos ' + val(F.c, 'Masculinos') + ')');
+  ok(/descartado por regla 3/.test(log), 'C: el de 2 inscriptos se descarta por regla 3');
+  ok(/1 a 1 - Comuna 5 17\/8/.test(val(F.iX, 'form_origen')) && /Temático Educación/.test(val(F.iY, 'form_origen')),
+     'I: la de 0 días toma el "1 a 1" y la otra el temático (invariante)');
+  ok(val(F.g315, 'form_clave') !== '', 'form_clave escrita: ' + val(F.g315, 'form_clave'));
+  const v = E.ejecutar('verificarEscritura').resultado;
+  ok(v.choques === 0, 'paso 16: invariante 0 (' + v.choques + ')');
+  ok(v.distintas === 0, 'paso 16: 0 avisos "<<< HOY" — la "645" incluida, con el mismo plan (' + v.distintas + ')');
+  ok(v.trazaSinAzul === 0 && v.incompletas === 0, 'paso 16: traza toda en azul, 0 incompletas');
+
+  console.log('  — lo que quedó en la copia: la "309" y la "315" escritas con el mismo nombre, sin form_clave —');
+  const E2 = crearEntorno();
+  const m2 = montar(E2, 200, true, casosGemelos);
+  const h2 = m2.ssD.hojas['AAA NOBORRAR'];
+  E2.ejecutar('upsertDestino');
+  // Como la corrida de las 17:01: la "309" con el gemelo, y ninguna con form_clave.
+  const nombreG = 'VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta';
+  [F.g315, F.g309].forEach(function (n) {
+    h2.v[n - 1][colD('RDV_UID')] = h2.v[n - 1][colD('RDV_UID')] || 'uid-viejo-' + n;
+    h2.v[n - 1][colD('form_origen')] = nombreG;
+    h2.v[n - 1][colD('form_score')] = 1; h2.v[n - 1][colD('form_nivel')] = 'figura+fecha';
+    h2.v[n - 1][colD('form_clave')] = '';
+    TRAZA.forEach(function (c) { h2.bg[n - 1][colD(c)] = '#4f81bd'; });
+  });
+  const v1 = E2.ejecutar('verificarEscritura').resultado;
+  ok(v1.choques === 1, 'paso 16 lo detecta: invariante 1 (' + v1.choques + ')');
+  // La corrección (docs/ESTADO.md 0): borrar en la "309" lo que escribió el sistema y sacarle el azul.
+  TRAZA.concat(SEXO_EDADES).forEach(function (c) {
+    const k = colD(c);
+    if (String(h2.bg[F.g309 - 1][k]).toLowerCase() === '#4f81bd') { h2.v[F.g309 - 1][k] = ''; h2.bg[F.g309 - 1][k] = '#ffffff'; }
+  });
+  const r2 = E2.ejecutar('upsertDestino');
+  ok(!r2.error && !h2.v[F.g309 - 1][colD('RDV_UID')], 'después de corregir: la "309" no se vuelve a escribir');
+  ok(new RegExp('fila ' + F.g309 + ' [^\\n]*formulario_gemelo').test(r2.logs.join('\n')), 'y va a REVISAR por formulario_gemelo');
+  const v2 = E2.ejecutar('verificarEscritura').resultado;
+  ok(v2.choques === 0, 'paso 16: invariante 0');
+  ok(v2.distintas === 0, 'paso 16: 0 avisos "<<< HOY" por gemelos (' + v2.distintas + ')');
+  ok(v2.ambiguas === 1, 'paso 16: la "315" queda con traza ambigua (sin form_clave, con gemelos): ' + v2.ambiguas);
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -548,6 +656,11 @@ const fuenteVieja = conViejo ? function (f) {
 } : null;
 
 const t = Date.now();
+if (process.argv.indexOf('--gemelos') >= 0) {   // sólo el escenario 8, para iterar
+  escenarioGemelos();
+  console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
+  process.exit(fallas ? 1 : 0);
+}
 const r1 = escenarioDesdeCero();
 escenarioReanudarCortada(fuenteVieja);
 if (CALIBRACION.k) {
@@ -566,6 +679,7 @@ escenarioCorteYContinuacion();
 escenarioEquipoEnElMedio();
 escenarioGuarda();
 escenarioSecoIgualReal();
+escenarioGemelos();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

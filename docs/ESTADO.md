@@ -95,8 +95,10 @@ Si falla algo: frenar (`DRY_RUN = true`, clasp push) y mirar. La copia se puede 
 1. `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` en `00_Config.js`; commit, **`git push` y `clasp push`**.
 2. En un horario **sin carga del equipo**, la misma secuencia sobre la solapa real:
    `paso16_verificarEscritura()` (línea de base nueva del real: hoy 605 / 6368; anotarla en
-   `LINEA_BASE_AZULES['RVD JM-CM - ES']`) → `upsertDestino()` una vez → `paso16_verificarEscritura()`
-   hasta **OK** (incompletas 0; las 123 entraron por `RDV_UID`).
+   `LINEA_BASE_AZULES['RVD JM-CM - ES']`; y mirar el bloque 1: si alguna de las 123 está en un
+   choque de gemelos, se corrige como la 309, 0.i) → **`paso1_columnasDeTraza()`** (le agrega
+   `form_clave` al real: sólo el encabezado, al final) → `upsertDestino()` una vez →
+   `paso16_verificarEscritura()` hasta **OK** (incompletas 0; las 123 entraron por `RDV_UID`).
 3. Borrar la solapa "AAA NOBORRAR", su entrada en `LINEA_BASE_AZULES` y la línea de CLAUDE.md §1.
 4. **Recién después**, el activador (si el usuario lo decide; `docs/triggers-legado.md` antes).
 
@@ -144,6 +146,115 @@ sintéticos, 800 filas; reloj simulado donde cada lectura vacía la cola de escr
 
 El modelo de tiempo está calibrado contra **un** dato (la corrida del 02/10): es una estimación. La
 medición real es la del paso e)2, que deja los ms por tanda en el log.
+
+### i) La prueba del 02/10 17:01, y lo que destapó: los gemelos
+
+**Resultado** (sobre la copia): escritura **completa en una corrida**, 635 filas en 13 tandas,
+**13,9 s de escritura y 41 s en total** (la predicción era < 1 min y 2-3 min). **758 filas con
+`RDV_UID`**, 0 incompletas, azules manuales **605** (sin cambio). Línea de base de la copia (16:59):
+**605 / 6368**, anotada en `LINEA_BASE_AZULES['AAA NOBORRAR']`.
+
+**Paso 16 de las 17:02: HAY PROBLEMAS.**
+
+1. **Invariante = 1**: `VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Muzzio 07/11 Villa
+   Pueyrredon` en las filas **309 y 315**. En `B` hay **dos formularios con ese mismo nombre**. La
+   315 se quedó con uno; la 309 perdió el invariante, se re-evaluó sin ése y **tomó el gemelo**
+   ("toma otro: … (1)"). El invariante era por formulario, no por nombre, y la traza guardaba sólo el
+   nombre: el paso 16 resolvió las dos filas al mismo formulario y lo vio como choque.
+2. **"<<< HOY"**: 4 de los 5 avisos (134, 309, 315, 768) eran el mismo problema: el paso 16 elegía
+   uno de los gemelos por nombre y el plan, el otro. El quinto (645) era otro defecto: el recálculo
+   del paso 16 evaluaba la fila sola, sin el invariante, y la 645 se escribió con lo que decidió el
+   invariante (`Educación - Eje Oeste`, 498 = 498).
+
+**Lo que cambió (02/10 noche):**
+
+- **`form_clave`**, sexta columna de traza: la clave estable del formulario (`claveFormulario_`:
+  nombre normalizado + `Fecha_Fin`, **con la hora si `Fecha_Fin` la trae**). El enlace por traza y el
+  paso 16 la usan primero; las filas escritas antes (sin `form_clave`) se enlazan por el nombre, y si
+  ese nombre tiene gemelos la traza es **ambigua**: se sabe el grupo, no cuál de los dos. El grupo
+  queda reservado igual, y sus celdas vacías no se completan a ciegas. Las no ambiguas reciben su
+  `form_clave` en la corrida siguiente.
+- **Dos formularios vivos con la misma clave** y los dos con inscriptos: ninguno se escribe solo →
+  REVISAR por **`clave_repetida`**. Si uno tiene inscriptos y el otro casi cero
+  (≤ `MAX_INSCRIPTOS_CASI_CERO` = 5), **regla 3**: el de casi cero no se hizo y se descarta como
+  candidato (así la 134, 72 contra 2, y la 768, 116 contra 0, no van a revisión si sus gemelos
+  comparten el cierre). **Esto es más fino que "si comparten la clave, revisión"**: lo decidí así para
+  no mandar a revisión los casos que la regla 3 ya resuelve. Si se prefiere la versión estricta, es
+  sacar el descarte en `marcarGemelos_`.
+- **El invariante es por grupo de gemelos** (mismo nombre normalizado = la misma reunión, regla 3):
+  una sola fila puede tener un formulario de ese nombre. La fila que pierde y tenía un gemelo, o que al
+  re-evaluarse cae en un gemelo, va a REVISAR por **`formulario_gemelo`** (motivo nuevo). Un grupo
+  con dueño por `RDV_UID` no lo toma ninguna otra fila. El chequeo del bloque 0 también es por grupo.
+- **Bloque 0b del log** (paso 2 y upsert): los grupos de gemelos de `B` — nombre, cada formulario con
+  su fila de B, `Fecha_Fin`, inscriptos, y a qué fila va (o "sin fila", o "descartado por regla 3").
+  Marca los pares con cierres a más de 7 días (*¿otra reunión con el mismo nombre?*).
+- **Paso 16**: invariante por grupo; filas sin `form_clave` y con traza ambigua, aparte; el **"HOY"
+  con el mismo plan del upsert** (`calcularPlan_` entero, con el invariante, sobre el destino sin sus
+  `RDV_UID`), comparando por `form_clave` o por nombre; y el desglose de azules (abajo, punto 3).
+- **Guarda**: la copia puede tener columnas de traza al final que el real todavía no tiene
+  (`form_clave`). Al volver, `paso1_columnasDeTraza()` sobre el real (0.f).
+- **Test en Node** (`tests/escritura_lote.test.js`, escenario [8]; `--gemelos` corre sólo ése): la
+  309/315 con cierres distintos (la sin barrio va a `formulario_gemelo`), clave repetida, casi cero
+  (72 contra 2: se escribe con el de 72), la 645 (el paso 16 dice "igual"), y lo que quedó en la copia
+  (el paso 16 lo detecta; corregida la 309, va a `formulario_gemelo` y el paso 16 da 0 avisos).
+
+**Cómo se deshace la 309 en la copia** (y cualquier fila que el paso 16 marque en un choque):
+
+1. En la fila 309 de "AAA NOBORRAR", **anotar qué celdas están en azul**: son las que escribió el
+   sistema.
+2. **Borrar el contenido** de `RDV_UID`, `form_origen`, `form_score`, `form_nivel` y
+   `form_fecha_match`, y de las celdas de sexo y edades (`Masculinos` … `Sin identificar`) **que estén
+   en azul**. Las que no están en azul las cargó el equipo: no se tocan.
+3. **Sacarles el azul** a esas mismas celdas (color de relleno: ninguno, o el de las filas vecinas).
+   No usar "Borrar formato" sobre la fila entera.
+4. **`STATUS REUNIÓN` no se toca**: si pasó a `Realizada` en azul, fue por los asistentes de la fila,
+   no por el formulario.
+5. La próxima corrida: la 309 va a REVISAR por `formulario_gemelo` y no se vuelve a escribir. Si
+   vuelve a pasar, el bloque 1 del paso 16 lo marca (invariante por grupo).
+
+En el real, la 309 no debería estar entre las 123: se escribieron en orden de fila y las 123 son las
+primeras filas a escribir. El paso 16 sobre el real (0.f) lo confirma.
+
+**Los azules: "5 por fila" contra "2 por fila".** La regla es **una sola, la misma en las
+dos corridas**: se pinta `#4F81BD` **cada celda que escribe el sistema, y nada más**. El código viejo
+lo hacía celda por celda (`setSiDelSistema_`); el nuevo, con un `RangeList` sobre los mismos bloques
+que escribe (`setSiDelSistemaLote_`). En una fila nueva se escriben **5 de traza** (`RDV_UID`,
+`form_origen`, `form_score`, `form_nivel`, `form_fecha_match` si hay distancia), más sexo y edades
+**sólo donde estaban vacíos**, más `STATUS` si avanza. Las 123 de la corrida cortada eran de 2025, con
+sexo y edades ya cargados: **5 por fila** (+619). Con esa regla, las 635 de la prueba tendrían que haber
+sumado **al menos 4 o 5 por fila** (≥ 2.500), y sumaron **1.364**. **El código no explica esa
+diferencia**, y desde acá no puedo ver la planilla. Las dos explicaciones posibles: en la copia, muchas
+celdas de traza **ya estaban en azul** antes de escribir (pintar azul sobre azul no suma), o **el
+`RangeList` no pintó todo**. El paso 16 ahora lo dice sin interpretar: **"celdas de traza con valor:
+N | de ésas, SIN azul: M"** (tiene que dar 0; si no, es un problema y lista ejemplos) y el **desglose
+de azules por grupo** (traza / sexo y edades / STATUS / manuales / otras). **Correrlo sobre la copia
+tal como está ahora contesta la pregunta.** El test en Node verifica que cada celda escrita queda en
+azul, pero el mock no es Sheets.
+
+**La secuencia, con la predicción anotada antes de correr** (sobre la copia):
+
+1. `clasp push` (hecho con este commit).
+2. **`paso16_verificarEscritura()`** tal como está la copia. **Predicción:** invariante **1** (309/315,
+   por grupo); bloque 3: la línea "traza con valor / sin azul" contesta el punto 3; traza ambigua:
+   las filas con `RDV_UID` cuyo nombre tiene gemelos vivos (al menos la **315** y la **309**).
+3. **Deshacer la 309** (arriba).
+4. **`paso1_columnasDeTraza()`**: agrega `form_clave` a la copia (sólo el encabezado, al final).
+5. **`upsertDestino()`** una vez. **Predicción:** completa; escribe `form_clave` en las filas con
+   `RDV_UID` no ambiguas (casi todas las 757); la **309 → REVISAR por `formulario_gemelo`**; el bloque
+   0b lista los gemelos de `B` —al menos Muzzio 07/11, `Comuna 1 Sur - 3/9` (0 y 116) y Tapia
+   Saavedra 21/8 (72 y 2)—; números del plan cerca de **758 | 39 | 13** (la 309 pasa de escribiría a
+   revisar; puede haber otras por `formulario_gemelo` o `clave_repetida`, que el bloque 0b lista).
+6. **`paso16_verificarEscritura()`**. **Predicción:** invariante **0**; **0 avisos "<<< HOY" por
+   gemelos** (y la 645 "igual"); incompletas **0**; sin `form_clave` **0**; traza ambigua sólo la
+   **315** y las que tengan gemelos vivos sin `form_clave` (pocas); azules manuales **605**.
+
+### j) Pendiente: seco contra real
+
+Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de las 14:35 dio **755 |
+42 | 13**. La causa no está medida (0.h). **La próxima vez que una corrida en seco y una real
+difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
+misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
+entradas (destino, `B`, figuras, `Comunas`) cambió.
 
 ### h) Punto 3: el paso 2 (14:35) y la escritura (14:50) dieron distinto
 

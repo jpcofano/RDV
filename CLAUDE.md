@@ -2083,11 +2083,13 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    Columnas nuevas al final del destino, junto a `RDV_UID`:
 
    ```
-   RDV_UID | form_origen | form_score | form_nivel | form_fecha_match
+   RDV_UID | form_origen | form_score | form_nivel | form_fecha_match | form_clave
    ```
 
    - `form_origen` es el `Nombre` del evento de `B`, **literal, sin normalizar**. Es
      trazabilidad, no una clave: se guarda tal cual vino;
+   - `form_clave` (02/10) **sí es la clave**: `claveFormulario_` (decisión 3). Es lo que enlaza la
+     fila con SU formulario entre corridas; el nombre solo no alcanza cuando hay gemelos (abajo);
    - `form_nivel` dice **por qué señales** matcheó (`figura+fecha±1+comuna`);
    - ~~**se escriben también cuando el score NO alcanzó.**~~ **Corregido (01/10): en el destino
      se escriben sólo para las filas que se escriben.** `setSiDelSistema_` escribe sólo en celda
@@ -2166,9 +2168,21 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
      Node: con `B` invertido y renumerado, cero diferencias**;
    - **entre corridas**, nada se guardaba por fila de `B`, pero había un hueco: una fila con
      `RDV_UID` no volvía a encontrar su formulario (`porUid` nunca se llenaba), y ese formulario
-     quedaba libre para otra fila en la corrida siguiente. Ahora se encuentra por la traza —
-     `form_origen` (el Nombre literal) y, entre varios con ese nombre, el más cercano en fecha
-     (`formularioDeTraza_`)— y queda reservado; el chequeo del invariante cuenta también esas filas;
+     quedaba libre para otra fila en la corrida siguiente. Ahora se encuentra por la traza
+     (`formularioDeTraza_`) y queda reservado; el chequeo del invariante cuenta también esas filas.
+     ~~por `form_origen` y, entre varios con ese nombre, el más cercano en fecha~~ **Corregido el
+     02/10**: con dos gemelos en dos filas, las dos apuntaban al mismo formulario (la 309 y la 315 de
+     la copia). La traza guarda ahora **`form_clave`**, y se enlaza por ella; las filas escritas antes
+     se enlazan por el nombre, y si ese nombre tiene gemelos la traza es **ambigua**: se reserva el
+     grupo entero y no se completa nada a ciegas;
+   - **los gemelos** (02/10): formularios con **el mismo nombre** son la misma reunión (regla 3), así
+     que **una sola fila puede tener uno de ellos**: el invariante "un formulario, una fila" es **por
+     grupo de gemelos** (`aplicarFormularioUnico_`). La fila que pierde el grupo y tenía un gemelo, o
+     que al re-evaluarse cae en uno, va a REVISAR por **`formulario_gemelo`**. Dentro de una misma
+     clave (mismo nombre y cierre), el de casi cero inscriptos (≤ `MAX_INSCRIPTOS_CASI_CERO`) no se
+     hizo y se descarta como candidato; si los dos tienen inscriptos, ninguno se escribe solo
+     (**`clave_repetida`**). El bloque 0b del log los lista (`marcarGemelos_`, `_logGemelos_`). Si
+     `Fecha_Fin` trae hora, `claveFormulario_` la incluye;
    - **`elegido`** de EMPAREJAR_MANUAL / REVISAR_MATCH: cuando se lea, se resuelve por el
      `op{n}_formulario` (Nombre) de esa misma línea, nunca por `op{n}_fila_B`, que es informativo.
      `confirmar` ya se leía por nombre + figura + fecha.
@@ -2713,6 +2727,12 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 > el log y en `REGISTRO_UPSERT`: seco y real calculan con el mismo código, así que si dan distinto
 > cambió una entrada, y la huella dice cuál. Se prueba sobre la copia `AAA NOBORRAR`
 > (docs/ESTADO.md, sección 0); test en Node: `tests/escritura_lote.test.js`.
+>
+> **02/10 17:01, la prueba sobre la copia**: completa en una corrida, 635 filas, 13,9 s de escritura y
+> 41 s en total. **Destapó los gemelos**: dos formularios con el mismo nombre terminaron en dos filas
+> (309 y 315). De ahí `form_clave`, el invariante por grupo y `formulario_gemelo` / `clave_repetida`
+> (decisión 3). El paso 16 recalcula con el mismo `calcularPlan_` que el upsert (antes evaluaba la
+> fila sola y no veía el invariante: la 645).
 >
 > **`20_UpsertDestino.js` ya está en el repo, con `DRY_RUN = true`.** Calcula todo, llena
 > `SIN_MATCH`, `REVISAR_MATCH` y `EMPAREJAR_MANUAL`, y **no escribe una sola celda del destino**.

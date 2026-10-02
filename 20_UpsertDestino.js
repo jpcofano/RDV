@@ -798,84 +798,63 @@ function medirDesempatePorEvidencia() {
 // ===================== El invariante: un formulario, una fila =====================
 
 /**
- * **Chequeo de invariante, va siempre en el log del paso 2.** Nada impide hoy que un mismo
- * formulario gane dos filas con veredicto `escribiria`, y sus inscriptos se escribirían en las
- * dos. Cuenta cuántos formularios ganan 2+ filas y **simula, sin implementarla**, esta regla:
+ * **Chequeo del invariante, sobre el resultado final del plan** (bloque 0 del log). Tiene que dar 0.
  *
- *   un formulario va a UNA sola fila. Si varias lo reclaman, se lo queda la de mejor evidencia
- *   (`_desempatePorEvidencia_`: señales, distancia; los inscriptos del formulario empatan, es el
- *   mismo). Las otras se re-evalúan sin ese formulario: si les queda un ganador claro, lo toman;
- *   si no, van a REVISAR_MATCH con motivo `formulario_compartido`. Si ninguna fila es
- *   estrictamente mejor, todas van a `formulario_compartido`.
- *
- * Los inscriptos del DESTINO no entran en esta regla. **Bloqueante para DRY_RUN = false.**
+ * Desde el 02/10 cuenta por **grupo de gemelos** (mismo nombre, regla 3), no por formulario: dos
+ * filas con dos formularios distintos del mismo nombre también son un choque (la 309 y la 315 de la
+ * copia). Cuentan las filas que se escribirían y las que ya tienen RDV_UID, aunque su traza sea
+ * ambigua (en ese caso se sabe el grupo, no el formulario).
  */
 function chequearFormularioUnico_(dest, vivos, comunas, porFila) {
-  const porForm = new Map();
+  const porGrupo = new Map();
   dest.filas.forEach(function (f) {
     const pf = porFila[f.fila];
-    // Las filas ya estampadas (rdv_uid) también cuentan: su formulario es suyo.
-    if (!pf || (pf.veredicto !== 'escribiria' && pf.veredicto !== 'rdv_uid') || !pf.cand) return;
-    if (!porForm.has(pf.cand)) porForm.set(pf.cand, []);
-    porForm.get(pf.cand).push(f);
+    if (!pf || (pf.veredicto !== 'escribiria' && pf.veredicto !== 'rdv_uid')) return;
+    const g = pf.cand ? pf.cand.grupo : pf.grupo;
+    if (!g) return;
+    if (!porGrupo.has(g)) porGrupo.set(g, { c: pf.cand || null, filas: [] });
+    const x = porGrupo.get(g);
+    if (!x.c && pf.cand) x.c = pf.cand;
+    x.filas.push(f);
   });
-
   const choques = [], formsV = contador_(), filasAfect = contador_();
-  const sim = { seQueda: contador_(), reasignada: contador_(), compartido: contador_() };
-  porForm.forEach(function (filas, c) {
-    if (filas.length < 2) return;
-    const ev = filas.some(function (f) { return enVentanaAnalisis_(f.fecha); });
+  porGrupo.forEach(function (x, g) {
+    if (x.filas.length < 2) return;
+    const ev = x.filas.some(function (f) { return enVentanaAnalisis_(f.fecha); });
     sumar_(formsV, ev);
-    const pares = filas.map(function (f) {
-      const sc = puntuar_(f, c, comunas);
-      sc.fila = f;
-      sumar_(filasAfect, enVentanaAnalisis_(f.fecha));
-      return sc;
-    });
-    const d = _desempatePorEvidencia_(pares);
-    const caso = { c: c, ev: ev, pares: pares, ganador: d.ganador, porQue: d.porQue, otras: [] };
-    pares.forEach(function (sc) {
-      const evF = enVentanaAnalisis_(sc.fila.fecha);
-      if (d.ganador && sc === d.ganador) { sumar_(sim.seQueda, evF); return; }
-      if (!d.ganador) {
-        sumar_(sim.compartido, evF);
-        caso.otras.push({ sc: sc, destino: 'formulario_compartido' });
-        return;
-      }
-      const sinEse = vivos.filter(function (x) { return x !== c; });
-      const r2 = evaluarCandidatos_(sc.fila, sinEse, comunas);
-      if (r2.veredicto === 'escribiria') {
-        sumar_(sim.reasignada, evF);
-        caso.otras.push({ sc: sc, destino: 'toma otro', nuevo: r2.mejor });
-      } else {
-        sumar_(sim.compartido, evF);
-        caso.otras.push({ sc: sc, destino: 'formulario_compartido' });
-      }
-    });
-    choques.push(caso);
+    x.filas.forEach(function (f) { sumar_(filasAfect, enVentanaAnalisis_(f.fecha)); });
+    choques.push({ c: x.c || { nombre: g, inscriptos: '?' }, grupo: g, ev: ev,
+                   pares: x.filas.map(function (f) { return { fila: f }; }) });
   });
-  return { choques: choques, formularios: formsV, filas: filasAfect, sim: sim };
+  return { choques: choques, formularios: formsV, filas: filasAfect };
 }
 
 /**
- * **El invariante "un formulario, una fila", aplicado** (desde el 30/09). Va entre las dos vueltas
- * de `calcularPlan_`: después del desempate por evidencia, sobre todo el plan.
+ * **El invariante "un formulario, una fila", aplicado** (desde el 30/09; **por grupo de gemelos**
+ * desde el 02/10). Va entre las dos vueltas de `calcularPlan_`: después del desempate por evidencia,
+ * sobre todo el plan.
  *
- * Si un formulario lo ganan 2+ filas con veredicto `escribiria`:
+ * El grupo de un formulario es su nombre normalizado: por la regla 3, dos formularios con el mismo
+ * nombre son la misma reunión, así que **una sola fila puede tener uno de ellos**. Si 2+ filas con
+ * veredicto `escribiria` tienen formularios del mismo grupo (el mismo, o gemelos):
  *
- *   - se lo queda la fila con mejor evidencia, con el mismo orden del desempate
- *     (`_desempatePorEvidencia_`: señales, distancia; los inscriptos del formulario empatan, es el
- *     mismo formulario). Los inscriptos del DESTINO no entran;
- *   - las otras se RE-EVALÚAN sin ese formulario, con las mismas reglas de siempre (umbral,
- *     margen, sin figura por ubicación, desempate). Si su nuevo mejor también está tomado, se
- *     repite, hasta que no quede ningún choque o se llegue a MAX_VUELTAS_FORMULARIO_UNICO;
- *   - si al re-evaluar no queda un ganador claro, o si ninguna fila es estrictamente mejor, van a
- *     REVISAR_MATCH con motivo `formulario_compartido`. Al tope de vueltas, lo que quede, también.
+ *   - se queda el grupo la fila con mejor evidencia (`_desempatePorEvidencia_`). Los inscriptos del
+ *     DESTINO no entran;
+ *   - una fila que tenía **un gemelo** del formulario que se quedó la otra → REVISAR_MATCH por
+ *     `formulario_gemelo`;
+ *   - una fila que tenía **el mismo** formulario se RE-EVALÚA sin él (umbral, margen, sin figura por
+ *     ubicación, desempate). Si su nuevo mejor es **un gemelo** de ese formulario → `formulario_gemelo`
+ *     (02/10: así la 309 se había quedado con el segundo "Clara Muzzio 07/11 Villa Pueyrredon"); si es
+ *     otro formulario, lo toma; si no queda un ganador claro → `formulario_compartido`;
+ *   - si ninguna fila es estrictamente mejor: `formulario_compartido` (mismo formulario) o
+ *     `formulario_gemelo` (gemelos distintos);
+ *   - se repite hasta que no quede ningún choque o se llegue a MAX_VUELTAS_FORMULARIO_UNICO.
  *
- * Un formulario que ya tiene dueño por `RDV_UID` no lo gana ninguna otra fila: todas las que lo
- * reclamen se re-evalúan sin él. Modifica `evals[i].r`; devuelve los casos para el log.
+ * Un grupo que ya tiene dueño por `RDV_UID` (`tomadosGrupo`) no lo gana ninguna otra fila: si pedía
+ * el mismo formulario del dueño, se re-evalúa sin él; si pedía un gemelo, o la traza del dueño es
+ * ambigua, `formulario_gemelo`. Modifica `evals[i].r`; devuelve los casos para el log.
  */
-function aplicarFormularioUnico_(evals, vivos, comunas, tomadosUid) {
+function aplicarFormularioUnico_(evals, vivos, comunas, tomadosGrupo) {
   const inicial = new Map();
   evals.forEach(function (x) {
     inicial.set(x, (x.r.veredicto === 'escribiria' && x.r.mejor) ? x.r.mejor.c : null);
@@ -885,67 +864,80 @@ function aplicarFormularioUnico_(evals, vivos, comunas, tomadosUid) {
   const casos = [];
   let vueltas = 0, tope = false;
 
-  const aRevisar = function (x, rNuevo) {
+  const aRevisar = function (x, rNuevo, motivo) {
     const base = (rNuevo && rNuevo.mejor) ? rNuevo : x.r;
     x.r = { mejor: base.mejor, segundoScore: base.segundoScore || 0, margen: base.margen || 0,
-            veredicto: 'REVISAR_MATCH', motivo: 'formulario_compartido', contendientes: null };
+            veredicto: 'REVISAR_MATCH', motivo: motivo || 'formulario_compartido', contendientes: null };
   };
 
   for (;;) {
-    const porForm = new Map();
+    const porGrupo = new Map();
     evals.forEach(function (x) {
       if (x.r.veredicto !== 'escribiria' || !x.r.mejor) return;
-      const c = x.r.mejor.c;
-      if (!porForm.has(c)) porForm.set(c, []);
-      porForm.get(c).push(x);
+      const g = x.r.mejor.c.grupo;
+      if (!porGrupo.has(g)) porGrupo.set(g, []);
+      porGrupo.get(g).push(x);
     });
     const choques = [];
-    porForm.forEach(function (lista, c) {
-      if (lista.length >= 2 || tomadosUid[c.fila]) choques.push({ c: c, lista: lista });
+    porGrupo.forEach(function (lista, g) {
+      if (lista.length >= 2 || tomadosGrupo.has(g)) choques.push({ g: g, lista: lista });
     });
     if (!choques.length) break;
 
     if (vueltas >= MAX_VUELTAS_FORMULARIO_UNICO) {
       tope = true;
       choques.forEach(function (ch) {
-        ch.lista.forEach(function (x) { involucradas.add(x); aRevisar(x, null); });
+        ch.lista.forEach(function (x) { involucradas.add(x); aRevisar(x, null, 'formulario_compartido'); });
       });
       break;
     }
     vueltas++;
 
     choques.forEach(function (ch) {
-      const c = ch.c, lista = ch.lista, porUid = !!tomadosUid[c.fila];
+      const lista = ch.lista, duenio = tomadosGrupo.get(ch.g) || null;
       let ganador = null, porQue = null;
-      if (!porUid) {
+      if (!duenio) {
         const pares = lista.map(function (x) { return x.r.mejor; });
         const d = _desempatePorEvidencia_(pares);
         if (d.ganador) { ganador = lista[pares.indexOf(d.ganador)]; porQue = d.porQue; }
       }
-      const caso = { c: c, vuelta: vueltas, porUid: porUid, porQue: porQue, pares: [],
-                     ganador: null, ev: lista.some(function (x) { return x.ev; }) };
+      // El formulario que se queda el grupo: el del ganador, o el del dueño por RDV_UID (null si su
+      // traza es ambigua: entonces cualquier formulario del grupo es un gemelo de lo que ya tiene).
+      const delGrupo = ganador ? ganador.r.mejor.c : (duenio ? duenio.c : null);
+      const todosElMismo = lista.every(function (x) { return x.r.mejor.c === lista[0].r.mejor.c; });
+      const caso = { c: delGrupo || lista[0].r.mejor.c, grupo: ch.g, vuelta: vueltas, porUid: !!duenio,
+                     filaUid: duenio ? duenio.fila : null, porQue: porQue, pares: [], ganador: null,
+                     gemelos: !todosElMismo || !!(duenio && lista.some(function (x) { return x.r.mejor.c !== duenio.c; })),
+                     ev: lista.some(function (x) { return x.ev; }) };
       lista.forEach(function (x) {
         involucradas.add(x);
         const sc = x.r.mejor;
         sc.fila = x.f;
         caso.pares.push(sc);
         if (x === ganador) { caso.ganador = sc; return; }
+        if (!duenio && !ganador) {                    // nadie es estrictamente mejor
+          aRevisar(x, null, todosElMismo ? 'formulario_compartido' : 'formulario_gemelo');
+          return;
+        }
+        const c = sc.c;
+        if (c !== delGrupo) { aRevisar(x, null, 'formulario_gemelo'); return; }   // tenía un gemelo
         const s = excluidos.get(x) || new Set();
         s.add(c);
         excluidos.set(x, s);
-        if (!ganador && !porUid) { aRevisar(x, null); return; }   // nadie es estrictamente mejor
         const r2 = evaluarCandidatos_(x.f, vivos.filter(function (v) { return !s.has(v); }), comunas);
-        if (r2.veredicto === 'escribiria') { r2.porInvariante = true; x.r = r2; }
-        else aRevisar(x, r2);
+        if (r2.veredicto === 'escribiria' && r2.mejor.c.grupo === ch.g) aRevisar(x, r2, 'formulario_gemelo');
+        else if (r2.veredicto === 'escribiria') { r2.porInvariante = true; x.r = r2; }
+        else aRevisar(x, r2, 'formulario_compartido');
       });
       casos.push(caso);
     });
   }
 
-  const stats = { seQueda: contador_(), reasignada: contador_(), compartido: contador_() };
+  const stats = { seQueda: contador_(), reasignada: contador_(), compartido: contador_(), gemelo: contador_() };
   involucradas.forEach(function (x) {
     const fin = (x.r.veredicto === 'escribiria' && x.r.mejor) ? x.r.mejor.c : null;
     if (x.r.motivo === 'formulario_compartido') sumar_(stats.compartido, x.ev);
+    else if (x.r.motivo === 'formulario_gemelo') sumar_(stats.gemelo, x.ev);
     else if (fin && fin === inicial.get(x)) sumar_(stats.seQueda, x.ev);
     else if (fin) sumar_(stats.reasignada, x.ev);
   });
@@ -966,15 +958,19 @@ function _logInvariante_(plan) {
     Logger.log('    filas que se quedan su formulario ....... %s', _dc_(ap.stats.seQueda));
     Logger.log('    filas re-evaluadas que toman otro ....... %s', _dc_(ap.stats.reasignada));
     Logger.log('    filas a REVISAR por formulario_compartido %s', _dc_(ap.stats.compartido));
+    Logger.log('    filas a REVISAR por formulario_gemelo ... %s   (un gemelo del formulario de otra fila)',
+               _dc_(ap.stats.gemelo));
     ap.casos.slice().sort(function (a, b) { return a.ev === b.ev ? 0 : (a.ev ? -1 : 1); })
       .forEach(function (x) {
-        Logger.log('  [%s] vuelta %s | %s (ins=%s)%s', x.ev ? 'ventana' : 'histor.', x.vuelta,
-                   x.c.nombre, x.c.inscriptos || 0, x.porUid ? ' — ya tiene dueño por RDV_UID' : '');
+        Logger.log('  [%s] vuelta %s | %s (ins=%s)%s%s', x.ev ? 'ventana' : 'histor.', x.vuelta,
+                   x.c.nombre, x.c.inscriptos || 0, x.gemelos ? ' — GEMELOS (mismo nombre)' : '',
+                   x.porUid ? ' — ya tiene dueño por RDV_UID (fila ' + x.filaUid + ')' : '');
         x.pares.forEach(function (sc) {
           const pf = plan.porFila[sc.fila.fila] || {};
           let fin;
           if (sc === x.ganador) fin = 'SE LO QUEDA (por ' + _nombreCriterio_(x.porQue) + ')';
           else if (pf.motivo === 'formulario_compartido') fin = 'REVISAR: formulario_compartido';
+          else if (pf.motivo === 'formulario_gemelo') fin = 'REVISAR: formulario_gemelo';
           else if (pf.veredicto === 'escribiria' && pf.cand) {
             fin = 'toma otro: ' + pf.cand.nombre + ' (' + pf.score + ')';
           } else fin = (pf.veredicto || '?') + (pf.motivo ? ' / ' + pf.motivo : '');
@@ -986,9 +982,9 @@ function _logInvariante_(plan) {
   }
   if (!ch) return;
   if (!ch.choques.length) {
-    Logger.log('  CHEQUEO: 0 formularios con 2+ filas escritas. OK.');
+    Logger.log('  CHEQUEO: 0 formularios (ni gemelos) con 2+ filas escritas o con RDV_UID. OK.');
   } else {
-    Logger.log('  >>> CHEQUEO FALLIDO: %s FORMULARIOS SIGUEN GANANDO 2+ FILAS (%s FILAS). EL',
+    Logger.log('  >>> CHEQUEO FALLIDO: %s FORMULARIOS (O GRUPOS DE GEMELOS) EN 2+ FILAS (%s FILAS). EL',
                _dc_(ch.formularios), _dc_(ch.filas));
     Logger.log('      INVARIANTE NO SE CUMPLE: DRY_RUN = false QUEDA BLOQUEADO.');
     ch.choques.forEach(function (x) {
@@ -996,6 +992,51 @@ function _logInvariante_(plan) {
                  x.pares.map(function (sc) { return sc.fila.fila; }).join(', '));
     });
   }
+}
+
+/**
+ * El bloque 0b del log (02/10): **los gemelos** de `B` —formularios con el mismo nombre— y a qué fila
+ * va cada uno. Por la regla 3 son la misma reunión: a lo sumo uno tiene fila. Marca los pares cuyos
+ * cierres están a más de una semana, por si alguno fuera de verdad otra reunión con el mismo nombre.
+ */
+function _logGemelos_(plan) {
+  const gem = plan.cands.gemelos || { grupos: [], descartados: 0, repetidas: 0 };
+  const destinos = new Map(), duenoGrupo = new Map();
+  Object.keys(plan.porFila).forEach(function (k) {
+    const pf = plan.porFila[k];
+    if (pf.cand) {
+      if (!destinos.has(pf.cand)) destinos.set(pf.cand, []);
+      destinos.get(pf.cand).push('fila ' + k + ' (' + pf.veredicto + (pf.motivo ? ' / ' + pf.motivo : '') + ')');
+    } else if (pf.veredicto === 'rdv_uid' && pf.grupo) {
+      duenoGrupo.set(pf.grupo, k);
+    }
+  });
+  const conClave = gem.grupos.filter(function (g) {
+    const cl = g.forms.map(function (c) { return c.clave; });
+    return cl.some(function (x, i) { return cl.indexOf(x) !== i; });
+  }).length;
+  Logger.log('--- 0b. GEMELOS: formularios de B con el mismo nombre (regla 3: la misma reunión) ---');
+  Logger.log('  grupos con 2+ formularios: %s (con la misma clave adentro: %s) | descartados por regla 3 ' +
+             '(casi cero, ≤ %s, misma clave que otro con inscriptos): %s | con clave repetida y los dos con ' +
+             'inscriptos (no se escriben solos): %s', gem.grupos.length, conClave, MAX_INSCRIPTOS_CASI_CERO,
+             gem.descartados, gem.repetidas);
+  gem.grupos.forEach(function (g) {
+    const fechas = g.forms.map(function (c) { return c.det && c.det.fechaFin ? c.det.fechaFin.getTime() : null; })
+                          .filter(function (x) { return x !== null; });
+    const spread = fechas.length ? Math.round((Math.max.apply(null, fechas) - Math.min.apply(null, fechas)) / 86400000) : 0;
+    Logger.log('  · "%s" — %s formularios%s%s', g.forms[0].nombre, g.forms.length,
+               spread > 7 ? ' — cierres a ' + spread + ' días: ¿otra reunión con el mismo nombre?' : '',
+               duenoGrupo.has(g.grupo) ? ' — el grupo es de la fila ' + duenoGrupo.get(g.grupo) +
+                                         ' (RDV_UID, traza sin form_clave: no se sabe cuál de los dos)' : '');
+    g.forms.forEach(function (c) {
+      const ff = c.finRaw instanceof Date ? Utilities.formatDate(c.finRaw, RDV_TZ, 'dd/MM/yyyy HH:mm')
+                                          : fmtFecha_(c.det && c.det.fechaFin);
+      const va = c.descartadoRegla3 ? 'descartado por regla 3 (casi cero)'
+               : (destinos.get(c) || []).join(', ') || 'sin fila';
+      Logger.log('      B fila %s | Fecha_Fin %s | ins %s%s → %s', c.fila, ff, c.inscriptos || 0,
+                 c.claveRepetida ? ' | CLAVE REPETIDA' : '', va);
+    });
+  });
 }
 
 // ===================== Validación contra los inscriptos del destino =====================
@@ -1604,10 +1645,12 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
  * reintentar una solapa sin volver a calcular, y lo que permite loguear los resultados aunque
  * después falle el servicio de Sheets.
  */
-function calcularPlan_(enSeco) {
-  const dest = leerDestino_();
-  const cands = leerCandidatos_();
-  const comunas = leerComunasMap_();
+function calcularPlan_(enSeco, entradas) {
+  // `entradas` (02/10): {dest, cands, comunas} ya leídos. Lo usa el paso 16 para recalcular con EL
+  // MISMO plan que el upsert sobre el destino sin sus RDV_UID. Sin `entradas`, se leen acá.
+  const dest = entradas ? entradas.dest : leerDestino_();
+  const cands = entradas ? entradas.cands : leerCandidatos_();
+  const comunas = entradas ? entradas.comunas : leerComunasMap_();
 
   Logger.log('Destino: %s filas con datos | candidatos en B: %s (%s anulados por "%s")',
              dest.filas.length, cands.vivos.length, cands.anulados, MARCA_ANULADO);
@@ -1696,6 +1739,8 @@ function calcularPlan_(enSeco) {
   const sinPropio = contador_(), sinPropioReciente = contador_();
   const porSinFigEscribe = contador_(), porSinFigRevisa = contador_();   // SIN_FIGURA_POR_UBICACION
   const usados = {};
+  // Grupo de gemelos → {c, fila} de la fila con RDV_UID que lo tiene (02/10).
+  const tomadosGrupo = new Map();
   const hist = [];
   for (let k = 0; k < 10; k++) hist.push(contador_());
   const scoresVentana = [], scoresTotal = [];
@@ -1720,13 +1765,21 @@ function calcularPlan_(enSeco) {
     }
 
     if (f.uid) {
-      // El formulario de una fila ya estampada: por la traza (form_origen), no por la fila de B.
-      const porUid = cands.porUid.get(f.uid) || formularioDeTraza_(f, cands.vivos);
+      // El formulario de una fila ya estampada: por la traza (form_clave, si no form_origen), no por
+      // la fila de B. Reserva su GRUPO de gemelos: ninguna otra fila puede tomar un formulario con
+      // ese nombre (regla 3). Si la traza es ambigua (gemelos, sin form_clave), se reserva el grupo
+      // y no se completa nada: no hay decisión.
+      const t = formularioDeTraza_(f, cands.vivos);
       sumar_(res.porUid, ev);
-      porFila[f.fila] = { veredicto: 'rdv_uid', cand: porUid || null };
-      if (porUid) {
-        decisiones.push({ fila: f, cand: porUid, score: 1, nivel: 'rdv_uid', dist: null });
-        usados[porUid.fila] = true;
+      porFila[f.fila] = { veredicto: 'rdv_uid', cand: t.c, grupo: t.grupo, ambiguo: t.ambiguo };
+      if (t.grupo && !tomadosGrupo.has(t.grupo)) tomadosGrupo.set(t.grupo, { c: t.c, fila: f.fila });
+      if (t.c) {
+        decisiones.push({ fila: f, cand: t.c, score: 1, nivel: 'rdv_uid', dist: null });
+        usados[t.c.fila] = true;
+      } else if (t.ambiguo) {
+        (cands.gemelos.grupos || []).forEach(function (g) {
+          if (g.grupo === t.grupo) g.forms.forEach(function (c) { usados[c.fila] = true; });
+        });
       }
       continue;
     }
@@ -1756,7 +1809,7 @@ function calcularPlan_(enSeco) {
     });
   }
 
-  const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, usados);
+  const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, tomadosGrupo);
 
   // Cuántas margen_chico resolvió el desempate por evidencia, y cuántas no por el umbral.
   const desempateCnt = { senales: contador_(), distancia: contador_(), inscriptos: contador_(),
@@ -1938,7 +1991,7 @@ function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
  * hora salvo por el día. Así que si dos corridas dan distinto, cambió una entrada. Con estas huellas
  * en el log y en REGISTRO_UPSERT se ve cuál: misma huella de entradas → mismo plan, siempre.
  *
- *   destino   por fila: figura, barrio, fecha, hora, evento, si tiene RDV_UID, form_origen
+ *   destino   por fila: figura, barrio, fecha, hora, evento, si tiene RDV_UID, form_origen, form_clave
  *   B         por formulario: nombre, Fecha_Fin, inscriptos y los datos que se escribirían
  *   figuras   la lista que sale de la columna Figura (decide figuras por apellido y multi_figura)
  *   Comunas   barrio → comuna
@@ -1947,7 +2000,7 @@ function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
 function huellasDelPlan_(dest, cands, comunas, porFila) {
   const d = dest.filas.map(function (f) {
     return [f.fila, f.figura, f.barrio, f.fecha ? ymd_(f.fecha) : '', f.horaMin, f.evento,
-            f.uid ? 'u' : '', f.formOrigen].join('|');
+            f.uid ? 'u' : '', f.formOrigen, f.formClave].join('|');
   }).join('\n');
   const b = cands.vivos.map(function (c) {
     return [c.clave, c.inscriptos, JSON.stringify(c.datos)].join('|');
@@ -2314,6 +2367,7 @@ function logResumen_(plan) {
   Logger.log('  no existe y no sirve para decidir nada.');
 
   _logInvariante_(plan);
+  _logGemelos_(plan);
 
   Logger.log('--- 1. VEREDICTOS (base: %s | %s filas, sin las %s futuras) ---',
              base.v, base.t, _dc_(r.futuras));
@@ -3483,6 +3537,16 @@ function evaluarCandidatos_(f, candidatos, comunas) {
     motivo = 'multi_figura';
   }
 
+  /*
+   * Dos formularios vivos con la MISMA clave (mismo nombre y cierre) y los dos con inscriptos
+   * (`claveRepetida`, marcarGemelos_): no hay cómo saber cuál es el de la fila ni cómo enlazarlo
+   * después por la traza. No se escribe solo (02/10).
+   */
+  if (veredicto === 'escribiria' && mejor.c.claveRepetida) {
+    veredicto = 'REVISAR_MATCH';
+    motivo = 'clave_repetida';
+  }
+
   // Sin ganador limpio (score bajo): la posible reubicación va a revisión en su lugar.
   if (veredicto === 'SIN_MATCH' && reubic && UBICACION_DESACUERDO_A_REVISION) {
     return aRevisionPorReubicacion(mejor);
@@ -4107,10 +4171,13 @@ function aplicarDecisiones_(dest, decisiones, t0) {
  * y si toca la transición de STATUS. Es el único lugar que lo define: lo usan la escritura y el
  * paso 16 ("fila incompleta" = le queda algo de esto), así que no pueden divergir.
  *
- *   - decisión nueva: traza (form_origen, form_score, form_nivel y form_fecha_match si hay
- *     distancia), RDV_UID, los datos del formulario (sexo y edades) y la transición de STATUS;
- *   - fila que ya tiene RDV_UID (`nivel = 'rdv_uid'`): sólo datos y STATUS. Su traza es la de la
- *     decisión original y no se completa con otra cosa.
+ *   - decisión nueva: traza (form_origen, form_score, form_nivel, form_fecha_match si hay
+ *     distancia, form_clave), RDV_UID, los datos del formulario (sexo y edades) y la transición de
+ *     STATUS;
+ *   - fila que ya tiene RDV_UID (`nivel = 'rdv_uid'`): datos, STATUS y `form_clave` si le falta (las
+ *     escritas antes del 02/10). El resto de su traza es la de la decisión original y no se completa
+ *     con otra cosa. A estas decisiones sólo se llega con el formulario resuelto SIN ambigüedad
+ *     (`formularioDeTraza_`): con gemelos, no hay decisión y no se completa nada.
  *
  * Las COLUMNAS_MANUALES y las derivadas no están en la lista nunca.
  *
@@ -4131,6 +4198,7 @@ function celdasDeDecision_(dest, d, valores, callar) {
       out.push({ col: dest.T.uid + 1, valor: Utilities.getUuid(), tipo: 'uid' });
     }
   }
+  agregar(dest.T.clave, d.cand.clave, 'traza');
   for (let k = 0; k < CAMPOS_DATO_.length; k++) {
     const campo = CAMPOS_DATO_[k];
     if (esColumnaManual_(campo) || esColumnaDerivada_(campo)) continue;
@@ -4174,7 +4242,8 @@ function leerDestino_() {
     origen:     findIdxOr_(hdr, ['form_origen'], true),
     score:      findIdxOr_(hdr, ['form_score'], true),
     nivel:      findIdxOr_(hdr, ['form_nivel'], true),
-    fechaMatch: findIdxOr_(hdr, ['form_fecha_match'], true)
+    fechaMatch: findIdxOr_(hdr, ['form_fecha_match'], true),
+    clave:      findIdxOr_(hdr, ['form_clave'], true)
   };
   const faltan = [];
   if (T.uid == null)        faltan.push('RDV_UID');
@@ -4182,11 +4251,12 @@ function leerDestino_() {
   if (T.score == null)      faltan.push('form_score');
   if (T.nivel == null)      faltan.push('form_nivel');
   if (T.fechaMatch == null) faltan.push('form_fecha_match');
+  if (T.clave == null)      faltan.push('form_clave');
   if (faltan.length) {
     Logger.log('AVISO: faltan columnas de traza en el destino: %s. Los scores se calculan igual, ' +
-               'pero no hay dónde estampar eso. Ver Fase 2b.', faltan.join(', '));
+               'pero no hay dónde estampar eso: correr paso1_columnasDeTraza() (Fase 2b).', faltan.join(', '));
   } else {
-    Logger.log('Columnas de traza: las cinco presentes.');
+    Logger.log('Columnas de traza: las %s presentes.', COLUMNAS_TRAZA.length);
   }
 
   const filas = [];
@@ -4204,6 +4274,8 @@ function leerDestino_() {
       // El Nombre literal del formulario que se escribió en esta fila (traza). Es el enlace
       // estable fila → formulario entre corridas: no depende de la posición en B.
       formOrigen: T.origen != null ? str(r[T.origen]) : '',
+      // La clave estable del formulario escrito (02/10). Vacía en las filas escritas antes.
+      formClave: T.clave != null ? str(r[T.clave]) : '',
       clave: claveNatural_(figura, fecha)
     });
   }
@@ -4269,6 +4341,7 @@ function leerCandidatos_() {
       tematico: esFormularioTematico_(limpio),
       horaMin: _horaEnMinutos_(limpio),
       det: detectFecha_(limpio, iFin != null ? r[iFin] : null),
+      finRaw: iFin != null ? r[iFin] : null,  // Fecha_Fin tal cual: con hora, si la trae (claveFormulario_)
       inscriptos: ins,
       datos: datos
     });
@@ -4283,7 +4356,51 @@ function leerCandidatos_() {
    * formularios indistinguibles—, el resultado no cambia si B se reordena.
    */
   ordenarFormularios_(vivos);
-  return { vivos: vivos, anulados: anulados, porUid: porUid };
+  // Gemelos (02/10): regla 3 dentro de una misma clave, y quién comparte nombre con quién.
+  const gemelos = marcarGemelos_(vivos);
+  return { vivos: vivos.filter(function (c) { return !c.descartadoRegla3; }), anulados: anulados,
+           porUid: porUid, gemelos: gemelos };
+}
+
+/**
+ * **Los gemelos** (02/10): formularios de `B` con el mismo nombre (normalizado). Por la regla 3 son
+ * la misma reunión, así que una sola fila del destino puede tener uno de ellos (lo hace cumplir
+ * `aplicarFormularioUnico_`, por grupo).
+ *
+ * Dentro de una misma CLAVE (mismo nombre y mismo cierre), además:
+ *   - si uno tiene inscriptos y los otros casi cero (≤ MAX_INSCRIPTOS_CASI_CERO), los de casi cero
+ *     no se hicieron: se marcan `descartadoRegla3` y salen de los candidatos;
+ *   - si quedan dos o más con inscriptos, no hay cómo saber cuál es el de la fila: se marcan
+ *     `claveRepetida` y ninguno se escribe solo (`clave_repetida`, a revisión).
+ *
+ * Marca los formularios y devuelve los grupos de 2+ (con los descartados adentro), para el log.
+ */
+function marcarGemelos_(vivos) {
+  const porGrupo = new Map(), porClave = new Map();
+  vivos.forEach(function (c) {
+    if (!porGrupo.has(c.grupo)) porGrupo.set(c.grupo, []);
+    porGrupo.get(c.grupo).push(c);
+    if (!porClave.has(c.clave)) porClave.set(c.clave, []);
+    porClave.get(c.clave).push(c);
+  });
+  let descartados = 0, repetidas = 0;
+  porClave.forEach(function (lista) {
+    if (lista.length < 2) return;
+    const conIns = lista.filter(function (c) { return (c.inscriptos || 0) > MAX_INSCRIPTOS_CASI_CERO; });
+    if (conIns.length >= 1) {
+      lista.forEach(function (c) {
+        if (conIns.indexOf(c) < 0) { c.descartadoRegla3 = true; descartados++; }
+      });
+    }
+    const quedan = conIns.length ? conIns : lista;
+    if (quedan.length >= 2) quedan.forEach(function (c) { c.claveRepetida = true; repetidas++; });
+  });
+  const grupos = [];
+  porGrupo.forEach(function (lista, g) {
+    lista.forEach(function (c) { c.gemelos = lista.length; });
+    if (lista.length >= 2) grupos.push({ grupo: g, forms: lista });
+  });
+  return { grupos: grupos, descartados: descartados, repetidas: repetidas };
 }
 
 /**
@@ -4293,7 +4410,7 @@ function leerCandidatos_() {
  */
 /** Ordena los formularios por su clave estable (ver leerCandidatos_). Modifica y devuelve la lista. */
 function ordenarFormularios_(vivos) {
-  vivos.forEach(function (c) { c.clave = claveFormulario_(c); });
+  vivos.forEach(function (c) { c.clave = claveFormulario_(c); c.grupo = grupoFormulario_(c); });
   vivos.sort(function (a, b) {
     if (a.clave !== b.clave) return a.clave < b.clave ? -1 : 1;
     return ((b.inscriptos || 0) - (a.inscriptos || 0)) || (a.fila - b.fila);
@@ -4303,30 +4420,61 @@ function ordenarFormularios_(vivos) {
 
 function claveFormulario_(c) {
   const ff = c.det && c.det.fechaFin;
-  const d = ff ? (ff.getFullYear() * 10000 + (ff.getMonth() + 1) * 100 + ff.getDate()) : 0;
+  let d = ff ? String(ff.getFullYear() * 10000 + (ff.getMonth() + 1) * 100 + ff.getDate()) : '0';
+  // Si Fecha_Fin trae hora, la hora también: distingue dos formularios con el mismo nombre que
+  // cierran el mismo día (02/10). Sin hora (00:00), la clave es la de siempre.
+  const raw = c.finRaw;
+  if (raw instanceof Date && !isNaN(raw.getTime()) && (raw.getHours() || raw.getMinutes())) {
+    d += 'T' + ('0' + raw.getHours()).slice(-2) + ('0' + raw.getMinutes()).slice(-2);
+  }
   return normalizeText_(c.nombre) + '|' + d;
 }
 
+/** El grupo de gemelos de un formulario: su nombre normalizado (regla 3, `marcarGemelos_`). */
+function grupoFormulario_(c) {
+  return normalizeText_(c.nombre);
+}
+
 /**
- * El formulario de una fila que ya tiene RDV_UID, por su traza: el que tiene el mismo Nombre que
- * `form_origen` (literal; si no hay, normalizado) y, entre varios con ese nombre, el más cercano
- * en fecha a la fila. Es lo que reserva ese formulario en las corridas siguientes, para que otra
- * fila no lo tome. No usa la fila de B.
+ * El formulario de una fila que ya tiene RDV_UID, por su traza. Devuelve `{ c, grupo, ambiguo }`:
+ *
+ *   1. por `form_clave` (02/10): el formulario con esa clave. Si hay dos vivos con la misma clave
+ *      (`claveRepetida`), ambiguo;
+ *   2. si la fila no tiene `form_clave` (escrita antes del 02/10) o la clave ya no está en B: por
+ *      `form_origen`, literal y si no normalizado. Si hay UN formulario con ese nombre, es ése; si hay
+ *      gemelos (dos o más con el mismo nombre), **ambiguo**: antes se elegía el más cercano en fecha,
+ *      y con dos gemelos en dos filas las dos terminaban apuntando al mismo (la 309 y la 315).
+ *
+ * Ambiguo = se sabe el GRUPO (el nombre), no cuál de los gemelos. El grupo igual queda reservado para
+ * esa fila (ninguna otra puede tomar un formulario de ese nombre), pero sus celdas vacías no se
+ * completan con los datos de un gemelo elegido a ciegas. No usa la fila de B.
  */
 function formularioDeTraza_(f, vivos) {
-  if (!f.formOrigen) return null;
+  const nada = { c: null, grupo: null, ambiguo: false };
+  if (f.formClave) {
+    const porClave = vivos.filter(function (c) { return c.clave === f.formClave; });
+    if (porClave.length === 1) return { c: porClave[0], grupo: porClave[0].grupo, ambiguo: false };
+    if (porClave.length > 1) return { c: null, grupo: porClave[0].grupo, ambiguo: true };
+  }
+  if (!f.formOrigen) return nada;
   let lista = vivos.filter(function (c) { return c.nombre === f.formOrigen; });
   if (!lista.length) {
     const n = normalizeText_(f.formOrigen);
-    lista = vivos.filter(function (c) { return normalizeText_(c.nombre) === n; });
+    lista = vivos.filter(function (c) { return c.grupo === n; });
   }
-  let mejor = null, dMejor = Infinity;
-  lista.forEach(function (c) {
-    const d = distanciaFecha_(f.fecha, c.det);
-    const x = d === null ? Infinity : d;
-    if (!mejor || x < dMejor) { mejor = c; dMejor = x; }
-  });
-  return mejor;
+  if (!lista.length) return nada;
+  if (lista.length === 1) return { c: lista[0], grupo: lista[0].grupo, ambiguo: false };
+  return { c: null, grupo: lista[0].grupo, ambiguo: true };
+}
+
+/**
+ * ¿El formulario `c` es el de la traza de la fila `f`? Por `form_clave` si la fila la tiene; si no,
+ * por el grupo (el nombre): una fila escrita antes del 02/10 sólo sabe el nombre.
+ */
+function esFormularioDeLaTraza_(f, c) {
+  if (!c) return false;
+  if (f.formClave) return c.clave === f.formClave;
+  return !!f.formOrigen && c.grupo === normalizeText_(f.formOrigen);
 }
 
 function leerComunasMap_() {
