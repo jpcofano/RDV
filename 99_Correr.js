@@ -21,28 +21,26 @@
  *                   No se cambia hasta haber leído los números del paso 2.
  *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
  *
- *  >>> CORRER DESPUÉS DE LAS 17 (regla operativa del 01/10: formularios y barrios se cargan a lo
- *      largo del día). Consultas nuevas para el equipo: docs/ESTADO.md, 1a.
+ *  >>> 02/10: el activador va a correr CADA 1 HORA (preparado, NO instalado). Las filas de hoy o
+ *      de ayer sin barrio quedan "pendiente_barrio" y se reevalúan solas. Detalle: ESTADO.md, 1b.
  *
  *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino). Predicciones en
- *      docs/ESTADO.md, sección 1, anotadas antes de correr:
- *      1. paso2_upsertEnSeco(). Con el VETO multi_figura sobre el ganador del desempate (la 801
- *         se escribe con "Seguridad - Comuna 13 - 24/9") y los 18 EJES CONFIRMADOS. Ventana:
- *         285 | 18 | 6; sin_figura_por_ubicacion 16 | 16 (si sube más, revisar fila por fila);
- *         ejes 18 / 30; "perderían por el eje" 1 | 1 (la 613); decididas por el eje 0. Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
- *         una (marca las que antes eran score_bajo), y el 2e avisa si los barrios con eje no
- *         son 18 (hoy 19; sospecha San Nicolás en Este).
- *      2. paso10_validarContraInscriptos(). Desempates 36 / 36.
- *      3. paso13_formulariosSinFila(). B fila 806 (Seguridad Comuna 13 24/9) sale de "sin fila";
- *         quedan 6 en ventana.
- *      Para revisar antes de DRY_RUN = false: paso15_resumenParaRevisar(). Backup y vuelta atrás:
- *      docs/backup.md, sección 8. El activador de las 18:00 está PREPARADO, NO instalado.
+ *      docs/ESTADO.md, 1b, anotadas antes de correr:
+ *      1. paso2_upsertEnSeco(). Con B ORDENADO por fecha_fin y las reglas nuevas. Tiene que dar
+ *         lo mismo que con B sin ordenar; contra las 10:56 (285 | 18 | 7) sólo se mueve por la
+ *         811 (si llegó su formulario) y por las que pasen a pendiente_barrio (línea nueva).
+ *      2. paso16_verificarEscritura(), ANTES de escribir: la línea de base de azules (anotar los
+ *         dos totales en 00_Config.js).
+ *      3. paso15_resumenParaRevisar(): para revisar REVISAR_MATCH con las opciones.
+ *      PRIMERA ESCRITURA (no está hecha: falta el link del backup, docs/backup.md §8): con
+ *      DRY_RUN = false, upsertDestino() a mano UNA vez; después paso16_verificarEscritura().
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
- *      editando CASO_A_EXPLICAR (más abajo). paso11 y paso14 cuando se quiera.
+ *      editando CASO_A_EXPLICAR (más abajo). paso10, paso11, paso13 y paso14 cuando se quiera.
  *
- *  LÍNEA BASE vigente: la corrida en seco del 01/10 18:23 (5f84cc1). Corte de ventana FIJO en
- *  26/03/2026 (VENTANA_ANALISIS_DESDE), [ventana | total]: escribiría 284 | 753 (entró la 626,
- *  salió la 801 por la regresión del veto multi_figura), a revisar 19 | 43, sin match 6 | 13.
+ *  LÍNEA BASE vigente: la corrida en seco del 02/10 10:56 (5ecaa4a), ventana 285 | 18 | 7 (la
+ *  diferencia con la predicción 285 | 18 | 6 es la 811, de hoy, sin formulario todavía). La 801 se
+ *  escribe; invariante 0; ejes 18 / 30. La anterior, 01/10 18:23 (5f84cc1), [ventana | total]:
+ *  escribiría 284 | 753 (entró la 626, salió la 801), a revisar 19 | 43, sin match 6 | 13.
  *  La de las 18:04 (e921457), en docs/ESTADO.md:
  *
  *        escribiría   284     predicción era 283-290
@@ -87,7 +85,9 @@
  *   paso14_formulasDestino() → diagFormulasDestino()   sólo log; lee el destino y Comunas.
  *   paso15_resumenParaRevisar() → resumenParaRevisar()   sólo log: REVISAR_MATCH de la ventana por
  *                                                motivo, con la 1ª opción y su puntaje.
- *   (fase7_… — el activador diario de las 18:00: PREPARADO Y COMENTADO, ver 99_Pipeline.js.)
+ *   paso16_verificarEscritura() → verificarEscritura()   sólo log: después de escribir (y antes,
+ *                                                para la línea de base de azules).
+ *   (fase7_… — el activador del upsert, cada 1 hora: PREPARADO Y COMENTADO, ver 99_Pipeline.js.)
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -234,15 +234,24 @@ function paso15_resumenParaRevisar() {
   return resumenParaRevisar();
 }
 
+function paso16_verificarEscritura() {
+  _anunciar_('paso 16 — verificación de una escritura real (y línea de base, antes de la primera)',
+             'verificarEscritura()  [diagnostico/08_verificar_escritura.js]',
+             'NO escribe en ninguna planilla (lee el destino, B y REGISTRO_UPSERT)',
+             'sólo el log: invariante en el destino, fórmulas (paso 14), azules contra la línea de ' +
+             'base y filas con RDV_UID. Termina en OK o en HAY PROBLEMAS');
+  return verificarEscritura();
+}
+
 // =============================================================================================
-//  FASE 7 — el activador diario de las 18:00. PREPARADO, NO INSTALADO (01/10).
+//  FASE 7 — el activador del upsert, cada 1 hora. PREPARADO, NO INSTALADO (02/10).
 //  Está comentado a propósito: para instalarlo, descomentar el wrapper, correrlo UNA vez y volver
 //  a comentarlo. Antes, anotarlo en docs/triggers-legado.md. Ver 99_Pipeline.js.
 // =============================================================================================
 /*
 function fase7_instalarActivadorDiario() {
-  _anunciar_('fase 7 — instalar el activador diario (18:00)', 'instalarActivadorDiario_()  [99_Pipeline.js]',
-             'crea UN activador de tiempo que llama a upsertDiario todos los días a las 18',
+  _anunciar_('fase 7 — instalar el activador (cada 1 hora)', 'instalarActivadorDiario_()  [99_Pipeline.js]',
+             'crea UN activador de tiempo que llama a upsertDiario cada 1 hora',
              'el log dice si lo creó o si ya existía');
   return instalarActivadorDiario_();
 }

@@ -2129,6 +2129,25 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 3. **Clave B→B2 sin métricas**: `normalizeText_(Nombre) + "|" + yyyyMMdd(fecha_fin)`.
    Hoy usa `nombre|inscriptos`. Los inscriptos son finales (el formulario cierra), así que en
    la práctica funciona, pero una métrica no puede formar parte de una clave.
+
+   **Desde el 02/10 es la clave estable del formulario en el upsert** (`claveFormulario_`), porque
+   `B` pasa a estar ordenado por `fecha_fin` (SORT sobre el IMPORTRANGE) y **los formularios cambian
+   de fila**. Lo que dependía de la posición en `B`, y cómo quedó:
+   - **dentro de una corrida**, la fila de `B` sigue sirviendo de identidad (formulario tomado,
+     invariante, pares de EMPAREJAR): `B` no cambia en medio de una corrida;
+   - **los empates exactos** ("a igual score gana el primero visto") dependían del orden de `B`:
+     la primera opción mostrada, el motivo cuando nadie gana el desempate y qué pares corta el
+     tope. Ahora los formularios se ordenan por `claveFormulario_`, después por inscriptos y recién
+     al final por fila (sólo para formularios indistinguibles): `ordenarFormularios_`. **Probado en
+     Node: con `B` invertido y renumerado, cero diferencias**;
+   - **entre corridas**, nada se guardaba por fila de `B`, pero había un hueco: una fila con
+     `RDV_UID` no volvía a encontrar su formulario (`porUid` nunca se llenaba), y ese formulario
+     quedaba libre para otra fila en la corrida siguiente. Ahora se encuentra por la traza —
+     `form_origen` (el Nombre literal) y, entre varios con ese nombre, el más cercano en fecha
+     (`formularioDeTraza_`)— y queda reservado; el chequeo del invariante cuenta también esas filas;
+   - **`elegido`** de EMPAREJAR_MANUAL / REVISAR_MATCH: cuando se lea, se resuelve por el
+     `op{n}_formulario` (Nombre) de esa misma línea, nunca por `op{n}_fila_B`, que es informativo.
+     `confirmar` ya se leía por nombre + figura + fecha.
 4. **Un solo `toDate_`, un solo `normalizeText_`, un solo `normalizeHeader_`**, en `01_Utils.js`.
    `toDate_` con formato día-primero explícito, nunca `new Date(string)`. Borrar las otras copias.
 5. **`SIN_MATCH` visible**: lo que hoy es `skippedB++` pasa a ser una fila con origen, clave
@@ -2284,8 +2303,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
-99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador diario de las 18:00,
-                   PREPARADO Y NO INSTALADO (upsertDiario, instalar/borrar)             ← preparado
+99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
+                   hora), PREPARADO Y NO INSTALADO (upsertDiario, instalar/borrar)      ← preparado
 diagnostico/       reportes de sólo lectura de las Fases 1 y 1b                 ← ya escrito
 _archivo/          código muerto, fuera del scope global
 ```
@@ -3074,17 +3093,22 @@ origen", que llevan a trabajos completamente distintos.
 - **Dar de baja los activadores viejos del pipeline de inscriptos** (ahora sí, con el inventario de Fase 0 a mano).
 - Crear los nuevos apuntando a `99_Pipeline.js`.
 - Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
-- **Preparado el 01/10, no instalado**: `99_Pipeline.js` tiene `upsertDiario` (respeta `DRY_RUN` y
-  no corre antes de las 17), `instalarActivadorDiario_` y `borrarActivadorDiario_`; los wrappers
-  `fase7_…` de `99_Correr.js` están comentados. Antes de instalarlo, anotarlo en
+- **El activador del upsert corre cada 1 hora** (decisión del usuario, 02/10; reemplaza a "a las
+  18:00, nunca antes de las 17" del 01/10). Preparado y **no instalado**: `99_Pipeline.js` tiene
+  `upsertDiario` (respeta `DRY_RUN`), `instalarActivadorDiario_` y `borrarActivadorDiario_`; los
+  wrappers `fase7_…` de `99_Correr.js` están comentados. Antes de instalarlo, anotarlo en
   `docs/triggers-legado.md`.
-- **El activador diario del upsert va a las 18:00, nunca antes de las 17** (regla del equipo,
-  01/10): los formularios se cierran y los barrios de RDV se cargan a lo largo del día, y matchear
-  antes es hacerlo contra datos a medio cargar. Un formulario del día cuya fila todavía no tiene
-  barrio se resuelve solo cuando RDV lo tenga (caso: `Comuna 1 Sur - 1/10`, que calzaba con Retiro
-  y Monserrat; con los barrios cargados la subzona, regla 10, la manda a Monserrat). El paso 2 tiene una línea fija con las filas
-  de hoy o de ayer sin barrio, y mide —sin implementarla— la propuesta de no evaluar una fila sin
-  barrio con menos de 1 día.
+- **Lo que protege a las filas del día ya no es la hora, es `pendiente_barrio`** (02/10,
+  `PENDIENTE_BARRIO_RECIENTE`): los formularios se cierran y los barrios de RDV se cargan a lo largo
+  del día; una fila de **hoy o de ayer sin barrio** que se escribiría o iría a revisión **no se
+  escribe**, queda con veredicto propio `pendiente_barrio` y se reevalúa en la corrida siguiente.
+  Va antes del invariante (no le gana un formulario a otra fila) y no entra a los reportes. Una fila
+  sin match sigue como antes. Caso: `Comuna 1 Sur - 1/10`, que calzaba con Retiro y Monserrat
+  todavía sin barrio; con los barrios cargados, la subzona (regla 10) la manda a Monserrat.
+- **Una corrida por vez** (`LockService`, `ESPERA_BLOQUEO_MS`): si otra corrida tiene el bloqueo,
+  ésta no hace nada y lo loguea. **Cada corrida deja una línea en `REGISTRO_UPSERT`** (intermedia):
+  hora, modo, filas y celdas escritas, uids, escribiría, pendientes, a revisar y sin match
+  `[ventana | total]`.
 - **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después
   del upsert y del recálculo de derivadas. Hasta entonces se corre a mano con
   `correrAlertaCambios()`.

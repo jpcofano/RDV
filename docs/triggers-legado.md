@@ -30,7 +30,7 @@ Falta completar tipo, frecuencia y dueño de cada uno.
 
 | función | archivo | estado | tipo | frecuencia | dueño |
 |---|---|---|---|---|---|
-| `upsertDiario` | `99_Pipeline.js` | **NO INSTALADO** | tiempo | diario, 18:00 (nunca antes de las 17) | |
+| `upsertDiario` | `99_Pipeline.js` | **NO INSTALADO** | tiempo | **cada 1 hora** (02/10; antes se pensó a las 18:00). Las filas del día sin barrio quedan `pendiente_barrio` | |
 
 Se instala con `instalarActivadorDiario_()` y se borra con `borrarActivadorDiario_()` (wrappers
 `fase7_…` comentados en `99_Correr.js`). `upsertDiario` respeta `DRY_RUN`. Al instalarlo, pasar

@@ -289,14 +289,12 @@ Recoleta**— tienen el formulario de su figura tomado por otra fila, a 7 y 14 d
 reubicaciones o filas duplicadas en RDV, no faltantes de la consulta. Quedan anotados; con la regla
 9 no hay consulta abierta por ellos.
 
-**Regla operativa (01/10): el match del día corre después de las 17.** Los formularios se cierran
-y los barrios de RDV se cargan a lo largo del día. El activador diario del upsert, cuando exista
-(Fase 7), va a las **18:00**, nunca antes de las 17; las corridas a mano, también después de las
-17. `Comuna 1 Sur - 1/10` (125) calzaba con dos filas del 1/10 (Retiro y Monserrat): con los barrios
-cargados, la **subzona** (regla 10) la manda a **Monserrat (808)** —Sur— y deja a Retiro en
-desacuerdo. El paso 2 tiene una línea fija con las filas de hoy
-o de ayer sin barrio, y mide —sin implementarla— la propuesta de no evaluar una fila sin barrio con
-menos de 1 día.
+~~**Regla operativa (01/10): el match del día corre después de las 17.**~~ **Reemplazada el 02/10**:
+el activador corre **cada 1 hora**, y lo que protege a las filas del día es **`pendiente_barrio`**
+(una fila de hoy o de ayer sin barrio en RDV no se escribe y se reevalúa en la corrida siguiente;
+ver 1b). Los formularios se cierran y los barrios de RDV se cargan a lo largo del día. `Comuna 1 Sur
+- 1/10` (125) calzaba con dos filas del 1/10 (Retiro y Monserrat): con los barrios cargados, la
+**subzona** (regla 10) la manda a **Monserrat (808)** —Sur— y deja a Retiro en desacuerdo.
 
 ---
 
@@ -305,7 +303,85 @@ menos de 1 día.
 **`DRY_RUN` lo cambia el usuario, no el código ni Claude.** Esto es la lista de lo que tiene que
 estar en verde antes, y el orden de la primera escritura real. Nada de esto está hecho todavía.
 
-**Predicciones para la próxima corrida, anotadas antes de correr (01/10 noche)** —con el veto
+### Resultados del 02/10 10:56 (`5ecaa4a`): **línea base vigente**
+
+Ventana **285 | 18 | 7** contra la predicción **285 | 18 | 6**. La diferencia es la **fila 811**
+(Quirós, Villa Devoto, 02/10): la reunión de hoy, con el formulario todavía sin importar. **La 801 se
+escribe** ✓; empates con `multi_figura` resueltos a favor de un formulario simple **4** (664, 694,
+762, 801); `sin_figura_por_ubicacion` **16 | 16** ✓; ejes **18 / 30** ✓; "perderían por el eje"
+**1 | 1** ✓; invariante **0** ✓.
+
+### 02/10: B ordenado, activador cada hora, `pendiente_barrio`, y el pase a `DRY_RUN = false`
+
+**B va a quedar ordenado por `fecha_fin`** (SORT sobre el IMPORTRANGE): los formularios cambian de
+fila. Revisado qué dependía de la posición en B (CLAUDE.md, decisión 3):
+
+| | ¿dependía? | cómo quedó |
+|---|---|---|
+| `RDV_UID` y columnas de traza | no se guardan por fila de B. **Pero** una fila con `RDV_UID` no volvía a encontrar su formulario y lo dejaba libre para otra fila en la corrida siguiente | se encuentra por la traza (`form_origen` + fecha más cercana, `formularioDeTraza_`) y queda reservado; el chequeo del invariante cuenta esas filas |
+| `elegido` de EMPAREJAR_MANUAL | todavía no se lee | cuando se lea, por `op{n}_formulario` (Nombre), nunca por `op{n}_fila_B` |
+| desempate entre empates exactos | **sí**: "a igual score, el primero visto" = orden de B | formularios ordenados por **clave estable** antes de evaluar (`ordenarFormularios_`) |
+| invariante | dentro de una corrida, consistente (B no cambia en medio) | igual; entre corridas, ver la primera fila |
+
+**La clave estable del formulario es `claveFormulario_`: `normalizeText_(Nombre) | AAAAMMDD(Fecha_Fin)`**
+(decisión 3 de CLAUDE.md), con inscriptos y fila sólo para desempatar formularios
+indistinguibles. **Probado en Node:** con B invertido y renumerado, el plan da **cero diferencias**.
+
+**El activador corre cada 1 hora**, no a las 18:00 (preparado, **no instalado**: `99_Pipeline.js`):
+
+- sin la restricción de "no antes de las 17";
+- **regla nueva `pendiente_barrio`** (`PENDIENTE_BARRIO_RECIENTE`): una fila de **hoy o de ayer sin
+  barrio** que se escribiría o iría a revisión **no se escribe**; veredicto propio, se reevalúa en
+  la corrida siguiente, no entra a los reportes ni a EMPAREJAR. Una fila sin match sigue como hoy;
+- **`LockService`**: dos corridas no se pisan (la segunda no hace nada y lo loguea);
+- **`REGISTRO_UPSERT`** (intermedia): una línea por corrida con hora, modo, filas y celdas
+  escritas, uids, escribiría, pendientes, a revisar y sin match `[ventana | total]`.
+
+**Predicciones para la próxima corrida, anotadas antes de correr (02/10):**
+
+- **con B ordenado, el paso 2 da exactamente los mismos números que con B sin ordenar** (por
+  construcción: el resultado ya no depende del orden);
+- contra las 10:56 (285 | 18 | 7) puede moverse por dos cosas, y sólo por ésas: la **811** pasa a
+  escribiría si ya llegó su formulario, y las filas de hoy o de ayer **sin barrio** que se
+  escribirían o irían a revisión pasan a **`pendiente_barrio`** (línea nueva en el paso 2, y la
+  línea fija de "filas de hoy o de ayer sin barrio" dice cuáles).
+
+**El pase a `DRY_RUN = false` (punto 3): NO hecho.** El pedido lo condiciona al backup hecho, y el
+link quedó en blanco (`link: ______`). `DRY_RUN` sigue en `true` hasta que el usuario pase el link
+de la copia (docs/backup.md §8.1).
+
+- **Qué se corre para la primera escritura:** `upsertDestino()` (en `20_UpsertDestino.js`), **a
+  mano, una vez**, con `DRY_RUN = false`. No hay wrapper `pasoN_` a propósito: es la única función
+  que escribe en el destino.
+- **Qué escribe:** en el destino, por `setSiDelSistema_` (sólo celdas **vacías**, pintadas
+  `#4F81BD`), en las filas con veredicto `escribiria` y en las que ya tienen `RDV_UID`: sexo y
+  edades (`Masculinos`, `Femeninos`, `18-24` … `66+`, `Sin identificar`), `RDV_UID` y la traza
+  (`form_origen`, `form_score`, `form_nivel`, `form_fecha_match`); y `STATUS REUNIÓN` `en agenda` →
+  `Realizada` donde hay asistentes (`marcarRealizada_`, la única excepción). **Nunca** las
+  `COLUMNAS_MANUALES` ni las derivadas. Las filas a revisar, sin match o `pendiente_barrio` no se
+  tocan. En la intermedia: los tres reportes y una línea en `REGISTRO_UPSERT`.
+- **Verificación después de escribir: `paso16_verificarEscritura()`** (`diagnostico/08`): invariante
+  en el destino (ningún formulario en 2+ filas con `RDV_UID`), el paso 14, los azules de las
+  `COLUMNAS_MANUALES` contra la línea de base (no pueden subir) y las filas con `RDV_UID` (todas con
+  `form_origen`). **Correrlo también ANTES de escribir** y anotar los dos totales de azules en
+  `00_Config.js` (`LINEA_BASE_AZULES_MANUALES` / `_TOTAL`): es la línea de base.
+
+**Lo que queda antes de la primera escritura real (al 02/10):**
+
+1. **Paso 2 con B ordenado y las reglas nuevas** (pendiente_barrio), contra la predicción de arriba.
+2. **Backup** según [docs/backup.md](backup.md) §8 (el mismo día, justo antes), con el **link** en
+   ESTADO.
+3. **Línea de base de azules**: `paso16_verificarEscritura()` antes de escribir; los dos totales a
+   `00_Config.js`.
+4. **Invariante en 0** en el bloque 0 del paso 2.
+5. **El usuario revisa `REVISAR_MATCH` con las opciones** (`paso15_resumenParaRevisar()`).
+6. Con el link: `DRY_RUN = false`, push y clasp push; `upsertDestino()` una vez;
+   `paso16_verificarEscritura()` hasta que dé OK. El activador (cada hora) se instala después, si
+   el usuario lo decide.
+
+Predicciones del 01/10 noche (corridas el 02/10 10:56; resultado arriba):
+
+*Para comparar:* —con el veto
 `multi_figura` sobre el ganador y los 18 ejes confirmados—:
 
 | paso | predicción (ventana) |
@@ -313,30 +389,6 @@ estar en verde antes, y el orden de la primera escritura real. Nada de esto est�
 | 2 | **285 \| 18 \| 6**; `sin_figura_por_ubicacion` **16 \| 16**; ejes **18 / 30**; "perderían a su ganador por el eje" **1 \| 1** (la 613); decididas por el eje **0** |
 | 10 | desempates **36 / 36** |
 | 13 | la fila **806** de B sale de "sin fila"; **quedan 6** en la ventana |
-
-**Preparado para el pase (01/10), sin cambiar `DRY_RUN`:**
-
-- **Backup y vuelta atrás** concretos: [docs/backup.md](backup.md), sección 8 (versión con nombre
-  + copia con fecha; restaurar por versión o desde la copia; cómo verificar).
-- **`paso15_resumenParaRevisar()`**: REVISAR_MATCH de la ventana agrupada por motivo, con la
-  primera opción y su puntaje. Es lo que el usuario usa para revisar.
-- **El activador diario de las 18:00**, preparado y **no instalado**: `99_Pipeline.js`
-  (`upsertDiario`, que respeta `DRY_RUN` y no corre antes de las 17; `instalarActivadorDiario_` /
-  `borrarActivadorDiario_`), con los wrappers `fase7_…` comentados en `99_Correr.js`. Anotado
-  como "NO INSTALADO" en docs/triggers-legado.md.
-
-**Lo que queda antes de la primera escritura real (al 01/10):**
-
-1. **Los puntos 1 y 2 del 01/10 corridos y verificados** —figuras por apellido y ventana
-   asimétrica— con el **paso 2** (sin match ≈ 7, revisar ≈ 18, la línea de apellidos sin basura) y
-   el **paso 10** (la 626 elegida en el bloque de `fecha_fin`).
-2. **Backup** según [docs/backup.md](backup.md), **sección 8** (el mismo día, justo antes).
-3. **Invariante en 0** en el bloque 0 del paso 2.
-4. **El usuario revisa `REVISAR_MATCH` con las opciones** (decisión y), con
-   `paso15_resumenParaRevisar()`: las `ubicacion_en_desacuerdo` y las `multi_figura` no se
-   escriben solas.
-5. **El activador diario** de las 18:00 está preparado y no instalado. Sugerido: instalarlo
-   recién después de verificar la primera escritura. Lo decide el usuario.
 
 El detalle, como lista de chequeo:
 

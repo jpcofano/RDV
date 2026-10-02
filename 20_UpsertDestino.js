@@ -810,7 +810,8 @@ function chequearFormularioUnico_(dest, vivos, comunas, porFila) {
   const porForm = new Map();
   dest.filas.forEach(function (f) {
     const pf = porFila[f.fila];
-    if (!pf || pf.veredicto !== 'escribiria' || !pf.cand) return;
+    // Las filas ya estampadas (rdv_uid) también cuentan: su formulario es suyo.
+    if (!pf || (pf.veredicto !== 'escribiria' && pf.veredicto !== 'rdv_uid') || !pf.cand) return;
     if (!porForm.has(pf.cand)) porForm.set(pf.cand, []);
     porForm.get(pf.cand).push(f);
   });
@@ -1480,6 +1481,23 @@ function _correrUpsert_(enSeco) {
   const t0 = new Date();
   Logger.log('=== upsertDestino (%s) ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL');
 
+  /*
+   * Una corrida por vez (02/10): el activador corre cada hora y alguien puede correrlo a mano al
+   * mismo tiempo. Si otra corrida tiene el bloqueo, ésta no hace nada y lo dice.
+   */
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(ESPERA_BLOQUEO_MS)) {
+    Logger.log('>>> Hay otra corrida del upsert en curso: ésta no hace nada (LockService).');
+    return null;
+  }
+  try {
+    return _correrUpsertConBloqueo_(enSeco, t0);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function _correrUpsertConBloqueo_(enSeco, t0) {
   const plan = calcularPlan_(enSeco);
   logResumen_(plan);                 // ← ANTES de escribir nada
 
@@ -1502,8 +1520,36 @@ function _correrUpsert_(enSeco) {
                'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
   }
 
+  _registrarCorrida_(plan, enSeco, t0, fallaron);
   Logger.log('%s ms', new Date() - t0);
   return plan.res;
+}
+
+/**
+ * Una línea por corrida en REGISTRO_UPSERT (intermedia): hora, modo, cuántas filas escribió (o
+ * escribiría, en seco), celdas y uids escritos, pendientes de barrio, a revisar y sin match
+ * [ventana | total]. Se acumula; no se limpia. Si falla, la corrida sigue: sólo lo loguea.
+ */
+function _registrarCorrida_(plan, enSeco, t0, fallaron) {
+  try {
+    const r = plan.res;
+    const ss = ssIntermedia_();
+    let sh = ss.getSheetByName(RDV_HOJA_REGISTRO);
+    if (!sh) {
+      sh = ss.insertSheet(RDV_HOJA_REGISTRO);
+      sh.appendRow(['hora', 'modo', 'filas_escritas', 'celdas_escritas', 'uids_estampados',
+                    'escribiria_ventana', 'escribiria_total', 'pendiente_barrio_ventana',
+                    'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
+                    'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms']);
+    }
+    const filasEscritas = enSeco ? 0 : plan.decisiones.filter(function (d) { return !d.noEscribir; }).length;
+    sh.appendRow([new Date(), enSeco ? 'en seco' : 'ESCRITURA', filasEscritas, r.escritas || 0,
+                  r.uidsEstampados || 0, r.escribiria.v, r.escribiria.t, r.pendienteBarrio.v,
+                  r.pendienteBarrio.t, r.revisar.v, r.revisar.t, r.sinMatch.v, r.sinMatch.t,
+                  (fallaron || []).join(', '), new Date() - t0]);
+  } catch (err) {
+    Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
+  }
 }
 
 // ===================== Cálculo =====================
@@ -1541,8 +1587,8 @@ function calcularPlan_(enSeco) {
    * dejó de mandarlo. Un número así describe un origen que ya no existe.
    */
   const res = { porUid: contador_(), escribiria: contador_(), revisar: contador_(),
-                sinMatch: contador_(), futuras: contador_(), enVentana: 0,
-                escritas: 0, uidsEstampados: 0 };
+                sinMatch: contador_(), futuras: contador_(), pendienteBarrio: contador_(),
+                enVentana: 0, escritas: 0, uidsEstampados: 0 };
   const motivos = {};
 
   /*
@@ -1631,7 +1677,8 @@ function calcularPlan_(enSeco) {
     }
 
     if (f.uid) {
-      const porUid = cands.porUid.get(f.uid);
+      // El formulario de una fila ya estampada: por la traza (form_origen), no por la fila de B.
+      const porUid = cands.porUid.get(f.uid) || formularioDeTraza_(f, cands.vivos);
       sumar_(res.porUid, ev);
       porFila[f.fila] = { veredicto: 'rdv_uid', cand: porUid || null };
       if (porUid) {
@@ -1647,6 +1694,25 @@ function calcularPlan_(enSeco) {
    * --- el invariante "un formulario, una fila", después del desempate y sobre todo el plan ---
    * Cambia `r` de las filas que pierden un formulario compartido (re-evaluadas, o a revisión).
    */
+  /*
+   * --- pendiente_barrio (PENDIENTE_BARRIO_RECIENTE, 02/10) ---
+   * Una fila de HOY o de AYER sin barrio en RDV todavía está incompleta: los barrios se cargan a
+   * lo largo del día. Si se escribiría o iría a revisión, **no se escribe**: veredicto propio
+   * `pendiente_barrio`, y se reevalúa en la corrida siguiente. Va ANTES del invariante, así no le
+   * gana un formulario a otra fila. Una fila sin match sigue como hoy (sin match, se reevalúa sola).
+   */
+  if (PENDIENTE_BARRIO_RECIENTE) {
+    evals.forEach(function (x) {
+      const f = x.f;
+      if (f.barrio || !f.fecha) return;
+      if (x.r.veredicto !== 'escribiria' && x.r.veredicto !== 'REVISAR_MATCH') return;
+      const d = diasEntre_(_hoy_(), f.fecha);
+      if (d < 0 || d > DIAS_PENDIENTE_BARRIO) return;
+      x.r = { mejor: x.r.mejor, segundoScore: x.r.segundoScore, margen: x.r.margen,
+              veredicto: 'pendiente_barrio', motivo: 'pendiente_barrio', antes: x.r.veredicto };
+    });
+  }
+
   const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, usados);
 
   // Cuántas margen_chico resolvió el desempate por evidencia, y cuántas no por el umbral.
@@ -1658,6 +1724,13 @@ function calcularPlan_(enSeco) {
    */
   for (let i = 0; i < evals.length; i++) {
     const f = evals[i].f, ev = evals[i].ev, r = evals[i].r;
+    if (r.veredicto === 'pendiente_barrio') {
+      sumar_(res.pendienteBarrio, ev);
+      porFila[f.fila] = { veredicto: 'pendiente_barrio', motivo: 'pendiente_barrio',
+                          cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
+                          antes: r.antes };
+      continue;   // no se escribe, no entra a los reportes; se reevalúa en la corrida siguiente
+    }
     if (r.desempate) sumar_(desempateCnt[r.desempate], ev);
     if (r.desempateBajoUmbral) sumar_(desempateCnt.bajoUmbral, ev);
 
@@ -1755,6 +1828,10 @@ function calcularPlan_(enSeco) {
     if (d.noEscribir) return;
     resueltas[d.fila.fila] = true;
     if (d.cand) tomadoPor[d.cand.fila] = d.fila.fila;
+  });
+  // Las pendientes de barrio tampoco van a EMPAREJAR_MANUAL: se reevalúan solas.
+  Object.keys(porFila).forEach(function (k) {
+    if (porFila[k].veredicto === 'pendiente_barrio') resueltas[k] = true;
   });
   // Las opciones de cada fila a revisar: hasta OPCIONES_REVISION formularios, con sus puntajes.
   revisarRefs.forEach(function (x, i) {
@@ -1979,9 +2056,7 @@ function _logSinBarrioReciente_(plan) {
     if (d === 0 || d === 1) lista.push({ f: f, d: d, pf: plan.porFila[f.fila] || {} });
   });
   const deHoy = lista.filter(function (x) { return x.d === 0; });
-  const cambiaria = deHoy.filter(function (x) {
-    return x.pf.veredicto === 'escribiria' || x.pf.veredicto === 'REVISAR_MATCH';
-  });
+  const cambiaria = lista.filter(function (x) { return x.pf.veredicto === 'pendiente_barrio'; });
   Logger.log('  filas de HOY o de AYER sin barrio en RDV (todavía incompletas): %s   (hoy %s, ayer %s)',
              lista.length, deHoy.length, lista.length - deHoy.length);
   lista.forEach(function (x) {
@@ -1989,9 +2064,10 @@ function _logSinBarrioReciente_(plan) {
                x.pf.veredicto || '?', x.pf.motivo ? '/' + x.pf.motivo : '',
                x.pf.cand ? ' ← ' + x.pf.cand.nombre : '');
   });
-  if (deHoy.length) {
-    Logger.log('    PROPUESTA (no implementada): no evaluar hasta la próxima corrida las %s de hoy; ' +
-               'hoy %s de ellas se escribirían o irían a revisión.', deHoy.length, cambiaria.length);
+  if (lista.length) {
+    Logger.log('    PENDIENTE_BARRIO_RECIENTE = %s: las que se escribirían o irían a revisión quedan como ' +
+               'pendiente_barrio y se reevalúan en la corrida siguiente: %s de %s.',
+               PENDIENTE_BARRIO_RECIENTE, cambiaria.length, lista.length);
   }
 }
 
@@ -2156,6 +2232,8 @@ function logResumen_(plan) {
   Logger.log('  escribiría .......... %s', _dcp_(r.escribiria, base));
   Logger.log('  a revisar ........... %s', _dcp_(r.revisar, base));
   Logger.log('  sin match ........... %s', _dcp_(r.sinMatch, base));
+  Logger.log('  pendiente de barrio . %s   (hoy/ayer sin barrio en RDV; no se escribe, se reevalúa)',
+             _dcp_(r.pendienteBarrio, base));
   Logger.log('  de las que escribiría, a 1-%s días (entran por la tolerancia de reprogramación; ' +
              'con la escala vieja quedaban abajo): %s', TOLERANCIA_REPROGRAMACION_DIAS,
              _dc_(plan.porTolerancia));
@@ -3978,6 +4056,9 @@ function leerDestino_() {
       horaMin: D['HORA'] != null ? _horaEnMinutos_(r[D['HORA']]) : null,
       evento: D['EVENTO'] != null ? str(r[D['EVENTO']]) : '',
       uid: T.uid != null ? str(r[T.uid]) : '',
+      // El Nombre literal del formulario que se escribió en esta fila (traza). Es el enlace
+      // estable fila → formulario entre corridas: no depende de la posición en B.
+      formOrigen: T.origen != null ? str(r[T.origen]) : '',
       clave: claveNatural_(figura, fecha)
     });
   }
@@ -4047,7 +4128,60 @@ function leerCandidatos_() {
       datos: datos
     });
   }
+  /*
+   * **Orden estable, independiente de la posición en B** (02/10: B pasa a estar ordenado por
+   * fecha_fin con SORT sobre el IMPORTRANGE, y los formularios cambian de fila). Lo único que
+   * dependía del orden eran los empates exactos ("a igual score gana el primero visto"): la
+   * primera opción mostrada, el motivo cuando nadie gana el desempate, y qué pares corta el tope
+   * de EMPAREJAR_MANUAL. Con los formularios ordenados por `claveFormulario_` (Nombre + Fecha_Fin,
+   * decisión 3 de CLAUDE.md), después por inscriptos y recién al final por fila —sólo para
+   * formularios indistinguibles—, el resultado no cambia si B se reordena.
+   */
+  ordenarFormularios_(vivos);
   return { vivos: vivos, anulados: anulados, porUid: porUid };
+}
+
+/**
+ * La clave estable de un formulario: `normalizeText_(Nombre) | AAAAMMDD(Fecha_Fin)` (decisión 3 de
+ * CLAUDE.md: sin métricas). No depende de la fila de B. Dos formularios con el mismo nombre y el
+ * mismo cierre son, para el negocio, duplicados de la misma reunión (regla 3).
+ */
+/** Ordena los formularios por su clave estable (ver leerCandidatos_). Modifica y devuelve la lista. */
+function ordenarFormularios_(vivos) {
+  vivos.forEach(function (c) { c.clave = claveFormulario_(c); });
+  vivos.sort(function (a, b) {
+    if (a.clave !== b.clave) return a.clave < b.clave ? -1 : 1;
+    return ((b.inscriptos || 0) - (a.inscriptos || 0)) || (a.fila - b.fila);
+  });
+  return vivos;
+}
+
+function claveFormulario_(c) {
+  const ff = c.det && c.det.fechaFin;
+  const d = ff ? (ff.getFullYear() * 10000 + (ff.getMonth() + 1) * 100 + ff.getDate()) : 0;
+  return normalizeText_(c.nombre) + '|' + d;
+}
+
+/**
+ * El formulario de una fila que ya tiene RDV_UID, por su traza: el que tiene el mismo Nombre que
+ * `form_origen` (literal; si no hay, normalizado) y, entre varios con ese nombre, el más cercano
+ * en fecha a la fila. Es lo que reserva ese formulario en las corridas siguientes, para que otra
+ * fila no lo tome. No usa la fila de B.
+ */
+function formularioDeTraza_(f, vivos) {
+  if (!f.formOrigen) return null;
+  let lista = vivos.filter(function (c) { return c.nombre === f.formOrigen; });
+  if (!lista.length) {
+    const n = normalizeText_(f.formOrigen);
+    lista = vivos.filter(function (c) { return normalizeText_(c.nombre) === n; });
+  }
+  let mejor = null, dMejor = Infinity;
+  lista.forEach(function (c) {
+    const d = distanciaFecha_(f.fecha, c.det);
+    const x = d === null ? Infinity : d;
+    if (!mejor || x < dMejor) { mejor = c; dMejor = x; }
+  });
+  return mejor;
 }
 
 function leerComunasMap_() {

@@ -29,6 +29,18 @@ const RDV_HOJA_A2       = 'A2';
 const RDV_HOJA_B        = 'B';           // IMPORTRANGE del origen. Queda como vista
 const RDV_HOJA_ASIST_IR = 'Asistentes';  // IMPORTRANGE de RDV CONJUNTO. Antes se llamaba 'A'
 const RDV_HOJA_ALERTAS  = 'ALERTA_CAMBIOS';
+const RDV_HOJA_REGISTRO = 'REGISTRO_UPSERT';   // una línea por corrida del upsert (02/10)
+
+/**
+ * La línea de base de los `#4F81BD` del destino, tomada ANTES de la primera escritura real
+ * (docs/backup.md §8.1, paso 6) con `paso16_verificarEscritura()`. La usa la verificación posterior:
+ * los de las COLUMNAS_MANUALES no pueden subir. `null` = todavía no anotada.
+ */
+const LINEA_BASE_AZULES_MANUALES = null;
+const LINEA_BASE_AZULES_TOTAL = null;
+
+/** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
+const ESPERA_BLOQUEO_MS = 30000;
 
 // --- solapas de (3) y (4) ---
 const RDV_HOJA_ORIGEN = 'Hoja1';   // en (3). NO somos dueños, no se modifica
@@ -364,6 +376,16 @@ const BARRIOS_VARIANTES = [
  */
 const FECHA_FIN_ASIMETRICA = true;
 const FECHA_FIN_VENTANA = { min: 0, max: 6 };
+
+/**
+ * **pendiente_barrio** (02/10, decisión del usuario). Una fila de HOY o de AYER (hasta
+ * `DIAS_PENDIENTE_BARRIO` días) **sin barrio en RDV** que se escribiría o iría a revisión **no se
+ * escribe**: queda con veredicto propio `pendiente_barrio` y se reevalúa en la corrida siguiente
+ * (el activador corre cada hora). Los barrios se cargan a lo largo del día. Una fila sin match
+ * sigue como hoy.
+ */
+const PENDIENTE_BARRIO_RECIENTE = true;
+const DIAS_PENDIENTE_BARRIO = 1;
 
 /** Cuántos formularios candidatos se muestran por fila en REVISAR_MATCH y EMPAREJAR_MANUAL. */
 const OPCIONES_REVISION = 3;
