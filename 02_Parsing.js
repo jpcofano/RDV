@@ -459,8 +459,10 @@ function comunaDeBarrio_(barrio) {
 /**
  * El eje de un barrio del destino según `Comunas`, columna `Eje geográfico` (`COMUNAS_COL_EJE`):
  *
- *   { eje, pendiente, raw }
- *     eje        el de EJES_CONOCIDOS que nombra la celda, SIN el `?` final ('' si ninguno)
+ *   { eje, ejes, pendiente, raw }
+ *     ejes       los de EJES_CONOCIDOS que nombra la celda, SIN el `?` final. Una celda puede
+ *                traer varios separados por "|" ("Sur | Centro", 01/10): coincide cualquiera
+ *     eje        los mismos, para mostrar ("Sur | Centro"); '' si ninguno
  *     pendiente  la celda termina en `?`: el equipo todavía no lo confirmó
  *     raw        la celda tal cual
  *
@@ -469,16 +471,19 @@ function comunaDeBarrio_(barrio) {
  * pendientes. `eje` con `pendiente` sirve sólo para mostrar qué pasaría si se confirmara.
  */
 function ejeInfoDeBarrio_(barrio) {
-  const vacio = { eje: '', pendiente: false, raw: '' };
+  const vacio = { eje: '', ejes: [], pendiente: false, raw: '' };
   const barrios = _listas_().barrios;
   if (!barrios.ejeValido) return vacio;
   const canon = canonizarBarrio_(barrio);
   if (!canon) return vacio;
   for (let i = 0; i < barrios.length; i++) {
     if (barrios[i].canon !== canon) continue;
-    const raw = barrios[i].ejeRaw || '';
+    const raw = String(barrios[i].ejeRaw || '').trim();          // "Sur " → "Sur"
     const pendiente = /\?\s*$/.test(raw);
-    return { eje: _canonEje_(raw.replace(/\?+\s*$/, '').trim()), pendiente: pendiente, raw: raw };
+    const ejes = raw.replace(/\?+\s*$/, '').split('|')
+      .map(function (p) { return _canonEje_(p.trim()); })
+      .filter(function (e, k, a) { return e && a.indexOf(e) === k; });
+    return { eje: ejes.join(' | '), ejes: ejes, pendiente: pendiente, raw: raw };
   }
   return vacio;
 }
@@ -491,6 +496,17 @@ function ejeInfoDeBarrio_(barrio) {
 function ejeDeBarrio_(barrio) {
   const x = ejeInfoDeBarrio_(barrio);
   return x.pendiente ? '' : x.eje;
+}
+
+/**
+ * ¿El barrio del destino está en el eje `eje`? Con varios ejes en la celda ("Sur | Centro"),
+ * alcanza con que coincida cualquiera. Pendiente (`?`) o sin eje: false. Es la única
+ * comparación barrio ↔ eje: la usan el score, la puerta de EMPAREJAR, el desempate y el 2e.
+ */
+function barrioEnEje_(barrio, eje) {
+  if (!eje) return false;
+  const x = ejeInfoDeBarrio_(barrio);
+  return !x.pendiente && x.ejes.indexOf(eje) !== -1;
 }
 
 /**

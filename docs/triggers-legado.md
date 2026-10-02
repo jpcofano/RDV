@@ -26,6 +26,16 @@ Eran cuatro. **Al 24/09/2026 queda uno activo.**
 
 Falta completar tipo, frecuencia y dueño de cada uno.
 
+**Preparado, NO instalado (01/10):** el activador nuevo del pipeline.
+
+| función | archivo | estado | tipo | frecuencia | dueño |
+|---|---|---|---|---|---|
+| `upsertDiario` | `99_Pipeline.js` | **NO INSTALADO** | tiempo | diario, 18:00 (nunca antes de las 17) | |
+
+Se instala con `instalarActivadorDiario_()` y se borra con `borrarActivadorDiario_()` (wrappers
+`fase7_…` comentados en `99_Correr.js`). `upsertDiario` respeta `DRY_RUN`. Al instalarlo, pasar
+esta fila a "ACTIVO" con la fecha y el dueño.
+
 > **El pipeline principal está frenado a propósito.** No es una falla: es un estado elegido
 > mientras dura la migración. Ver CLAUDE.md, "El pipeline está frenado". Consecuencia a tener
 > presente: **el hueco de sexo/edades no se llena solo hasta la Fase 6.**

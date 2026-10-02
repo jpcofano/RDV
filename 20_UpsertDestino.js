@@ -1869,6 +1869,7 @@ function _senalesTexto_(sc, f, comunas) {
     const ejeF = ejeDeBarrio_(f.barrio);
     p.push('eje ' + sc.c.eje.eje + (!ejeF ? ' (RDV sin eje)' : sc.ejeCoincide ? ' = RDV' : ' ≠ RDV ' + ejeF));
   } else p.push('eje -');
+  if (sc.multiFigura) p.push('multi_figura (' + sc.c.figurasNorm.length + ' figuras)');
   return p.join(' · ');
 }
 
@@ -2481,15 +2482,19 @@ function medirEjes_(dest, cands, comunas, porFila) {
   const col = infoColumnaEje_();
   // Ejes PRIORIZADOS (01/10): sólo los barrios que definió el equipo tienen eje. Celda vacía =
   // "no pertenece a ningún eje", no "pendiente". Un valor que no se reconoce se reporta aparte.
-  const porEje = {}, pendientes = [], sinEje = [], noPertenece = [];
+  const porEje = {}, pendientes = [], sinEje = [], noPertenece = [], conEjeBarrios = [];
   _listas_().barrios.forEach(function (b) {
     const info = ejeInfoDeBarrio_(b.canon);
     if (!info.eje && !b.ejeRaw) { noPertenece.push(b.canon); return; }
     if (!info.eje) { sinEje.push(b.canon + ' ("' + b.ejeRaw + '")'); return; }
     if (info.pendiente) { pendientes.push(b.canon + ' (' + info.raw + ')'); return; }
-    if (!porEje[info.eje]) porEje[info.eje] = { barrios: [], comunas: {} };
-    porEje[info.eje].barrios.push(b.canon);
-    if (b.comuna != null) porEje[info.eje].comunas[b.comuna] = true;
+    conEjeBarrios.push(b.canon);
+    // Un barrio con varios ejes ("Sur | Centro") aparece en cada uno, pero se cuenta una vez.
+    info.ejes.forEach(function (k) {
+      if (!porEje[k]) porEje[k] = { barrios: [], comunas: {} };
+      porEje[k].barrios.push(b.canon + (info.ejes.length > 1 ? ' (' + info.eje + ')' : ''));
+      if (b.comuna != null) porEje[k].comunas[b.comuna] = true;
+    });
   });
 
   // --- b) formularios con eje ---
@@ -2529,9 +2534,10 @@ function medirEjes_(dest, cands, comunas, porFila) {
 
         const info = ejeInfoDeBarrio_(f.barrio);
         let veredicto;
+        const enEje = info.ejes.indexOf(e.eje) !== -1;     // con "Sur | Centro", cualquiera
         if (!info.eje) veredicto = 'no_evaluable';
-        else if (info.pendiente) veredicto = (info.eje === e.eje) ? 'pend_coincide' : 'pend_descarta';
-        else veredicto = (info.eje === e.eje) ? 'coincide' : 'descarta';
+        else if (info.pendiente) veredicto = enEje ? 'pend_coincide' : 'pend_descarta';
+        else veredicto = enEje ? 'coincide' : 'descarta';
 
         sumar_(pares.total, ev);
         const kv = { coincide: 'coincide', descarta: 'descarta', no_evaluable: 'noEvaluable',
@@ -2585,7 +2591,7 @@ function medirEjes_(dest, cands, comunas, porFila) {
     const ev = enVentanaAnalisis_(f.fecha);
     sumar_(pierde.total, ev);
     const info = ejeInfoDeBarrio_(f.barrio);
-    if (!info.eje || info.eje === e.eje) return;
+    if (!info.eje || info.ejes.indexOf(e.eje) !== -1) return;
     sumar_(info.pendiente ? pierde.siSeConfirma : pierde.confirmado, ev);
     pierde.casos.push({ f: f, ev: ev, c: pf.cand, ejeForm: e.eje, ejeFila: info.raw,
                         pendiente: info.pendiente, desempate: pf.desempate });
@@ -2593,6 +2599,7 @@ function medirEjes_(dest, cands, comunas, porFila) {
 
   return { pierde: pierde,
            col: col, porEje: porEje, pendientes: pendientes, sinEje: sinEje, noPertenece: noPertenece,
+           conEjeBarrios: conEjeBarrios,
            porForma: porForma,
            conEje: conEje, desconocidos: desconocidos, pares: pares, cruce: cruce,
            detalle: detalle, descartaCerca: descartaCerca, tem: tem };
@@ -2761,7 +2768,7 @@ function _logEjes_(m) {
                Object.keys(x.comunas).sort(function (p, q) { return p - q; }).join(',') || '-',
                x.barrios.length, x.barrios.join(', '));
   });
-  const conEjeN = Object.keys(m.porEje).reduce(function (s, k) { return s + m.porEje[k].barrios.length; }, 0);
+  const conEjeN = (m.conEjeBarrios || []).length;
   Logger.log('     barrios CON eje (priorizados): %s | SIN eje (celda vacía = no pertenece a ningún ' +
              'eje): %s   (se esperan 18 | 30)', conEjeN, (m.noPertenece || []).length);
   if (conEjeN !== 18) {
@@ -2770,13 +2777,9 @@ function _logEjes_(m) {
      * en el repo, así que no se puede decir con certeza cuál sobra: se listan los barrios con eje
      * (arriba, por eje) y se marca la sospecha del usuario. Lo confirma el usuario con el equipo.
      */
-    const sn = ejeInfoDeBarrio_('San Nicolás');
-    Logger.log('     >>> %s %s respecto de los 18 del 30/09. La lista del 30/09 no está escrita en el repo: ' +
-               'comparar a mano con las listas por eje de arriba.', Math.abs(conEjeN - 18),
-               conEjeN > 18 ? 'SOBRA(N)' : 'FALTA(N)');
-    Logger.log('         Sospecha del usuario: San Nicolás en Este → hoy San Nicolás tiene eje "%s"%s. ' +
-               'Lo confirma el usuario con el equipo; no se cambia nada.', sn.eje || '(ninguno)',
-               sn.eje === 'Este' ? ' (coincide con la sospecha)' : '');
+    Logger.log('     >>> %s %s respecto de los 18 de la lista confirmada por el equipo el 01/10 ' +
+               '(CLAUDE.md 1.d). Comparar con las listas por eje de arriba; no se cambia nada.',
+               Math.abs(conEjeN - 18), conEjeN > 18 ? 'SOBRA(N)' : 'FALTA(N)');
   }
   Logger.log('     pendientes ("?", sólo como posibilidad; no se evalúan): %s%s', m.pendientes.length,
              m.pendientes.length ? ' — ' + m.pendientes.join(', ') : '');
@@ -3412,7 +3415,7 @@ function puntuar_(f, c, comunas) {
      */
     pesoUbic = PESOS_MATCH.ejeSinComuna;
     alcanzable += pesoUbic;
-    if (ejeDeBarrio_(f.barrio) === c.eje.eje) { sUbic = pesoUbic; senales.push('eje'); }
+    if (barrioEnEje_(f.barrio, c.eje.eje)) { sUbic = pesoUbic; senales.push('eje'); }
     else desacuerdo = true;
   } else if (eventoOk && EVENTO_COMO_UBICACION) {
     /*
@@ -3481,7 +3484,7 @@ function puntuar_(f, c, comunas) {
   const cmpOk = comparaComuna_(f.barrio, cDest, c);
   const comunaOk = !!(cmpOk && cmpOk.coincide);
   const ejeOk    = EJE_COMO_UBICACION && !!(c.eje && c.eje.tipo === 'eje' &&
-                   ejeDeBarrio_(f.barrio) === c.eje.eje);
+                   barrioEnEje_(f.barrio, c.eje.eje));
   const proponible = (sFig > 0) && (distOk || comunaOk || ejeOk);
 
   /*
@@ -3536,8 +3539,7 @@ function puntuar_(f, c, comunas) {
     nombraFigura: sFig > 0,
     // Para el ÚLTIMO desempate (EJE_COMO_DESEMPATE): el eje del formulario coincide con el del
     // barrio de la fila. No puntúa ni descalifica: sólo lo lee _desempatePorEvidencia_.
-    ejeCoincide: !!(c.eje && c.eje.tipo === 'eje' && ejeDeBarrio_(f.barrio) &&
-                    ejeDeBarrio_(f.barrio) === c.eje.eje),
+    ejeCoincide: !!(c.eje && c.eje.tipo === 'eje' && barrioEnEje_(f.barrio, c.eje.eje)),
     porSubzona: porSubzona,
     dist: dist,
     relevante: relevante,

@@ -252,17 +252,24 @@ leído los números de la corrida en seco.
 - **Flores 29/1** contra **CCV Versalles 29/1**: marcado **DUDOSO**; probablemente dos reuniones.
 - **1 a 1 Villa Riachuelo 11/8** contra **Parque Avellaneda 12/8**: posible reubicación.
 - **Mraida Comuna 3 20/7 y 22/7**: sin fila, los dos con más de 100 inscriptos.
-- **Ejes**: el paso 2 cuenta **19 barrios con eje** y se esperaban 18. Sospecha del usuario: **San
-  Nicolás en Este**. No se cambia nada; lo confirma el usuario con el equipo (el 2e lo marca).
-  **Lista vigente al 01/10, a confirmar con el equipo (se esperaban 18):**
+- ~~**Ejes**: el paso 2 cuenta 19 barrios con eje y se esperaban 18~~ → **CERRADA (01/10)**: el
+  equipo confirmó la lista y ya está pegada en `Comunas` columna I. **18 barrios con eje:**
 
   | eje | barrios |
   |---|---|
-  | Centro | Balvanera, Caballito, Almagro, Boedo |
+  | Centro | Balvanera, Caballito |
+  | Norte | Belgrano, Núñez, Palermo, Recoleta, Retiro, Villa Urquiza |
+  | Oeste | Chacarita, La Paternal, Parque Chacabuco, Villa Devoto |
+  | Sur | Barracas, Boedo, Flores, La Boca, Parque Patricios |
   | Este | San Nicolás |
-  | Norte | Villa Urquiza, Belgrano, Recoleta, Palermo, Retiro, Núñez |
-  | Oeste | Parque Chacabuco, Villa Ortúzar, Chacarita, La Boca |
-  | Sur | Parque Patricios, Constitución, Barracas, Floresta |
+
+  Contra la provisoria de 19 (Centro: Balvanera, Caballito, Almagro, Boedo · Este: San Nicolás ·
+  Norte: Villa Urquiza, Belgrano, Recoleta, Palermo, Retiro, Núñez · Oeste: Parque Chacabuco, Villa
+  Ortúzar, Chacarita, La Boca · Sur: Parque Patricios, Constitución, Barracas, Floresta): salen
+  Almagro, Constitución, Floresta y Villa Ortúzar; entran Flores, La Paternal y Villa Devoto; La
+  Boca pasa de Oeste a Sur; Boedo de Centro a Sur (el equipo puso "Sur | Centro"; quedó "Sur").
+  En el código (01/10): la celda se lee recortada ("Sur " → "Sur") y con **varios ejes separados
+  por `|`** coincide cualquiera, por si el equipo vuelve a poner Boedo con los dos.
 
 **Cerradas el 01/10:**
 
@@ -298,15 +305,38 @@ menos de 1 día.
 **`DRY_RUN` lo cambia el usuario, no el código ni Claude.** Esto es la lista de lo que tiene que
 estar en verde antes, y el orden de la primera escritura real. Nada de esto está hecho todavía.
 
+**Predicciones para la próxima corrida, anotadas antes de correr (01/10 noche)** —con el veto
+`multi_figura` sobre el ganador y los 18 ejes confirmados—:
+
+| paso | predicción (ventana) |
+|---|---|
+| 2 | **285 \| 18 \| 6**; `sin_figura_por_ubicacion` **16 \| 16**; ejes **18 / 30**; "perderían a su ganador por el eje" **1 \| 1** (la 613); decididas por el eje **0** |
+| 10 | desempates **36 / 36** |
+| 13 | la fila **806** de B sale de "sin fila"; **quedan 6** en la ventana |
+
+**Preparado para el pase (01/10), sin cambiar `DRY_RUN`:**
+
+- **Backup y vuelta atrás** concretos: [docs/backup.md](backup.md), sección 8 (versión con nombre
+  + copia con fecha; restaurar por versión o desde la copia; cómo verificar).
+- **`paso15_resumenParaRevisar()`**: REVISAR_MATCH de la ventana agrupada por motivo, con la
+  primera opción y su puntaje. Es lo que el usuario usa para revisar.
+- **El activador diario de las 18:00**, preparado y **no instalado**: `99_Pipeline.js`
+  (`upsertDiario`, que respeta `DRY_RUN` y no corre antes de las 17; `instalarActivadorDiario_` /
+  `borrarActivadorDiario_`), con los wrappers `fase7_…` comentados en `99_Correr.js`. Anotado
+  como "NO INSTALADO" en docs/triggers-legado.md.
+
 **Lo que queda antes de la primera escritura real (al 01/10):**
 
 1. **Los puntos 1 y 2 del 01/10 corridos y verificados** —figuras por apellido y ventana
    asimétrica— con el **paso 2** (sin match ≈ 7, revisar ≈ 18, la línea de apellidos sin basura) y
    el **paso 10** (la 626 elegida en el bloque de `fecha_fin`).
-2. **Backup** según [docs/backup.md](backup.md).
+2. **Backup** según [docs/backup.md](backup.md), **sección 8** (el mismo día, justo antes).
 3. **Invariante en 0** en el bloque 0 del paso 2.
-4. **El usuario revisa `REVISAR_MATCH` con las opciones** (decisión y): las `ubicacion_en_desacuerdo`
-   y las `multi_figura` de Lombardi no se escriben solas.
+4. **El usuario revisa `REVISAR_MATCH` con las opciones** (decisión y), con
+   `paso15_resumenParaRevisar()`: las `ubicacion_en_desacuerdo` y las `multi_figura` no se
+   escriben solas.
+5. **El activador diario** de las 18:00 está preparado y no instalado. Sugerido: instalarlo
+   recién después de verificar la primera escritura. Lo decide el usuario.
 
 El detalle, como lista de chequeo:
 

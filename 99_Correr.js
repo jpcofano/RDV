@@ -27,13 +27,16 @@
  *  >>> PRÓXIMO, en este orden (todos sólo leen, ninguno toca el destino). Predicciones en
  *      docs/ESTADO.md, sección 1, anotadas antes de correr:
  *      1. paso2_upsertEnSeco(). Con el VETO multi_figura sobre el ganador del desempate (la 801
- *         se escribe con "Seguridad - Comuna 13 - 24/9"). Ventana: escribiría 285, revisar 18,
- *         sin match 6; sin_figura_por_ubicacion 15 → 16 (sólo la 801; si sube más, revisar). Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
+ *         se escribe con "Seguridad - Comuna 13 - 24/9") y los 18 EJES CONFIRMADOS. Ventana:
+ *         285 | 18 | 6; sin_figura_por_ubicacion 16 | 16 (si sube más, revisar fila por fila);
+ *         ejes 18 / 30; "perderían por el eje" 1 | 1 (la 613); decididas por el eje 0. Líneas nuevas: empates con multi_figura, sin_formulario_propio una por
  *         una (marca las que antes eran score_bajo), y el 2e avisa si los barrios con eje no
  *         son 18 (hoy 19; sospecha San Nicolás en Este).
- *      2. paso10_validarContraInscriptos().
+ *      2. paso10_validarContraInscriptos(). Desempates 36 / 36.
  *      3. paso13_formulariosSinFila(). B fila 806 (Seguridad Comuna 13 24/9) sale de "sin fila";
  *         quedan 6 en ventana.
+ *      Para revisar antes de DRY_RUN = false: paso15_resumenParaRevisar(). Backup y vuelta atrás:
+ *      docs/backup.md, sección 8. El activador de las 18:00 está PREPARADO, NO instalado.
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
  *      editando CASO_A_EXPLICAR (más abajo). paso11 y paso14 cuando se quiera.
  *
@@ -82,6 +85,9 @@
  *                                                sólo log. Leen CASO_A_EXPLICAR.
  *   paso13_formulariosSinFila() → listarFormulariosSinFila()   sólo log, informativo.
  *   paso14_formulasDestino() → diagFormulasDestino()   sólo log; lee el destino y Comunas.
+ *   paso15_resumenParaRevisar() → resumenParaRevisar()   sólo log: REVISAR_MATCH de la ventana por
+ *                                                motivo, con la 1ª opción y su puntaje.
+ *   (fase7_… — el activador diario de las 18:00: PREPARADO Y COMENTADO, ver 99_Pipeline.js.)
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -218,6 +224,36 @@ function paso14_formulasDestino() {
              'columna correcta de Comunas, y sus valores son los de Comunas de hoy');
   return diagFormulasDestino();
 }
+
+function paso15_resumenParaRevisar() {
+  _anunciar_('paso 15 — resumen de REVISAR_MATCH para revisar (ventana)',
+             'resumenParaRevisar()  [diagnostico/06_revisar_casos.js]',
+             'NO escribe en ninguna planilla (recalcula el plan del upsert en memoria)',
+             'sólo el log: las filas a revisar de la ventana, agrupadas por motivo, con la primera ' +
+             'opción y su puntaje. El detalle (tres opciones, "elegido") está en REVISAR_MATCH');
+  return resumenParaRevisar();
+}
+
+// =============================================================================================
+//  FASE 7 — el activador diario de las 18:00. PREPARADO, NO INSTALADO (01/10).
+//  Está comentado a propósito: para instalarlo, descomentar el wrapper, correrlo UNA vez y volver
+//  a comentarlo. Antes, anotarlo en docs/triggers-legado.md. Ver 99_Pipeline.js.
+// =============================================================================================
+/*
+function fase7_instalarActivadorDiario() {
+  _anunciar_('fase 7 — instalar el activador diario (18:00)', 'instalarActivadorDiario_()  [99_Pipeline.js]',
+             'crea UN activador de tiempo que llama a upsertDiario todos los días a las 18',
+             'el log dice si lo creó o si ya existía');
+  return instalarActivadorDiario_();
+}
+
+function fase7_borrarActivadorDiario() {
+  _anunciar_('fase 7 — borrar el activador diario', 'borrarActivadorDiario_()  [99_Pipeline.js]',
+             'borra los activadores que llaman a upsertDiario; ningún otro',
+             'el log dice cuántos borró');
+  return borrarActivadorDiario_();
+}
+*/
 
 // =============================================================================================
 //  YA CORRIDOS — dejar por si hace falta rehacerlos. No son parte de la secuencia de ahora.

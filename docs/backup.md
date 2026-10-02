@@ -128,3 +128,52 @@ invariante (CLAUDE.md 0). Sólo hay 3 reglas de formato condicional en el destin
 4. Si lo roto es el código: `git checkout main` + `clasp push --force`.
 5. En todos los casos: **apagar los activadores antes de restaurar**, para que no vuelva a
    correr sobre la planilla a medio arreglar.
+
+---
+
+## 8. Antes de la primera escritura real (`DRY_RUN = false`)
+
+Esto es **además** de las secciones 1 a 5, y se hace **el mismo día, justo antes** de correr
+`upsertDestino()` con `DRY_RUN = false` (docs/ESTADO.md, 1b). `DRY_RUN` lo cambia el usuario.
+
+**Qué escribe la primera corrida, para saber qué hay que poder deshacer:** en el destino (1),
+sólo celdas **vacías** de sexo y edades, las cinco columnas de traza (`RDV_UID`, `form_origen`,
+`form_score`, `form_nivel`, `form_fecha_match`) de las filas que se escriben, y `STATUS REUNIÓN`
+`en agenda` → `Realizada` donde hay asistentes. Todo pintado `#4F81BD`. En la intermedia (2), las
+tres solapas de reporte, que se regeneran solas. Nada en (3), (4) ni `RDV CONJUNTO`.
+
+### 8.1 La copia, con fecha
+
+1. Abrir (1) `RDV JM-CM - ES / funcionarios`.
+2. **Archivo → Historial de versiones → Asignar nombre a la versión actual** →
+   `Antes de DRY_RUN false AAAA-MM-DD hh:mm`. Es el punto de vuelta más rápido.
+3. **Archivo → Hacer una copia** → nombre `RDV JM-CM - ES BACKUP AAAA-MM-DD antes de DRY_RUN false`,
+   carpeta `RDV / _backups / AAAA-MM-DD`, **tildar "Copiar comentarios"**. No compartir la copia ni
+   editarla nunca (sección 6).
+4. En la copia, mirar que la solapa `RVD JM-CM - ES` tenga los fondos azules y las fórmulas de
+   fila 1 (`D1`, `W1`, `X1`, `Y1`, `AA1`–`AG1`).
+5. Anotar en docs/ESTADO.md (1b) el **link de la copia** y la **hora del nombre de versión**.
+6. Correr `paso14_formulasDestino()` (tiene que dar `CONFIRMADO`) y `rehacer_diagProcedencia()`;
+   anotar el total de `#4F81BD` en las `COLUMNAS_MANUALES`. Son la línea de base para verificar.
+
+La intermedia (2) no hace falta copiarla para esta escritura: lo único que cambia son los tres
+reportes, que se rehacen corriendo el paso 2.
+
+### 8.2 Cómo volver atrás
+
+1. **Frenar**: `DRY_RUN = true` en `20_UpsertDestino.js` y `clasp push`. Si el activador diario
+   estuviera instalado, borrarlo (`fase7_borrarActivadorDiario`, ver `99_Pipeline.js`).
+2. **Restaurar el destino**, una de dos:
+   - **por versión** (lo normal): en (1), **Archivo → Historial de versiones → Ver historial**,
+     elegir `Antes de DRY_RUN false …` → **Restablecer esta versión**. Conserva el ID del archivo,
+     así que nada que lo referencie se rompe. **Ojo**: deshace también lo que el equipo cargó a mano
+     *después* de la corrida; antes de restaurar, mirar en el historial qué cambió y volver a
+     cargarlo;
+   - **desde la copia** (si el historial no sirve): en la copia, sobre la solapa
+     `RVD JM-CM - ES` → **Copiar en → Hoja de cálculo existente** → (1). En (1), renombrar la solapa
+     rota a `RVD JM-CM - ES (rota AAAA-MM-DD)` y la copiada a `RVD JM-CM - ES`. No borrar la rota
+     hasta verificar.
+3. **Verificar**: `paso14_formulasDestino()` da `CONFIRMADO`; `rehacer_diagProcedencia()` da el
+   mismo total de `#4F81BD` que antes de la corrida; `paso2_upsertEnSeco()` vuelve a los números de
+   la última corrida en seco (ninguna fila entra por `RDV_UID`).
+4. Anotar en docs/ESTADO.md qué pasó y por qué se volvió atrás, en el mismo commit que el arreglo.

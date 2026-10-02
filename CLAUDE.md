@@ -345,6 +345,22 @@ Hasta ahora los cuatro competían igual.
     Hoy no hay ninguno; el código lo sigue soportando por si el equipo lo necesita.
   - El bloque 2e del paso 2 lo cuenta: **barrios con eje 18 | sin eje 30**, y lista aparte cualquier
     valor que no reconozca. El eje sigue siendo **sólo último desempate** (abajo).
+  - **Lista confirmada por el equipo (01/10), ya pegada en `Comunas` columna I — 18 barrios:**
+
+    | eje | barrios |
+    |---|---|
+    | Centro | Balvanera, Caballito |
+    | Norte | Belgrano, Núñez, Palermo, Recoleta, Retiro, Villa Urquiza |
+    | Oeste | Chacarita, La Paternal, Parque Chacabuco, Villa Devoto |
+    | Sur | Barracas, Boedo, Flores, La Boca, Parque Patricios |
+    | Este | San Nicolás |
+
+    Contra la lista provisoria que dio el paso 2 (19): salen Almagro, Constitución, Floresta y Villa
+    Ortúzar; entran Flores, La Paternal y Villa Devoto; La Boca pasa de Oeste a Sur; Boedo pasa de
+    Centro a Sur (el equipo puso "Sur | Centro"; quedó "Sur").
+  - **Lectura de la celda (01/10):** se recortan los espacios ("Sur " → "Sur") y una celda puede
+    traer **varios ejes separados por `|`** ("Sur | Centro"): el barrio coincide con el eje del
+    formulario si coincide **cualquiera** (`barrioEnEje_`, la única comparación barrio ↔ eje).
   - **Si el encabezado de la columna I no dice `Eje geográfico`**, el eje no se evalúa para
     ningún barrio y el bloque 2e lo avisa: una tabla que no es la esperada no puede descalificar.
 - Entra como vía de ubicación con **0,10** (barrio 0,25 · comuna 0,15 · eje 0,10), porque un eje
@@ -2268,7 +2284,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
-99_Pipeline.js     orquestador + onOpen() con menú
+99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador diario de las 18:00,
+                   PREPARADO Y NO INSTALADO (upsertDiario, instalar/borrar)             ← preparado
 diagnostico/       reportes de sólo lectura de las Fases 1 y 1b                 ← ya escrito
 _archivo/          código muerto, fuera del scope global
 ```
@@ -3057,6 +3074,10 @@ origen", que llevan a trabajos completamente distintos.
 - **Dar de baja los activadores viejos del pipeline de inscriptos** (ahora sí, con el inventario de Fase 0 a mano).
 - Crear los nuevos apuntando a `99_Pipeline.js`.
 - Agregar `onOpen()` con menú para poder correr a mano sin abrir el editor.
+- **Preparado el 01/10, no instalado**: `99_Pipeline.js` tiene `upsertDiario` (respeta `DRY_RUN` y
+  no corre antes de las 17), `instalarActivadorDiario_` y `borrarActivadorDiario_`; los wrappers
+  `fase7_…` de `99_Correr.js` están comentados. Antes de instalarlo, anotarlo en
+  `docs/triggers-legado.md`.
 - **El activador diario del upsert va a las 18:00, nunca antes de las 17** (regla del equipo,
   01/10): los formularios se cierran y los barrios de RDV se cargan a lo largo del día, y matchear
   antes es hacerlo contra datos a medio cargar. Un formulario del día cuya fila todavía no tiene

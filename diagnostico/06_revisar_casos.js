@@ -196,6 +196,43 @@ function listarFormulariosSinFila() {
   return cnt;
 }
 
+/**
+ * **Resumen para revisar** (paso 15, 01/10): REVISAR_MATCH de la ventana, agrupado por motivo,
+ * con la primera opción de cada fila y su puntaje. Es lo que el usuario usa para revisar antes de
+ * la primera escritura real. Sólo lectura, sólo log; la solapa REVISAR_MATCH tiene el detalle (las
+ * tres opciones y la columna "elegido").
+ */
+function resumenParaRevisar() {
+  Logger.log('=== resumenParaRevisar — sólo lectura, no escribe nada ===');
+  const ctx = _contexto_diag6();
+  const plan = ctx.plan;
+  const grupos = {};
+  let total = 0, historico = 0;
+  plan.dest.filas.forEach(function (f) {
+    const pf = plan.porFila[f.fila];
+    if (!pf || pf.veredicto !== 'REVISAR_MATCH') return;
+    if (!enVentanaAnalisis_(f.fecha)) { historico++; return; }
+    total++;
+    const m = pf.motivo || '(sin motivo)';
+    (grupos[m] = grupos[m] || []).push({ f: f, pf: pf });
+  });
+  Logger.log('VENTANA: corte %s (%s). REVISAR_MATCH en ventana: %s (y %s del histórico, no se listan).',
+             fmtFecha_(inicioVentanaAnalisis_()), descVentanaAnalisis_(), total, historico);
+  Object.keys(grupos).sort(function (a, b) { return grupos[b].length - grupos[a].length; }).forEach(function (m) {
+    Logger.log('--- %s (%s) ---', m, grupos[m].length);
+    grupos[m].sort(function (a, b) { return (a.f.fecha ? a.f.fecha.getTime() : 0) - (b.f.fecha ? b.f.fecha.getTime() : 0); })
+      .forEach(function (x) {
+        const op = _opcionesDeFila_(x.f, plan.cands.vivos, plan.comunas, ctx.tomadoPor, x.pf.cand, 1);
+        Logger.log('  fila %s | %s | %s | %s', x.f.fila, fmtFecha_(x.f.fecha), x.f.figura, x.f.barrio || 'sin barrio');
+        Logger.log('      1ª opción: %s (B fila %s, ins=%s) — score %s%s | %s | %s', op[0] || '(ninguna)', op[1],
+                   op[2], op[3], x.pf.segundo != null ? ', segundo ' + x.pf.segundo : '', op[4], op[5]);
+      });
+  });
+  Logger.log('  Para decidir cada una: la solapa REVISAR_MATCH (tres opciones, columna "elegido"), o');
+  Logger.log('  paso12_explicarFila() con CASO_A_EXPLICAR = número de fila.');
+  return { total: total };
+}
+
 // ===================== helpers =====================
 
 function _contexto_diag6() {
