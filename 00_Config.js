@@ -36,8 +36,9 @@ const RDV_HOJA_REGISTRO = 'REGISTRO_UPSERT';   // una línea por corrida del ups
  * (docs/backup.md §8.1, paso 6) con `paso16_verificarEscritura()`. La usa la verificación posterior:
  * los de las COLUMNAS_MANUALES no pueden subir. `null` = todavía no anotada.
  */
-const LINEA_BASE_AZULES_MANUALES = null;
-const LINEA_BASE_AZULES_TOTAL = null;
+// Tomada el 02/10 12:44 con paso16_verificarEscritura() (OK), antes de la primera escritura real.
+const LINEA_BASE_AZULES_MANUALES = 605;
+const LINEA_BASE_AZULES_TOTAL = 5749;
 
 /** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
 const ESPERA_BLOQUEO_MS = 30000;

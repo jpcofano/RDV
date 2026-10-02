@@ -17,9 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  DRY_RUN = true   en 20_UpsertDestino.js. El upsert NO puede tocar el destino.
- *                   No se cambia hasta haber leído los números del paso 2.
- *                   (Cada paso loguea el valor real al arrancar, por si alguien lo cambió.)
+ *  DRY_RUN = FALSE  en 20_UpsertDestino.js, desde el 02/10 (decisión del usuario, backup hecho).
+ *                   upsertDestino() ESCRIBE en el destino (siempre por setSiDelSistema_).
+ *                   Los pasoN_ de este archivo NO escriben: paso2 fuerza la corrida en seco.
+ *                   Para frenar: DRY_RUN = true y clasp push (docs/backup.md §8.2).
+ *                   (Cada paso loguea el valor real al arrancar.)
  *
  *  >>> 02/10: el activador va a correr CADA 1 HORA (preparado, NO instalado). Las filas de hoy o
  *      de ayer sin barrio quedan "pendiente_barrio" y se reevalúan solas. Detalle: ESTADO.md, 1b.
@@ -32,8 +34,9 @@
  *      2. paso16_verificarEscritura(), ANTES de escribir: la línea de base de azules (anotar los
  *         dos totales en 00_Config.js).
  *      3. paso15_resumenParaRevisar(): para revisar REVISAR_MATCH con las opciones.
- *      PRIMERA ESCRITURA (no está hecha: falta el link del backup, docs/backup.md §8): con
- *      DRY_RUN = false, upsertDestino() a mano UNA vez; después paso16_verificarEscritura().
+ *      >>> PRIMERA ESCRITURA (02/10, DRY_RUN = false, backup hecho, línea de base 605 / 5749):
+ *          upsertDestino() a mano UNA vez [20_UpsertDestino.js]; después
+ *          paso16_verificarEscritura() hasta que dé OK. Si algo falla: docs/backup.md §8.2.
  *      Cuando haga falta mirar un caso: paso12_explicarFormulario() / paso12_explicarFila(),
  *      editando CASO_A_EXPLICAR (más abajo). paso10, paso11, paso13 y paso14 cuando se quiera.
  *

@@ -52,10 +52,14 @@ function ssIntermedia_() {
 }
 
 /**
- * **Poner en `false` recién cuando los números de la corrida en seco estén revisados.**
- * Mientras esté en `true`, no hay forma de que este archivo toque el destino.
+ * **`false` desde el 02/10, por decisión del usuario**, con el backup hecho (docs/ESTADO.md, 1b;
+ * docs/backup.md §8) y la línea de base de azules anotada en 00_Config.js.
+ *
+ * Con `false`, `upsertDestino()` ESCRIBE en el destino (siempre por `setSiDelSistema_`). Los
+ * pasos de `99_Correr.js` siguen sin escribir: `paso2_upsertEnSeco()` fuerza la corrida en seco.
+ * Para frenar: volver a `true` y `clasp push` (docs/backup.md §8.2).
  */
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 // ===================== Puntos de entrada =====================
 

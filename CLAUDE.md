@@ -168,7 +168,12 @@ Solapas que importan:
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
   (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
   El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
-- **(2) `B`** → IMPORTRANGE de (3) `Hoja1!A1:R` + `Hoja1!S1:AC`.
+- **(2) `B`** → desde el 02/10, **una sola fórmula en `A1`**:
+  `=QUERY(IMPORTRANGE(origen, "Hoja1!A1:AC"), "select * where Col2 is not null order by Col2", 1)`.
+  Trae `Hoja1!A1:AC` de (3) entero, sin filas vacías y **ordenado por `Fecha_Fin`** (Col2), con el
+  encabezado en la fila 1. Reemplaza a los dos IMPORTRANGE de antes (`A1:R` y `S1:AC`) y a las
+  columnas manuales S, T, U (`Persona`/`Barrio`/`Fecha`), como pedía 3.3. Los formularios cambian
+  de fila cuando entra uno nuevo: el upsert no depende de la posición (§6, decisión 3).
 - **(2) `Asistentes`** → IMPORTRANGE de (1) `RDV CONJUNTO!A:L`. Antes se llamaba `A`.
 - **(2) `A2`, `B2`** → versiones transformadas. `B2` tiene 27 columnas.
 - **(2) `import B2 Completo`** → en `#REF!`. Apunta a `'Hoja 1'` (con espacio) y la solapa real
@@ -1136,11 +1141,19 @@ valor a mano, lo pisa con lo que venga de B2 — incluido un cero.
 
 ### 3.3 Fragilidades del origen
 
-- `B` tiene `Persona`/`Barrio`/`Fecha` escritas a mano en las columnas S, T, U, encajadas entre
+- ~~`B` tiene `Persona`/`Barrio`/`Fecha` escritas a mano en las columnas S, T, U, encajadas entre
   el IMPORTRANGE de `A1:R` y el de `s1:AC` (col V). Si el origen agrega una columna, el primer
-  IMPORTRANGE intenta expandirse a S y todo el bloque tira `#REF!`. Esas derivadas se mudan a B2.
+  IMPORTRANGE intenta expandirse a S y todo el bloque tira `#REF!`.~~ **Resuelto el 02/10**: `B` es
+  una sola fórmula en `A1` (`QUERY(IMPORTRANGE(…"Hoja1!A1:AC"), "select * where Col2 is not null
+  order by Col2", 1)`; sección 1). Ya no hay columnas manuales ni dos bloques que se pisen. Las
+  derivadas (persona, barrio, fecha) las calcula el parser del upsert. **Riesgos que quedan**: si el
+  origen agrega una columna después de `AC`, no entra (hay que ampliar el rango); y `QUERY` toma
+  **un solo tipo por columna** —el mayoritario— y deja vacías las celdas del tipo minoritario
+  (p. ej. un número tipeado como texto en una columna numérica). El upsert lee todo por
+  encabezado, así que un cambio de orden de columnas no lo rompe.
 - IMPORTRANGE se recalcula asincrónico. El script puede leer `B` mientras muestra `Loading...`
-  y procesar filas vacías creyendo que no hay datos.
+  y procesar filas vacías creyendo que no hay datos. (`leerCandidatos_` saltea las filas que
+  dicen `Loading`; el arreglo de fondo es la decisión 1, leer el origen por ID.)
 - **El bug de fechas es una inversión de prioridad, no un regex flojo.**
   [Sync B to B2.js:162-163](Sync%20B%20to%20B2.js#L162):
 
@@ -1725,7 +1738,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
 1. **Leer por ID, no por IMPORTRANGE.** `SpreadsheetApp.openById()` sólo necesita permiso de
    lectura, que ya tenemos. Elimina la carrera de recálculo. `B` y `Asistentes` quedan como
-   vista para el equipo; el script deja de depender de ellas.
+   vista para el equipo; el script deja de depender de ellas. **Pendiente para después del pase a
+   `DRY_RUN = false`, sin apuro (02/10)**: hoy el upsert sigue leyendo la solapa `B`.
 2. **`RDV_UID`**: uuid generado en B2/A2 al insertar, inmutable. En el destino va como columna
    nueva al final (`AP`). El upsert busca por `RDV_UID`; si está vacío cae a `figura + fecha` y
    **estampa el uuid**. Después de una corrida casi todo entra por uuid.
@@ -2669,8 +2683,13 @@ enteros con un `setValue` mal ubicado. Terminada esta fase, esa clase de problem
 - **El `RDV_UID` ya está**: se adelantó a la Fase 2b. Acá sólo hay que asegurarse de que la
   lectura nueva lo propague y de que las filas nuevas de A2/B2 nazcan con uuid.
 
-### Fase 5 — Upsert nuevo  *(escrito, en DRY_RUN)*
+### Fase 5 — Upsert nuevo  *(escrito; `DRY_RUN = false` desde el 02/10)*
 
+> **02/10: `DRY_RUN = false`**, por decisión del usuario, con el backup hecho y la línea de base de
+> azules anotada (docs/ESTADO.md, 1b; docs/backup.md §8). `upsertDestino()` escribe por
+> `setSiDelSistema_`; `paso2_upsertEnSeco()` sigue forzando la corrida en seco. Lo que sigue en este
+> recuadro describe cómo se calibró, con `DRY_RUN = true`.
+>
 > **`20_UpsertDestino.js` ya está en el repo, con `DRY_RUN = true`.** Calcula todo, llena
 > `SIN_MATCH`, `REVISAR_MATCH` y `EMPAREJAR_MANUAL`, y **no escribe una sola celda del destino**.
 >
@@ -3223,6 +3242,12 @@ la red que atrapa lo que el upsert nuevo deje pasar.
 - Prefijo numérico en los archivos para fijar el orden de carga.
 - Sufijo `_` para funciones internas (convención de Apps Script; no aparecen en el menú de ejecución).
 - Fechas siempre a las 12:00 hora local para esquivar DST.
+- **Nunca depender del número de fila ni de la posición de una columna** (regla del usuario,
+  02/10). Todo se lee **por encabezado** (`findIdxOr_` / `normalizeHeader_`) y se cruza con una
+  **clave estable**: el formulario por `claveFormulario_` (Nombre + `Fecha_Fin`) y, entre
+  corridas, por `form_origen`; la fila del destino por `RDV_UID`. La fila de `B` se puede usar como
+  identidad sólo **dentro de una corrida**, nunca guardarse ni compararse entre corridas. Motivo:
+  `B` se ordena por `Fecha_Fin` y los formularios cambian de fila cada vez que entra uno nuevo.
 
 ### `99_Correr.js`: el único lugar que se abre para correr algo
 

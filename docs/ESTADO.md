@@ -231,8 +231,8 @@ viejo paso 4, decisión i) y `rehacer_verificarLegToDate()` (el viejo paso 5, de
 Si en el paso 2 falla la escritura de un reporte: `paso2_rehacer_revisarMatch()`,
 `paso2_rehacer_emparejarManual()` o `paso2_rehacer_sinMatch()`, que rehacen sólo ése.
 
-**`DRY_RUN = true` en [20_UpsertDestino.js](../20_UpsertDestino.js).** No se cambia hasta haber
-leído los números de la corrida en seco.
+**`DRY_RUN = false` en [20_UpsertDestino.js](../20_UpsertDestino.js) desde el 02/10** (decisión del
+usuario, con el backup hecho; ver 1b). `upsertDestino()` escribe; los `pasoN_` no.
 
 > ✅ **Ya no es bloqueante: el invariante "un formulario, una fila".** El paso 2 del 30/09 14:19
 > resolvió 11 choques en 3 vueltas y el chequeo del bloque 0 dio **0**. Se sigue chequeando en cada
@@ -303,7 +303,39 @@ ver 1b). Los formularios se cierran y los barrios de RDV se cargan a lo largo de
 **`DRY_RUN` lo cambia el usuario, no el código ni Claude.** Esto es la lista de lo que tiene que
 estar en verde antes, y el orden de la primera escritura real. Nada de esto está hecho todavía.
 
-### Resultados del 02/10 10:56 (`5ecaa4a`): **línea base vigente**
+### 02/10 12:4x: `DRY_RUN = false` (decisión del usuario)
+
+**`DRY_RUN` pasó a `false` el 02/10** (commit de este cambio), con:
+
+- **Backup** (docs/backup.md §8.1):
+  <https://docs.google.com/spreadsheets/d/1QLDcmTb01LC_pw4DRXBqIWOEcutvOBeOkVwvQd4OGEY/edit?gid=705217578#gid=705217578>
+- **Línea de base de azules** (`paso16_verificarEscritura()` del 02/10 12:44, **OK**): **605** en las
+  `COLUMNAS_MANUALES`, **5749** en todo el destino. Anotada en `00_Config.js`
+  (`LINEA_BASE_AZULES_MANUALES` / `_TOTAL`).
+- **Paso 10 con B ordenado** (02/10 12:43): candidatos **825** (3 `NO USAR`); exacto **262/269 =
+  97,4%**; desempates **36/36**; invariante **6/6**. Los inscriptos siguen alineados con su
+  formulario: el orden de `B` no cambió las elecciones.
+- **`B`** quedó como **una sola fórmula en `A1`** (`QUERY(IMPORTRANGE(…"Hoja1!A1:AC"), "select *
+  where Col2 is not null order by Col2", 1)`): reemplaza a los dos IMPORTRANGE y a las columnas
+  manuales S, T, U (CLAUDE.md 1 y 3.3).
+
+**Lo que falta, en este orden:**
+
+1. **`upsertDestino()`**, a mano, **una vez** (`20_UpsertDestino.js`). Qué escribe: más abajo, en
+   "El pase a `DRY_RUN = false`".
+2. **`paso16_verificarEscritura()`** hasta que dé **OK**: invariante 0 en el destino, el paso 14
+   `CONFIRMADO`, azules de las columnas manuales **≤ 605**, todas las filas con `RDV_UID` con
+   `form_origen`. Si algo falla: docs/backup.md §8.2.
+3. El activador (cada hora) se instala después, si el usuario lo decide.
+
+**Nota:** el paso 2 con `B` ordenado no se reportó en este pase; el paso 10 sí, y dio las mismas
+elecciones. La predicción del paso 2 (mismos números que con `B` sin ordenar, salvo la 811 y las
+`pendiente_barrio`) queda para la próxima corrida en seco.
+
+**Pendiente para después del pase, sin apuro:** la decisión 1 de CLAUDE.md, leer el origen por ID
+(`openById`) y no por la solapa `B`.
+
+### Resultados del 02/10 10:56 (`5ecaa4a`): línea base de la corrida en seco
 
 Ventana **285 | 18 | 7** contra la predicción **285 | 18 | 6**. La diferencia es la **fila 811**
 (Quirós, Villa Devoto, 02/10): la reunión de hoy, con el formulario todavía sin importar. **La 801 se
@@ -346,9 +378,8 @@ indistinguibles. **Probado en Node:** con B invertido y renumerado, el plan da *
   escribirían o irían a revisión pasan a **`pendiente_barrio`** (línea nueva en el paso 2, y la
   línea fija de "filas de hoy o de ayer sin barrio" dice cuáles).
 
-**El pase a `DRY_RUN = false` (punto 3): NO hecho.** El pedido lo condiciona al backup hecho, y el
-link quedó en blanco (`link: ______`). `DRY_RUN` sigue en `true` hasta que el usuario pase el link
-de la copia (docs/backup.md §8.1).
+**El pase a `DRY_RUN = false` (punto 3):** ~~no hecho, faltaba el link del backup~~ **hecho el
+02/10** (arriba, con el link).
 
 - **Qué se corre para la primera escritura:** `upsertDestino()` (en `20_UpsertDestino.js`), **a
   mano, una vez**, con `DRY_RUN = false`. No hay wrapper `pasoN_` a propósito: es la única función
