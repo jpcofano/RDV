@@ -2197,7 +2197,27 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    reprocesar escribe el mismo valor en la misma fila. Si preocupa el tiempo de ejecución,
    filtrar por ventana de fecha, no por flag.
 7. **Reescribir la columna `Z (ID)`** con formato consistente `Figura - Barrio - dd/MM/yyyy`.
-8. **Columnas manuales protegidas.** `00_Config.js` lleva la lista explícita de columnas que el
+8. > **🔴 DECISIÓN DEL 02/10, TODAVÍA NO IMPLEMENTADA (paso B, después de validar con el paso A).**
+   >
+   > **Criterio del usuario: los errores del pasado no se corrigen.** Lo que ya está cargado en el
+   > destino queda como está, aunque difiera; las diferencias se cuentan, no se arreglan. Las reglas
+   > nuevas rigen de acá en adelante.
+   >
+   > **Alcance nuevo del sistema**: escribe, **sólo en celdas vacías**, `Inscriptos`, `Mail`, `Call
+   > Center`, `IVR`, `RRSS`, `Difusión`, sexo, edades, `Sin identificar` y `Asistentes` (de RDV
+   > CONJUNTO), y pasa `STATUS` de `en agenda` a `Realizada` (sólo desde ahí y sólo con asistentes).
+   > `COLUMNAS_MANUALES` pasa a ser **sólo `['Barrio']`**. El desagregado (sexo y edades) se escribe
+   > sólo si `Inscriptos` está vacío o es igual al de `B`, para que la fila no quede con un total que no
+   > cierra con su desagregado. Las columnas de agenda (`Figura`, `Barrio`, `FECHA`, `HORA`,
+   > `Dirección`, `EVENTO`) quedan fuera: son otro proceso y se encaran después. **B2 se elimina**: el
+   > sistema calcula al vuelo desde `B`. Color nuevo de la marca: `#CFE2F3`.
+   >
+   > **Antes de implementar se valida**: `paso17_validarCuentas()` (`diagnostico/09_validar_cuentas.js`,
+   > sólo lectura) compara las cuentas calculadas desde `B` contra el destino y contra B2, cuenta las
+   > filas que quedarían sin desagregado y cruza los Asistentes de RDV CONJUNTO con la clave del legado.
+   > Hasta el paso B, lo que sigue describe lo que **corre hoy**. Detalle y plan: docs/ESTADO.md, 0.l.
+
+   **Columnas manuales protegidas.** `00_Config.js` lleva la lista explícita de columnas que el
    equipo carga a mano. **Confirmadas, son seis:**
 
    ```js

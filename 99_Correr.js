@@ -24,6 +24,9 @@
  *      ajuste de los gemelos (GEMELOS_MAX_DIAS = 7, casi cero fuera del grupo; ESTADO 0.k):
  *        1. upsertDestino() una vez       [20_UpsertDestino.js] → form_clave en 697, 709, 134, 315, 768
  *        2. paso16_verificarEscritura()  → invariante 0, traza ambigua 0, 0 "<<< HOY", 0 incompletas
+ *      Alcance nuevo (Inscriptos, canales, Asistentes; ESTADO 0.l): PASO A, sólo lectura:
+ *        3. paso17_validarCuentas()      → las cuentas desde B contra el destino y B2, y los Asistentes
+ *      El PASO B (implementar) espera a que el usuario vea el paso A.
  *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
  *      El activador NO se instala hasta volver y verificar la escritura real.
  *
@@ -254,6 +257,16 @@ function paso16_verificarEscritura() {
              'sólo el log: invariante en el destino, fórmulas (paso 14), azules contra la línea de ' +
              'base y filas con RDV_UID. Termina en OK o en HAY PROBLEMAS');
   return verificarEscritura();
+}
+
+function paso17_validarCuentas() {
+  _anunciar_('paso 17 — PASO A: validación de cuentas (Inscriptos, canales, sexo, edades, Asistentes)',
+             'validarCuentas()  [diagnostico/09_validar_cuentas.js]',
+             'NO escribe en ninguna planilla (recalcula el plan en memoria; lee B, B2 y RDV CONJUNTO)',
+             'sólo el log: por columna exacto | ≤5% | más contra el destino, contra B2, las filas con ' +
+             'Inscriptos distinto y desagregado vacío, y el cruce de Asistentes del legado. Las ' +
+             'diferencias se cuentan, NO se corrigen (criterio del 02/10)');
+  return validarCuentas();
 }
 
 // =============================================================================================

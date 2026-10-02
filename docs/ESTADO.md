@@ -256,6 +256,74 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### l) 02/10: alcance nuevo del sistema — PASO A (validar) hecho, PASO B (implementar) esperando
+
+**Criterio del usuario (02/10): los errores del pasado no se corrigen.** Lo cargado en el destino
+queda como está, aunque difiera. Las diferencias se cuentan, no se arreglan. Las reglas nuevas rigen
+de acá en adelante.
+
+**Alcance**: el sistema escribe, sólo en celdas vacías, `Inscriptos`, `Mail`, `Call Center`, `IVR`,
+`RRSS`, `Difusión`, sexo, edades, `Sin identificar` y `Asistentes`, y pasa `STATUS` de `en agenda` a
+`Realizada`. **B2 se elimina**: el sistema calcula al vuelo desde `B`. Antes de implementar, se valida.
+
+**PASO A — `paso17_validarCuentas()`** (`diagnostico/09_validar_cuentas.js`). **Sólo lectura**: no
+escribe en ninguna planilla (verificado en el test en Node, escenario [9]). En el log:
+
+1. por cada fila con formulario resuelto (`RDV_UID` por su traza, o `escribiria` en el plan), las 14
+   cuentas calculadas desde `B` —`Inscriptos`, los 5 canales con `MAPEO_CANALES` (RRSS = Facebook +
+   Google + Programmatic; Difusión = Difusion + Otros), `Masculinos` y `Femeninos` escalados, las 5
+   bandas y `Sin identificar`— contra el destino **donde el destino ya tiene el valor**: por columna
+   exacto | ≤ 5% | más, cuántas tienen el destino vacío y cuántas `B` vacío, y las 10 peores;
+2. contra **B2**, por la clave del formulario (nombre + la `Fecha_Fin` del `ID` de B2): por columna,
+   "B = B2" (la fórmula da lo mismo), y dónde destino ≠ B: **destino = B2** (B cambió después), **B2
+   = B** (el destino no vino de B2: carga a mano u otra fuente), los tres distintos, o sin B2;
+3. filas con `Inscriptos` del destino ≠ el de `B`, y de ésas **las que tienen sexo o edades vacíos**:
+   son las que la regla nueva ("el desagregado sólo si `Inscriptos` está vacío o es igual al de B")
+   **dejaría sin desagregado** (lista de hasta 15);
+4. **Asistentes desde RDV CONJUNTO** con el cruce del legado (`figura + barrio + fecha`): cuántas
+   filas de RDV CONJUNTO encuentran fila en el destino, **cuáles no** (con la fila que tendría por
+   figura + fecha, si la hay), cuántos `Asistentes` del destino están **vacíos y RDV CONJUNTO los
+   tiene** (y de ésos cuántos pasarían de `en agenda` a `Realizada`), cuántos son iguales y cuántos
+   **difieren** (sólo se cuentan). El legado pisaba si el número nuevo era mayor o igual; la regla
+   nueva escribe sólo si está vacío;
+5. qué NO dice: en las filas que cargó el legado, B y el destino coinciden **por construcción**; eso
+   valida la fórmula, no que el número sea verdad.
+
+También, sin apuro, la línea del log del plan: *"formularios en B: N | NO USAR n | gemelos descartados
+n | candidatos n"*, y **la huella de B calculada sobre B crudo**, antes de cualquier descarte.
+
+**Predicción, anotada antes de correr:** Inscriptos y canales **casi todos exactos** donde el destino
+tiene dato —el legado los cargó con la misma fórmula—, con las diferencias concentradas en filas
+cargadas a mano; sexo y edades exactos donde los escribió el legado; **contra B2, B = B2 casi siempre**
+(si no, la fórmula no es la misma y hay que mirarlo antes del paso B); las filas sin barrio en el
+destino **no cruzan** con RDV CONJUNTO por la clave del legado.
+
+**PASO B — implementar, DESPUÉS de que el usuario vea el paso A** (no empezado):
+
+1. `COLUMNAS_MANUALES = ['Barrio']`. Inscriptos, canales y Asistentes pasan a columnas del sistema:
+   sólo celda vacía, nunca se pisa un valor. STATUS → `Realizada` sólo desde `en agenda` y con
+   asistentes. El desagregado, sólo si `Inscriptos` está vacío o es igual al de B. Actualizar
+   CLAUDE.md (decisión 8, `DIAG_PROCEDENCIA`, 3.4) y la regla 5 del handoff.
+2. Color: `COLOR_SISTEMA = '#CFE2F3'` para toda escritura nueva; los controles reconocen `#CFE2F3` y el
+   `#4F81BD` viejo. `pasoN_repintarAzulViejo()`: en seco cuenta por columna; con `DRY_RUN = false`
+   repinta `#4F81BD` → `COLOR_SISTEMA` sin tocar valores. Lo corre el usuario.
+3. Paso 16: "no puede subir" sólo para `Barrio`; para el resto, cuántas celdas escribió el sistema
+   por columna en la corrida. Línea de base nueva por columna.
+4. Prueba en la copia (la constante sigue en `'AAA NOBORRAR'`), con la predicción escrita antes: se
+   completan Inscriptos y canales en las filas de la 800 en adelante y en las escritas con esas celdas
+   vacías; se completan los Asistentes vacíos que RDV CONJUNTO tiene; 0 celdas con valor pisadas;
+   invariante 0; todo lo nuevo en `#CFE2F3`.
+5. Si da OK: `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'`, push y clasp push. **"AAA NOBORRAR" queda como
+   referencia, no se borra** (cambia 0.f.3). En el real: `paso1_columnasDeTraza` → upsert → paso 16,
+   con la predicción escrita antes. Recién después, el activador cada hora.
+
+**Pendientes que abre esta decisión:**
+
+- **Las columnas de la agenda** (`Figura`, `Barrio`, `FECHA`, `HORA`, `Dirección`, `EVENTO`) quedan
+  fuera del sistema: son otro proceso (Fase 8) y se encaran después.
+- **Eliminar B2** (y `Sync B to B2.js`): el sistema ya calcula desde `B`. Después del paso B, cuando
+  el paso A haya mostrado que B = B2.
+
 ### k) 02/10 18:02–18:14: la 309 deshecha, `form_clave`, y el ajuste de los gemelos
 
 **Resultados** (sobre la copia, todavía con la regla de gemelos de 0.i):

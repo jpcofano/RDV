@@ -1659,8 +1659,9 @@ function calcularPlan_(enSeco, entradas) {
   const cands = entradas ? entradas.cands : leerCandidatos_();
   const comunas = entradas ? entradas.comunas : leerComunasMap_();
 
-  Logger.log('Destino: %s filas con datos | candidatos en B: %s (%s anulados por "%s")',
-             dest.filas.length, cands.vivos.length, cands.anulados, MARCA_ANULADO);
+  Logger.log('Destino: %s filas con datos | formularios en B: %s | %s %s | gemelos descartados %s | ' +
+             'candidatos %s', dest.filas.length, cands.formularios, MARCA_ANULADO, cands.anulados,
+             cands.gemelos ? cands.gemelos.descartados : 0, cands.vivos.length);
 
   const confirmados = leerConfirmaciones_();
   if (confirmados.size) {
@@ -1999,7 +2000,7 @@ function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
  * en el log y en REGISTRO_UPSERT se ve cuál: misma huella de entradas → mismo plan, siempre.
  *
  *   destino   por fila: figura, barrio, fecha, hora, evento, si tiene RDV_UID, form_origen, form_clave
- *   B         por formulario: nombre, Fecha_Fin, inscriptos y los datos que se escribirían
+ *   B         B CRUDO, todas las celdas, antes de cualquier descarte (leerCandidatos_)
  *   figuras   la lista que sale de la columna Figura (decide figuras por apellido y multi_figura)
  *   Comunas   barrio → comuna
  *   plan      por fila: veredicto, motivo y formulario elegido
@@ -2009,7 +2010,8 @@ function huellasDelPlan_(dest, cands, comunas, porFila) {
     return [f.fila, f.figura, f.barrio, f.fecha ? ymd_(f.fecha) : '', f.horaMin, f.evento,
             f.uid ? 'u' : '', f.formOrigen, f.formClave].join('|');
   }).join('\n');
-  const b = cands.vivos.map(function (c) {
+  // B: la huella de B CRUDO, antes de cualquier descarte (leerCandidatos_). Si no está, la de los vivos.
+  const b = cands.huellaCruda || cands.vivos.map(function (c) {
     return [c.clave, c.inscriptos, JSON.stringify(c.datos)].join('|');
   }).join('\n');
   const fig = _listas_().figuras.map(function (x) { return x.norm; }).join('|');
@@ -4306,14 +4308,25 @@ function leerCandidatos_() {
   const iUni    = i('Inscriptos unicos identificados', true);
   const edades  = ['18-24', '25-39', '40-55', '56-65', '66+']
     .map(function (e) { return i('Inscriptos edades ' + e, true); });
+  // Los canales de B que suma cada columna del destino (MAPEO_CANALES, decisión 1.e de CLAUDE.md).
+  const iCanales = {};
+  Object.keys(MAPEO_CANALES).forEach(function (dst) {
+    iCanales[dst] = MAPEO_CANALES[dst].map(function (s) { return i(PREFIJO_CANAL_B + s, true); });
+  });
+
+  // La huella de B se calcula sobre B CRUDO, antes de cualquier descarte (02/10).
+  const huellaCruda = _md5corto_(bloque.map(function (r) {
+    return r.map(function (v) { return v instanceof Date ? v.getTime() : String(v); }).join('\u0001');
+  }).join('\n'));
 
   const vivos = [], porUid = new Map();
-  let anulados = 0;
+  let anulados = 0, formularios = 0;
 
   for (let k = 1; k < bloque.length; k++) {
     const r = bloque[k];
     const nombre = str(r[iNombre]);
     if (!nombre || /^loading/i.test(nombre)) continue;
+    formularios++;
 
     if (esFormularioAnulado_(nombre)) { anulados++; continue; }
 
@@ -4333,6 +4346,15 @@ function leerCandidatos_() {
     });
     datos['Sin identificar'] = ins > 0 ? Math.max(0, ins - sumaEdades) : '';
 
+    // Inscriptos y canales tal como vienen (sin cero por vacío). Hoy sólo los lee el paso 17
+    // (validarCuentas); no cambian nada de lo que se escribe.
+    const cuentas = { 'Inscriptos': iIns != null ? num(r[iIns]) : '' };
+    Object.keys(iCanales).forEach(function (dst) {
+      const vals = iCanales[dst].map(function (j) { return j != null ? num(r[j]) : ''; });
+      cuentas[dst] = vals.every(function (v) { return v === ''; }) ? ''
+        : vals.reduce(function (s, v) { return s + numOcero_(v); }, 0);
+    });
+
     const limpio = limpiarPrefijos_(nombre);
     vivos.push({
       fila: k + 1,
@@ -4350,7 +4372,8 @@ function leerCandidatos_() {
       det: detectFecha_(limpio, iFin != null ? r[iFin] : null),
       finRaw: iFin != null ? r[iFin] : null,  // Fecha_Fin tal cual: con hora, si la trae (claveFormulario_)
       inscriptos: ins,
-      datos: datos
+      datos: datos,
+      cuentas: cuentas
     });
   }
   /*
@@ -4363,10 +4386,10 @@ function leerCandidatos_() {
    * formularios indistinguibles—, el resultado no cambia si B se reordena.
    */
   ordenarFormularios_(vivos);
-  // Gemelos (02/10): regla 3 dentro de una misma clave, y quién comparte nombre con quién.
+  // Gemelos (02/10): mismo nombre y cierres a GEMELOS_MAX_DIAS o menos; regla 3 adentro del grupo.
   const gemelos = marcarGemelos_(vivos);
   return { vivos: vivos.filter(function (c) { return !c.descartadoRegla3; }), anulados: anulados,
-           porUid: porUid, gemelos: gemelos };
+           formularios: formularios, porUid: porUid, gemelos: gemelos, huellaCruda: huellaCruda };
 }
 
 /**

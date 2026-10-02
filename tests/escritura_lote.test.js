@@ -28,7 +28,8 @@ const { execSync } = require('child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
-                  'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js'];
+                  'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
+                  'diagnostico/09_validar_cuentas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -263,14 +264,17 @@ const HDR_DESTINO = (function () {
 })();
 const HDR_B = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos identificados', 'Inscriptos M', 'Inscriptos F',
   'Inscriptos edades 18-24', 'Inscriptos edades 25-39', 'Inscriptos edades 40-55', 'Inscriptos edades 56-65',
-  'Inscriptos edades 66+'];
+  'Inscriptos edades 66+', 'Inscriptos canal Mailing', 'Inscriptos canal Facebook', 'Inscriptos canal Google',
+  'Inscriptos canal Call Center', 'Inscriptos canal Difusion', 'Inscriptos canal IVR', 'Inscriptos canal Programmatic',
+  'Inscriptos canal Otros'];
+const HDR_CONJUNTO = ['Figura', 'Barrio', 'FECHA', 'HORA', 'Dirección', 'Asistentes', 'STATUS REUNIÓN'];
 const SEXO_EDADES = ['Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
 const DERIVADAS = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion', 'Comuna', 'Poblacion',
   'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'];
 
 function generarDatos(E, n) {
   const D = E.Date, col = function (nombre) { return HDR_DESTINO.indexOf(nombre); };
-  const dest = [HDR_DESTINO.slice()], b = [HDR_B.slice()];
+  const dest = [HDR_DESTINO.slice()], b = [HDR_B.slice()], conjunto = [HDR_CONJUNTO.slice()];
   for (let i = 0; i < n; i++) {
     const fecha = new D(2025, 6, 5 + Math.floor(i * 440 / n), 12, 0, 0);
     const fig = FIGURAS[i % FIGURAS.length];
@@ -292,14 +296,18 @@ function generarDatos(E, n) {
     const ins = r[col('Inscriptos')], uni = Math.round(ins * 0.8);
     b.push([fig.toUpperCase() + ' - Encuentro con vecinos - Comuna ' + bar[1] + ' - ' +
             fecha.getDate() + '/' + (fecha.getMonth() + 1), fin, ins, uni, Math.round(uni * 0.45), Math.round(uni * 0.55),
-            Math.round(uni * 0.1), Math.round(uni * 0.3), Math.round(uni * 0.3), Math.round(uni * 0.2), Math.round(uni * 0.1)]);
+            Math.round(uni * 0.1), Math.round(uni * 0.3), Math.round(uni * 0.3), Math.round(uni * 0.2), Math.round(uni * 0.1),
+            // canales: los mismos del destino (Mailing, Facebook = RRSS, Google, Call Center, Difusion, IVR, Programmatic, Otros)
+            r[col('Mail')], r[col('RRSS')], 0, r[col('Call Center')], r[col('Difusión')], r[col('IVR')], 0, 0]);
+    // RDV CONJUNTO: el barrio real (aunque el destino no lo tenga) y los asistentes del destino.
+    conjunto.push([fig, bar[0], fecha, '18:00', '', r[col('Asistentes')], r[col('STATUS REUNIÓN')]]);
   }
   for (let k = 0; k < 25; k++) {   // ruido: formularios que no son de ninguna fila
     b.push(['OTRO EVENTO ' + k + ' - Comuna 3 - 15/3', new D(2024, 2, 13, 12, 0, 0), 10, 8, 4, 4, 1, 2, 2, 2, 1]);
   }
   const comunas = [['Barrio', 'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'Eje geográfico']]
     .concat(BARRIOS.map(function (x) { return [x[0], x[1], 1000, 500, 500, 2, 500, 'Centro', '']; }));
-  return { dest: dest, b: b, comunas: comunas };
+  return { dest: dest, b: b, comunas: comunas, conjunto: conjunto };
 }
 
 function montar(E, n, conCopia, casos) {
@@ -309,6 +317,7 @@ function montar(E, n, conCopia, casos) {
   ssD.hojas['RVD JM-CM - ES'] = new E.Hoja('RVD JM-CM - ES', datos.dest);
   if (conCopia) ssD.hojas['AAA NOBORRAR'] = new E.Hoja('AAA NOBORRAR', datos.dest);
   ssD.hojas['Comunas'] = new E.Hoja('Comunas', datos.comunas);
+  ssD.hojas['RDV CONJUNTO'] = new E.Hoja('RDV CONJUNTO', datos.conjunto);
   ssI.hojas['B'] = new E.Hoja('B', datos.b, COSTO_BASE.leerB);
   return { ssD: ssD, ssI: ssI };
 }
@@ -650,6 +659,42 @@ function escenarioGemelos() {
      [v2.choques, v2.ambiguas, v2.distintas, v2.incompletas, v2.sinClave].join('/') + ')');
 }
 
+/**
+ * El PASO A (validarCuentas, 02/10): no escribe nada; Inscriptos y canales de B dan lo mismo que el
+ * destino (en los datos sintéticos son iguales por construcción); las filas sin barrio no cruzan con
+ * RDV CONJUNTO por la clave del legado; los Asistentes vaciados se cuentan como "se escribirían".
+ */
+function escenarioPasoA() {
+  console.log('\n[9] PASO A: validación de cuentas (sólo lectura)');
+  const E = crearEntorno();
+  const m = montar(E, 300, true);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const iAs = colD('Asistentes'), iBar = colD('Barrio');
+  let vaciados = 0, sinBarrio = 0;
+  for (let i = 1; i < hoja.v.length; i++) {
+    if (hoja.v[i][iBar] === '') { sinBarrio++; continue; }
+    if (i % 40 === 7 && vaciados < 7) { hoja.v[i][iAs] = ''; vaciados++; }
+  }
+  const antes = JSON.stringify(Object.keys(m.ssD.hojas).map(function (k) { return [m.ssD.hojas[k].v, m.ssD.hojas[k].bg]; })) +
+                JSON.stringify(Object.keys(m.ssI.hojas).map(function (k) { return [m.ssI.hojas[k].v, m.ssI.hojas[k].bg]; }));
+  const r = E.ejecutar('validarCuentas');
+  ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
+  const despues = JSON.stringify(Object.keys(m.ssD.hojas).map(function (k) { return [m.ssD.hojas[k].v, m.ssD.hojas[k].bg]; })) +
+                  JSON.stringify(Object.keys(m.ssI.hojas).map(function (k) { return [m.ssI.hojas[k].v, m.ssI.hojas[k].bg]; }));
+  ok(antes === despues, 'no escribió nada en ninguna planilla');
+  const x = r.resultado;
+  ['Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].forEach(function (n) {
+    const c = x.porCol[n];
+    ok(c.comparables > 0 && c.exacto === c.comparables, n + ': exacto ' + c.exacto + ' de ' + c.comparables);
+  });
+  ok(x.porCol['Masculinos'].destVacio > 0, 'Masculinos: las del hueco cuentan como "destino vacío" (' + x.porCol['Masculinos'].destVacio + ')');
+  ok(x.asistentes.noEncuentran.length === sinBarrio, 'Asistentes: no encuentran fila las ' + sinBarrio + ' sin barrio (' +
+     x.asistentes.noEncuentran.length + ')');
+  ok(x.asistentes.vacioYRdvTiene === vaciados, 'Asistentes vacíos que RDV CONJUNTO tiene: ' + x.asistentes.vacioYRdvTiene);
+  ok(/formularios en B: \d+ \| NO USAR 0 \| gemelos descartados \d+ \| candidatos \d+/.test(r.logs.join('\n')),
+     'la línea nueva del log: ' + (r.logs.find(function (l) { return /formularios en B/.test(l); }) || ''));
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -681,8 +726,8 @@ const fuenteVieja = conViejo ? function (f) {
 } : null;
 
 const t = Date.now();
-if (process.argv.indexOf('--gemelos') >= 0) {   // sólo el escenario 8, para iterar
-  escenarioGemelos();
+if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0) {   // uno solo, para iterar
+  if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos(); else escenarioPasoA();
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
 }
@@ -705,6 +750,7 @@ escenarioEquipoEnElMedio();
 escenarioGuarda();
 escenarioSecoIgualReal();
 escenarioGemelos();
+escenarioPasoA();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
