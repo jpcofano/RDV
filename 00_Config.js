@@ -46,6 +46,9 @@ const RDV_HOJA_B        = 'B';           // IMPORTRANGE del origen. Queda como v
 const RDV_HOJA_ASIST_IR = 'Asistentes';  // IMPORTRANGE de RDV CONJUNTO. Antes se llamaba 'A'
 const RDV_HOJA_ALERTAS  = 'ALERTA_CAMBIOS';
 const RDV_HOJA_REGISTRO = 'REGISTRO_UPSERT';   // una línea por corrida del upsert (02/10)
+const RDV_HOJA_ELECCIONES = 'ELECCIONES_MATCH'; // lo que eligió una persona en "elegido" (03/10). No se borra
+/** "ninguno" vence si aparece un formulario nuevo de la figura a ± estos días de la fecha de la fila. */
+const VENTANA_NINGUNO_DIAS = 7;
 
 /**
  * La línea de base de las celdas con el color del sistema (`COLORES_SISTEMA`: el actual y el viejo),

@@ -32,6 +32,9 @@
  *        3. upsertDestino() una vez            [20_UpsertDestino.js]
  *        4. paso16_verificarEscritura()       → OK: invariante 0, Barrio sin subir, 0 incompletas
  *        5. paso19_repintarAzulViejo_enSeco() → cuántas en #4F81BD por columna; repintar cuando se decida
+ *  03/10: paso20_porQueVacia() (sólo lectura: la causa de cada celda vacía; "DEBERÍA ESTAR ESCRITA"
+ *      tiene que dar 0) y la lectura de "elegido" en REVISAR_MATCH / EMPAREJAR_MANUAL (regla 4,
+ *      25_Elecciones.js, docs/elegir-match.md). Con 0 elecciones cargadas, el upsert no cambia nada.
  *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
  *      El activador NO se instala hasta volver y verificar la escritura real.
  *
@@ -298,6 +301,22 @@ function paso18_malEscritas_vaciarReal() {
              'SÍ, en "' + RDV_HOJA_DESTINO_REAL + '": vacía esas celdas y les saca el color (nada más)',
              'el log dice cuántas vació');
   return vaciarMalEscritas(RDV_HOJA_DESTINO_REAL);
+}
+
+/**
+ * PASO 20 — "por qué está vacía": para cada celda vacía de las columnas del sistema, UNA causa. Sólo
+ * lectura. El rango, acá (por defecto de la 800 al final):
+ */
+const PASO20_DESDE = 800;
+const PASO20_HASTA = null;   // null = hasta el final
+
+function paso20_porQueVacia() {
+  _anunciar_('paso 20 — por qué está vacía (filas ' + PASO20_DESDE + ' a ' + (PASO20_HASTA || 'el final') + ')',
+             'porQueVacia()  [diagnostico/12_por_que_vacia.js]',
+             'NO escribe en ninguna planilla (recalcula el plan y el cruce de Asistentes)',
+             'sólo el log: cada celda vacía con su causa, el resumen por causa y la lista de las que ' +
+             'DEBERÍAN ESTAR ESCRITAS (tiene que dar 0)');
+  return porQueVacia(PASO20_DESDE, PASO20_HASTA);
 }
 
 /* PASO 19 — el #4F81BD viejo pasa al color nuevo del sistema (#CFE2F3). En seco primero. */

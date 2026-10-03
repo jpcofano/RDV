@@ -86,6 +86,8 @@ function soloSinMatch()        { return _soloUno_(RDV_HOJA_SIN_MATCH); }
 function _soloUno_(cual) {
   const plan = calcularPlan_(true);
   logResumen_(plan);
+  guardarElecciones_(plan.elecciones, plan.eleccionesAp, true, false);
+  marcarEleccionesEnReportes_(plan);
   const fallaron = [];
   escribirReportes_(plan, fallaron, [cual]);
   if (fallaron.length) throw new Error('No se pudo escribir ' + cual);
@@ -1599,6 +1601,10 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
                'aplicadas.', plan.decisiones.length);
   }
 
+  // Las elecciones: se guardan con su resultado y se vuelven a mostrar en las solapas regeneradas.
+  guardarElecciones_(plan.elecciones, plan.eleccionesAp, enSeco, !enSeco && plan.res.escritura ? plan.res.escritura.completa : false);
+  marcarEleccionesEnReportes_(plan);
+
   const fallaron = [];
   escribirReportes_(plan, fallaron, null);
   if (fallaron.length) {
@@ -1670,11 +1676,9 @@ function calcularPlan_(enSeco, entradas) {
              'candidatos %s', dest.filas.length, cands.formularios, MARCA_ANULADO, cands.anulados,
              cands.gemelos ? cands.gemelos.descartados : 0, cands.vivos.length);
 
-  const confirmados = leerConfirmaciones_();
-  if (confirmados.size) {
-    Logger.log('Confirmaciones a mano en %s: %s', RDV_HOJA_EMPAREJAR, confirmados.size);
-    if (enSeco) Logger.log('  (DRY_RUN: se cuentan pero no se estampan)');
-  }
+  // Lo que eligió una persona en "elegido" (regla 4, 03/10): las nuevas de las solapas de revisión y
+  // las guardadas en ELECCIONES_MATCH. Se aplican después del invariante (aplicarElecciones_).
+  const elec = leerElecciones_(cands);
 
   /*
    * **Todo se cuenta dos veces: dentro de la ventana de análisis y en el histórico completo.**
@@ -1688,7 +1692,7 @@ function calcularPlan_(enSeco, entradas) {
    * dejó de mandarlo. Un número así describe un origen que ya no existe.
    */
   const res = { porUid: contador_(), escribiria: contador_(), revisar: contador_(),
-                sinMatch: contador_(), futuras: contador_(), pendienteBarrio: contador_(),
+                sinMatch: contador_(), futuras: contador_(), pendienteBarrio: contador_(), ningunoPersona: contador_(),
                 enVentana: 0, escritas: 0, uidsEstampados: 0 };
   const motivos = {};
 
@@ -1826,6 +1830,9 @@ function calcularPlan_(enSeco, entradas) {
 
   const aplicacion = aplicarFormularioUnico_(evals, cands.vivos, comunas, tomadosGrupo);
 
+  // Las elecciones de una persona (25_Elecciones.js): después del invariante, con sus mismas reglas.
+  const eleccionesAp = aplicarElecciones_(elec, dest, evals, cands, comunas, tomadosGrupo, porFila);
+
   // Cuántas margen_chico resolvió el desempate por evidencia, y cuántas no por el umbral.
   const desempateCnt = { senales: contador_(), distancia: contador_(), inscriptos: contador_(),
                          eje: contador_(), bajoUmbral: contador_() };
@@ -1835,6 +1842,12 @@ function calcularPlan_(enSeco, entradas) {
    */
   for (let i = 0; i < evals.length; i++) {
     const f = evals[i].f, ev = evals[i].ev, r = evals[i].r;
+    if (r.veredicto === 'ninguno_por_persona') {
+      // "ninguno" (regla 4): no se escribe ni se vuelve a proponer hasta que aparezca un formulario nuevo.
+      sumar_(res.ningunoPersona, ev);
+      porFila[f.fila] = { veredicto: 'ninguno_por_persona', motivo: 'ninguno_por_persona', cand: null };
+      continue;
+    }
     if (r.veredicto === 'pendiente_barrio') {
       sumar_(res.pendienteBarrio, ev);
       porFila[f.fila] = { veredicto: 'pendiente_barrio', motivo: 'pendiente_barrio',
@@ -1908,7 +1921,7 @@ function calcularPlan_(enSeco, entradas) {
       // La traza dice por qué ganó: el desempate por evidencia, y si la fila tomó otro formulario
       // porque el suyo lo ganó otra fila (invariante "un formulario, una fila").
       const traza = r.mejor.nivel + (r.desempate ? '+desempate_por_' + _nombreCriterio_(r.desempate) : '') +
-                    (r.porInvariante ? '+formulario_unico' : '');
+                    (r.porInvariante ? '+formulario_unico' : '') + (r.elegido ? '+elegido_por_persona' : '');
       decisiones.push({ fila: f, cand: r.mejor.c, score: r.mejor.score,
                         nivel: traza, dist: r.mejor.dist });
       usados[r.mejor.c.fila] = true;
@@ -1942,12 +1955,12 @@ function calcularPlan_(enSeco, entradas) {
   });
   // Las pendientes de barrio tampoco van a EMPAREJAR_MANUAL: se reevalúan solas.
   Object.keys(porFila).forEach(function (k) {
-    if (porFila[k].veredicto === 'pendiente_barrio') resueltas[k] = true;
+    if (porFila[k].veredicto === 'pendiente_barrio' || porFila[k].veredicto === 'ninguno_por_persona') resueltas[k] = true;
   });
   // Las opciones de cada fila a revisar: hasta OPCIONES_REVISION formularios, con sus puntajes.
   revisarRefs.forEach(function (x, i) {
     filasRevisar[i] = filasRevisar[i].concat(
-      _opcionesDeFila_(x.f, cands.vivos, comunas, tomadoPor, x.primero, OPCIONES_REVISION), ['']);
+      _opcionesDeFila_(x.f, cands.vivos, comunas, tomadoPor, x.primero, OPCIONES_REVISION), ['', '']);
   });
   const emp = calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor);
 
@@ -1981,7 +1994,7 @@ function calcularPlan_(enSeco, entradas) {
              huellas.entradas, huellas.destino, huellas.b, huellas.figuras, huellas.comunas, huellas.plan);
 
   return { dest: dest, cands: cands, res: res, motivos: motivos, hist: hist, ejes: ejes,
-           huellas: huellas,
+           huellas: huellas, elecciones: elec, eleccionesAp: eleccionesAp,
            invariante: invariante, desempateCnt: desempateCnt,
            desvio: desvio, porTolerancia: porTolerancia, comunaCaso: comunaCaso, porFila: porFila,
            sinPropio: sinPropio, sinPropioReciente: sinPropioReciente,
@@ -2041,21 +2054,25 @@ function _md5corto_(s) {
 
 // ===================== Opciones para la revisión manual =====================
 
-/** Los encabezados de las opciones: seis columnas por opción, y "elegido" al final. */
+/**
+ * Los encabezados de las opciones: siete columnas por opción —con `op{n}_clave`, la clave estable del
+ * formulario (03/10), que es lo que lee "elegido"—, y al final "elegido" (lo escribe una persona) y
+ * "resultado" (lo escribe el sistema: aplicado / rechazado / ninguno). Ver 25_Elecciones.js.
+ */
 function _encabezadoOpciones_(n) {
   const h = [];
   for (let k = 1; k <= n; k++) {
-    h.push('op' + k + '_formulario', 'op' + k + '_fila_B', 'op' + k + '_inscriptos',
+    h.push('op' + k + '_formulario', 'op' + k + '_clave', 'op' + k + '_fila_B', 'op' + k + '_inscriptos',
            'op' + k + '_score', 'op' + k + '_senales', 'op' + k + '_tomado_por');
   }
-  h.push('elegido');
+  h.push('elegido', 'resultado');
   return h;
 }
 
 /**
  * Hasta `n` formularios candidatos de una fila, en el orden del sistema: `primero` (el que el
  * sistema eligió o propone), después los limpios y las posibles reubicaciones por score y
- * cercanía, y al final los demás descalificados por ubicación. Seis celdas por opción; las que faltan, vacías.
+ * cercanía, y al final los demás descalificados por ubicación. Siete celdas por opción; las que faltan, vacías.
  *
  * Del destino no muestra nada más que lo que ya está en la fila (CLAUDE.md 1: los inscriptos del
  * destino son sólo validación). Los inscriptos que se muestran son los del FORMULARIO.
@@ -2081,9 +2098,9 @@ function _opcionesDeFila_(f, vivos, comunas, tomadoPor, primero, n) {
   const out = [];
   for (let k = 0; k < n; k++) {
     const sc = lista[k];
-    if (!sc) { out.push('', '', '', '', '', ''); continue; }
+    if (!sc) { out.push('', '', '', '', '', '', ''); continue; }
     const t = tomadoPor[sc.c.fila];
-    out.push(sc.c.nombre, sc.c.fila, sc.c.inscriptos || 0, sc.score, _senalesTexto_(sc, f, comunas),
+    out.push(sc.c.nombre, sc.c.clave, sc.c.fila, sc.c.inscriptos || 0, sc.score, _senalesTexto_(sc, f, comunas),
              t == null ? 'libre' : (t === f.fila ? 'esta fila' : 'fila ' + t));
   }
   return out;
@@ -2384,10 +2401,12 @@ function logResumen_(plan) {
 
   _logInvariante_(plan);
   _logGemelos_(plan);
+  _logElecciones_(plan.elecciones, plan.eleccionesAp);
 
   Logger.log('--- 1. VEREDICTOS (base: %s | %s filas, sin las %s futuras) ---',
              base.v, base.t, _dc_(r.futuras));
   Logger.log('  por RDV_UID (ya estampadas): %s', _dc_(r.porUid));
+  Logger.log('  "ninguno" de una persona (no se escriben ni se proponen): %s', _dc_(r.ningunoPersona));
   Logger.log('  escribiría .......... %s', _dcp_(r.escribiria, base));
   Logger.log('  a revisar ........... %s', _dcp_(r.revisar, base));
   Logger.log('  sin match ........... %s', _dcp_(r.sinMatch, base));
@@ -3895,7 +3914,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
         ? p.sc.nivel + ' | ' + _detalleDesacuerdo_(p.f, g.c, comunas) + ' — posible reubicación'
         : p.sc.nivel;
       filas.push([g.c.nombre, g.c.inscriptos, p.f.figura, p.f.barrio, fmtFecha_(p.f.fecha),
-                  p.sc.score, senales, _sn_(ev), '']);
+                  p.sc.score, senales, _sn_(ev), '', '', g.c.clave]);
     });
   });
 
@@ -3942,9 +3961,10 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
    * ayuda humana. Si son grandes, falta información que no está en ninguno de los dos lados —
    * y eso es una conversación con quien carga los formularios, no un problema de código.
    */
-  const vacia = ['', '', '', '', '', '', '', '', ''];
+  const vacia = ['', '', '', '', '', '', '', '', '', '', ''];
+  // "elegido" (antes "confirmar") lo escribe una persona; "resultado", el sistema (03/10, 25_Elecciones.js).
   const salida = [['nombre_formulario', 'inscriptos', 'Figura', 'Barrio', 'Fecha', 'score',
-                   'senales', 'en_ventana', 'confirmar']];
+                   'senales', 'en_ventana', 'elegido', 'resultado', 'form_clave']];
   filas.forEach(function (r) { salida.push(r); });
 
   salida.push(vacia.slice());
@@ -3966,19 +3986,19 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
   /*
    * Por fila del destino, hasta OPCIONES_REVISION formularios candidatos con sus puntajes, en el
    * orden del sistema (principio del usuario: lo que el sistema no resuelve se le presenta a una
-   * persona con las opciones). La columna A va vacía y la I (confirmar) también, así
-   * leerConfirmaciones_ no lee este bloque. "elegido" todavía no se lee.
+   * persona con las opciones). Tiene su propio encabezado (la fila que empieza con "---" y
+   * "fila_destino"): "elegido" se lee por ese encabezado (25_Elecciones.js).
    */
   const conProp = librosDestino.filter(function (f) { return conPropuesta[f.fila]; });
   salida.push(vacia.slice());
   salida.push(['--- POR FILA DEL DESTINO: hasta ' + OPCIONES_REVISION + ' formularios candidatos (' +
-               conProp.length + ' filas; "elegido" todavía no se lee) ---', '', '', '', '', '', '', '', '']);
-  salida.push(['---', 'fila_destino', 'Figura', 'Barrio', 'Fecha', '', '', 'en_ventana', '']
+               conProp.length + ' filas; "elegido": el número de la opción, o "ninguno") ---'].concat(vacia.slice(1)));
+  salida.push(['---', 'fila_destino', 'Figura', 'Barrio', 'Fecha', '', '', 'en_ventana', '', '', '']
     .concat(_encabezadoOpciones_(OPCIONES_REVISION)));
   conProp.forEach(function (f) {
     salida.push(['', f.fila, f.figura, f.barrio, fmtFecha_(f.fecha), '', '',
-                 _sn_(enVentanaAnalisis_(f.fecha)), '']
-      .concat(_opcionesDeFila_(f, cands.vivos, comunas, tomadoPor || {}, null, OPCIONES_REVISION), ['']));
+                 _sn_(enVentanaAnalisis_(f.fecha)), '', '', '']
+      .concat(_opcionesDeFila_(f, cands.vivos, comunas, tomadoPor || {}, null, OPCIONES_REVISION), ['', '']));
   });
   // Una matriz rectangular: las secciones de arriba se completan con celdas vacías.
   const ancho = salida.reduce(function (m, r) { return Math.max(m, r.length); }, 0);
@@ -4093,22 +4113,6 @@ function _simularTopePorFila_(grupos, n) {
            rescatados: rescatados, despuesSinGarantiaV: despuesSinG };
 }
 
-function leerConfirmaciones_() {
-  const out = new Map();
-  const sh = ssIntermedia_().getSheetByName(RDV_HOJA_EMPAREJAR);
-  if (!sh || sh.getLastRow() < 2) return out;
-
-  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 9).getValues();
-  for (let i = 0; i < vals.length; i++) {
-    const confirmar = str(vals[i][8]);      // corrida a I: en_ventana entró en H
-    if (!confirmar) continue;
-    const nombre = str(vals[i][0]);
-    if (!nombre || nombre.indexOf('---') === 0) continue;
-    out.set(nombre + '||' + str(vals[i][2]) + '||' + str(vals[i][4]), true);
-  }
-  return out;
-}
-
 // ===================== Escritura =====================
 
 /**
@@ -4139,14 +4143,11 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
    * Y una fila que, en lo leído para el plan, ya tiene llenas todas las celdas que se escribirían
    * tampoco entra: una celda llena no se escribe nunca. En régimen esto deja la escritura en cero.
    */
-  const porFila = new Map();
-  decisiones.forEach(function (d) { if (!d.noEscribir) porFila.set(d.fila.fila, d); });
+  const porDecision = decisionesPorFila_(decisiones);
   const pendientes = [];
   dest.filas.forEach(function (f) {
     if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
-    const base = porFila.get(f.fila) || { fila: f, cand: null, nivel: 'sin_formulario', score: null, dist: null };
-    const a = asistentes && asistentes.porFila ? asistentes.porFila.get(f.fila) : null;
-    const d = Object.assign({}, base, { asis: a ? a.asis : '' });
+    const d = decisionDeFila_(f, porDecision, asistentes);
     const c = celdasDeDecision_(dest, d, f.valores, true);
     if (c.celdas.length || c.status) pendientes.push(d);
   });
@@ -4198,6 +4199,24 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
   }
   w.msEscritura = Date.now() - tEsc;
   return w;
+}
+
+/** Las decisiones que se escriben (no las `noEscribir`), por número de fila. */
+function decisionesPorFila_(decisiones) {
+  const m = new Map();
+  decisiones.forEach(function (d) { if (!d.noEscribir) m.set(d.fila.fila, d); });
+  return m;
+}
+
+/**
+ * La decisión de una fila tal como la usa la escritura: la del plan si se escribe, o una "sin_formulario"
+ * (sólo Asistentes y STATUS), con los Asistentes del cruce (`d.asis`). La comparten aplicarDecisiones_ y
+ * el paso 20 ("por qué está vacía"): no pueden divergir.
+ */
+function decisionDeFila_(f, porDecision, asistentes) {
+  const base = porDecision.get(f.fila) || { fila: f, cand: null, nivel: 'sin_formulario', score: null, dist: null };
+  const a = asistentes && asistentes.porFila ? asistentes.porFila.get(f.fila) : null;
+  return Object.assign({}, base, { asis: a ? a.asis : '' });
 }
 
 /**
@@ -4300,7 +4319,7 @@ const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_,
 function cruzarAsistentes_(dest, comunas) {
   const r = { error: null, porFila: new Map(), filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
               variasFiguras: [], encuentran: 0, noEncuentran: [], ambiguas: [], desempatadas: [],
-              barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, conflicto: [], minFecha: null };
+              barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, filasSinAsis: {}, conflicto: [], minFecha: null };
   const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
   if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
@@ -4344,8 +4363,8 @@ function cruzarAsistentes_(dest, comunas) {
     if (lista.length > 1) {
       const coinciden = lista.filter(function (x) { return ubicacionCoincideConjunto_(bar, x, comunas); });
       if (coinciden.length !== 1) {
-        r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, filas: lista.map(function (x) {
-          return x.fila + ' (' + (x.barrio || 'sin barrio') + ')'; }) });
+        r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, nums: lista.map(function (x) { return x.fila; }),
+                          filas: lista.map(function (x) { return x.fila + ' (' + (x.barrio || 'sin barrio') + ')'; }) });
         continue;
       }
       f = coinciden[0];
@@ -4356,7 +4375,7 @@ function cruzarAsistentes_(dest, comunas) {
       else if (bar && !ubicacionCoincideConjunto_(bar, f, comunas)) r.barrioDifiere.push({ f: f, bar: bar });
     }
     r.encuentran++;
-    if (!(asis > 0)) { r.sinAsistentes++; continue; }
+    if (!(asis > 0)) { r.sinAsistentes++; r.filasSinAsis[f.fila] = true; continue; }
     const ya = r.porFila.get(f.fila);
     if (ya && ya.asis !== asis) {
       if (!conflictos.has(f.fila)) r.conflicto.push({ f: f, a: ya.asis, b: asis });

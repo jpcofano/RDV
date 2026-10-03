@@ -2148,10 +2148,22 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    sistema eligió o propone, después los limpios y las posibles reubicaciones por score, y al final
    los demás descalificados—, cada uno con: nombre, fila de `B`, inscriptos **del formulario**,
    score normalizado, señales (figura / fecha en días / ubicación: coincide, desacuerdo o no
-   evaluable / eje) y si ya lo toma otra fila. Una columna vacía **`elegido`** al final: es el
-   formato de la herramienta manual y **todavía no se lee**. Del destino no se muestra nada más que
-   lo que ya muestra la fila. El bloque nuevo deja vacías las columnas A e I, así
-   `leerConfirmaciones_` no lo lee.
+   evaluable / eje) y si ya lo toma otra fila. Del destino no se muestra nada más que lo que ya
+   muestra la fila.
+
+   **"elegido" se lee desde el 03/10 (regla 4, `25_Elecciones.js`; para el equipo:
+   docs/elegir-match.md).** Cada opción lleva su `op{n}_clave` (la clave estable del formulario). En
+   "elegido": el número de la opción, "sí" (= la 1, o el par en el bloque de arriba de EMPAREJAR) o
+   "ninguno". Se identifica la fila por figura + fecha + barrio y el formulario por su clave, **nunca
+   por número de fila**. Una elección válida se escribe en la corrida real siguiente como cualquier
+   match (sólo celda vacía, invariante por grupo), con la traza `+elegido_por_persona`. Rechazos (no
+   se escribe nada): el formulario ya tiene otra fila / ya no existe en B / dos elecciones para la
+   misma fila o el mismo formulario / ilegible / la fila no se encuentra o ya está escrita. "ninguno":
+   la fila no se escribe ni se vuelve a proponer, salvo que aparezca un formulario nuevo de su figura a
+   ±`VENTANA_NINGUNO_DIAS` (7) días. **Las elecciones se guardan en `ELECCIONES_MATCH`** (intermedia,
+   no se borra nunca) y al regenerar las solapas cada línea vuelve a mostrar su "elegido" y el
+   "resultado" ("aplicado <fecha>" / "rechazado: <motivo>" / "ninguno…"); las de filas que ya no
+   aparecen van al final de REVISAR_MATCH. El paso 2 y el upsert las listan en el log.
 
    #### `EMPAREJAR_MANUAL`: el lado que falta
 
@@ -2170,8 +2182,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
      trabaja una lista así;
    - los candidatos de un mismo formulario van **juntos y seguidos**, para poder elegir entre
      ellos sin buscarlos. Los grupos se ordenan por su mejor candidato;
-   - `confirmar` vacía. Cuando el pipeline la encuentra llena, **estampa el `RDV_UID` en las dos
-     puntas** y esa fila no vuelve a aparecer.
+   - ~~`confirmar` vacía. Cuando el pipeline la encuentra llena, estampa el `RDV_UID` en las dos
+     puntas~~ **Desde el 03/10 la columna se llama `elegido`** (con `resultado` y `form_clave` al lado):
+     "sí" en el par elegido, y se aplica como arriba (Revisión con opciones y puntajes).
 
    **Dos bloques al final: formularios sin ningún candidato, y filas del destino sin ninguno.**
    Son la medida de lo que el sistema **no puede resolver ni con ayuda humana**. Si ese bloque
@@ -2215,9 +2228,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
      escribe solo (**`clave_repetida`**). Una sola definición (`marcarGemelos_`) para el plan, el
      bloque 0b del log (`_logGemelos_`) y el paso 16. Si `Fecha_Fin` trae hora, `claveFormulario_` la
      incluye;
-   - **`elegido`** de EMPAREJAR_MANUAL / REVISAR_MATCH: cuando se lea, se resuelve por el
-     `op{n}_formulario` (Nombre) de esa misma línea, nunca por `op{n}_fila_B`, que es informativo.
-     `confirmar` ya se leía por nombre + figura + fecha.
+   - **`elegido`** de EMPAREJAR_MANUAL / REVISAR_MATCH (se lee desde el 03/10): por la clave del
+     formulario de esa línea (`op{n}_clave` / `form_clave`), nunca por `op{n}_fila_B`, que es
+     informativo; la fila del destino por figura + fecha + barrio.
 4. **Un solo `toDate_`, un solo `normalizeText_`, un solo `normalizeHeader_`**, en `01_Utils.js`.
    `toDate_` con formato día-primero explícito, nunca `new Date(string)`. Borrar las otras copias.
 5. **`SIN_MATCH` visible**: lo que hoy es `skippedB++` pasa a ser una fila con origen, clave
@@ -2395,6 +2408,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    solapa destino. El único que escribe en el destino.               ← ya escrito
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  B+A2 → destino, match uuid→score, 3 reportes   ← ya escrito (DRY_RUN)
+25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

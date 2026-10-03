@@ -256,6 +256,54 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### p) 03/10: paso 20 ("por qué está vacía") y la lectura de "elegido"
+
+**Paso 20 — `paso20_porQueVacia()`** (`diagnostico/12_por_que_vacia.js`, sólo lectura). Rango en
+`99_Correr.js` (`PASO20_DESDE` = 800, `PASO20_HASTA` = null: hasta el final). Para cada celda vacía de las
+columnas del sistema (Inscriptos —también en 0—, los cinco canales, Masculinos, Femeninos, las 5 edades,
+Sin identificar, Asistentes; y STATUS que no sea "Realizada"), UNA causa: a) sin formulario
+(REVISAR_MATCH con su motivo, SIN_MATCH, pendiente de barrio, "ninguno", RDV_UID ambiguo); b) B trae 0 o
+vacío; c) desagregado retenido (Inscriptos ≠ B); d) Asistentes (RDV CONJUNTO no tiene la fila / varias
+figuras / 2+ filas sin desempate / dos valores / la tiene sin asistentes); e) STATUS (no está "en
+agenda" / sin asistentes); f) **DEBERÍA ESTAR ESCRITA**: el sistema la escribiría ahora mismo
+(`celdasDeDecision_`, la misma función que la escritura). Al final, resumen por causa y la lista de f.
+**Después de una corrida real, f tiene que dar 0.** Usa el mismo plan, el mismo cruce de Asistentes y la
+misma decisión por fila que el upsert (`decisionDeFila_`).
+
+**"elegido" (regla 4)** — `25_Elecciones.js`; para el equipo, **docs/elegir-match.md**:
+
+- dónde: `REVISAR_MATCH` (el número de la opción, "sí" = la 1, o "ninguno"), `EMPAREJAR_MANUAL` arriba
+  ("sí" en el par) y su bloque "POR FILA DEL DESTINO" (como REVISAR). Cada opción lleva ahora su
+  `op{n}_clave`; la columna `confirmar` de EMPAREJAR pasó a llamarse `elegido`, con `resultado` y
+  `form_clave` al lado;
+- identidad: la fila por figura + fecha + barrio, el formulario por su clave (`form_clave`). Nunca por
+  número de fila;
+- válida → se escribe en la corrida REAL siguiente como cualquier match (sólo celda vacía, invariante
+  por grupo), traza `+elegido_por_persona`. En seco sólo se dice ("válida (en seco…)");
+- rechazos (nada se escribe): el formulario ya tiene otra fila / ya no existe en B / dos elecciones
+  para la misma fila o el mismo formulario / ilegible / la fila no se encuentra, ya está escrita o es
+  futura;
+- "ninguno" → no se escribe ni se propone; **vence** si aparece un formulario nuevo de la figura a
+  ±`VENTANA_NINGUNO_DIAS` (7) días;
+- **se guardan en `ELECCIONES_MATCH`** (intermedia; el sistema no la borra nunca). Al regenerar las
+  solapas, cada línea vuelve a mostrar su "elegido" y "resultado"; las de filas que ya no aparecen
+  (aplicadas, válidas, "ninguno") van al final de REVISAR_MATCH con su resultado. Anular una elección:
+  borrar su fila en `ELECCIONES_MATCH`;
+- el paso 2 y el upsert listan las leídas, válidas, rechazadas, "ninguno" y vencidas.
+
+**Test en Node:** [13] el paso 20 (antes del upsert, f > 0; después, f = 0 y aparecen b, c, d, e); [14]
+"elegido": sin elecciones el upsert no cambia nada; una válida (se escribe con
+`+elegido_por_persona` y su línea dice "aplicado <fecha>"), una que choca con el invariante ("rechazado:
+el formulario ya tiene otra fila"), un "ninguno" (no se propone, no se escribe, vence con un formulario
+nuevo a 3 días) y la solapa regenerada en seco que conserva lo elegido. Toda la suite en verde.
+
+**Predicción en la copia, anotada antes de correr:** con **0 elecciones cargadas**, `upsertDestino()`
+**no cambia nada** de lo que haría sin esta función (el log dice "leídas nuevas: 0"), y `ELECCIONES_MATCH`
+no se crea. `paso20_porQueVacia()` después de un upsert: **f = 0**.
+
+**Falso aviso de incompletas** (0.o): el usuario vuelve a correr el paso 16 en la copia para ver si las
+filas **29, 36, 66, 86 y 786** dejaron de aparecer. Si siguen, con fila y columna se mira.
+
 ### o) Pendientes al 03/10
 
 - **Backup del 02/10: resuelto** (había que compartirlo con la cuenta que corre el script). El ID de
@@ -266,12 +314,9 @@ entradas (destino, `B`, figuras, `Comunas`) cambió.
   0 y el paso 16 la daba por incompleta en cada corrida (y la repintaba). Ahora un 0 de `B` no completa
   una celda que vale por vacía porque tiene 0. Test [12], caso b2. Si el aviso que se vio era en otra
   columna, falta el ejemplo (fila y columna).
-- **Paso 20 ("por qué está vacía")**: pendiente, **falta la definición** (qué columnas, para qué filas y
-  qué causas tiene que distinguir).
-- **La lectura de `elegido`** (regla 4: lo que el sistema no resuelve lo decide una persona con las
-  opciones): pendiente. La columna existe en `REVISAR_MATCH` y en el bloque "POR FILA DEL DESTINO" de
-  `EMPAREJAR_MANUAL`, vacía; cuando se lea, se resuelve por el nombre del formulario de esa línea
-  (`op{n}_formulario`), nunca por la fila de `B` (decisión 3).
+- ~~Paso 20 ("por qué está vacía")~~ **hecho** (0.p).
+- ~~La lectura de `elegido`~~ **hecha** (0.p): por la clave del formulario de la línea (`op{n}_clave`),
+  nunca por la fila de `B`.
 - **`paso19_repintarAzulViejo_enSeco()` en la copia**: pendiente de correr.
 - Siguen de antes: las columnas de agenda (otro proceso), eliminar B2, volver la constante al real.
 

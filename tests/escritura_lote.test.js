@@ -28,6 +28,7 @@ const { execSync } = require('child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
+                  '25_Elecciones.js', 'diagnostico/12_por_que_vacia.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js'];
@@ -897,6 +898,142 @@ function escenarioPasoB() {
      'paso 19: repinta a #CFE2F3 sin tocar el valor');
 }
 
+/**
+ * El PASO 20 ("por qué está vacía"): antes del upsert, lo que el sistema escribiría sale como "DEBERÍA
+ * ESTAR ESCRITA"; después, eso da 0 y lo que queda vacío tiene su causa (B trae 0, desagregado retenido,
+ * RDV CONJUNTO no tiene la fila, STATUS no está en agenda...).
+ */
+function escenarioPorQueVacia() {
+  console.log('\n[13] PASO 20: por qué está vacía');
+  const E = crearEntorno();
+  const m = montar(E, 120, true);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'], filaB = m.ssI.hojas['B'].v;
+  const C = colD;
+  hoja.v[101][C('Mail')] = '';                                   // B la tiene → se escribiría
+  hoja.v[102][C('Mail')] = ''; filaB[102][11] = '';               // B no la trae → b)
+  hoja.v[103][C('Inscriptos')] = filaB[103][2] + 9;                // 103: (103-1)%10 = 2 → hueco → c)
+  hoja.v[104][C('Asistentes')] = '';                               // RDV CONJUNTO la tiene → se escribiría
+  hoja.v[105][C('Asistentes')] = ''; m.ssD.hojas['RDV CONJUNTO'].v[105][0] = 'Nadie Conocido';   // d)
+  hoja.v[106][C('STATUS REUNIÓN')] = 'Suspendida';                                            // e)
+  const antes = E.ctx.porQueVacia(100, 110);
+  ok(antes.deberia > 0, 'antes del upsert: hay celdas que el sistema escribiría (' + antes.deberia + ')');
+  E.ejecutar('upsertDestino');
+  E.ctx.pq_ = function () { return E.ctx.porQueVacia(100, 110); };
+  const r = E.ejecutar('pq_');
+  const x = r.resultado;
+  ok(!r.error && x.deberia === 0, 'después: DEBERÍA ESTAR ESCRITA = 0 (' + (x ? x.deberia : r.error.message) + ')');
+  const tiene = function (re) { return Object.keys(x.causas).some(function (k) { return re.test(k); }); };
+  ok(tiene(/^b\)/), 'b) B trae 0 o vacío');
+  ok(tiene(/^c\)/), 'c) desagregado retenido');
+  ok(tiene(/^d\) RDV CONJUNTO no tiene la fila/), 'd) RDV CONJUNTO no tiene la fila');
+  ok(tiene(/^e\)/), 'e) STATUS no en agenda');
+  ok(hoja.v[101][C('Mail')] !== '' && hoja.v[104][C('Asistentes')] !== '', 'y lo que debía, quedó escrito');
+}
+
+/**
+ * "elegido" (regla 4): una elección válida (se escribe con "+elegido_por_persona"), una que choca con
+ * el invariante (rechazada), un "ninguno" (sale de los reportes; vence si aparece un formulario nuevo), y
+ * la solapa regenerada que conserva lo elegido. Sin elecciones, el upsert no cambia nada.
+ */
+function casosElegido(E, datos) {
+  casosGemelos(E, datos);
+  const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+  const fila = function (fig, d, m) {
+    const r = HDR_DESTINO.map(function () { return ''; });
+    r[col('Figura')] = fig; r[col('FECHA')] = new D(2026, m - 1, d, 12, 0, 0); r[col('HORA')] = '18:00';
+    r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada'; r[col('Asistentes')] = 40;
+    ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].forEach(function (c) { r[col(c)] = 5; });
+    datos.dest.push(r);
+  };
+  const form = function (nombre, d, m, ins) {
+    const uni = Math.round(ins * 0.8);
+    datos.b.push([nombre, new D(2026, m - 1, d, 12, 0, 0), ins, uni, Math.round(uni * 0.45), Math.round(uni * 0.55),
+                  10, 20, 20, 10, 5, 1, 1, 0, 1, 1, 1, 0, 0]);
+  };
+  // Dos filas con dos formularios empatados en todo: REVISAR por margen_chico.
+  fila('Lía Ferrante', 20, 8);
+  form('LÍA FERRANTE - Encuentro A - 20/8', 18, 8, 80);
+  form('LÍA FERRANTE - Encuentro B - 20/8', 18, 8, 80);
+  fila('Iván Robles', 22, 8);
+  form('IVÁN ROBLES - Encuentro A - 22/8', 20, 8, 70);
+  form('IVÁN ROBLES - Encuentro B - 22/8', 20, 8, 70);
+}
+
+function escenarioElegido() {
+  console.log('\n[14] "elegido" (regla 4): válida, choque con el invariante, "ninguno", solapa regenerada');
+  const E = crearEntorno();
+  const m = montar(E, 150, true, casosElegido);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const filaDe = function (fig, d, mes) {
+    return hoja.v.findIndex(function (r, i) {
+      const f = r[colD('FECHA')];
+      return i > 0 && r[colD('Figura')] === fig && f instanceof Date && f.getDate() === d && f.getMonth() + 1 === mes;
+    }) + 1;
+  };
+  const nLia = filaDe('Lía Ferrante', 20, 8), nIvan = filaDe('Iván Robles', 22, 8), n309 = filaDe('Clara Mendieta', 5, 8);
+  const r0 = E.ejecutar('upsertDestino');
+  ok(!r0.error, 'primera corrida sin error' + (r0.error ? ': ' + r0.error.message : ''));
+  const rev = function () { return m.ssI.hojas['REVISAR_MATCH']; };
+  const lineaDe = function (fig, fecha) {
+    const h = rev().v[0];
+    const k = rev().v.findIndex(function (r, i) { return i > 0 && r[h.indexOf('figura')] === fig && String(r[h.indexOf('fecha')]) === fecha; });
+    return { h: h, k: k, r: rev().v[k] };
+  };
+  const L1 = lineaDe('Lía Ferrante', '20/08/2026'), L2 = lineaDe('Iván Robles', '22/08/2026'), L3 = lineaDe('Clara Mendieta', '05/08/2026');
+  ok(L1.k > 0 && L2.k > 0 && L3.k > 0, 'las tres filas están en REVISAR_MATCH (' + [L1.k, L2.k, L3.k].join(', ') + ')');
+  // Sin elecciones, una segunda corrida no cambia nada.
+  const f0 = JSON.stringify(foto(hoja));
+  E.ejecutar('upsertDestino');
+  ok(JSON.stringify(foto(hoja)) === f0, 'sin elecciones cargadas, el upsert no cambia nada');
+
+  // Una persona elige: la opción 2 para Lía, "ninguno" para Iván, la 1 (tomada por la "315") para la "309".
+  const opcion2 = L1.r[L1.h.indexOf('op2_formulario')];
+  rev().v[L1.k][L1.h.indexOf('elegido')] = '2';
+  rev().v[L2.k][L2.h.indexOf('elegido')] = 'ninguno';
+  rev().v[L3.k][L3.h.indexOf('elegido')] = '1';
+
+  // Corrida EN SECO: no escribe en el destino; la solapa regenerada conserva lo elegido.
+  const fSeco = JSON.stringify(foto(hoja));
+  const s = E.ejecutar('correrEnSeco');
+  ok(!s.error && JSON.stringify(foto(hoja)) === fSeco, 'en seco: no escribe nada en el destino');
+  const log = s.logs.join('\n');
+  ok(/VÁLIDA: .*Lía Ferrante/.test(log) && /RECHAZADA: .*Clara Mendieta.*ya tiene otra fila/.test(log) &&
+     /NINGUNO: .*Iván Robles/.test(log), 'el log lista la válida, la rechazada (invariante) y el "ninguno"');
+  const L1b = lineaDe('Lía Ferrante', '20/08/2026');
+  ok(L1b.k > 0 && L1b.r[L1b.h.indexOf('op1_formulario')] === opcion2 && /válida/.test(L1b.r[L1b.h.indexOf('resultado')]),
+     'la solapa regenerada conserva lo elegido (su línea dice "válida") (' + (L1b.r ? L1b.r[L1b.h.indexOf('resultado')] : '-') + ')');
+  const L2b = lineaDe('Iván Robles', '22/08/2026');
+  ok(L2b.k > 0 && !L2b.r[L2b.h.indexOf('op2_formulario')] && /ninguno/.test(L2b.r[L2b.h.indexOf('resultado')]),
+     '"ninguno": la fila ya no se propone (queda sólo la línea de la elección, sin opciones)');
+  const el = m.ssI.hojas['ELECCIONES_MATCH'];
+  ok(el && el.v.length === 4, 'ELECCIONES_MATCH guarda las 3 elecciones (' + (el ? el.v.length - 1 : 0) + ')');
+
+  // Corrida REAL: se aplica la válida.
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'corrida real sin error');
+  ok(hoja.v[nLia - 1][colD('form_origen')] === opcion2 && /\+elegido_por_persona/.test(hoja.v[nLia - 1][colD('form_nivel')]),
+     'la válida se escribió con el formulario elegido y la traza "+elegido_por_persona"');
+  const L1c = lineaDe('Lía Ferrante', '20/08/2026');
+  ok(L1c.k > 0 && /^aplicado /.test(L1c.r[L1c.h.indexOf('resultado')]),
+     'en REVISAR_MATCH, al lado de lo elegido: "' + (L1c.r ? L1c.r[L1c.h.indexOf('resultado')] : '-') + '"');
+  const L3c = lineaDe('Clara Mendieta', '05/08/2026');
+  ok(L3c.k > 0 && /^rechazado: el formulario ya tiene otra fila/.test(L3c.r[L3c.h.indexOf('resultado')]),
+     'y la rechazada: "' + (L3c.r ? L3c.r[L3c.h.indexOf('resultado')] : '-') + '"');
+  ok(!hoja.v[n309 - 1][colD('RDV_UID')], 'la rechazada no escribió nada');
+  ok(!hoja.v[nIvan - 1][colD('RDV_UID')], '"ninguno": no se escribe');
+  const est = el.v.slice(1).map(function (x) { return x[el.v[0].indexOf('estado')] + ':' + x[el.v[0].indexOf('figura')]; });
+  ok(est.indexOf('aplicado:Lía Ferrante') >= 0 && est.indexOf('rechazado:Clara Mendieta') >= 0 &&
+     est.indexOf('ninguno:Iván Robles') >= 0, 'ELECCIONES_MATCH: ' + est.join(' | '));
+
+  // Aparece un formulario nuevo de Iván a 3 días: el "ninguno" vence y la fila vuelve a proponerse.
+  m.ssI.hojas['B'].v.push(['IVÁN ROBLES - Encuentro C - 24/8', new E.Date(2026, 7, 23, 12, 0, 0), 30, 24, 10, 14,
+                           2, 6, 6, 4, 2, 1, 1, 0, 1, 1, 1, 0, 0]);
+  const s2 = E.ejecutar('correrEnSeco');
+  const L2c = lineaDe('Iván Robles', '22/08/2026');
+  ok(/VENCIDO: .*Iván Robles/.test(s2.logs.join('\n')) && L2c.k > 0 && !!L2c.r[L2c.h.indexOf('op2_formulario')],
+     '"ninguno" vence con un formulario nuevo a ±7 días, y la fila vuelve a REVISAR_MATCH');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -928,9 +1065,11 @@ const fuenteVieja = conViejo ? function (f) {
 } : null;
 
 const t = Date.now();
-if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0) {   // uno solo, para iterar
+if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
+    process.argv.indexOf('--elegido') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
+  else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -958,6 +1097,8 @@ escenarioPasoA();
 escenarioEncabezadosB();
 escenarioMalEscritas();
 escenarioPasoB();
+escenarioPorQueVacia();
+escenarioElegido();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
