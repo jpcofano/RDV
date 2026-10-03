@@ -62,9 +62,8 @@ function vaciarMalEscritas(hoja) {
 function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
   const dest = leerDestino_(hoja);
   const fondos = dest.sh.getRange(1, 1, dest.sh.getLastRow(), dest.sh.getLastColumn()).getBackgrounds();
-  const azul = AZUL_SISTEMA_.toLowerCase();
   const r = { lista: [], conUid: 0, ambiguas: 0, estabanAntes: 0, sinVerificar: 0, porCampo: {} };
-  CAMPOS_DATO_.forEach(function (c) { r.porCampo[c] = 0; });
+  CAMPOS_DESAGREGADO_.forEach(function (c) { r.porCampo[c] = 0; });
   dest.filas.forEach(function (f) {
     if (!f.uid) return;
     r.conUid++;
@@ -72,12 +71,12 @@ function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
     if (!t.c) { r.ambiguas++; return; }
     const c = t.c;
     const bk = backup ? backup.porClave.get(f.clave) : undefined;
-    CAMPOS_DATO_.forEach(function (campo) {
+    CAMPOS_DESAGREGADO_.forEach(function (campo) {
       const idx = dest.D[campo];
       if (idx == null) return;
       const v = num(f.valores[idx]);
       if (v === '') return;
-      if (String(fondos[f.fila - 1][idx]).toLowerCase() !== azul) return;
+      if (!esColorSistema_(fondos[f.fila - 1][idx])) return;
       const roto = campo === 'Sin identificar' ? (c.inscriptos > 0 ? c.inscriptos : '') : '';
       const correcto = c.datos[campo];
       if (v !== roto || v === correcto) return;
@@ -113,15 +112,23 @@ function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
 
 /** El backup del 02/10 (sólo lectura): figura|fecha → valores de la fila, y los índices de sexo y edades. */
 function _leerBackup_diag10() {
+  // Si el backup no se puede abrir (02/10: "no permission"), se avisa y se sigue SIN el chequeo 4:
+  // nunca termina en error.
+  let ss = null;
+  try { ss = SpreadsheetApp.openById(RDV_SS_BACKUP_0210); } catch (err) {
+    Logger.log('AVISO: no se pudo abrir el backup del 02/10 (%s): %s. Sigue sin el chequeo 4.', RDV_SS_BACKUP_0210,
+               String(err && err.message || err));
+    return null;
+  }
   try {
-    const sh = SpreadsheetApp.openById(RDV_SS_BACKUP_0210).getSheetByName(RDV_HOJA_DESTINO_REAL);
+    const sh = ss.getSheetByName(RDV_HOJA_DESTINO_REAL);
     if (!sh) return null;
     const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
     const hdr = vals[0];
     const iFig = findIdxOr_(hdr, aliasColumna_('Figura'), true), iFec = findIdxOr_(hdr, aliasColumna_('FECHA'), true);
     if (iFig == null || iFec == null) return null;
     const idx = {};
-    CAMPOS_DATO_.forEach(function (c) { idx[c] = findIdxOr_(hdr, aliasColumna_(c), true); });
+    CAMPOS_DESAGREGADO_.forEach(function (c) { idx[c] = findIdxOr_(hdr, aliasColumna_(c), true); });
     const porClave = new Map(), repetidas = new Set();
     for (let i = 1; i < vals.length; i++) {
       const k = claveNatural_(str(vals[i][iFig]), toDate_(vals[i][iFec]));
@@ -133,7 +140,8 @@ function _leerBackup_diag10() {
                vals.length - 1, repetidas.size);
     return { porClave: porClave, idx: idx, repetidas: repetidas };
   } catch (err) {
-    Logger.log('No se pudo leer el backup del 02/10 (%s): %s', RDV_SS_BACKUP_0210, err);
+    Logger.log('AVISO: no se pudo leer el backup del 02/10 (%s): %s. Sigue sin el chequeo 4.', RDV_SS_BACKUP_0210,
+               String(err && err.message || err));
     return null;
   }
 }

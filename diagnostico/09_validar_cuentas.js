@@ -165,7 +165,7 @@ function validarCuentas() {
   });
 
   // --- 4) Asistentes desde RDV CONJUNTO ---
-  const asis = _validarAsistentes_diag9(dest);
+  const asis = _validarAsistentes_diag9(dest, plan.comunas);
 
   Logger.log('--- 5) qué NO dice ---');
   Logger.log('  - En las filas que cargó el legado, B y el destino coinciden POR CONSTRUCCIÓN: el legado los');
@@ -274,30 +274,19 @@ function _logDivisores_diag9(dv) {
  * Antes, la medición 4a: cómo están escritos los nombres en A2 (la última salida del legado) y en RDV
  * CONJUNTO, y cuántos Asistentes del destino están cargados y cuántos en azul (los puso el legado).
  */
-function _validarAsistentes_diag9(dest) {
+function _validarAsistentes_diag9(dest, comunas) {
   Logger.log('--- 4) Asistentes desde RDV CONJUNTO ---');
-  const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
-  if (!sh) { Logger.log('  No existe "%s".', RDV_HOJA_ASISTENTES_SRC); return null; }
-  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
-  const hdr = vals[0];
-  const iFig = findIdxOr_(hdr, ['figura', 'persona', 'nombre'], true);
-  const iBar = findIdxOr_(hdr, ['barrion', 'barrio'], true);
-  const iFec = findIdxOr_(hdr, ['fecha', 'fecha (fecha)', 'fecha_evento', 'fecha reunion', 'fecha reunión',
-                                'fecha_reunion', 'fecha_reunión', 'fecha evento'], true);
-  const iAsi = findIdxOr_(hdr, ['asistentes', 'asistente'], true);
-  if (iFig == null || iFec == null || iAsi == null) {
-    Logger.log('  "%s" no tiene Figura, FECHA y Asistentes por encabezado: %s', RDV_HOJA_ASISTENTES_SRC,
-               hdr.filter(String).join(' | '));
-    return null;
-  }
+  // El MISMO cruce que usa el upsert (cruzarAsistentes_, 20_UpsertDestino.js).
+  const r = cruzarAsistentes_(dest, comunas);
+  if (r.error) { Logger.log('  %s', r.error); return null; }
 
   // --- 4a) la medición previa ---
-  _logNombres_diag9('RDV CONJUNTO', vals.slice(1).map(function (r) { return str(r[iFig]); }));
+  _logNombres_diag9('RDV CONJUNTO', r.valores.slice(1).map(function (row) { return str(row[r.iFig]); }));
   const a2 = ssIntermedia_().getSheetByName(RDV_HOJA_A2);
   if (a2 && a2.getLastRow() > 1) {
     const va = a2.getRange(1, 1, a2.getLastRow(), a2.getLastColumn()).getValues();
     const iF2 = findIdxOr_(va[0], ['figura', 'persona', 'nombre'], true);
-    if (iF2 != null) _logNombres_diag9('A2 (la última salida del legado)', va.slice(1).map(function (r) { return str(r[iF2]); }));
+    if (iF2 != null) _logNombres_diag9('A2 (la última salida del legado)', va.slice(1).map(function (row) { return str(row[iF2]); }));
   } else {
     Logger.log('  A2: no existe o está vacía.');
   }
@@ -308,98 +297,41 @@ function _validarAsistentes_diag9(dest) {
     dest.filas.forEach(function (f) {
       if (esVacio_(f.valores[iAsD])) return;
       cargados++;
-      if (String(fondos[f.fila - 1][0]).toLowerCase() === AZUL_SISTEMA_.toLowerCase()) azules++;
+      if (esColorSistema_(fondos[f.fila - 1][0])) azules++;
     });
-    Logger.log('  destino: Asistentes cargado en %s filas | de ésas, en azul (las cargó el legado): %s', cargados, azules);
+    Logger.log('  destino: Asistentes cargado en %s filas | de ésas, con el color del sistema (las cargó el legado ' +
+               'o el sistema): %s', cargados, azules);
   }
 
-  // --- 4b-d) el cruce nuevo ---
-  let minFecha = null;
-  dest.filas.forEach(function (f) { if (f.fecha && (!minFecha || f.fecha < minFecha)) minFecha = f.fecha; });
-  const porFigFecha = new Map();
-  dest.filas.forEach(function (f) {
-    const k = normalizeText_(f.figura) + '|' + (f.fecha ? ymd_(f.fecha) : '');
-    if (!porFigFecha.has(k)) porFigFecha.set(k, []);
-    porFigFecha.get(k).push(f);
-  });
-  const r = { filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [], variasFiguras: [], encuentran: 0,
-              noEncuentran: [], duplicado: [], barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0,
-              vacioYRdvTiene: 0, agendaARealizada: 0, iguales: 0, difieren: 0, destinoMenor: 0, destinoMayor: 0,
-              peores: [] };
-  for (let i = 1; i < vals.length; i++) {
-    const row = vals[i];
-    if (row.every(function (v) { return esVacio_(v); })) continue;
-    r.filas++;
-    if (row.some(function (v) { return normalizeText_(v) === 'no aplica'; })) { r.noAplica++; continue; }
-    const nombre = str(row[iFig]), bar = iBar != null ? str(row[iBar]) : '', fec = toDate_(row[iFec]);
-    const asis = num(row[iAsi]);
-    if (!fec) { r.sinFecha++; continue; }
-    if (minFecha && fec < minFecha) { r.antes++; continue; }
-    const fp = figuraPorTokens_(nombre);
-    if (!fp.figura) {
-      (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas });
-      continue;
-    }
-    const lista = porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
-    if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
-    if (lista.length > 1) {
-      r.duplicado.push({ nombre: nombre, fec: fec, filas: lista.map(function (f) { return f.fila; }) });
-      continue;
-    }
-    r.encuentran++;
-    const f = lista[0];
-    if (!f.barrio) r.destinoSinBarrio++;
-    else if (bar && normalizeText_(bar) !== normalizeText_(f.barrio)) {
-      r.barrioDifiere.push({ f: f, bar: bar });
-    }
-    if (!(asis > 0)) { r.sinAsistentes++; continue; }
+  // --- 4b-d) el cruce ---
+  _logCruceAsistentes_(r, false);
+  r.vacioYRdvTiene = 0; r.agendaARealizada = 0; r.iguales = 0; r.difieren = 0; r.destinoMenor = 0; r.destinoMayor = 0;
+  const peores = [];
+  const porFilaDest = {};
+  dest.filas.forEach(function (f) { porFilaDest[f.fila] = f; });
+  r.porFila.forEach(function (x, fila) {
+    const f = porFilaDest[fila];
     const d = iAsD != null ? num(f.valores[iAsD]) : '';
     if (d === '') {
       r.vacioYRdvTiene++;
       if (iSt != null && normStatus_(f.valores[iSt]) === normStatus_(TRANSICION_REALIZADA.desde)) r.agendaARealizada++;
-    } else if (d === asis) r.iguales++;
+    } else if (d === x.asis) r.iguales++;
     else {
       r.difieren++;
-      if (d < asis) r.destinoMenor++; else r.destinoMayor++;
-      r.peores.push({ f: f, d: d, asis: asis });
+      if (d < x.asis) r.destinoMenor++; else r.destinoMayor++;
+      peores.push({ f: f, d: d, asis: x.asis });
     }
-  }
-
-  Logger.log('  filas de RDV CONJUNTO: %s | ignoradas: "No aplica" %s, antes del destino (< %s) %s, sin fecha %s',
-             r.filas, r.noAplica, fmtFecha_(minFecha), r.antes, r.sinFecha);
-  Logger.log('  figura por tokens: sin ninguna %s | con varias %s (se listan, no se usan)', r.sinFigura.length,
-             r.variasFiguras.length);
-  Logger.log('  cruce figura + fecha: ENCUENTRAN %s | no encuentran %s | 2+ filas en el destino %s', r.encuentran,
-             r.noEncuentran.length, r.duplicado.length);
-  Logger.log('    de las que encuentran: barrio distinto %s (cruzan igual: el barrio sólo confirma) | destino sin ' +
-             'barrio %s | sin asistentes (> 0) en RDV CONJUNTO %s', r.barrioDifiere.length, r.destinoSinBarrio,
-             r.sinAsistentes);
+  });
   Logger.log('  Asistentes del destino VACÍO y RDV CONJUNTO lo tiene: %s  ← se escribirían (con STATUS "en agenda" ' +
              'que pasaría a Realizada: %s)', r.vacioYRdvTiene, r.agendaARealizada);
-  Logger.log('    iguales %s | difieren %s (destino menor %s, mayor %s) — sólo se cuentan, no se corrigen',
+  Logger.log('    iguales %s | difieren %s (destino menor %s, mayor %s) — sólo se cuentan, nunca se pisan',
              r.iguales, r.difieren, r.destinoMenor, r.destinoMayor);
-  Logger.log('    (el legado pisaba si el número nuevo era mayor o igual; la regla nueva escribe sólo si está vacío)');
-  r.peores.sort(function (a, b) { return Math.abs(b.d - b.asis) - Math.abs(a.d - a.asis); }).slice(0, 10)
+  peores.sort(function (a, b) { return Math.abs(b.d - b.asis) - Math.abs(a.d - a.asis); }).slice(0, 10)
     .forEach(function (p) {
       Logger.log('      difiere: fila %s | %s | %s | destino %s | RDV CONJUNTO %s', p.f.fila, p.f.figura,
                  fmtFecha_(p.f.fecha), p.d, p.asis);
     });
-  const lista = function (titulo, l, fmt) {
-    Logger.log('  %s: %s', titulo, l.length);
-    l.slice(0, 40).forEach(function (x) { Logger.log('    %s', fmt(x)); });
-    if (l.length > 40) Logger.log('    … y %s más', l.length - 40);
-  };
-  lista('sin figura (ningún nombre canónico entra en el texto)', r.sinFigura,
-        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec); });
-  lista('con varias figuras posibles', r.variasFiguras,
-        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' → ' + x.cands.join(' / '); });
-  lista('no encuentran fila (figura + fecha)', r.noEncuentran,
-        function (x) { return x.nombre + ' → ' + x.figura + ' | ' + fmtFecha_(x.fec) + ' | ' + x.bar + ' | asistentes ' + x.asis; });
-  lista('2+ filas en el destino con esa figura y fecha', r.duplicado,
-        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' → filas ' + x.filas.join(', '); });
-  lista('barrio distinto (cruzan igual)', r.barrioDifiere,
-        function (x) { return 'fila ' + x.f.fila + ' | ' + x.f.figura + ' | ' + fmtFecha_(x.f.fecha) + ' | destino ' +
-                              x.f.barrio + ' / RDV CONJUNTO ' + x.bar; });
+  _logListasAsistentes_(r);
   return r;
 }
 

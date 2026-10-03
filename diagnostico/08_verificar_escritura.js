@@ -12,10 +12,11 @@
  *      fila se resuelve por su traza (`form_clave`, si no `form_origen`: `formularioDeTraza_`), no por
  *      la fila de B. Así se detectó la 309/315 de la copia, y así se detecta si vuelve a pasar.
  *   2) **Fórmulas** (el paso 14): las once derivadas siguen siendo fórmula y muestran `Comunas`.
- *   3) **Azules**: contra la línea de base DE ESA SOLAPA (`LINEA_BASE_AZULES`), los de las
- *      `COLUMNAS_MANUALES` NO pueden subir. Y desde el 02/10: **toda celda de traza con valor tiene
- *      que estar en azul** (sólo el sistema escribe traza, y pinta todo lo que escribe), más el
- *      desglose de azules por grupo de columnas.
+ *   3) **El color del sistema** (`COLORES_SISTEMA`: `#CFE2F3` desde el 02/10 y el `#4F81BD` viejo): en
+ *      `Barrio`, la única columna manual desde el paso B, NO puede subir contra la línea de base de esa
+ *      solapa (`LINEA_BASE_AZULES`); el resto se cuenta **por columna** (actual | viejo), y lo que escribió
+ *      la última corrida, por columna, sale de REGISTRO_UPSERT. **Toda celda de traza con valor tiene que
+ *      tener el color** (sólo el sistema escribe traza, y pinta todo lo que escribe).
  *   4) **Filas con RDV_UID**: cuántas, sin `form_origen`, **incompletas** (les queda alguna celda que
  *      el plan escribía —traza, datos o STATUS— vacía; lo decide `celdasDeDecision_`, la misma función
  *      que usa la escritura), **sin `form_clave`** (la próxima corrida la completa) y **traza ambigua**
@@ -76,26 +77,28 @@ function verificarEscritura() {
     Object.keys(fx.difs || {}).every(function (k) { return !fx.difs[k]; });
   if (!formulasOk) problemas.push('fórmulas: ver el bloque 2');
 
-  // --- 3) azules ---
-  Logger.log('--- 3) #4F81BD en "%s" ---', RDV_HOJA_DESTINO);
+  // --- 3) el color del sistema (02/10: #CFE2F3, y el #4F81BD viejo) ---
+  Logger.log('--- 3) celdas con el color del sistema (%s) en "%s" ---', COLORES_SISTEMA.join(' o '), RDV_HOJA_DESTINO);
   const az = _azules_diag8(dest);
   const base = lineaBaseAzules_();
-  Logger.log('  en las COLUMNAS_MANUALES: %s   (línea de base: %s)', az.manual,
-             base.manuales == null ? 'NO ANOTADA' : base.manuales);
-  Logger.log('  en toda la solapa .....: %s   (línea de base: %s)', az.total,
+  Logger.log('  en Barrio (la única columna manual): %s   (línea de base: %s; NO puede subir)', az.manual,
+             base.barrio == null ? 'NO ANOTADA' : base.barrio);
+  Logger.log('  en toda la solapa: %s   (línea de base: %s; informativo: sube con lo que se escribe)', az.total,
              base.total == null ? 'NO ANOTADA' : base.total);
-  Logger.log('  desglose: traza %s | sexo y edades %s | STATUS %s | manuales %s | otras %s',
-             az.grupos.traza, az.grupos.datos, az.grupos.status, az.grupos.manuales, az.grupos.otras);
-  Logger.log('  celdas de traza con valor: %s | de ésas, SIN azul: %s   (tiene que dar 0: sólo el sistema',
+  Logger.log('  por columna (actual | viejo):');
+  Object.keys(az.porColumna).sort(function (a, b) { return az.porColumna[b].t - az.porColumna[a].t; })
+    .forEach(function (n) { const x = az.porColumna[n]; Logger.log('    %s: %s (%s | %s)', n, x.t, x.nuevo, x.viejo); });
+  Logger.log('  celdas de traza con valor: %s | de ésas, SIN el color del sistema: %s   (tiene que dar 0: sólo el',
              az.trazaConValor, az.trazaSinAzul);
-  Logger.log('    escribe traza, y pinta todo lo que escribe)');
-  az.ejemplosSinAzul.forEach(function (x) { Logger.log('    sin azul: fila %s, %s', x.fila, x.col); });
-  if (base.manuales == null) {
-    Logger.log('  >>> Sin línea de base para "%s". Si esto corre ANTES de la primera escritura en esta', RDV_HOJA_DESTINO);
-    Logger.log('      solapa, anotar estos dos números en 00_Config.js (LINEA_BASE_AZULES["%s"]).', RDV_HOJA_DESTINO);
-  } else if (az.manual > base.manuales) {
-    problemas.push('azules en columnas manuales: ' + az.manual + ' > ' + base.manuales);
-    Logger.log('  >>> SUBIERON los azules en las columnas manuales: el upsert NO debería escribirlas.');
+  Logger.log('    sistema escribe traza, y pinta todo lo que escribe)');
+  az.ejemplosSinAzul.forEach(function (x) { Logger.log('    sin color: fila %s, %s', x.fila, x.col); });
+  if (base.barrio == null) {
+    Logger.log('  >>> Sin línea de base de Barrio para "%s". Si esto corre ANTES de escribir en esta solapa,', RDV_HOJA_DESTINO);
+    Logger.log('      anotar en 00_Config.js: LINEA_BASE_AZULES["%s"] = { barrio: %s, total: %s }.', RDV_HOJA_DESTINO,
+               az.manual, az.total);
+  } else if (az.manual > base.barrio) {
+    problemas.push('color del sistema en Barrio: ' + az.manual + ' > ' + base.barrio);
+    Logger.log('  >>> SUBIÓ el color del sistema en Barrio: el upsert NO debería escribirlo.');
   }
   if (az.trazaSinAzul) problemas.push('celdas de traza sin azul: ' + az.trazaSinAzul);
 
@@ -130,6 +133,7 @@ function verificarEscritura() {
     Logger.log('  última ESCRITURA en %s: %s | solapa %s | completa %s | filas %s | uids estampados %s',
                RDV_HOJA_REGISTRO, ult.hora, ult.hoja || '(no registrada)', ult.completa || '(no registrado)',
                ult.filas, ult.uids);
+    Logger.log('  lo que escribió esa corrida, por columna: %s', ult.porColumna || '(no registrado)');
   } else {
     Logger.log('  %s no tiene ninguna corrida de ESCRITURA en esta solapa todavía.', RDV_HOJA_REGISTRO);
   }
@@ -158,7 +162,7 @@ function verificarEscritura() {
              'escritura: la fila queda como está; se mira con paso12_explicarFila)', distintas);
 
   Logger.log(problemas.length ? '>>> HAY PROBLEMAS: ' + problemas.join(' | ') + '. Ver docs/backup.md §8.2.'
-                              : '>>> OK: invariante 0, fórmulas bien, azules manuales sin subir, traza en azul, 0 incompletas.');
+                              : '>>> OK: invariante 0, fórmulas bien, Barrio sin subir, traza con el color del sistema, 0 incompletas.');
   return { problemas: problemas, conUid: conUid.length, incompletas: incompletas.length,
            sinClave: sinClave.length, ambiguas: ambiguas.length, choques: choques.length,
            azulManual: az.manual, azulTotal: az.total, trazaSinAzul: az.trazaSinAzul,
@@ -194,18 +198,22 @@ function _azules_diag8(dest) {
     return 'otras';
   });
   const out = { total: 0, manual: 0, grupos: { traza: 0, datos: 0, status: 0, manuales: 0, otras: 0 },
-                trazaConValor: 0, trazaSinAzul: 0, ejemplosSinAzul: [] };
-  const azul = AZUL_SISTEMA_.toLowerCase();
+                porColumna: {}, trazaConValor: 0, trazaSinAzul: 0, ejemplosSinAzul: [] };
+  const nuevo = COLOR_SISTEMA.toLowerCase();
   const porFila = {};
   dest.filas.forEach(function (f) { porFila[f.fila] = f; });
   for (let i = 1; i < fondos.length; i++) {
     for (let k = 0; k < fondos[i].length; k++) {
-      const esAzul = String(fondos[i][k]).toLowerCase() === azul;
+      const esAzul = esColorSistema_(fondos[i][k]);
       const g = grupoDe[k] || 'otras';
       if (esAzul) {
         out.total++;
         out.grupos[g]++;
         if (g === 'manuales') out.manual++;
+        const n = hdr[k] || ('col ' + (k + 1));
+        const x = out.porColumna[n] = out.porColumna[n] || { t: 0, nuevo: 0, viejo: 0 };
+        x.t++;
+        if (String(fondos[i][k]).toLowerCase() === nuevo) x.nuevo++; else x.viejo++;
       }
       const f = porFila[i + 1];
       if (g === 'traza' && f && !esVacio_(f.valores[k])) {
@@ -248,7 +256,7 @@ function _faltantesDeFila_diag8(dest, f, c, comunas) {
 function _ultimaEscrituraRegistrada_diag8() {
   const sh = ssIntermedia_().getSheetByName(RDV_HOJA_REGISTRO);
   if (!sh || sh.getLastRow() < 2) return null;
-  const nCols = Math.max(5, Math.min(sh.getLastColumn(), 17));
+  const nCols = Math.max(5, Math.min(sh.getLastColumn(), 22));
   const vals = sh.getRange(2, 1, sh.getLastRow() - 1, nCols).getValues();
   for (let i = vals.length - 1; i >= 0; i--) {
     if (vals[i][1] !== 'ESCRITURA') continue;
@@ -256,7 +264,7 @@ function _ultimaEscrituraRegistrada_diag8() {
     const hoja = nCols >= 16 ? str(vals[i][15]) : '';
     if ((hoja || RDV_HOJA_DESTINO_REAL) !== RDV_HOJA_DESTINO) continue;
     return { hora: vals[i][0], filas: vals[i][2], uids: vals[i][4],
-             hoja: hoja, completa: nCols >= 17 ? vals[i][16] : '' };
+             hoja: hoja, completa: nCols >= 17 ? vals[i][16] : '', porColumna: nCols >= 22 ? str(vals[i][21]) : '' };
   }
   return null;
 }

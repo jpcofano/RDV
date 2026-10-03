@@ -1566,9 +1566,13 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
 
   const plan = calcularPlan_(enSeco);
   logResumen_(plan);                 // ← ANTES de escribir nada
+  // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
+  plan.asistentes = cruzarAsistentes_(plan.dest, plan.comunas);
+  Logger.log('--- Asistentes (RDV CONJUNTO, figura + fecha) ---');
+  _logCruceAsistentes_(plan.asistentes, false);
 
   if (!enSeco) {
-    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0);
+    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes);
     plan.res.escritas = w.celdas;
     plan.res.uidsEstampados = w.uids;
     plan.res.escritura = w;
@@ -1577,6 +1581,8 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
                w.msEscritura, w.tandaMax);
     Logger.log('    celdas de dato %s | traza %s | uuids estampados %s | STATUS → Realizada %s',
                w.celdas, w.trazas, w.uids, w.realizadas);
+    Logger.log('    por columna: %s', Object.keys(w.porColumna).map(function (k) {
+      return k + ' ' + w.porColumna[k]; }).join(' | ') || 'nada');
     if (w.completa) {
       props.deleteProperty(PROP_ESCRITURA_INCOMPLETA);
       Logger.log('    COMPLETA: no queda ninguna fila con algo que escribir.');
@@ -1624,7 +1630,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
                         'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
                         'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
-                        'huella_entradas', 'huella_plan'];
+                        'huella_entradas', 'huella_plan', 'por_columna'];
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1637,7 +1643,8 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
                   r.pendienteBarrio.t, r.revisar.v, r.revisar.t, r.sinMatch.v, r.sinMatch.t,
                   (fallaron || []).join(', '), new Date() - t0,
                   RDV_HOJA_DESTINO, w ? _sn_(w.completa) : '', w ? w.filasPendientes : '',
-                  w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan]);
+                  w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan,
+                  w ? JSON.stringify(w.porColumna) : '']);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }
@@ -4105,55 +4112,68 @@ function leerConfirmaciones_() {
 // ===================== Escritura =====================
 
 /**
- * Aplica las decisiones. **Todo pasa por `setSiDelSistema_`** — cero `setValue` sueltos
- * (CLAUDE.md, sección 0).
+ * Aplica el plan. **Todo pasa por `setSiDelSistemaLote_`** (la regla general, sólo celda vacía) y la
+ * transición de STATUS por `marcarRealizadaLote_` (la excepción): cero `setValue` sueltos (CLAUDE.md 0).
  *
- * Las `COLUMNAS_MANUALES` ni se intentan, y las `COLUMNAS_DERIVADAS` tampoco: hasta la Fase 3
- * son fórmulas de array y escribir en una rompe el bloque entero (3.1.b).
+ * Qué escribe desde el paso B (02/10), en cada fila que no sea de una reunión futura:
+ *   - si la fila tiene decisión de escribir (formulario resuelto o RDV_UID): traza, RDV_UID,
+ *     Inscriptos, los cinco canales y el desagregado (sólo si Inscriptos está vacío o es el de B);
+ *   - en cualquier fila, los **Asistentes** que trae RDV CONJUNTO (`asistentes.porFila`, de
+ *     `cruzarAsistentes_`), aunque la fila no tenga formulario;
+ *   - y STATUS `en agenda` → `Realizada` si la fila tiene asistentes (los que ya tenía o los que se
+ *     escriben ahora).
+ * `Barrio` (manual) y las derivadas no se escriben nunca.
  */
-function aplicarDecisiones_(dest, decisiones, t0) {
+function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
   const sh = dest.sh;
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
   const conStatus = iSt != null && iAs != null;
   const inicio = t0 ? t0.getTime() : Date.now();
+  const hoy = _hoy_();
 
   /*
-   * Una fila que NO se escribe no se toca: ni RDV_UID, ni datos, ni traza (01/10).
+   * Una decisión que NO se escribe (revisar, sin match) no escribe traza ni datos del formulario
+   * (01/10: su traza vive en REVISAR_MATCH y SIN_MATCH, que se regeneran en cada corrida). Pero la fila
+   * igual puede recibir sus Asistentes y el cambio de STATUS: no dependen del formulario.
    *
-   * Antes la traza se escribía también para los descartados. Pero setSiDelSistema_ escribe sólo
-   * en celda vacía, así que esa traza quedaba FIJA con la decisión de la primera corrida aunque
-   * después la fila se resolviera. La traza de los descartados vive en REVISAR_MATCH y SIN_MATCH,
-   * que se regeneran en cada corrida.
-   *
-   * Y una fila que, en lo leído para el plan, ya tiene llenas todas las celdas que el plan escribiría
-   * tampoco: una celda llena no se escribe nunca, así que no hace falta volver a leerla. En régimen
-   * (todas con RDV_UID y completas) esto deja la escritura en cero lecturas.
+   * Y una fila que, en lo leído para el plan, ya tiene llenas todas las celdas que se escribirían
+   * tampoco entra: una celda llena no se escribe nunca. En régimen esto deja la escritura en cero.
    */
-  const pendientes = decisiones.filter(function (d) {
-    if (d.noEscribir) return false;
-    const c = celdasDeDecision_(dest, d, d.fila.valores, true);
-    return c.celdas.length > 0 || c.status;
-  }).sort(function (a, b) { return a.fila.fila - b.fila.fila; });
+  const porFila = new Map();
+  decisiones.forEach(function (d) { if (!d.noEscribir) porFila.set(d.fila.fila, d); });
+  const pendientes = [];
+  dest.filas.forEach(function (f) {
+    if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
+    const base = porFila.get(f.fila) || { fila: f, cand: null, nivel: 'sin_formulario', score: null, dist: null };
+    const a = asistentes && asistentes.porFila ? asistentes.porFila.get(f.fila) : null;
+    const d = Object.assign({}, base, { asis: a ? a.asis : '' });
+    const c = celdasDeDecision_(dest, d, f.valores, true);
+    if (c.celdas.length || c.status) pendientes.push(d);
+  });
 
   /*
-   * Por tandas de filas (02/10). Cada tanda: una lectura fresca de sus filas (adentro de los
-   * helpers), `setValues` por bloque, fondos con RangeList, flush. Antes de cada tanda, el corte
-   * propio: si con la tanda más lenta vista hasta ahora se pasaría de UPSERT_CORTE_PROPIO_MS, se
-   * corta acá —entre tandas, nunca a mitad de una fila— y la corrida siguiente sigue.
+   * Por tandas de filas (02/10). Cada tanda: **una lectura fresca de sus filas** —qué escribir se decide
+   * sobre lo que hay AHORA, no sobre lo leído para el plan (p. ej. el desagregado depende de Inscriptos)—,
+   * `setValues` por bloque (que vuelve a chequear que cada celda siga vacía), fondos con RangeList,
+   * STATUS, flush. Antes de cada tanda, el corte propio (UPSERT_CORTE_PROPIO_MS): se corta entre tandas,
+   * nunca a mitad de una fila, y la corrida siguiente sigue.
    */
-  const w = { celdas: 0, trazas: 0, uids: 0, realizadas: 0, filasPendientes: pendientes.length,
+  const w = { celdas: 0, trazas: 0, uids: 0, realizadas: 0, filasPendientes: pendientes.length, porColumna: {},
               filasHechas: 0, tandas: 0, tandaMax: 0, msEscritura: 0, completa: true };
+  const nCols = dest.hdr.length;
   const tEsc = Date.now();
   for (let i = 0; i < pendientes.length; i += UPSERT_FILAS_POR_TANDA) {
     if (Date.now() - inicio + w.tandaMax > UPSERT_CORTE_PROPIO_MS) { w.completa = false; break; }
     const tTanda = Date.now();
     const tanda = pendientes.slice(i, i + UPSERT_FILAS_POR_TANDA);
+    const f1 = tanda[0].fila.fila, f2 = tanda[tanda.length - 1].fila.fila;
+    const frescas = sh.getRange(f1, 1, f2 - f1 + 1, nCols).getValues();
 
     const esc = [], filasStatus = [];
     tanda.forEach(function (d) {
-      const c = celdasDeDecision_(dest, d, d.fila.valores, false);
+      const c = celdasDeDecision_(dest, d, frescas[d.fila.fila - f1], false);
       c.celdas.forEach(function (x) {
-        esc.push({ fila: d.fila.fila, col: x.col, valor: x.valor, tipo: x.tipo });
+        esc.push({ fila: d.fila.fila, col: x.col, valor: x.valor, tipo: x.tipo, ceroEsVacio: x.ceroEsVacio });
       });
       if (c.status) filasStatus.push(d.fila.fila);
     });
@@ -4161,9 +4181,15 @@ function aplicarDecisiones_(dest, decisiones, t0) {
       if (e.tipo === 'dato') w.celdas++;
       else if (e.tipo === 'uid') w.uids++;
       else w.trazas++;
+      const n = dest.hdr[e.col - 1];
+      w.porColumna[n] = (w.porColumna[n] || 0) + 1;
     });
     // La única excepción a la regla general (CLAUDE.md, sección 0 y decisión 12).
-    if (conStatus) w.realizadas += marcarRealizadaLote_(sh, filasStatus, iSt + 1, iAs + 1).length;
+    if (conStatus) {
+      const r = marcarRealizadaLote_(sh, filasStatus, iSt + 1, iAs + 1).length;
+      w.realizadas += r;
+      if (r) w.porColumna[dest.hdr[iSt]] = (w.porColumna[dest.hdr[iSt]] || 0) + r;
+    }
     SpreadsheetApp.flush();
 
     w.tandas++;
@@ -4175,31 +4201,38 @@ function aplicarDecisiones_(dest, decisiones, t0) {
 }
 
 /**
- * **Lo que el plan escribe en la fila de una decisión**, sobre `valores` (la fila como está): las
- * celdas VACÍAS que escribiría, `[{col (1-based), valor, tipo}]` con tipo `traza` / `uid` / `dato`,
- * y si toca la transición de STATUS. Es el único lugar que lo define: lo usan la escritura y el
- * paso 16 ("fila incompleta" = le queda algo de esto), así que no pueden divergir.
+ * **Lo que el sistema escribe en una fila**, sobre `valores` (la fila como está): las celdas VACÍAS que
+ * escribiría, `[{col (1-based), valor, tipo, ceroEsVacio}]` con tipo `traza` / `uid` / `dato`, y si toca
+ * la transición de STATUS. Es el único lugar que lo define: lo usan la escritura y el paso 16 ("fila
+ * incompleta" = le queda algo de esto), así que no pueden divergir.
  *
- *   - decisión nueva: traza (form_origen, form_score, form_nivel, form_fecha_match si hay
- *     distancia, form_clave), RDV_UID, los datos del formulario (sexo y edades) y la transición de
- *     STATUS;
- *   - fila que ya tiene RDV_UID (`nivel = 'rdv_uid'`): datos, STATUS y `form_clave` si le falta (las
- *     escritas antes del 02/10). El resto de su traza es la de la decisión original y no se completa
- *     con otra cosa. A estas decisiones sólo se llega con el formulario resuelto SIN ambigüedad
- *     (`formularioDeTraza_`): con gemelos, no hay decisión y no se completa nada.
+ *   - decisión nueva (formulario resuelto): traza (form_origen, form_score, form_nivel,
+ *     form_fecha_match si hay distancia, form_clave) y RDV_UID;
+ *   - fila con RDV_UID (`nivel = 'rdv_uid'`): `form_clave` si le falta. El resto de su traza es la de la
+ *     decisión original y no se completa con otra cosa;
+ *   - con formulario (cualquiera de las dos): **Inscriptos** (un 0 cuenta como vacío,
+ *     INSCRIPTOS_CERO_ES_VACIO), **los cinco canales**, y **el desagregado** (sexo, edades, Sin
+ *     identificar) **sólo si Inscriptos está vacío o es igual al de B**: la fila no puede quedar con un
+ *     total que no cierra con su desagregado;
+ *   - `d.asis` (de RDV CONJUNTO, si cruzó): **Asistentes**, con o sin formulario;
+ *   - STATUS `en agenda` → `Realizada` si la fila tiene asistentes (los que tenía o `d.asis`).
  *
- * Las COLUMNAS_MANUALES y las derivadas no están en la lista nunca.
+ * Las COLUMNAS_MANUALES (Barrio) y las derivadas no están nunca.
  *
  * @param {boolean} callar  no loguear STATUS desconocidos (para los pre-chequeos)
  */
 function celdasDeDecision_(dest, d, valores, callar) {
   const out = [];
-  const agregar = function (idx, valor, tipo) {
+  const agregar = function (idx, valor, tipo, ceroEsVacio) {
     if (idx == null || valor === '' || valor === null || valor === undefined) return;
-    if (esVacio_(valores[idx])) out.push({ col: idx + 1, valor: valor, tipo: tipo });
+    const v = valores[idx];
+    if (esVacio_(v) || (ceroEsVacio && num(v) === 0)) {
+      out.push({ col: idx + 1, valor: valor, tipo: tipo, ceroEsVacio: !!ceroEsVacio });
+    }
   };
-  if (d.nivel !== 'rdv_uid') {
-    agregar(dest.T.origen, d.cand.nombre, 'traza');
+  const c = d.cand || null;
+  if (c && d.nivel !== 'rdv_uid') {
+    agregar(dest.T.origen, c.nombre, 'traza');
     agregar(dest.T.score, d.score, 'traza');
     agregar(dest.T.nivel, d.nivel, 'traza');
     if (d.dist !== null && d.dist !== undefined) agregar(dest.T.fechaMatch, d.dist, 'traza');
@@ -4207,21 +4240,192 @@ function celdasDeDecision_(dest, d, valores, callar) {
       out.push({ col: dest.T.uid + 1, valor: Utilities.getUuid(), tipo: 'uid' });
     }
   }
-  agregar(dest.T.clave, d.cand.clave, 'traza');
-  for (let k = 0; k < CAMPOS_DATO_.length; k++) {
-    const campo = CAMPOS_DATO_[k];
-    if (esColumnaManual_(campo) || esColumnaDerivada_(campo)) continue;
-    agregar(dest.D[campo], d.cand.datos[campo], 'dato');
+  if (c) {
+    agregar(dest.T.clave, c.clave, 'traza');
+    const cu = c.cuentas || {};
+    agregar(dest.D['Inscriptos'], cu['Inscriptos'], 'dato', INSCRIPTOS_CERO_ES_VACIO);
+    CAMPOS_CANALES_.forEach(function (n) { agregar(dest.D[n], cu[n], 'dato'); });
+    let insD = dest.D['Inscriptos'] != null ? num(valores[dest.D['Inscriptos']]) : '';
+    if (INSCRIPTOS_CERO_ES_VACIO && insD === 0) insD = '';
+    if (insD === '' || insD === cu['Inscriptos']) {
+      CAMPOS_DESAGREGADO_.forEach(function (n) { agregar(dest.D[n], c.datos[n], 'dato'); });
+    }
   }
+  agregar(dest.D['Asistentes'], d.asis, 'dato');
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
-  const status = iSt != null && iAs != null &&
-                 _decideRealizada_(valores[iSt], numOcero_(valores[iAs]), callar);
+  let status = false;
+  if (iSt != null && iAs != null) {
+    const asisFila = esVacio_(valores[iAs]) ? (d.asis === undefined ? '' : d.asis) : valores[iAs];
+    status = _decideRealizada_(valores[iSt], numOcero_(asisFila), callar);
+  }
   return { celdas: out, status: status };
 }
 
-/** Las columnas de dato que el upsert escribe. Las manuales y las derivadas no están. */
-const CAMPOS_DATO_ = ['Masculinos', 'Femeninos',
-                      '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
+/** El desagregado: sexo, edades y Sin identificar. Se escribe sólo si Inscriptos está vacío o es el de B. */
+const CAMPOS_DESAGREGADO_ = ['Masculinos', 'Femeninos',
+                             '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
+/** Los cinco canales del destino (MAPEO_CANALES). */
+const CAMPOS_CANALES_ = ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'];
+/**
+ * Las columnas de dato que el upsert escribe (paso B, 02/10), siempre sólo en celda vacía: Inscriptos, los
+ * canales, el desagregado y Asistentes. Las manuales (Barrio) y las derivadas no están.
+ */
+const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_, ['Asistentes']);
+
+// ===================== Asistentes desde RDV CONJUNTO =====================
+
+/**
+ * **El cruce de Asistentes** (02/10): cada fila de RDV CONJUNTO (en el archivo del destino) contra una
+ * fila del destino. Lo usan el upsert (paso B) y el paso 17: los dos ven lo mismo.
+ *
+ *   - **la figura**: RDV CONJUNTO la escribe "Apellido Nombre(s)"; `figuraPorTokens_` la resuelve si
+ *     todos los tokens de UN nombre canónico están en el texto. Con varias (Lombardi/Tapia/Piragine) o
+ *     ninguna ("Deporte"), se lista y no se usa;
+ *   - **la clave es figura + fecha** (regla a de CLAUDE.md). Si el destino tiene 2+ filas de esa figura
+ *     ese día (11 casos; la regla no vale para Macri), **desempata el barrio**: el de RDV CONJUNTO contra
+ *     el del destino, normalizado ("Villa Gral. Mitre" = "Villa General Mitre"), o, si RDV CONJUNTO trae
+ *     una comuna ("C3", "C1N", "C1S"), contra la comuna del barrio del destino (C1N/C1S con la subzona
+ *     de la Comuna 1). Si no queda exactamente una, se lista y no se escribe;
+ *   - con una sola fila, **el barrio sólo confirma**: si difiere, se lista y cruza igual;
+ *   - "No aplica" y las filas de antes del inicio del destino se ignoran y se cuentan aparte;
+ *   - dos filas de RDV CONJUNTO con asistentes distintos para la misma fila del destino: no se escribe
+ *     ninguno (se lista).
+ *
+ * Devuelve `{ porFila: Map(fila → {asis, nombre}), ... listas y conteos }`. **No escribe nada**: el
+ * upsert escribe después sólo donde Asistentes está vacío; las que difieren se cuentan, nunca se pisan.
+ */
+function cruzarAsistentes_(dest, comunas) {
+  const r = { error: null, porFila: new Map(), filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
+              variasFiguras: [], encuentran: 0, noEncuentran: [], ambiguas: [], desempatadas: [],
+              barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, conflicto: [], minFecha: null };
+  const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
+  if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
+  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  const hdr = vals[0];
+  const iFig = findIdxOr_(hdr, ['figura', 'persona', 'nombre'], true);
+  const iBar = findIdxOr_(hdr, ['barrion', 'barrio'], true);
+  const iFec = findIdxOr_(hdr, ['fecha', 'fecha (fecha)', 'fecha_evento', 'fecha reunion', 'fecha reunión',
+                                'fecha_reunion', 'fecha_reunión', 'fecha evento'], true);
+  const iAsi = findIdxOr_(hdr, ['asistentes', 'asistente'], true);
+  if (iFig == null || iFec == null || iAsi == null) {
+    r.error = '"' + RDV_HOJA_ASISTENTES_SRC + '" no tiene Figura, FECHA y Asistentes por encabezado: ' +
+              hdr.filter(String).join(' | ');
+    return r;
+  }
+  r.valores = vals; r.iFig = iFig;
+  dest.filas.forEach(function (f) { if (f.fecha && (!r.minFecha || f.fecha < r.minFecha)) r.minFecha = f.fecha; });
+  const porFigFecha = new Map();
+  dest.filas.forEach(function (f) {
+    const k = normalizeText_(f.figura) + '|' + (f.fecha ? ymd_(f.fecha) : '');
+    if (!porFigFecha.has(k)) porFigFecha.set(k, []);
+    porFigFecha.get(k).push(f);
+  });
+  const conflictos = new Set();
+  for (let i = 1; i < vals.length; i++) {
+    const row = vals[i];
+    if (row.every(function (v) { return esVacio_(v); })) continue;
+    r.filas++;
+    if (row.some(function (v) { return normalizeText_(v) === 'no aplica'; })) { r.noAplica++; continue; }
+    const nombre = str(row[iFig]), bar = iBar != null ? str(row[iBar]) : '', fec = toDate_(row[iFec]);
+    const asis = num(row[iAsi]);
+    if (!fec) { r.sinFecha++; continue; }
+    if (r.minFecha && fec < r.minFecha) { r.antes++; continue; }
+    const fp = figuraPorTokens_(nombre);
+    if (!fp.figura) {
+      (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas });
+      continue;
+    }
+    const lista = porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
+    if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
+    let f;
+    if (lista.length > 1) {
+      const coinciden = lista.filter(function (x) { return ubicacionCoincideConjunto_(bar, x, comunas); });
+      if (coinciden.length !== 1) {
+        r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, filas: lista.map(function (x) {
+          return x.fila + ' (' + (x.barrio || 'sin barrio') + ')'; }) });
+        continue;
+      }
+      f = coinciden[0];
+      r.desempatadas.push({ nombre: nombre, bar: bar, f: f, filas: lista.map(function (x) { return x.fila; }) });
+    } else {
+      f = lista[0];
+      if (!f.barrio) r.destinoSinBarrio++;
+      else if (bar && !ubicacionCoincideConjunto_(bar, f, comunas)) r.barrioDifiere.push({ f: f, bar: bar });
+    }
+    r.encuentran++;
+    if (!(asis > 0)) { r.sinAsistentes++; continue; }
+    const ya = r.porFila.get(f.fila);
+    if (ya && ya.asis !== asis) {
+      if (!conflictos.has(f.fila)) r.conflicto.push({ f: f, a: ya.asis, b: asis });
+      conflictos.add(f.fila);
+      continue;
+    }
+    r.porFila.set(f.fila, { asis: asis, nombre: nombre });
+  }
+  conflictos.forEach(function (fila) { r.porFila.delete(fila); });
+  return r;
+}
+
+/**
+ * ¿La ubicación que trae RDV CONJUNTO coincide con la fila del destino? Si es una comuna ("C3", "C1N",
+ * "Comuna 1 Sur"), contra la comuna del barrio del destino (y la subzona en la Comuna 1); si no, barrio
+ * contra barrio, canonizados ("Villa Gral. Mitre" = "Villa General Mitre"). Sin barrio en el destino o
+ * sin ubicación en RDV CONJUNTO: no coincide.
+ */
+function ubicacionCoincideConjunto_(texto, f, comunas) {
+  const t = str(texto);
+  if (!t || !f.barrio) return false;
+  if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(t)) {
+    const n = detectComuna_(t), cDest = comunas.get(normalizeText_(f.barrio));
+    if (n == null || cDest == null || n !== cDest) return false;
+    const sz = n === 1 ? detectSubzonaComuna1_(t) : null;
+    if (!sz) return true;
+    const szDest = subzonaDeBarrio_(f.barrio);
+    return !szDest || szDest === sz;
+  }
+  const canon = function (x) { return canonizarBarrio_(x) || _expandirAbreviaturas_(normalizeText_(x)); };
+  return canon(t) === canon(f.barrio);
+}
+
+/** El resumen del cruce en el log. Con `detalle`, además las listas (paso 17). */
+function _logCruceAsistentes_(r, detalle) {
+  if (r.error) { Logger.log('  Asistentes: %s', r.error); return; }
+  Logger.log('  RDV CONJUNTO: %s filas | ignoradas: "No aplica" %s, antes del destino (< %s) %s, sin fecha %s',
+             r.filas, r.noAplica, fmtFecha_(r.minFecha), r.antes, r.sinFecha);
+  Logger.log('  figura por tokens: sin ninguna %s | con varias %s (fuera, se listan)', r.sinFigura.length,
+             r.variasFiguras.length);
+  Logger.log('  figura + fecha: ENCUENTRAN %s (de ésas, 2+ filas desempatadas por barrio o comuna: %s) | no ' +
+             'encuentran %s | 2+ filas sin desempate (no se escriben) %s', r.encuentran, r.desempatadas.length,
+             r.noEncuentran.length, r.ambiguas.length);
+  Logger.log('    barrio distinto con una sola fila (cruzan igual) %s | destino sin barrio %s | sin asistentes %s | ' +
+             'dos asistentes distintos para la misma fila (no se escriben) %s', r.barrioDifiere.length,
+             r.destinoSinBarrio, r.sinAsistentes, r.conflicto.length);
+  if (detalle) _logListasAsistentes_(r);
+}
+
+/** Las listas del cruce de Asistentes (paso 17): lo que no cruza, lo desempatado, lo que difiere. */
+function _logListasAsistentes_(r) {
+  const lista = function (titulo, l, fmt) {
+    Logger.log('  %s: %s', titulo, l.length);
+    l.slice(0, 40).forEach(function (x) { Logger.log('    %s', fmt(x)); });
+    if (l.length > 40) Logger.log('    … y %s más', l.length - 40);
+  };
+  lista('sin figura (ningún nombre canónico entra en el texto)', r.sinFigura,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec); });
+  lista('con varias figuras posibles', r.variasFiguras,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' → ' + x.cands.join(' / '); });
+  lista('no encuentran fila (figura + fecha)', r.noEncuentran,
+        function (x) { return x.nombre + ' → ' + x.figura + ' | ' + fmtFecha_(x.fec) + ' | ' + x.bar + ' | asistentes ' + x.asis; });
+  lista('2+ filas desempatadas por barrio o comuna', r.desempatadas,
+        function (x) { return x.nombre + ' | ' + x.bar + ' → fila ' + x.f.fila + ' (de ' + x.filas.join(', ') + ')'; });
+  lista('2+ filas SIN desempate (no se escriben)', r.ambiguas,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' | ' + (x.bar || 'sin ubicación') + ' → filas ' + x.filas.join(', '); });
+  lista('barrio distinto (cruzan igual)', r.barrioDifiere,
+        function (x) { return 'fila ' + x.f.fila + ' | ' + x.f.figura + ' | ' + fmtFecha_(x.f.fecha) + ' | destino ' +
+                              x.f.barrio + ' / RDV CONJUNTO ' + x.bar; });
+  lista('dos asistentes distintos para la misma fila', r.conflicto,
+        function (x) { return 'fila ' + x.f.fila + ' | ' + x.f.figura + ' | ' + x.a + ' / ' + x.b; });
+}
 
 // ===================== Lecturas =====================
 
@@ -4238,7 +4442,7 @@ function leerDestino_(nombreHoja) {
 
   const D = {};
   ['Figura', 'Barrio', 'FECHA', 'HORA', 'Inscriptos', 'Asistentes', 'STATUS REUNIÓN', 'EVENTO',
-   'Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar']
+   'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión', 'Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar']
     .forEach(function (n) { D[n] = findIdxOr_(hdr, aliasColumna_(n), true); });
 
   // `EVENTO` es la única vía de ubicación para las reuniones temáticas (CLAUDE.md 1.c). Si no

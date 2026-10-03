@@ -29,7 +29,8 @@ const { execSync } = require('child_process');
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
-                  'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js'];
+                  'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
+                  'diagnostico/11_repintar.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -344,13 +345,15 @@ const TRAZA = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha
 /** Compara dos fotos del destino: ninguna celda llena cambió (salvo en agenda → Realizada), azul en lo escrito. */
 function auditar(antes, despues) {
   const r = { pisadas: 0, escritas: 0, sinAzul: 0, fondosTocados: 0, manualesODerivadas: 0, realizadas: 0, malStatus: 0 };
-  const prohibidas = ['Barrio', 'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].concat(DERIVADAS).map(colD);
+  // Desde el paso B (02/10) la única columna manual es Barrio; las derivadas, nunca.
+  const prohibidas = ['Barrio'].concat(DERIVADAS).map(colD);
   for (let i = 1; i < antes.v.length; i++) {
     for (let k = 0; k < HDR_DESTINO.length; k++) {
       const a = antes.v[i][k], d = despues.v[i] ? despues.v[i][k] : undefined;
-      const azul = String(despues.bg[i][k]).toLowerCase() === '#4f81bd';
+      const azul = esColorSistemaTest(despues.bg[i][k]);
       if (a !== '' && a !== d) {
         if (k === colD('STATUS REUNIÓN') && a === 'en agenda' && d === 'Realizada' && azul) r.realizadas++;
+        else if (k === colD('Inscriptos') && a === 0 && azul) r.escritas++;   // un 0 en Inscriptos es vacío
         else r.pisadas++;
       } else if (a === '' && d !== '' && d !== undefined) {
         r.escritas++;
@@ -361,6 +364,8 @@ function auditar(antes, despues) {
   }
   return r;
 }
+/** El color del sistema: el nuevo (#CFE2F3) o el viejo (#4F81BD). */
+function esColorSistemaTest(bg) { return ['#cfe2f3', '#4f81bd'].indexOf(String(bg).toLowerCase()) >= 0; }
 function foto(h) { return { v: h.v.map(function (r) { return r.slice(); }), bg: h.bg.map(function (r) { return r.slice(); }) }; }
 function contarUid(h) { let n = 0; for (let i = 1; i < h.v.length; i++) if (h.v[i][colD('RDV_UID')]) n++; return n; }
 
@@ -521,7 +526,7 @@ function escenarioEquipoEnElMedio() {
   };
   E.ejecutar('upsertDestino');
   ok(celda && hoja.v[celda.fila - 1][celda.col - 1] === 777, 'la celda que cargó el equipo sigue en 777');
-  ok(celda && String(hoja.bg[celda.fila - 1][celda.col - 1]).toLowerCase() !== '#4f81bd', 'y no se pintó de azul');
+  ok(celda && !esColorSistemaTest(hoja.bg[celda.fila - 1][celda.col - 1]), 'y no se pintó con el color del sistema');
 }
 
 function escenarioGuarda() {
@@ -558,7 +563,7 @@ function casosGemelos(E, datos) {
     const r = HDR_DESTINO.map(function () { return ''; });
     r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = new D(2026, m - 1, d, 12, 0, 0);
     r[col('HORA')] = '18:00'; r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada';
-    r[col('Asistentes')] = 40; r[col('Inscriptos')] = 100;
+    r[col('Asistentes')] = 40;   // Inscriptos vacío: lo completa el sistema desde B (paso B)
     ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].forEach(function (c) { r[col(c)] = 5; });
     datos.dest.push(r);
   };
@@ -656,7 +661,7 @@ function escenarioGemelos() {
   // La corrección (docs/ESTADO.md 0.i): borrar en la "309" lo que escribió el sistema y sacarle el azul.
   TRAZA.concat(SEXO_EDADES).forEach(function (c) {
     const k = colD(c);
-    if (String(h2.bg[n309 - 1][k]).toLowerCase() === '#4f81bd') { h2.v[n309 - 1][k] = ''; h2.bg[n309 - 1][k] = '#ffffff'; }
+    if (esColorSistemaTest(h2.bg[n309 - 1][k])) { h2.v[n309 - 1][k] = ''; h2.bg[n309 - 1][k] = '#ffffff'; }
   });
   const r2 = E2.ejecutar('upsertDestino');
   ok(!r2.error && !uid(h2, n309) && enRevisar(r2.logs.join('\n'), n309), 'después de corregir: la "309" va a REVISAR y no se escribe' +
@@ -803,6 +808,91 @@ function escenarioMalEscritas() {
      'la corrida siguiente las completa con el valor correcto');
 }
 
+/**
+ * El PASO B (02/10): el sistema escribe Inscriptos (un 0 es vacío), los canales, el desagregado (sólo si
+ * Inscriptos está vacío o es el de B), Asistentes de RDV CONJUNTO (con el desempate por barrio o comuna
+ * cuando la figura tiene 2+ filas ese día) y STATUS → Realizada; todo sólo en celda vacía y en #CFE2F3.
+ * Después, el repintado del azul viejo.
+ */
+function escenarioPasoB() {
+  console.log('\n[12] PASO B: Inscriptos, canales, Asistentes, desagregado condicionado, STATUS, color nuevo');
+  const E = crearEntorno();
+  const m = montar(E, 300, true);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'], conj = m.ssD.hojas['RDV CONJUNTO'];
+  const C = function (n) { return colD(n); };
+  const filaB = m.ssI.hojas['B'].v;
+  const insB = function (i) { return filaB[i][2]; };          // la fila i del destino es la fila i de B
+  // a) las filas 281+ sin Inscriptos (como la copia desde la 800); b) una con 0
+  for (let i = 281; i <= 300; i++) hoja.v[i][C('Inscriptos')] = '';
+  hoja.v[13][C('Inscriptos')] = 0;
+  // c) una del hueco con Inscriptos distinto del de B: el desagregado NO se escribe
+  const iDist = 21;                                            // (21 - 1) % 10 = 0: hueco
+  hoja.v[iDist][C('Inscriptos')] = insB(iDist) + 5;
+  // d) canales vacíos
+  [31, 32, 33].forEach(function (i) { hoja.v[i][C('Mail')] = ''; hoja.v[i][C('RRSS')] = ''; });
+  // e) Asistentes vacíos (RDV CONJUNTO los tiene); la 44 además "en agenda" (44 % 10 = 4 → hoy Realizada)
+  [41, 42, 43, 44].forEach(function (i) { hoja.v[i][C('Asistentes')] = ''; });
+  hoja.v[44][C('STATUS REUNIÓN')] = 'en agenda';
+  // f) 2+ filas con la misma figura y fecha: desempata el barrio (la 51) o la comuna (la 52)
+  const dup = function (i, barrio) {
+    const r = hoja.v[i].slice(); r[C('Barrio')] = barrio; r[C('Asistentes')] = '';
+    TRAZA.forEach(function (t) { r[C(t)] = ''; });
+    hoja.v.push(r); hoja.bg.push(r.map(function () { return '#ffffff'; }));
+    return hoja.v.length;                                      // número de fila de la nueva
+  };
+  hoja.v[51][C('Asistentes')] = ''; hoja.v[52][C('Asistentes')] = '';
+  const otro51 = hoja.v[51][C('Barrio')] === 'Palermo' ? 'Flores' : 'Palermo';
+  const otro52 = hoja.v[52][C('Barrio')] === 'Palermo' ? 'Flores' : 'Palermo';
+  const nueva51 = dup(51, otro51), nueva52 = dup(52, otro52);
+  const comunaDe = function (b) { return BARRIOS.find(function (x) { return x[0] === b; })[1]; };
+  conj.v[52][1] = 'C' + comunaDe(hoja.v[52][C('Barrio')]);   // RDV CONJUNTO trae la comuna, no el barrio
+  // g) una con color viejo (para el repintado)
+  hoja.bg[60][C('Mail')] = '#4F81BD';
+
+  const antes = foto(hoja);
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
+  const a = auditar(antes, hoja);
+  ok(a.pisadas === 0, 'ninguna celda con valor fue pisada (' + a.pisadas + ')');
+  ok(a.manualesODerivadas === 0, 'Barrio y las derivadas: nada');
+  ok(a.sinAzul === 0, 'todo lo escrito tiene el color del sistema');
+  let nuevas = 0, viejas = 0;
+  for (let i = 1; i < hoja.v.length; i++) for (let k = 0; k < HDR_DESTINO.length; k++) {
+    if (antes.v[i] && antes.v[i][k] === '' && hoja.v[i][k] !== '') {
+      if (String(hoja.bg[i][k]).toUpperCase() === '#CFE2F3') nuevas++; else viejas++;
+    }
+  }
+  ok(nuevas > 0 && viejas === 0, 'lo nuevo, en #CFE2F3 (' + nuevas + ' celdas; en otro color: ' + viejas + ')');
+  ok([281, 290, 300].every(function (i) { return hoja.v[i][C('Inscriptos')] === insB(i); }), 'a) Inscriptos completado desde B');
+  ok(hoja.v[13][C('Inscriptos')] === insB(13), 'b) un 0 en Inscriptos cuenta como vacío: ' + hoja.v[13][C('Inscriptos')]);
+  ok(hoja.v[iDist][C('Inscriptos')] === insB(iDist) + 5 && hoja.v[iDist][C('Masculinos')] === '' &&
+     hoja.v[iDist][C('Sin identificar')] === '', 'c) Inscriptos distinto de B: no se pisa y el desagregado NO se escribe');
+  const filaHuecoOk = 1;                                       // (1 - 1) % 10 = 0: hueco, Inscriptos = B
+  ok(hoja.v[filaHuecoOk][C('Masculinos')] !== '', 'c) con Inscriptos = B, el desagregado sí');
+  ok([31, 32, 33].every(function (i) { return hoja.v[i][C('Mail')] !== '' && hoja.v[i][C('RRSS')] !== ''; }),
+     'd) canales completados desde B (MAPEO_CANALES)');
+  ok([41, 42, 43, 44].every(function (i) { return hoja.v[i][C('Asistentes')] === conj.v[i][5]; }),
+     'e) Asistentes completados desde RDV CONJUNTO');
+  ok(hoja.v[44][C('STATUS REUNIÓN')] === 'Realizada', 'e) "en agenda" con asistentes → Realizada');
+  ok(hoja.v[51][C('Asistentes')] === conj.v[51][5] && hoja.v[nueva51 - 1][C('Asistentes')] === '',
+     'f) 2+ filas: el barrio desempata (la original sí, la duplicada no)');
+  ok(hoja.v[52][C('Asistentes')] === conj.v[52][5] && hoja.v[nueva52 - 1][C('Asistentes')] === '',
+     'f) 2+ filas: la comuna ("C" + n) desempata');
+  const log = r.logs.join('\n');
+  ok(/desempatadas por barrio o comuna: 2/.test(log), 'f) el log cuenta las 2 desempatadas');
+  ok(/por columna: .*Inscriptos \d+/.test(log), 'el log dice lo escrito por columna');
+  const v = E.ejecutar('verificarEscritura').resultado;
+  ok(v.problemas.length === 0, 'paso 16 sin problemas (' + v.problemas.join('; ') + ')');
+
+  const seco = E.ctx.repintarAzulViejo(false);
+  ok(seco.contadas === 1 && hoja.bg[60][C('Mail')] === '#4F81BD', 'paso 19 en seco: 1 celda en #4F81BD, no toca nada');
+  const val60 = hoja.v[60][C('Mail')];
+  E.ctx.repintar_test_ = function () { return E.ctx.repintarAzulViejo(true); };
+  const rp = E.ejecutar('repintar_test_');
+  ok(!rp.error && rp.resultado.repintadas === 1 && hoja.bg[60][C('Mail')] === '#CFE2F3' && hoja.v[60][C('Mail')] === val60,
+     'paso 19: repinta a #CFE2F3 sin tocar el valor');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -834,8 +924,9 @@ const fuenteVieja = conViejo ? function (f) {
 } : null;
 
 const t = Date.now();
-if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0) {   // uno solo, para iterar
+if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
+  else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -862,6 +953,7 @@ escenarioGemelos();
 escenarioPasoA();
 escenarioEncabezadosB();
 escenarioMalEscritas();
+escenarioPasoB();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

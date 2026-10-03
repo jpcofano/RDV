@@ -25,7 +25,8 @@
 // ===================== La regla general =====================
 
 /**
- * Escribe `valor` en `rango` **sólo si la celda está vacía**, y pinta `#4F81BD`.
+ * Escribe `valor` en `rango` **sólo si la celda está vacía**, y pinta `COLOR_SISTEMA` (`#CFE2F3`
+ * desde el 02/10; antes `#4F81BD`).
  *
  * Celda con cualquier valor → no se toca. No importa quién lo puso ni de qué color está
  * (CLAUDE.md 0). Alcanza con esto porque los números del sistema son cerrados: el formulario
@@ -40,16 +41,18 @@ function setSiDelSistema_(rango, valor) {
   if (valor === '' || valor === null || valor === undefined) return false;
 
   rango.setValue(valor);
-  rango.setBackground(AZUL_SISTEMA_);
+  rango.setBackground(COLOR_SISTEMA);
   return true;
 }
 
-/** La marca de procedencia. Un solo lugar, para que no haya dos literales del mismo color. */
-const AZUL_SISTEMA_ = '#4F81BD';
+/*
+ * La marca de procedencia es `COLOR_SISTEMA` (00_Config.js): un solo lugar para el color. Los controles
+ * reconocen también el `#4F81BD` viejo (`esColorSistema_`, 01_Utils.js).
+ */
 
 /**
  * **La misma regla que `setSiDelSistema_`, en lote** (02/10). Escribe cada `{fila, col, valor}`
- * **sólo si la celda está vacía**, y pinta `#4F81BD` lo que escribió. Celda con cualquier valor →
+ * **sólo si la celda está vacía**, y pinta `COLOR_SISTEMA` lo que escribió. Celda con cualquier valor →
  * no se toca.
  *
  * --- Por qué existe ---
@@ -101,7 +104,9 @@ function setSiDelSistemaLote_(sh, hdr, escrituras) {
     if (vistas[k]) return;
     vistas[k] = true;
     const v = actual[e.fila - f1][e.col - c1];
-    if (v !== '' && v !== null && String(v).trim() !== '') return;
+    // `ceroEsVacio` (Inscriptos, INSCRIPTOS_CERO_ES_VACIO): un 0 es "sin cargar" y cuenta como vacío.
+    const vacia = (v === '' || v === null || String(v).trim() === '') || (e.ceroEsVacio && num(v) === 0);
+    if (!vacia) return;
     (porFila[e.fila] = porFila[e.fila] || []).push(e);
     hechas.push(e);
   });
@@ -141,13 +146,13 @@ function _bloquesDeEscritura_(porFila) {
   return bloques;
 }
 
-/** Pinta `#4F81BD` los bloques escritos, con `RangeList` (de a tandas: una lista enorme falla). */
+/** Pinta `COLOR_SISTEMA` los bloques escritos, con `RangeList` (de a tandas: una lista enorme falla). */
 function _pintarBloques_(sh, bloques) {
   const a1 = bloques.map(function (b) {
     return _a1_(b.fila, b.col) + ':' + _a1_(b.fila + b.valores.length - 1, b.col + b.valores[0].length - 1);
   });
   for (let i = 0; i < a1.length; i += 400) {
-    sh.getRangeList(a1.slice(i, i + 400)).setBackground(AZUL_SISTEMA_);
+    sh.getRangeList(a1.slice(i, i + 400)).setBackground(COLOR_SISTEMA);
   }
 }
 
@@ -182,7 +187,7 @@ function _a1_(fila, col) {
  * Un estado que no esté en `STATUS_CONOCIDOS` tampoco se toca — si apareció algo nuevo, lo
  * primero es entender qué significa, no pisarlo.
  *
- * Pinta `#4F81BD` como cualquier otra escritura del sistema: el equipo tiene que poder ver de
+ * Pinta `COLOR_SISTEMA` como cualquier otra escritura del sistema: el equipo tiene que poder ver de
  * un vistazo que ese "Realizada" lo puso el proceso y no una persona.
  *
  * @param {Range}  rangoStatus  la celda de STATUS REUNIÓN de la fila
@@ -192,7 +197,7 @@ function _a1_(fila, col) {
 function marcarRealizada_(rangoStatus, asistentes) {
   if (!_decideRealizada_(rangoStatus.getValue(), asistentes)) return false;
   rangoStatus.setValue(TRANSICION_REALIZADA.hacia);
-  rangoStatus.setBackground(AZUL_SISTEMA_);
+  rangoStatus.setBackground(COLOR_SISTEMA);
   return true;
 }
 
@@ -224,7 +229,7 @@ function marcarRealizadaLote_(sh, filas, colStatus, colAsis) {
   for (let i = 0; i < a1.length; i += 400) {
     const rl = sh.getRangeList(a1.slice(i, i + 400));
     rl.setValue(TRANSICION_REALIZADA.hacia);
-    rl.setBackground(AZUL_SISTEMA_);
+    rl.setBackground(COLOR_SISTEMA);
   }
   return avanzan;
 }
@@ -260,7 +265,7 @@ function _decideRealizada_(status, asistentes, callar) {
  * pasado no se corrigen; éste sí, porque lo escribió el sistema el 02/10.
  *
  * Cada `{fila, col, escrito}` se vacía **sólo si, en una lectura fresca, la celda sigue teniendo
- * exactamente `escrito` y el fondo del sistema** (`#4F81BD`). Si alguien la cambió, no se toca. El
+ * exactamente `escrito` y el fondo del sistema** (`COLORES_SISTEMA`: el actual o el viejo). Si alguien la cambió, no se toca. El
  * fondo vuelve al de por defecto (`setBackground(null)`).
  *
  * @return {Array} las celdas que efectivamente vació
@@ -275,7 +280,7 @@ function vaciarCeldasDelSistema_(sh, celdas) {
   const vals = rango.getValues(), fondos = rango.getBackgrounds();
   const hechas = celdas.filter(function (e) {
     const v = vals[e.fila - f1][e.col - c1], bg = String(fondos[e.fila - f1][e.col - c1]).toLowerCase();
-    return v === e.escrito && bg === AZUL_SISTEMA_.toLowerCase();
+    return v === e.escrito && esColorSistema_(bg);
   });
   const a1 = hechas.map(function (e) { return _a1_(e.fila, e.col); });
   for (let i = 0; i < a1.length; i += 400) {
@@ -284,6 +289,36 @@ function vaciarCeldasDelSistema_(sh, celdas) {
     rl.setBackground(null);
   }
   return hechas;
+}
+
+// ===================== Repintar el azul viejo =====================
+
+/** El color viejo de la marca del sistema (legado y corridas hasta el 02/10). */
+const AZUL_VIEJO_ = '#4F81BD';
+
+/**
+ * **Cambia el fondo `#4F81BD` viejo por `COLOR_SISTEMA`, sin tocar valores** (paso 19, 02/10). Sólo
+ * las celdas de `celdas` ({fila, col}) que en una lectura fresca siguen en `#4F81BD`. Pinta por tramos
+ * verticales contiguos de una misma columna, con `RangeList`.
+ *
+ * @return {number} cuántas celdas repintó
+ */
+function repintarAzulViejo_(sh, celdas) {
+  if (!celdas.length) return 0;
+  const fondos = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getBackgrounds();   // lectura fresca
+  const viejo = AZUL_VIEJO_.toLowerCase();
+  const siguen = celdas.filter(function (e) {
+    return fondos[e.fila - 1] && String(fondos[e.fila - 1][e.col - 1]).toLowerCase() === viejo;
+  }).sort(function (a, b) { return a.col - b.col || a.fila - b.fila; });
+  const tramos = [];
+  siguen.forEach(function (e) {
+    const t = tramos[tramos.length - 1];
+    if (t && t.col === e.col && t.hasta + 1 === e.fila) t.hasta = e.fila;
+    else tramos.push({ col: e.col, desde: e.fila, hasta: e.fila });
+  });
+  const a1 = tramos.map(function (t) { return _a1_(t.desde, t.col) + ':' + _a1_(t.hasta, t.col); });
+  for (let i = 0; i < a1.length; i += 400) sh.getRangeList(a1.slice(i, i + 400)).setBackground(COLOR_SISTEMA);
+  return siguen.length;
 }
 
 // ===================== La guarda de la solapa destino =====================

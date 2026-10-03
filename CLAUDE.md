@@ -39,8 +39,10 @@ rng.setBackground('#4F81BD'); // azul
 ```
 
 Verificado sobre la planilla: ese azul aparece **3.779 veces en `RVD JM-CM - ES` y cero
-veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se mantiene: mismo
-color, se sigue pintando en cada escritura del sistema.** Lo que no hace es decidir si escribir
+veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se sigue pintando en
+cada escritura del sistema.** ~~Mismo color~~ **Desde el 02/10 (paso B) el color es `#CFE2F3`
+(`COLOR_SISTEMA`, azul claro)**, y todos los controles reconocen también el `#4F81BD` viejo
+(`esColorSistema_`); `paso19_repintarAzulViejo` cambia el viejo por el nuevo sin tocar valores. Lo que no hace es decidir si escribir
 — ver "Por qué esa regla alcanza", más abajo. El detalle de cuándo pinta hoy y cuándo
 no está en [docs/sync-bidireccional.md](docs/sync-bidireccional.md).
 
@@ -52,7 +54,11 @@ Toda escritura al destino pasa por un helper único:
 setSiDelSistema_(rango, valor)
 ```
 
-que escribe **sólo si la celda está vacía**, y que pinta `#4F81BD` al escribir.
+que escribe **sólo si la celda está vacía**, y que pinta `COLOR_SISTEMA` (`#CFE2F3`; antes `#4F81BD`) al
+escribir.
+
+**Un 0 en `Inscriptos` cuenta como vacío** (`INSCRIPTOS_CERO_ES_VACIO`, decisión del usuario del 02/10:
+es "sin cargar"). Es la única lectura de "vacío" que no es literal, y vale sólo para esa columna.
 
 **Celda con cualquier valor → no se toca.** No importa quién lo puso ni de qué color está.
 
@@ -1117,6 +1123,11 @@ total manual sería inventar un reparto que nadie midió.
 
 #### `DIAG_PROCEDENCIA`: cuánto aporta el pipeline, no cuánto pisa
 
+> **Desde el paso B (02/10) el dilema de abajo quedó resuelto**: Inscriptos y los canales dejaron de ser
+> `COLUMNAS_MANUALES` (sólo queda `Barrio`) y el sistema vuelve a completarlos, **sólo en celda vacía**.
+> El aporte que medía este reporte no desaparece. El reporte en sí (`diagProcedencia`, diagnóstico 01)
+> sigue con su lista vieja de siete columnas y sólo reconoce el `#4F81BD`: es una foto de septiembre.
+
 **605 celdas azules** en las seis `COLUMNAS_MANUALES`, y **0 celdas vacías con azul**.
 
 Ese cero confirma la lectura: el paso 5 escribe **sólo sobre celda vacía**, así que las 605 son
@@ -1626,6 +1637,15 @@ hay que rescatarlo.** Lo que está mal es cómo escribe: ver 3.1.g.
 Importa porque la transición se dispara con `Asistentes`: **el estado de una reunión depende de
 la cadena de asistentes (A2), no de la de inscriptos (B2)**, que es la que está rota. Son dos
 caminos independientes, y el que alimenta la transición es el que hoy funciona.
+
+> **Desde el paso B (02/10) el sistema lee RDV CONJUNTO directo**, sin A2 (`cruzarAsistentes_`,
+> `20_UpsertDestino.js`). El cruce del legado (figura + barrio + fecha, con el nombre tal cual) daba **0
+> de 766**: RDV CONJUNTO escribe a la figura "Apellido Nombre(s)". Ahora: la figura por tokens del
+> nombre canónico (`figuraPorTokens_`; sólo si coincide una), la clave **figura + fecha**, y el barrio
+> **sólo confirma** —salvo cuando la figura tiene 2+ filas ese día (11 casos, Macri), donde desempata el
+> barrio o la comuna ("C3", "C1N"); si no desempata, no se escribe—. Medido el 02/10: **cruzan 754 de
+> 780**; el destino tiene Asistentes en 798 filas y sólo 7 con el color del sistema: **los carga el
+> equipo**. Se escriben sólo en celda vacía (hoy, 9); las que difieren (41) se cuentan, nunca se pisan.
 
 El flujo Agenda, además, evita pisarla a propósito
 ([Agenda push a base.js:387](Agenda%20push%20a%20base.js#L387)): `// NO tocar asistentes`.
@@ -2206,7 +2226,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    reprocesar escribe el mismo valor en la misma fila. Si preocupa el tiempo de ejecución,
    filtrar por ventana de fecha, no por flag.
 7. **Reescribir la columna `Z (ID)`** con formato consistente `Figura - Barrio - dd/MM/yyyy`.
-8. > **🔴 DECISIÓN DEL 02/10, TODAVÍA NO IMPLEMENTADA (paso B, después de validar con el paso A).**
+8. > **🔴 DECISIÓN DEL 02/10 — IMPLEMENTADA (paso B, 02/10 noche), validada con el paso A.**
    >
    > **Criterio del usuario: los errores del pasado no se corrigen.** Lo que ya está cargado en el
    > destino queda como está, aunque difiera; las diferencias se cuentan, no se arreglan. Las reglas
@@ -2224,7 +2244,12 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    > **Antes de implementar se valida**: `paso17_validarCuentas()` (`diagnostico/09_validar_cuentas.js`,
    > sólo lectura) compara las cuentas calculadas desde `B` contra el destino y contra B2, cuenta las
    > filas que quedarían sin desagregado y cruza los Asistentes de RDV CONJUNTO con la clave del legado.
-   > Hasta el paso B, lo que sigue describe lo que **corre hoy**. Detalle y plan: docs/ESTADO.md, 0.l.
+   > **Implementado**: `COLUMNAS_MANUALES = ['Barrio']`; `celdasDeDecision_` / `aplicarDecisiones_`
+   > escriben Inscriptos (con `INSCRIPTOS_CERO_ES_VACIO`), los canales (`COLUMNAS_B` + `MAPEO_CANALES`),
+   > el desagregado condicionado y Asistentes (`cruzarAsistentes_`: figura por tokens + fecha; con 2+
+   > filas desempata el barrio o la comuna, si no se lista y no se escribe), siempre en celda vacía y en
+   > `#CFE2F3`. **Lo que sigue ("Columnas manuales protegidas", las seis) es la regla de ANTES del 02/10**:
+   > queda como registro del porqué. Detalle: docs/ESTADO.md, 0.l, 0.m y 0.n.
 
    **Columnas manuales protegidas.** `00_Config.js` lleva la lista explícita de columnas que el
    equipo carga a mano. **Confirmadas, son seis:**

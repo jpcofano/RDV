@@ -25,13 +25,13 @@
  *        1. upsertDestino() una vez       [20_UpsertDestino.js] → form_clave en 697, 709, 134, 315, 768
  *        2. paso16_verificarEscritura()  → invariante 0, traza ambigua 0, 0 "<<< HOY", 0 incompletas
  *      Alcance nuevo (Inscriptos, canales, Asistentes; ESTADO 0.l): PASO A, sólo lectura.
- *  !!! 02/10 19:25: B cambió los encabezados y el upsert escribió Sin identificar = Inscriptos.
- *      NO CORRER upsertDestino() hasta terminar esto (ESTADO 0.m):
- *        1. paso17_validarCuentas()          → sexo, edades y Sin identificar B = B2; divisor (1c);
- *                                               Asistentes por tokens + fecha
- *        2. paso18_malEscritas_listar()      → EN SECO: lo mal escrito en el real y en la copia
- *        3. paso18_malEscritas_vaciarCopia() / paso18_malEscritas_vaciarReal()  → las vacía
- *      El PASO B (implementar) espera a que el usuario vea el paso A.
+ *  02/10 noche: PASO B implementado (Inscriptos, canales, Asistentes, color #CFE2F3; ESTADO 0.n).
+ *      Prueba en la copia, en este orden:
+ *        1. paso18_malEscritas_vaciarCopia()  → si todavía no se corrió
+ *        2. paso16_verificarEscritura()       → línea de base de Barrio (anotarla en LINEA_BASE_AZULES)
+ *        3. upsertDestino() una vez            [20_UpsertDestino.js]
+ *        4. paso16_verificarEscritura()       → OK: invariante 0, Barrio sin subir, 0 incompletas
+ *        5. paso19_repintarAzulViejo_enSeco() → cuántas en #4F81BD por columna; repintar cuando se decida
  *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
  *      El activador NO se instala hasta volver y verificar la escritura real.
  *
@@ -298,6 +298,20 @@ function paso18_malEscritas_vaciarReal() {
              'SÍ, en "' + RDV_HOJA_DESTINO_REAL + '": vacía esas celdas y les saca el color (nada más)',
              'el log dice cuántas vació');
   return vaciarMalEscritas(RDV_HOJA_DESTINO_REAL);
+}
+
+/* PASO 19 — el #4F81BD viejo pasa al color nuevo del sistema (#CFE2F3). En seco primero. */
+function paso19_repintarAzulViejo_enSeco() {
+  _anunciar_('paso 19 — repintar el azul viejo (EN SECO)', 'repintarAzulViejo(false)  [diagnostico/11_repintar.js]',
+             'NO escribe nada', 'el log: cuántas celdas hay en #4F81BD, por columna');
+  return repintarAzulViejo(false);
+}
+
+function paso19_repintarAzulViejo() {
+  _anunciar_('paso 19 — repintar el azul viejo', 'repintarAzulViejo(true)  [diagnostico/11_repintar.js]',
+             'con DRY_RUN = false, SÍ: cambia el fondo #4F81BD por COLOR_SISTEMA en el destino, sin tocar valores',
+             'el log: por columna, y cuántas repintó');
+  return repintarAzulViejo(true);
 }
 
 // =============================================================================================

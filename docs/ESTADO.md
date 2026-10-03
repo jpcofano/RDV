@@ -256,6 +256,75 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### n) 02/10 noche: PASO B implementado — prueba en la copia
+
+**Resultados que lo habilitaron** (paso 17 de las 23:12 y paso 18 de las 23:13, sobre la copia):
+
+- **Cuentas: B = B2 en todas las columnas** (Inscriptos 691/692, canales 678–702 de ~700, sexo 677/678,
+  edades 681/682, Sin identificar 697/698). Las diferencias con el destino son cargas a mano (destino ≠
+  B2): no se corrigen. **`DIVISOR_SEXO` queda en "identificados"** (698/703, igual que M+F+X; M+F da
+  peor). Regla del desagregado: **0 filas** quedan sin él.
+- **Paso 18**: real 1 celda (fila 6, Sin identificar 62 → 13), copia 97. Las vacía el usuario
+  (`vaciarCopia`, `vaciarReal`). **El backup no se pudo abrir ("no permission")**: el usuario verifica el
+  ID (`RDV_SS_BACKUP_0210`); si cambia, se actualiza. El paso 18 ahora avisa y sigue sin el chequeo 4,
+  nunca termina en error.
+- **Asistentes: cruzan 754 de 780.** El destino tiene Asistentes en 798 filas y sólo 7 con el color del
+  sistema: **los carga el equipo**. Con "sólo celda vacía", hoy se escribirían 9. Las 41 que difieren:
+  sólo se cuentan.
+
+**Qué hace el sistema desde el paso B** (CLAUDE.md, decisión 8):
+
+- **`COLUMNAS_MANUALES = ['Barrio']`**. Inscriptos, los cinco canales, el desagregado y Asistentes son
+  columnas del sistema: **sólo celda vacía, nunca se pisa un valor**;
+- **Inscriptos**: un 0 cuenta como vacío (`INSCRIPTOS_CERO_ES_VACIO`);
+- **canales** con `COLUMNAS_B` + `MAPEO_CANALES` (RRSS = Facebook + Google + Programmatic; Difusión =
+  Difusion + Otros);
+- **el desagregado** (sexo, edades, Sin identificar) **sólo si Inscriptos está vacío o es igual al de
+  B**, mirado sobre la fila fresca de la tanda;
+- **Asistentes** desde RDV CONJUNTO (`cruzarAsistentes_`, el mismo cruce que el paso 17), **con o sin
+  formulario**: figura por tokens + fecha; **2+ filas de esa figura ese día → desempata el barrio**
+  (normalizado: "Villa Gral. Mitre" = "Villa General Mitre") **o la comuna** si RDV CONJUNTO la trae
+  ("C3", "C1N", "C1S" contra la comuna y la subzona del barrio del destino); sin desempate, se lista y
+  no se escribe. Nombres con varias figuras (Lombardi/Tapia/Piragine) o ninguna ("Deporte"): fuera. Dos
+  asistentes distintos para la misma fila: no se escribe ninguno;
+- **STATUS** `en agenda` → `Realizada` sólo con asistentes (los que tenía la fila o los que se escriben
+  ahora), en cualquier fila que no sea de una reunión futura;
+- **color `#CFE2F3`** (`COLOR_SISTEMA`) en todo lo nuevo; los controles reconocen también el
+  `#4F81BD`. **`paso19_repintarAzulViejo_enSeco()`** cuenta por columna y
+  **`paso19_repintarAzulViejo()`** (con `DRY_RUN = false`) repinta sin tocar valores. Lo corre el usuario;
+- **paso 16**: "no puede subir" sólo para `Barrio` (`LINEA_BASE_AZULES[solapa].barrio`, se anota con el
+  próximo paso 16); el resto, **por columna** (actual | viejo), y lo que escribió la última corrida por
+  columna (`REGISTRO_UPSERT`, columna `por_columna`).
+
+**Test en Node** [12]: Inscriptos completado en las filas vaciadas y en la que tenía 0; con Inscriptos ≠
+B el desagregado no se escribe; canales completados; Asistentes completados y "en agenda" → Realizada;
+dos filas con la misma figura y fecha desempatadas por barrio y por comuna; 0 pisadas, Barrio y
+derivadas sin tocar, todo lo nuevo en `#CFE2F3`; paso 16 sin problemas; el paso 19 en seco no toca nada y
+después repinta sin cambiar el valor. Toda la suite en verde.
+
+**La secuencia en la copia, con la predicción anotada antes de correr** (la constante sigue en
+`'AAA NOBORRAR'`):
+
+1. `paso18_malEscritas_vaciarCopia()` (si todavía no se corrió): vacía las 97.
+2. **`paso16_verificarEscritura()`** — línea de base de Barrio: anotarla en
+   `LINEA_BASE_AZULES['AAA NOBORRAR'].barrio`. **Predicción:** "incompletas" sube (ahora cuenta Inscriptos
+   y canales vacíos que B tiene: las filas de la 800 en adelante y las 97 de Sin identificar); invariante
+   0; traza con el color 0 sin color.
+3. **`upsertDestino()`** una vez. **Predicción:** completa en una corrida; escribe **Inscriptos y canales
+   en las filas de la 800 en adelante** (las que el usuario vació) y en las escritas que tengan esas celdas
+   vacías; **Sin identificar recompletado con el valor correcto** en las 97; **Asistentes ≈ 9** (más las
+   que desempate el barrio o la comuna); STATUS → Realizada donde corresponda; **0 celdas con valor
+   pisadas**; todo lo nuevo en `#CFE2F3`. El log del cruce: desempatadas por barrio o comuna, y la lista
+   de las que siguen sin desempate.
+4. **`paso16_verificarEscritura()`**. **Predicción:** **OK**: invariante 0, Barrio sin subir, 0
+   incompletas, traza toda con el color, "por columna" con lo escrito.
+5. `paso19_repintarAzulViejo_enSeco()`: cuántas celdas en `#4F81BD` por columna. Repintar, cuando el
+   usuario decida.
+
+**Si da OK** (y sólo entonces): `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'`, push y clasp push; "AAA NOBORRAR"
+queda como referencia. En el real, con la predicción escrita antes: `paso16` (línea de base de Barrio) →
+`paso1_columnasDeTraza` → `upsertDestino` → `paso16`. Recién después, el activador cada hora.
+
 ### m) 02/10 19:25: el paso A destapó un bug — `B` cambió los encabezados
 
 > ⛔ **NO correr `upsertDestino()` en ninguna solapa hasta terminar la secuencia de abajo** (pasos 1 a

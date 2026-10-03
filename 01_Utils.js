@@ -271,7 +271,13 @@ function descripcionHojaDestino_() {
 /** La línea de base de azules de la solapa a la que apunta RDV_HOJA_DESTINO: `{manuales, total}`. */
 function lineaBaseAzules_() {
   const b = LINEA_BASE_AZULES[RDV_HOJA_DESTINO];
-  return { manuales: b ? b.manuales : null, total: b ? b.total : null };
+  return { barrio: b ? b.barrio : null, total: b ? b.total : null };
+}
+
+/** ¿Este fondo es la marca del sistema? El color actual (`COLOR_SISTEMA`) o el viejo (`#4F81BD`). */
+function esColorSistema_(bg) {
+  const c = String(bg == null ? '' : bg).toLowerCase();
+  return COLORES_SISTEMA.some(function (x) { return x.toLowerCase() === c; });
 }
 
 // ===================== Clave natural =====================

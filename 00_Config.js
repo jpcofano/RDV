@@ -48,18 +48,20 @@ const RDV_HOJA_ALERTAS  = 'ALERTA_CAMBIOS';
 const RDV_HOJA_REGISTRO = 'REGISTRO_UPSERT';   // una línea por corrida del upsert (02/10)
 
 /**
- * La línea de base de los `#4F81BD`, **por solapa**, tomada ANTES de escribir con
- * `paso16_verificarEscritura()` (docs/backup.md §8.1, paso 6). La usa la verificación posterior: los
- * de las COLUMNAS_MANUALES no pueden subir. `null` = todavía no anotada.
+ * La línea de base de las celdas con el color del sistema (`COLORES_SISTEMA`: el actual y el viejo),
+ * **por solapa**, tomada ANTES de escribir con `paso16_verificarEscritura()`. La verificación posterior
+ * la usa así: las de `Barrio` —la única columna manual desde el paso B— **no pueden subir**; el total
+ * es informativo. `null` = todavía no anotada.
  *
- * Por solapa (02/10): la copia de prueba tiene la suya, y la del destino real no se pisa.
+ * Antes del paso B el control era sobre las 7 columnas manuales de entonces (605 en el real y en la
+ * copia, el 02/10). Con `COLUMNAS_MANUALES = ['Barrio']` ese número ya no se compara con nada: la
+ * línea de base de Barrio se toma con el próximo paso 16, antes de escribir.
  */
 const LINEA_BASE_AZULES = {
-  // 02/10 12:44, paso 16 OK, antes de la primera escritura real. Después de la corrida cortada de
-  // las 14:50 (123 filas) el destino real quedó en 605 / 6368: los manuales no subieron.
-  'RVD JM-CM - ES': { manuales: 605, total: 5749 },
-  // La copia de prueba (TEMPORAL 02/10): paso 16 de las 16:59, antes de escribir en ella.
-  'AAA NOBORRAR':   { manuales: 605, total: 6368 }
+  // Total: 02/10 12:44 antes de la primera escritura real; 6368 después de la corrida cortada (14:50).
+  'RVD JM-CM - ES': { barrio: null, total: 6368 },
+  // La copia de prueba (TEMPORAL 02/10): total del paso 16 de las 16:59, antes de escribir en ella.
+  'AAA NOBORRAR':   { barrio: null, total: 6368 }
 };
 
 /** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
@@ -97,16 +99,27 @@ const RDV_TZ = 'America/Argentina/Buenos_Aires';
 
 /**
  * Columnas que carga el equipo a mano. El pipeline **las lee y nunca las escribe, ni aunque
- * estén vacías** (CLAUDE.md, decisión 8). No es "no pisar": es no escribir. Una celda vacía en
- * una columna manual significa que todavía nadie la cargó, y ese hueco es información.
+ * estén vacías** (CLAUDE.md, decisión 8). No es "no pisar": es no escribir.
  *
- * `Barrio` entró a la lista cuando el origen dejó de mandarlo (CLAUDE.md 3.3.b): hoy lo carga
- * una persona, así que es de ellos. Ojo con la consecuencia: la columna `AA (Comuna)` deriva
- * del barrio por fórmula, así que **la comuna del destino también depende de carga manual**.
+ * **Desde el 02/10 (paso B) es sólo `Barrio`.** `Inscriptos`, los cinco canales y `Asistentes`
+ * pasaron a columnas del sistema: las escribe el upsert, **sólo en celda vacía**, nunca pisa un valor
+ * (los errores del pasado no se corrigen). Las columnas de agenda (Figura, FECHA, HORA, Dirección,
+ * EVENTO) no están acá porque el upsert no las escribe nunca: son otro proceso (pendiente).
+ *
+ * Ojo con la consecuencia de `Barrio`: la columna `AA (Comuna)` deriva del barrio por fórmula, así
+ * que **la comuna del destino depende de carga manual**.
  */
-const COLUMNAS_MANUALES = [
-  'Barrio', 'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'
-];
+const COLUMNAS_MANUALES = ['Barrio'];
+
+/**
+ * **El color de lo que escribe el sistema** (02/10): azul claro. Toda escritura nueva se pinta así.
+ * El `#4F81BD` de antes (legado y las corridas hasta el 02/10) también se reconoce como marca del
+ * sistema en todos los controles (`esColorSistema_`); `paso19_repintarAzulViejo` lo cambia por éste
+ * sin tocar valores.
+ */
+const COLOR_SISTEMA = '#CFE2F3';
+/** Los colores que cuentan como "lo escribió el sistema": el actual y el viejo. */
+const COLORES_SISTEMA = [COLOR_SISTEMA, '#4F81BD'];
 
 /**
  * Las once columnas del destino que hoy son fórmulas de array en la celda del encabezado
