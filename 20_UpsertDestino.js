@@ -4225,6 +4225,9 @@ function celdasDeDecision_(dest, d, valores, callar) {
   const out = [];
   const agregar = function (idx, valor, tipo, ceroEsVacio) {
     if (idx == null || valor === '' || valor === null || valor === undefined) return;
+    // Un 0 de B no "completa" una celda que vale por vacía porque tiene 0 (Inscriptos): escribir 0
+    // sobre 0 la dejaba igual, y el paso 16 la daba por incompleta en cada corrida (03/10).
+    if (ceroEsVacio && num(valor) === 0) return;
     const v = valores[idx];
     if (esVacio_(v) || (ceroEsVacio && num(v) === 0)) {
       out.push({ col: idx + 1, valor: valor, tipo: tipo, ceroEsVacio: !!ceroEsVacio });

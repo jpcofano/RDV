@@ -692,6 +692,11 @@ const EDADES_B = {
  * reescribir B2 no se la lleve puesta.
  *
  * Columna del destino → campos de `COLUMNAS_B` que suma.
+ *
+ * **"Otros" → Difusión, como el legado, y en consulta (03/10).** En el destino no hay regla
+ * consistente: hasta 09/2025 iba a Difusión; desde 10/2025 depende de quién carga (a veces RRSS). Se
+ * preguntó al equipo qué es "Otros" y dónde va (docs/ESTADO.md, 1a). Si define otra cosa, se cambia
+ * sólo esta tabla. El sistema escribe sólo en celdas vacías: no pisa lo que cargue el equipo.
  */
 const MAPEO_CANALES = {
   'Mail':        ['canalMailing'],

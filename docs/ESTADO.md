@@ -256,6 +256,25 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### o) Pendientes al 03/10
+
+- **Backup del 02/10: resuelto** (había que compartirlo con la cuenta que corre el script). El ID de
+  `RDV_SS_BACKUP_0210` no cambia; el chequeo 4 del paso 18 vuelve a aplicarse.
+- **"Otros"**: consulta al equipo (1a). `MAPEO_CANALES` sigue en Otros → Difusión.
+- **El falso aviso de incompletas cuando B trae 0: arreglado (03/10).** En `Inscriptos`, un 0 del
+  destino cuenta como vacío; si `B` también traía 0, el sistema "escribía" 0 sobre 0, la celda seguía en
+  0 y el paso 16 la daba por incompleta en cada corrida (y la repintaba). Ahora un 0 de `B` no completa
+  una celda que vale por vacía porque tiene 0. Test [12], caso b2. Si el aviso que se vio era en otra
+  columna, falta el ejemplo (fila y columna).
+- **Paso 20 ("por qué está vacía")**: pendiente, **falta la definición** (qué columnas, para qué filas y
+  qué causas tiene que distinguir).
+- **La lectura de `elegido`** (regla 4: lo que el sistema no resuelve lo decide una persona con las
+  opciones): pendiente. La columna existe en `REVISAR_MATCH` y en el bloque "POR FILA DEL DESTINO" de
+  `EMPAREJAR_MANUAL`, vacía; cuando se lea, se resuelve por el nombre del formulario de esa línea
+  (`op{n}_formulario`), nunca por la fila de `B` (decisión 3).
+- **`paso19_repintarAzulViejo_enSeco()` en la copia**: pendiente de correr.
+- Siguen de antes: las columnas de agenda (otro proceso), eliminar B2, volver la constante al real.
+
 ### n) 02/10 noche: PASO B implementado — prueba en la copia
 
 **Resultados que lo habilitaron** (paso 17 de las 23:12 y paso 18 de las 23:13, sobre la copia):
@@ -786,7 +805,21 @@ usuario, con el backup hecho; ver 1b). `upsertDestino()` escribe; los `pasoN_` n
 
 ## 1a. Consultas al equipo (al 01/10 noche)
 
-**Para el equipo (nuevas, del paso 13 del 01/10 18:28):**
+**Para el equipo (03/10): ¿qué es el canal "Otros" de `B` y dónde va?**
+
+Análisis del usuario (02/10) sobre las 752 filas con formulario: sin Otros en `B`, RRSS/Difusión
+coinciden en **468**; Otros sumado a **Difusión** (el legado) **104**; Otros sumado a **RRSS** **109**;
+ninguna de las dos (otra carga a mano) **61**; vacíos **10**. **No hay regla consistente**: hasta
+09/2025 iba siempre a Difusión (era el legado); desde 10/2025 es un hábito de carga —Landerreche,
+Piñeiro, Giménez, Tapia y Quintana: 101 a RRSS y 22 a Difusión; Macri, Sánchez Zinny, Mraida, Sabor y
+el resto: 8 a RRSS y 47 a Difusión—, con excepciones en los dos grupos en las mismas fechas (p. ej.
+30/04/2026, fila 802).
+
+**Decisión mientras tanto: `MAPEO_CANALES` no cambia (Otros → Difusión, como el legado).** El sistema
+escribe sólo en celdas vacías, así que no pisa lo que cargue el equipo. **Si el equipo define otra cosa,
+se cambia sólo `MAPEO_CANALES`** (`00_Config.js`) y nada más.
+
+**Para el equipo (del paso 13 del 01/10 18:28):**
 
 - **Flores 29/1** contra **CCV Versalles 29/1**: marcado **DUDOSO**; probablemente dos reuniones.
 - **1 a 1 Villa Riachuelo 11/8** contra **Parque Avellaneda 12/8**: posible reubicación.

@@ -825,6 +825,8 @@ function escenarioPasoB() {
   // a) las filas 281+ sin Inscriptos (como la copia desde la 800); b) una con 0
   for (let i = 281; i <= 300; i++) hoja.v[i][C('Inscriptos')] = '';
   hoja.v[13][C('Inscriptos')] = 0;
+  // b2) 0 en el destino y 0 en B: nada que completar (antes: "incompleta" perpetua en el paso 16)
+  hoja.v[14][C('Inscriptos')] = 0; filaB[14][2] = 0;
   // c) una del hueco con Inscriptos distinto del de B: el desagregado NO se escribe
   const iDist = 21;                                            // (21 - 1) % 10 = 0: hueco
   hoja.v[iDist][C('Inscriptos')] = insB(iDist) + 5;
@@ -865,6 +867,8 @@ function escenarioPasoB() {
   ok(nuevas > 0 && viejas === 0, 'lo nuevo, en #CFE2F3 (' + nuevas + ' celdas; en otro color: ' + viejas + ')');
   ok([281, 290, 300].every(function (i) { return hoja.v[i][C('Inscriptos')] === insB(i); }), 'a) Inscriptos completado desde B');
   ok(hoja.v[13][C('Inscriptos')] === insB(13), 'b) un 0 en Inscriptos cuenta como vacío: ' + hoja.v[13][C('Inscriptos')]);
+  ok(hoja.v[14][C('Inscriptos')] === 0 && !esColorSistemaTest(hoja.bg[14][C('Inscriptos')]),
+     'b2) 0 en el destino y 0 en B: no se escribe ni se pinta');
   ok(hoja.v[iDist][C('Inscriptos')] === insB(iDist) + 5 && hoja.v[iDist][C('Masculinos')] === '' &&
      hoja.v[iDist][C('Sin identificar')] === '', 'c) Inscriptos distinto de B: no se pisa y el desagregado NO se escribe');
   const filaHuecoOk = 1;                                       // (1 - 1) % 10 = 0: hueco, Inscriptos = B
