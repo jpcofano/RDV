@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-02
+# Estado de la migración — al 2026-10-03
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -255,6 +255,69 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### q) 03/10 tarde: filas activas (`DIAS_ACTIVOS = 30`) y REVISAR_MATCH como fichas
+
+**Dos decisiones del usuario**, implementadas juntas porque se tocan (CLAUDE.md, decisión 13 y
+"REVISAR_MATCH como fichas" en la decisión 2):
+
+**1. Filas activas.** El sistema trabaja sólo sobre las reuniones de hoy − 30 a hoy
+(`DIAS_ACTIVOS`, `00_Config.js`; `esFilaActiva_`, `01_Utils.js`). Lo anterior está cerrado y no se
+toca. Dato del usuario que lo sostiene: **un formulario aparece en `B` recién cuando cerró**, así que
+sus números son finales y se escriben apenas hay match (anotado en CLAUDE.md, sección 0).
+
+- **sólo filas activas**: la escritura del upsert (datos, traza, STATUS, Asistentes), REVISAR_MATCH,
+  SIN_MATCH, EMPAREJAR_MANUAL (y en éste sólo formularios desde hoy − 30 − 21 días: los de reuniones
+  cerradas llenaban el bloque "sin ningún candidato"), la lectura de "elegido" y el rango por defecto
+  del paso 20 (`PASO20_DESDE = null`);
+- **todo el historial, sin cambios**: el invariante (una fila vieja con `RDV_UID` sigue teniendo su
+  formulario), los candidatos de `B` y el invariante del paso 16. Las "incompletas" y "sin
+  form_clave" del paso 16 se cuentan sólo en las activas (una cerrada no se completa más);
+- **las mediciones** (pasos 6 a 13, 17, el bloque 5 del paso 16) piden el plan entero
+  (`{ historial: true }`). La calibración sobre la ventana de análisis, que no cambió:
+  **`paso2b_calibrarHistorial()`** (sólo log);
+- **log**: *"filas activas: N (de … a …, hoy − 30) | cerradas: M (sin resolver, sin RDV_UID: X) |
+  futuras: K"* y, al final del upsert, *"tiempo de corrida: S s"*.
+
+**2. Las fichas** (`26_Fichas.js`). **Apagadas** (`REVISAR_COMO_FICHAS = false`): REVISAR_MATCH sigue
+como estaba hasta que el usuario las valide. Una ficha por reunión pendiente activa: la línea
+REUNIÓN (con "elegido" en desplegable, "comentario" y "resultado"), "¿por qué?", hasta 3 opciones en
+las mismas columnas con colores por celda y su línea de coincide / no coincide, las otras reuniones
+de la figura a ±7 días en gris, y RESUELTAS al final. "No sé" y un comentario solo son notas
+(`ELECCIONES_MATCH`, nueva columna `comentario`); una elección nueva en una ficha reemplaza la
+pendiente de esa fila. Identidad, igual que antes: fila por figura + fecha + barrio (columnas ocultas),
+formulario por `form_clave`. El lector de "elegido" reconoce los dos formatos.
+
+**Paso 21 — `paso21_fichasDePrueba()`** (`diagnostico/13_fichas_prueba.js`): **no escribe el
+destino ni REVISAR_MATCH**. Al log, las fichas de las filas de `PASO21_FILAS` (631, 521, 274, 618 y
+309) como texto, con marcas `[v]` verde / `[x]` rojo / `[·]` gris, estén o no pendientes o activas
+(usa el plan entero: **274 y 309 son de 2025, cerradas: el log lo dice y no aparecen en la solapa**).
+Y la solapa entera, como la escribiría el upsert, en **`REVISAR_FICHAS_PRUEBA`** (intermedia).
+
+**Test en Node** [15] (`--fichas`): con `DIAS_ACTIVOS = 30`, ninguna fila cerrada se toca y las
+activas se escriben; la fila cerrada en revisión no tiene ficha; orden por fecha; desplegable;
+columnas ocultas; frase y línea de coincide de una posible reubicación ("❌ comuna (C6, la reunión es
+Flores (C7))") y de un margen chico; colores; "Opción 2" válida en seco → RESUELTAS → aplicada en la
+real; "No sé" con comentario queda pendiente y se guarda como nota; "Ninguno" la reemplaza y la
+ficha pasa a RESUELTAS; el paso 21 muestra una fila cerrada sin tocar el destino; paso 16 OK; paso 20
+por defecto sobre las activas. Los escenarios de antes corren con `DIAS_ACTIVOS = null` (sus fechas
+son de 2025-2026 contra un "hoy" fijo). Toda la suite en verde.
+
+**La secuencia, con la predicción anotada ANTES de correr** (la constante sigue en `'AAA NOBORRAR'`):
+
+1. `clasp push` (hecho con este commit).
+2. **`paso21_fichasDePrueba()`**. **Predicción:** las 5 fichas en el log; **274 y 309 marcadas
+   CERRADA** (no aparecen en la solapa); 631, 521 y 618 dicen si están pendientes (si alguna ya tiene
+   `RDV_UID` o se escribe, la ficha lo dice en "¿por qué?"). La solapa `REVISAR_FICHAS_PRUEBA` queda
+   sólo con las pendientes de los últimos 30 días (de las 40 en revisión de hoy, las del 03/09 en
+   adelante), más las SIN_MATCH de ese período. **El usuario valida las frases y las líneas de
+   coincide / no coincide** antes de pasarlo al equipo.
+3. **`upsertDestino()`** una vez. **Predicción:** el log dice **unas 40–50 filas activas**; **no
+   escribe nada nuevo** (ya está todo completo: 0 celdas de dato, 0 uids); REVISAR_MATCH (todavía en
+   el formato viejo) y SIN_MATCH quedan sólo con filas de los últimos 30 días; **el tiempo de corrida
+   baja** (se evalúan ~50 filas en vez de ~800; leer `B` sigue costando lo mismo, ~1 minuto).
+4. Si las fichas se validan: `REVISAR_COMO_FICHAS = true`, commit, push y clasp push; reemplazar
+   **docs/elegir-match.md** por **docs/elegir-match-fichas.md** (ya escrita) y pasarla al equipo.
 
 ### p) 03/10: paso 20 ("por qué está vacía") y la lectura de "elegido"
 

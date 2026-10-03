@@ -28,7 +28,7 @@ const { execSync } = require('child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
-                  '25_Elecciones.js', 'diagnostico/12_por_que_vacia.js',
+                  '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js'];
@@ -116,6 +116,14 @@ function crearEntorno(opts) {
         getRanges: function () { return rangos; }
       };
     }
+    // Formato (fichas, 03/10): se guarda para poder mirarlo; no cuesta tiempo en el modelo.
+    getMaxRows() { return Math.max(1000, this.v.length); }
+    getMaxColumns() { return Math.max(26, this._ancho()); }
+    insertRowsAfter() {}
+    insertColumnsAfter() {}
+    clearFormats() { this.bg = this.bg.map(function (r) { return r.map(function () { return '#ffffff'; }); }); this.fc = []; this.fw = []; }
+    showColumns() { this.ocultas = []; }
+    hideColumns(c, n) { this.ocultas = this.ocultas || []; for (let k = 0; k < (n || 1); k++) this.ocultas.push(c + k); }
     appendRow(fila) { escribir(fila.length); this.v.push(fila.slice()); this.bg.push(fila.map(function () { return '#ffffff'; })); }
     clearContents() { escribir(1); this.v = this.v.map(function (r) { return r.map(function () { return ''; }); }); }
     setFrozenRows() {}
@@ -153,6 +161,23 @@ function crearEntorno(opts) {
       for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.h.v[this.r + i - 1][this.c + j - 1] = m[i][j];
     }
     setValue(v) { escribir(1); this._poner(v); }
+    _matriz(nombre, m) {
+      escribir(this._celdas());
+      const h = this.h; h[nombre] = h[nombre] || [];
+      for (let i = 0; i < this.nr; i++) {
+        h[nombre][this.r + i - 1] = h[nombre][this.r + i - 1] || [];
+        for (let j = 0; j < this.nc; j++) h[nombre][this.r + i - 1][this.c + j - 1] = m[i][j];
+      }
+    }
+    setBackgrounds(m) {
+      escribir(this._celdas());
+      this.h._asegurar(this.r + this.nr - 1, this.c + this.nc - 1);
+      for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.h.bg[this.r + i - 1][this.c + j - 1] = m[i][j];
+    }
+    setFontColors(m) { this._matriz('fc', m); }
+    setFontWeights(m) { this._matriz('fw', m); }
+    setDataValidations(m) { this._matriz('dv', m); }
+    clearDataValidations() { this.h.dv = []; }
     setBackground(c) { escribir(this._celdas()); this._pintar(c); }
     _poner(v) {
       this.h._asegurar(this.r + this.nr - 1, this.c + this.nc - 1);
@@ -201,6 +226,12 @@ function crearEntorno(opts) {
     Utilities: Utilities,
     SpreadsheetApp: {
       openById: function (id) { vigilar(); E.reloj += COSTO.openById; return E.planilla(id); },
+      newDataValidation: function () {
+        const r = { lista: null };
+        const b = { requireValueInList: function (l) { r.lista = l; return b; }, setAllowInvalid: function () { return b; },
+                    build: function () { return r; } };
+        return b;
+      },
       flush: function () { vigilar(); vaciar(); }
     },
     LockService: { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } },
@@ -212,9 +243,20 @@ function crearEntorno(opts) {
   };
   vm.createContext(ctx);
   const fuente = opts.fuente || function (f) { return fs.readFileSync(path.join(RAIZ, f), 'utf8'); };
+  /*
+   * Constantes de 00_Config.js que un escenario cambia (03/10). Por defecto DIAS_ACTIVOS = null (todas las
+   * filas): los escenarios de antes del 03/10 usan fechas de 2025 y 2026 contra un "hoy" del 02/10/2026.
+   * El escenario [15] pone DIAS_ACTIVOS = 30 y las fichas.
+   */
+  const config = Object.assign({ DIAS_ACTIVOS: 'null' }, opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;
     try { s = fuente(f); } catch (e) { return; }   // el código viejo no tiene todos los archivos
+    if (f === '00_Config.js') {
+      Object.keys(config).forEach(function (k) {
+        s = s.replace(new RegExp('^const ' + k + ' = .*', 'm'), function () { return 'const ' + k + ' = ' + config[k] + ';'; });
+      });
+    }
     vm.runInContext(s, ctx, { filename: f });
   });
   // El paso 14 mira fórmulas reales: en el mock no hay. Se lo reemplaza por "todo bien".
@@ -1034,6 +1076,146 @@ function escenarioElegido() {
      '"ninguno" vence con un formulario nuevo a ±7 días, y la fila vuelve a REVISAR_MATCH');
 }
 
+function casosFichas(E, datos) {
+  const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+  const fila = function (fig, d, m, barrio) {
+    const r = HDR_DESTINO.map(function () { return ''; });
+    r[col('Figura')] = fig; r[col('Barrio')] = barrio || ''; r[col('FECHA')] = new D(2026, m - 1, d, 12, 0, 0);
+    r[col('HORA')] = '18:00'; r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada';
+    r[col('Asistentes')] = 40;
+    datos.dest.push(r);
+  };
+  const form = function (nombre, d, m, ins) {
+    const uni = Math.round(ins * 0.8);
+    datos.b.push([nombre, new D(2026, m - 1, d, 12, 0, 0), ins, uni, Math.round(uni * 0.45), Math.round(uni * 0.55),
+                  10, 20, 20, 10, 5, 1, 1, 0, 1, 1, 1, 0, 0]);
+  };
+  // Activa, dos formularios empatados: margen_chico.
+  fila('Lía Ferrante', 20, 9);
+  form('LÍA FERRANTE - Encuentro A - 20/9', 18, 9, 80);
+  form('LÍA FERRANTE - Encuentro B - 20/9', 18, 9, 80);
+  // Cerrada (más de 30 días), el mismo caso: no aparece en las fichas, "cerrada sin resolver".
+  fila('Iván Robles', 22, 8);
+  form('IVÁN ROBLES - Encuentro A - 22/8', 20, 8, 70);
+  form('IVÁN ROBLES - Encuentro B - 22/8', 20, 8, 70);
+  // Activa, el formulario dice otra comuna: posible reubicación (Flores es la Comuna 7).
+  fila('Rita Gómez', 25, 9, 'Flores');
+  form('RITA GÓMEZ - Encuentro con vecinos - Comuna 6 - 25/9', 24, 9, 150);
+}
+
+function escenarioFichas() {
+  console.log('\n[15] DIAS_ACTIVOS = 30 y REVISAR_MATCH como fichas (03/10)');
+  const E = crearEntorno({ config: { DIAS_ACTIVOS: '30', REVISAR_COMO_FICHAS: 'true' } });
+  const m = montar(E, 300, true, casosFichas);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const ini = new E.Date(2026, 8, 2, 12, 0, 0);   // hoy (02/10) − 30
+  const esCerrada = function (r) { const f = r[colD('FECHA')]; return !(f instanceof Date) || f < ini; };
+  const antes = foto(hoja);
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'el upsert termina sin error' + (r.error ? ': ' + r.error.stack : ''));
+  const log = r.logs.join('\n');
+  const mAct = /filas activas: (\d+) \(de 02\/09\/2026 a 02\/10\/2026, hoy − 30\) \| cerradas: (\d+) \(sin resolver, sin RDV_UID: (\d+)\) \| futuras: (\d+)/.exec(log);
+  ok(!!mAct, 'el log dice filas activas, cerradas (sin resolver) y futuras: ' + (mAct ? mAct[0] : '(no está)'));
+  ok(/tiempo de corrida: [\d.]+ s/.test(log), 'el log dice el tiempo de corrida');
+  let cerradasTocadas = 0, activasEscritas = 0;
+  for (let i = 1; i < hoja.v.length; i++) {
+    if (esCerrada(antes.v[i])) { if (JSON.stringify(hoja.v[i]) !== JSON.stringify(antes.v[i])) cerradasTocadas++; }
+    else if (hoja.v[i][colD('RDV_UID')] && !antes.v[i][colD('RDV_UID')]) activasEscritas++;
+  }
+  ok(cerradasTocadas === 0, 'ninguna fila cerrada (más de 30 días) se tocó (' + cerradasTocadas + ')');
+  ok(activasEscritas > 0, 'las activas sí se escriben (' + activasEscritas + ')');
+
+  const rev = m.ssI.hojas['REVISAR_MATCH'];
+  ok(rev && rev.v[0][0] === 'ficha' && rev.v[0].indexOf('id_figura') >= 0, 'REVISAR_MATCH tiene el formato de fichas');
+  const h = rev.v[0];
+  const reunion = function (hj, fig) {
+    return hj.v.findIndex(function (x) { return x[0] === 'REUNIÓN' && x[h.indexOf('figura')] === fig; });
+  };
+  const kLia = reunion(rev, 'Lía Ferrante'), kRita = reunion(rev, 'Rita Gómez'), kIvan = reunion(rev, 'Iván Robles');
+  ok(kLia > 0 && kRita > 0, 'las fichas de Lía (margen chico) y Rita (otra comuna) están');
+  ok(kIvan < 0, 'la de Iván (cerrada) no está');
+  ok(kRita < kLia, 'de la más reciente a la más vieja (Rita 25/09 antes que Lía 20/09)');
+  const dv = rev.dv && rev.dv[kLia] && rev.dv[kLia][h.indexOf('elegido')];
+  ok(dv && /^Opción 1|Opción 2|(Opción 3|)?Ninguno|No sé$/.test(dv.lista.join('|')), 'desplegable en "elegido": ' + (dv ? dv.lista.join(' / ') : '-'));
+  ok(JSON.stringify(rev.ocultas) === JSON.stringify([15, 16, 17, 18]), 'las 4 columnas de identidad, ocultas');
+  const porQueRita = rev.v[kRita + 1][1], coincideRita = rev.v[kRita + 3][1];
+  console.log('       ¿por qué? (Rita): ' + porQueRita);
+  console.log('       coincide (Rita):  ' + coincideRita);
+  ok(/cambió de lugar/.test(porQueRita) && /dice C6/.test(porQueRita) && /Flores \(C7\)/.test(porQueRita),
+     '¿por qué? de una posible reubicación');
+  ok(/✅ figura/.test(coincideRita) && /✅ fecha/.test(coincideRita) && /❌ comuna \(C6, la reunión es Flores \(C7\)\)/.test(coincideRita),
+     'coincide / no coincide de una posible reubicación');
+  ok(rev.bg[kRita + 2][h.indexOf('ubicación')] === '#f4cccc' && rev.bg[kRita + 2][h.indexOf('figura')] === '#d9ead3',
+     'colores por celda: ubicación en rojo, figura en verde');
+  console.log('       ¿por qué? (Lía):  ' + rev.v[kLia + 1][1]);
+  ok(/casi igual de buenos/.test(rev.v[kLia + 1][1]), '¿por qué? de un margen chico');
+
+  // Una persona elige: la opción 2 para Lía; "No sé" con un comentario para Rita.
+  const opcion2 = rev.v.find(function (x, i) { return i > kLia && x[0] === 'Opción 2'; })[h.indexOf('evento / formulario')];
+  rev.v[kLia][h.indexOf('elegido')] = 'Opción 2';
+  rev.v[kRita][h.indexOf('elegido')] = 'No sé';
+  rev.v[kRita][h.indexOf('comentario')] = 'preguntar al equipo';
+  const fSeco = JSON.stringify(foto(hoja));
+  const s = E.ejecutar('correrEnSeco');
+  ok(!s.error && JSON.stringify(foto(hoja)) === fSeco, 'en seco: no escribe el destino' + (s.error ? ': ' + s.error.stack : ''));
+  ok(/VÁLIDA: .*Lía Ferrante/.test(s.logs.join('\n')), 'la elección de Lía es válida');
+  const rev2 = m.ssI.hojas['REVISAR_MATCH'];
+  const kRita2 = reunion(rev2, 'Rita Gómez');
+  ok(kRita2 > 0 && rev2.v[kRita2][h.indexOf('elegido')] === 'No sé' && rev2.v[kRita2][h.indexOf('comentario')] === 'preguntar al equipo',
+     '"No sé" queda pendiente, con su comentario');
+  const kRes = rev2.v.findIndex(function (x) { return /^RESUELTAS/.test(x[0]); });
+  const liaRes = rev2.v.findIndex(function (x, i) { return i > kRes && x[0] === 'resuelta' && x[2] === 'Lía Ferrante'; });
+  ok(kRes > 0 && liaRes > kRes && /válida/.test(rev2.v[liaRes][h.indexOf('resultado')]),
+     'Lía pasa a RESUELTAS: ' + (liaRes > 0 ? rev2.v[liaRes][h.indexOf('resultado')] : '-'));
+  const el = m.ssI.hojas['ELECCIONES_MATCH'];
+  const iE = function (n) { return el.v[0].indexOf(n); };
+  ok(el.v.some(function (x) { return x[iE('figura')] === 'Rita Gómez' && x[iE('estado')] === 'no_se' && x[iE('comentario')] === 'preguntar al equipo'; }),
+     'ELECCIONES_MATCH guarda la nota ("no sé" + comentario)');
+
+  const r2 = E.ejecutar('upsertDestino');
+  ok(!r2.error, 'corrida real sin error');
+  const nLia = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Lía Ferrante'; });
+  ok(hoja.v[nLia][colD('form_origen')] === opcion2 && /\+elegido_por_persona/.test(hoja.v[nLia][colD('form_nivel')]),
+     'Lía se escribe con la opción 2 (+elegido_por_persona)');
+  const rev3 = m.ssI.hojas['REVISAR_MATCH'];
+  const liaRes3 = rev3.v.findIndex(function (x) { return x[0] === 'resuelta' && x[2] === 'Lía Ferrante'; });
+  ok(liaRes3 > 0 && /^aplicado /.test(rev3.v[liaRes3][h.indexOf('resultado')]), 'RESUELTAS: "aplicado <fecha>"');
+
+  // Rita: de "No sé" a "Ninguno" → la nota queda reemplazada y la ficha pasa a RESUELTAS.
+  rev3.v[reunion(rev3, 'Rita Gómez')][h.indexOf('elegido')] = 'Ninguno';
+  const s4 = E.ejecutar('correrEnSeco');
+  if (process.env.DEBUG_FICHAS) console.log(s4.logs.filter(function (l) { return /Rita|ELEGIDO|leídas/.test(l); }).join('\n'));
+  const rev4 = m.ssI.hojas['REVISAR_MATCH'];
+  if (process.env.DEBUG_FICHAS) rev4.v.filter(function (x) { return /Rita/.test(x.join('|')); }).forEach(function (x) { console.log(x.join(' | ')); });
+  ok(reunion(rev4, 'Rita Gómez') < 0 &&
+     rev4.v.some(function (x) { return x[0] === 'resuelta' && x[2] === 'Rita Gómez' && x[h.indexOf('elegido')] === 'Ninguno'; }),
+     '"Ninguno": la ficha sale de las pendientes y queda en RESUELTAS');
+  const el2 = m.ssI.hojas['ELECCIONES_MATCH'];
+  ok(el2.v.some(function (x) { return x[iE('figura')] === 'Rita Gómez' && x[iE('estado')] === 'reemplazada'; }),
+     'la nota "no sé" de Rita queda "reemplazada"');
+
+  // Paso 21: fichas de prueba (Iván, cerrada, sale igual en el log), sin tocar el destino.
+  const f21 = JSON.stringify(foto(hoja));
+  const nIvan = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Iván Robles'; }) + 1;
+  vm.runInContext('function __paso21() { return fichasDePrueba([' + nIvan + ', ' + (nLia + 1) + ']); }', E.ctx);
+  const p = E.ejecutar('__paso21');
+  const logs21 = p.logs.join('\n');
+  ok(!p.error, 'paso 21 sin error' + (p.error ? ': ' + p.error.stack : ''));
+  ok(p.resultado && p.resultado.pedidas === 2 && /FICHA fila \d+ — REVISAR_MATCH \(margen_chico\) \| CERRADA/.test(logs21),
+     'paso 21: la ficha de una fila cerrada sale en el log, marcada CERRADA');
+  ok(/\[v\] Iván Robles/.test(logs21), 'paso 21: las marcas de color en el texto');
+  ok(m.ssI.hojas['REVISAR_FICHAS_PRUEBA'] && m.ssI.hojas['REVISAR_FICHAS_PRUEBA'].v[0][0] === 'ficha' &&
+     JSON.stringify(foto(hoja)) === f21, 'paso 21: escribe la solapa de prueba y no toca el destino');
+
+  // Paso 16 y paso 20, con DIAS_ACTIVOS.
+  const v = E.ejecutar('verificarEscritura').resultado;
+  ok(v && v.incompletas === 0 && v.choques === 0, 'paso 16: invariante 0, 0 incompletas (sólo activas)');
+  const q = E.ejecutar('porQueVacia');
+  ok(!q.error && /filas: las activas/.test(q.logs.join('\n')), 'paso 20: por defecto, las filas activas');
+  console.log('       --- texto del paso 21 (fila cerrada) ---');
+  p.logs.filter(function (l) { return /^ {2}/.test(l); }).slice(0, 14).forEach(function (l) { console.log('     ' + l); });
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1066,10 +1248,11 @@ const fuenteVieja = conViejo ? function (f) {
 
 const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
-    process.argv.indexOf('--elegido') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
+  else if (process.argv.indexOf('--fichas') >= 0) escenarioFichas();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1099,6 +1282,7 @@ escenarioMalEscritas();
 escenarioPasoB();
 escenarioPorQueVacia();
 escenarioElegido();
+escenarioFichas();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

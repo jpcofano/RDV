@@ -79,6 +79,21 @@ function correrEnSeco() {
  * Existen porque una escritura que falla no tiene por qué obligar a rehacer las otras dos. El
  * cálculo tarda 4 segundos y es determinista; lo frágil es el servicio de Sheets.
  */
+/**
+ * La calibración (03/10): el plan sobre TODO el historial (`{ historial: true }`), sólo al log. El upsert
+ * trabaja sobre las filas activas (DIAS_ACTIVOS); los bloques de calibración (el valle, la autopsia, la
+ * comuna, los ejes) se leen sobre la ventana de análisis (VENTANA_ANALISIS_DESDE), que no cambió.
+ * No escribe nada, ni siquiera los reportes.
+ */
+function calibrarHistorial() {
+  const t0 = new Date();
+  Logger.log('=== calibrarHistorial — todo el historial, sólo al log: no escribe nada ===');
+  const plan = calcularPlan_(true, null, { historial: true });
+  logResumen_(plan);
+  Logger.log('tiempo de corrida: %s s', ((new Date() - t0) / 1000).toFixed(1));
+  return plan.res;
+}
+
 function soloRevisarMatch()    { return _soloUno_(RDV_HOJA_REVISAR); }
 function soloEmparejarManual() { return _soloUno_(RDV_HOJA_EMPAREJAR); }
 function soloSinMatch()        { return _soloUno_(RDV_HOJA_SIN_MATCH); }
@@ -228,7 +243,7 @@ function medirFiguraEnPrefijo() {
  */
 function medirFormulariosSinFigura() {
   Logger.log('=== medirFormulariosSinFigura — sólo lectura, no escribe nada ===');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, comunas = plan.comunas, porFila = plan.porFila;
   const vivos = plan.cands.vivos;
   const tol = TOLERANCIA_REPROGRAMACION_DIAS;
@@ -458,7 +473,7 @@ function _formaFormulario_(nombre) {
  */
 function medirVariantesSinFigura() {
   Logger.log('=== medirVariantesSinFigura — sólo lectura, no escribe nada ===');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, comunas = plan.comunas, porFila = plan.porFila;
   const vivos = plan.cands.vivos;
   const sinFig = vivos.filter(function (c) { return !c.figurasNorm.length; });
@@ -712,7 +727,7 @@ function _resolverMargenChico_(plan) {
  */
 function medirDesempatePorEvidencia() {
   Logger.log('=== medirDesempatePorEvidencia — sólo lectura, no escribe nada ===');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const r = _resolverMargenChico_(plan);
 
   Logger.log('VENTANA: corte %s (%s). Se lee [ventana | total].',
@@ -1068,7 +1083,7 @@ function medirValidacionInscriptos() {
   Logger.log('  Los inscriptos del DESTINO son SÓLO validación: no entran en el score, ni en ningún');
   Logger.log('  desempate, ni en la regla de un formulario por fila, ni en ninguna decisión de');
   Logger.log('  escribir. En régimen el sistema no tiene ese dato: lo escribe él mismo.');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, porFila = plan.porFila;
   const iIns = dest.D['Inscriptos'];
   const insDest = function (f) { return _insDestino_(dest, f); };
@@ -1409,7 +1424,7 @@ function _logFechaFinSinTexto_(plan, insDest) {
  */
 function medirDesacuerdoUbicacion() {
   Logger.log('=== medirDesacuerdoUbicacion — sólo lectura, no cambia ningún veredicto ===');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, vivos = plan.cands.vivos, comunas = plan.comunas, porFila = plan.porFila;
   const paresSet = (plan.emp && plan.emp.paresSet) || {};
   const tomadoPor = {};
@@ -1615,7 +1630,9 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
   }
 
   _registrarCorrida_(plan, enSeco, t0, fallaron);
-  Logger.log('%s ms', new Date() - t0);
+  Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
+             ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
+             plan.res.cerradasSinResolver);
   return plan.res;
 }
 
@@ -1665,9 +1682,13 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
  * reintentar una solapa sin volver a calcular, y lo que permite loguear los resultados aunque
  * después falle el servicio de Sheets.
  */
-function calcularPlan_(enSeco, entradas) {
+function calcularPlan_(enSeco, entradas, opciones) {
   // `entradas` (02/10): {dest, cands, comunas} ya leídos. Lo usa el paso 16 para recalcular con EL
   // MISMO plan que el upsert sobre el destino sin sus RDV_UID. Sin `entradas`, se leen acá.
+  // `opciones.historial` (03/10): evaluar TODAS las filas, no sólo las activas (DIAS_ACTIVOS). Lo piden
+  // las mediciones de una vez y la calibración; el upsert, el paso 2 en seco y el paso 20, no.
+  const historial = !!(opciones && opciones.historial);
+  const esActiva = function (f) { return historial || esFilaActiva_(f.fecha); };
   const dest = entradas ? entradas.dest : leerDestino_();
   const cands = entradas ? entradas.cands : leerCandidatos_();
   const comunas = entradas ? entradas.comunas : leerComunasMap_();
@@ -1693,7 +1714,9 @@ function calcularPlan_(enSeco, entradas) {
    */
   const res = { porUid: contador_(), escribiria: contador_(), revisar: contador_(),
                 sinMatch: contador_(), futuras: contador_(), pendienteBarrio: contador_(), ningunoPersona: contador_(),
-                enVentana: 0, escritas: 0, uidsEstampados: 0 };
+                enVentana: 0, escritas: 0, uidsEstampados: 0,
+                // DIAS_ACTIVOS (03/10): filas activas, cerradas, y cerradas sin RDV_UID ("sin resolver").
+                activas: 0, cerradas: 0, cerradasSinResolver: 0, historial: historial };
   const motivos = {};
 
   /*
@@ -1783,6 +1806,12 @@ function calcularPlan_(enSeco, entradas) {
       sumar_(res.futuras, ev); porFila[f.fila] = { veredicto: 'futura' }; continue;
     }
 
+    // Filas activas (DIAS_ACTIVOS, 03/10): una fila cerrada no se evalúa ni se escribe. Si tiene RDV_UID,
+    // su formulario sigue reservado (abajo): el invariante es sobre todo el historial.
+    const activa = esActiva(f);
+    if (activa) res.activas++;
+    else res.cerradas++;
+
     if (f.uid) {
       // El formulario de una fila ya estampada: por la traza (form_clave, si no form_origen), no por
       // la fila de B. Reserva su GRUPO de gemelos: ninguna otra fila puede tomar un formulario con
@@ -1792,14 +1821,20 @@ function calcularPlan_(enSeco, entradas) {
       sumar_(res.porUid, ev);
       porFila[f.fila] = { veredicto: 'rdv_uid', cand: t.c, grupo: t.grupo, ambiguo: t.ambiguo };
       if (t.grupo && !tomadosGrupo.has(t.grupo)) tomadosGrupo.set(t.grupo, { c: t.c, fila: f.fila });
+      if (!activa) porFila[f.fila].cerrada = true;
       if (t.c) {
-        decisiones.push({ fila: f, cand: t.c, score: 1, nivel: 'rdv_uid', dist: null });
+        if (activa) decisiones.push({ fila: f, cand: t.c, score: 1, nivel: 'rdv_uid', dist: null });
         usados[t.c.fila] = true;
       } else if (t.ambiguo) {
         (cands.gemelos.grupos || []).forEach(function (g) {
           if (g.grupo === t.grupo) g.forms.forEach(function (c) { usados[c.fila] = true; });
         });
       }
+      continue;
+    }
+    if (!activa) {
+      res.cerradasSinResolver++;
+      porFila[f.fila] = { veredicto: 'cerrada', motivo: 'cerrada' };
       continue;
     }
     evals.push({ f: f, ev: ev, r: evaluarCandidatos_(f, cands.vivos, comunas) });
@@ -1955,7 +1990,9 @@ function calcularPlan_(enSeco, entradas) {
   });
   // Las pendientes de barrio tampoco van a EMPAREJAR_MANUAL: se reevalúan solas.
   Object.keys(porFila).forEach(function (k) {
-    if (porFila[k].veredicto === 'pendiente_barrio' || porFila[k].veredicto === 'ninguno_por_persona') resueltas[k] = true;
+    // Y las cerradas (DIAS_ACTIVOS): no se proponen.
+    if (porFila[k].veredicto === 'pendiente_barrio' || porFila[k].veredicto === 'ninguno_por_persona' ||
+        porFila[k].veredicto === 'cerrada' || porFila[k].cerrada) resueltas[k] = true;
   });
   // Las opciones de cada fila a revisar: hasta OPCIONES_REVISION formularios, con sus puntajes.
   revisarRefs.forEach(function (x, i) {
@@ -1988,6 +2025,10 @@ function calcularPlan_(enSeco, entradas) {
   // sobre el resultado final: tiene que dar 0 formularios con 2+ filas escritas.
   const invariante = { aplicacion: aplicacion,
                        chequeo: chequearFormularioUnico_(dest, cands.vivos, comunas, porFila) };
+
+  Logger.log('filas activas: %s (%s) | cerradas: %s (sin resolver, sin RDV_UID: %s) | futuras: %s',
+             res.activas, historial ? 'todo el historial' : descActivas_(), res.cerradas,
+             res.cerradasSinResolver, res.futuras.t);
 
   const huellas = huellasDelPlan_(dest, cands, comunas, porFila);
   Logger.log('Huella de entradas: %s  (destino %s | B %s | figuras %s | Comunas %s) — plan: %s',
@@ -2078,6 +2119,24 @@ function _encabezadoOpciones_(n) {
  * destino son sólo validación). Los inscriptos que se muestran son los del FORMULARIO.
  */
 function _opcionesDeFila_(f, vivos, comunas, tomadoPor, primero, n) {
+  const lista = listaOpcionesFila_(f, vivos, comunas, primero);
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const sc = lista[k];
+    if (!sc) { out.push('', '', '', '', '', '', ''); continue; }
+    const t = tomadoPor[sc.c.fila];
+    out.push(sc.c.nombre, sc.c.clave, sc.c.fila, sc.c.inscriptos || 0, sc.score, _senalesTexto_(sc, f, comunas),
+             t == null ? 'libre' : (t === f.fila ? 'esta fila' : 'fila ' + t));
+  }
+  return out;
+}
+
+/**
+ * Los formularios candidatos de una fila, como puntajes (`puntuar_`), en el orden del sistema: `primero`,
+ * después los limpios y las posibles reubicaciones por score y cercanía, y al final los demás
+ * descalificados por ubicación. La usan REVISAR_MATCH (las dos formas: línea y fichas) y EMPAREJAR_MANUAL.
+ */
+function listaOpcionesFila_(f, vivos, comunas, primero) {
   const lista = [];
   for (let j = 0; j < vivos.length; j++) {
     const sc = puntuar_(f, vivos[j], comunas);
@@ -2095,15 +2154,7 @@ function _opcionesDeFila_(f, vivos, comunas, tomadoPor, primero, n) {
     if (b.score !== a.score) return b.score - a.score;
     return (a.dist === null ? Infinity : a.dist) - (b.dist === null ? Infinity : b.dist);
   });
-  const out = [];
-  for (let k = 0; k < n; k++) {
-    const sc = lista[k];
-    if (!sc) { out.push('', '', '', '', '', '', ''); continue; }
-    const t = tomadoPor[sc.c.fila];
-    out.push(sc.c.nombre, sc.c.clave, sc.c.fila, sc.c.inscriptos || 0, sc.score, _senalesTexto_(sc, f, comunas),
-             t == null ? 'libre' : (t === f.fila ? 'esta fila' : 'fila ' + t));
-  }
-  return out;
+  return lista;
 }
 
 /** "figura ✓ · fecha 1 d · ubicación coincide (comuna) · eje -", para una persona. */
@@ -3227,7 +3278,14 @@ function _barra_(n, total) {
 function escribirReportes_(plan, fallaron, soloEstos) {
   const quiere = function (n) { return !soloEstos || soloEstos.indexOf(n) !== -1; };
 
-  if (quiere(RDV_HOJA_REVISAR)) {
+  if (quiere(RDV_HOJA_REVISAR) && REVISAR_COMO_FICHAS) {
+    // Las fichas (26_Fichas.js, 03/10): una por reunión pendiente activa, con las elecciones guardadas.
+    _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
+      const fx = armarFichas_(plan, plan.asistentes || cruzarAsistentes_(plan.dest, plan.comunas));
+      escribirFichas_(RDV_HOJA_REVISAR, fx);
+      Logger.log('[upsert] %s: %s fichas pendientes | %s resueltas', RDV_HOJA_REVISAR, fx.pendientes, fx.resueltas);
+    });
+  } else if (quiere(RDV_HOJA_REVISAR)) {
     _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
       escribirReporte_(RDV_HOJA_REVISAR,
         ['clave', 'figura', 'barrio', 'fecha', 'form_origen', 'score', 'segundo', 'margen',
@@ -3844,10 +3902,16 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
   });
 
   const grupos = [];
+  // Filas activas (DIAS_ACTIVOS, 03/10): un formulario de antes de hoy − DIAS_ACTIVOS − VENTANA_EMPAREJAR_DIAS
+  // no puede ser de una reunión activa; si no, llenaría el bloque "sin ningún candidato" con los de
+  // reuniones cerradas.
+  const iniAct = inicioActivas_();
+  const desdeForm = iniAct ? new Date(iniAct.getTime() - VENTANA_EMPAREJAR_DIAS * 86400000) : null;
 
   for (let i = 0; i < cands.vivos.length; i++) {
     const c = cands.vivos[i];
     if (usados[c.fila]) continue;                  // ya se lo llevó una fila del destino
+    if (desdeForm && !(c.det && c.det.mejor && c.det.mejor >= desdeForm)) continue;   // de una reunión cerrada
 
     const props = [];
     for (let j = 0; j < librosDestino.length; j++) {
@@ -4147,6 +4211,7 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
   const pendientes = [];
   dest.filas.forEach(function (f) {
     if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
+    if (!esFilaActiva_(f.fecha)) return;                           // cerrada (DIAS_ACTIVOS): no se toca
     const d = decisionDeFila_(f, porDecision, asistentes);
     const c = celdasDeDecision_(dest, d, f.valores, true);
     if (c.celdas.length || c.status) pendientes.push(d);

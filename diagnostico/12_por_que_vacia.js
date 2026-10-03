@@ -1,7 +1,7 @@
 /**
  * diagnostico/12_por_que_vacia.js — PASO 20: "por qué está vacía" (03/10). SÓLO LECTURA.
  *
- * Para un rango de filas del destino (por defecto, de la 800 al final), mira las columnas que escribe
+ * Para un rango de filas del destino (por defecto, las filas ACTIVAS: DIAS_ACTIVOS, 03/10), mira las columnas que escribe
  * el sistema —Inscriptos, los cinco canales, Masculinos, Femeninos, las 5 edades, Sin identificar,
  * Asistentes y STATUS— y, para cada celda vacía (o en 0 en Inscriptos; en STATUS, lo que no sea
  * "Realizada"), da UNA causa:
@@ -31,8 +31,11 @@ function porQueVacia(desde, hasta) {
   const plan = calcularPlan_(true);
   const dest = plan.dest;
   const asis = cruzarAsistentes_(dest, plan.comunas);
+  // Sin rango: las filas activas (DIAS_ACTIVOS, 03/10). Con rango: ese rango, activas o no.
+  const soloActivas = !desde && !hasta;
   const d1 = desde || 2, d2 = hasta || Infinity;
-  Logger.log('  filas: de la %s a la %s', d1, d2 === Infinity ? 'última' : d2);
+  if (soloActivas) Logger.log('  filas: las activas (%s)', descActivas_());
+  else Logger.log('  filas: de la %s a la %s', d1, d2 === Infinity ? 'última' : d2);
 
   const porDecision = decisionesPorFila_(plan.decisiones);
   const ambiguaDe = {}, conflictoDe = {};
@@ -45,6 +48,7 @@ function porQueVacia(desde, hasta) {
 
   dest.filas.forEach(function (f) {
     if (f.fila < d1 || f.fila > d2) return;
+    if (soloActivas && !esFilaActiva_(f.fecha)) return;
     const pf = plan.porFila[f.fila] || {};
     const d = decisionDeFila_(f, porDecision, asis);
     const ahora = celdasDeDecision_(dest, d, f.valores, true);

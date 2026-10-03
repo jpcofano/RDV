@@ -32,6 +32,11 @@
  *        3. upsertDestino() una vez            [20_UpsertDestino.js]
  *        4. paso16_verificarEscritura()       → OK: invariante 0, Barrio sin subir, 0 incompletas
  *        5. paso19_repintarAzulViejo_enSeco() → cuántas en #4F81BD por columna; repintar cuando se decida
+ *  03/10 tarde: DIAS_ACTIVOS = 30 (00_Config.js): el sistema trabaja sólo sobre las filas de hoy − 30 a
+ *      hoy (escritura, fichas, "elegido", EMPAREJAR, paso 20); el invariante sigue sobre todo el historial.
+ *      Y las FICHAS de REVISAR_MATCH (26_Fichas.js), APAGADAS (REVISAR_COMO_FICHAS = false) hasta validarlas:
+ *        1. paso21_fichasDePrueba()  → las fichas de 631, 521, 274, 618, 309 al log + la solapa de prueba
+ *        2. upsertDestino() una vez  → ~40-50 filas activas, nada nuevo que escribir, menos tiempo (ESTADO 0.q)
  *  03/10: paso20_porQueVacia() (sólo lectura: la causa de cada celda vacía; "DEBERÍA ESTAR ESCRITA"
  *      tiene que dar 0) y la lectura de "elegido" en REVISAR_MATCH / EMPAREJAR_MANUAL (regla 4,
  *      25_Elecciones.js, docs/elegir-match.md). Con 0 elecciones cargadas, el upsert no cambia nada.
@@ -305,18 +310,44 @@ function paso18_malEscritas_vaciarReal() {
 
 /**
  * PASO 20 — "por qué está vacía": para cada celda vacía de las columnas del sistema, UNA causa. Sólo
- * lectura. El rango, acá (por defecto de la 800 al final):
+ * lectura. El rango, acá. Los dos en null (por defecto desde el 03/10) = las filas ACTIVAS (DIAS_ACTIVOS).
  */
-const PASO20_DESDE = 800;
-const PASO20_HASTA = null;   // null = hasta el final
+const PASO20_DESDE = null;
+const PASO20_HASTA = null;   // con DESDE puesto: null = hasta el final
 
 function paso20_porQueVacia() {
-  _anunciar_('paso 20 — por qué está vacía (filas ' + PASO20_DESDE + ' a ' + (PASO20_HASTA || 'el final') + ')',
+  _anunciar_('paso 20 — por qué está vacía (' + (PASO20_DESDE || PASO20_HASTA
+               ? 'filas ' + (PASO20_DESDE || 2) + ' a ' + (PASO20_HASTA || 'el final') : 'filas activas') + ')',
              'porQueVacia()  [diagnostico/12_por_que_vacia.js]',
              'NO escribe en ninguna planilla (recalcula el plan y el cruce de Asistentes)',
              'sólo el log: cada celda vacía con su causa, el resumen por causa y la lista de las que ' +
              'DEBERÍAN ESTAR ESCRITAS (tiene que dar 0)');
   return porQueVacia(PASO20_DESDE, PASO20_HASTA);
+}
+
+/**
+ * PASO 21 — las fichas de REVISAR_MATCH, de prueba (03/10). NO escribe el destino ni REVISAR_MATCH: sólo
+ * la solapa RDV_HOJA_FICHAS_PRUEBA de la intermedia. Al log, las fichas de estas filas (estén o no
+ * pendientes o activas), para validar las frases y las líneas de coincide / no coincide:
+ */
+const PASO21_FILAS = [631, 521, 274, 618, 309];
+
+function paso21_fichasDePrueba() {
+  _anunciar_('paso 21 — fichas de REVISAR_MATCH, de prueba (filas ' + PASO21_FILAS.join(', ') + ')',
+             'fichasDePrueba()  [diagnostico/13_fichas_prueba.js]',
+             'NO escribe el destino ni REVISAR_MATCH; escribe sólo la solapa "' + RDV_HOJA_FICHAS_PRUEBA + '" (intermedia)',
+             'el log: las fichas pedidas, como texto con las marcas de color; la solapa de prueba, entera');
+  return fichasDePrueba(PASO21_FILAS);
+}
+
+/**
+ * PASO 2b — la calibración sobre TODO el historial (03/10): el upsert trabaja sólo sobre las filas
+ * activas (DIAS_ACTIVOS); los bloques de calibración se leen sobre la ventana de análisis. Sólo log.
+ */
+function paso2b_calibrarHistorial() {
+  _anunciar_('paso 2b — calibración sobre todo el historial', 'calibrarHistorial()  [20_UpsertDestino.js]',
+             'NO escribe en ninguna planilla (ni los reportes)', 'sólo el log de siempre del paso 2, con todas las filas');
+  return calibrarHistorial();
 }
 
 /* PASO 19 — el #4F81BD viejo pasa al color nuevo del sistema (#CFE2F3). En seco primero. */

@@ -41,7 +41,7 @@ const TOLERANCIA_DIAG9 = 0.05;
 function validarCuentas() {
   Logger.log('=== validarCuentas (PASO A) — sólo lectura, no escribe nada ===');
   Logger.log('  solapa destino: %s', descripcionHojaDestino_());
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, porFila = plan.porFila;
 
   // Índices del destino para las 14 columnas.

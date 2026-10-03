@@ -185,6 +185,38 @@ function enVentanaAnalisis_(fecha) {
   return fecha >= inicioVentanaAnalisis_();
 }
 
+// ===================== Filas activas (DIAS_ACTIVOS, 03/10) =====================
+
+/** Hoy al mediodía. */
+function hoyMediodia_() {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth(), h.getDate(), 12, 0, 0);
+}
+
+/** El primer día activo (hoy − DIAS_ACTIVOS, al mediodía), o `null` si DIAS_ACTIVOS es null (todas). */
+function inicioActivas_() {
+  if (DIAS_ACTIVOS == null) return null;
+  const h = hoyMediodia_();
+  return new Date(h.getFullYear(), h.getMonth(), h.getDate() - DIAS_ACTIVOS, 12, 0, 0);
+}
+
+/**
+ * ¿La fila es activa? FECHA entre hoy − DIAS_ACTIVOS y hoy, por día. Sin fecha: no. Con
+ * `DIAS_ACTIVOS = null`, todas (salvo las futuras, que nunca lo son).
+ */
+function esFilaActiva_(fecha) {
+  if (DIAS_ACTIVOS == null) return !(fecha && ymd_(fecha) > ymd_(hoyMediodia_()));
+  if (!fecha) return false;
+  const d = ymd_(fecha);
+  return d >= ymd_(inicioActivas_()) && d <= ymd_(hoyMediodia_());
+}
+
+/** "de dd/MM/yyyy a dd/MM/yyyy" (o "todas"), para los logs. */
+function descActivas_() {
+  return DIAS_ACTIVOS == null ? 'todas (DIAS_ACTIVOS = null)'
+    : 'de ' + fmtFecha_(inicioActivas_()) + ' a ' + fmtFecha_(hoyMediodia_()) + ', hoy − ' + DIAS_ACTIVOS;
+}
+
 /**
  * Un contador con dos lecturas: **dentro de la ventana** y **total histórico**.
  *

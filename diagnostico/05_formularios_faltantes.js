@@ -29,7 +29,7 @@ const DIAG5_DIAS_RECIENTE = 7;
 
 function diagFormulariosFaltantes() {
   Logger.log('=== diagFormulariosFaltantes — sólo lectura, no escribe nada ===');
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const dest = plan.dest, vivos = plan.cands.vivos, comunas = plan.comunas, porFila = plan.porFila;
   const hoy = _hoy_();
 

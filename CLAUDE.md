@@ -109,6 +109,11 @@ El formulario de inscripción **cierra**. Después de eso el total no se actuali
 inscriptos de una reunión del mes pasado son los que son y no van a cambiar. Lo mismo el
 desagregado por sexo y edades, que sale de ese mismo total.
 
+**Y un formulario aparece en `B` recién cuando cerró** (dato del usuario, 03/10). O sea que
+**todo número que trae `B` ya es final**: se escribe apenas hay match, sin esperar a nada. Es lo
+que permite que el sistema trabaje sólo sobre las reuniones recientes (`DIAS_ACTIVOS`, decisión 13):
+una fila vieja no tiene nada pendiente de llegar.
+
 Eso simplifica el problema entero. Si el origen no corrige, **no hay nada que propagar**, y por
 lo tanto:
 
@@ -2165,6 +2170,42 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    "resultado" ("aplicado <fecha>" / "rechazado: <motivo>" / "ninguno…"); las de filas que ya no
    aparecen van al final de REVISAR_MATCH. El paso 2 y el upsert las listan en el log.
 
+   #### `REVISAR_MATCH` como fichas (decisión del usuario, 03/10; `26_Fichas.js`)
+
+   Una línea por fila con tres bloques de siete columnas no la trabaja nadie. **Una ficha por reunión
+   pendiente** (REVISAR_MATCH o SIN_MATCH, sólo filas activas: decisión 13), en una sola solapa, de la
+   más reciente a la más vieja, todo en **las mismas columnas**:
+
+   - **REUNIÓN**: fila del destino, figura, fecha con día de la semana, barrio (comuna), evento,
+     inscriptos del destino y asistentes (RDV CONJUNTO) —**estos dos sólo para la persona: no son
+     señal del sistema** (sección 1)—, y "elegido" (desplegable: *Opción 1/2/3, Ninguno, No sé*),
+     "comentario" (libre) y "resultado" (lo escribe el sistema);
+   - **¿por qué?**: una frase por motivo (`formulario_compartido`, `ubicacion_en_desacuerdo`,
+     `multi_figura`, `margen_chico`, `score_bajo`, `sin_formulario_propio`, `formulario_gemelo`,
+     `clave_repetida`, …), completada con los datos de la fila;
+   - **Opción 1..3** (el mismo orden de siempre, `listaOpcionesFila_`): figura(s) del formulario,
+     `Fecha_Fin`, ubicación detectada, nombre, inscriptos **del formulario**, días de diferencia,
+     puntaje y "ocupado por" (la fila que ya lo tiene, o su gemelo). **Verde** si la celda coincide con
+     la reunión, **rojo** si no, **gris** si no se puede comparar. Debajo, la línea *coincide / no
+     coincide* (✅ figura · ✅ fecha (cierra N días antes) · ❌ comuna (C11, la reunión es C15) · ⚠️ ya
+     usado por la fila X), traducida de `puntuar_`: las mismas señales que el puntaje, nada nuevo;
+   - **otra reunión** (en gris): las otras reuniones de la figura a ±`DIAS_CONTEXTO_FICHA` (7) días,
+     con su estado (con formulario / en revisión / cerrada…).
+
+   Al final, **RESUELTAS**: aplicadas, válidas (se escriben en la próxima corrida real) y "ninguno",
+   con su resultado y su fecha. **"No sé"** y un comentario sin elección son **notas**: se guardan en
+   `ELECCIONES_MATCH` (estado `no_se` / `nota`, columna `comentario`), no se aplican ni bloquean nada,
+   y la ficha sigue pendiente. Una elección nueva en una ficha **reemplaza** la pendiente de esa fila
+   (estado `reemplazada`): lo que muestra la ficha es lo que vale.
+
+   **La identidad no cambia**: la fila por figura + fecha + barrio (columnas ocultas `id_*` de la
+   línea REUNIÓN; la fecha en `yyyy-MM-dd`, que Sheets lee igual en cualquier configuración regional) y
+   el formulario por `form_clave` (columna oculta de cada opción). El lector reconoce el formato por el
+   encabezado, así que "elegido" se lee de los dos formatos. **Apagado (`REVISAR_COMO_FICHAS = false`)
+   hasta que el usuario valide las fichas** con el paso 21, que las escribe en otra solapa
+   (`REVISAR_FICHAS_PRUEBA`). `EMPAREJAR_MANUAL` queda como está (se mejora después). Para el equipo:
+   docs/elegir-match-fichas.md, que reemplaza a docs/elegir-match.md cuando se encienda.
+
    #### `EMPAREJAR_MANUAL`: el lado que falta
 
    Todo lo demás mira **desde el destino hacia `B`**. Falta el opuesto: **formularios que no se
@@ -2397,6 +2438,32 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     Y lo que reemplaza: `marcarRevisadaEnOrden()` (3.1.g), que decide lo mismo pero reescribe la
     planilla entera y la ordena.
 
+13. **Filas activas: el sistema trabaja sólo sobre los últimos `DIAS_ACTIVOS` (30) días** (decisión
+    del usuario, 03/10). Una fila es **activa** si su `FECHA` está entre hoy − 30 y hoy (las futuras
+    siguen afuera). **Lo anterior está cerrado y no se toca.**
+
+    | sólo sobre filas activas | sobre TODO el historial, sin cambios |
+    |---|---|
+    | la escritura del upsert (datos, traza, STATUS, Asistentes) | el invariante: un formulario de una fila vieja con `RDV_UID` sigue ocupado |
+    | las fichas de REVISAR_MATCH, SIN_MATCH y EMPAREJAR_MANUAL (en éste, también los formularios: desde hoy − 30 − `VENTANA_EMPAREJAR_DIAS`) | los candidatos de `B` para el match (sin corte por fecha) |
+    | la lectura de "elegido" (una elección de una reunión cerrada queda como estaba) | el invariante del paso 16 (las "incompletas" del paso 16: sólo activas) |
+    | el rango por defecto del paso 20 | |
+
+    **Por qué alcanza**: un formulario aparece en `B` recién cuando cerró (sección 0), así que sus
+    números son finales y se escriben apenas hay match. Una fila de hace dos meses no tiene nada
+    pendiente de llegar; si quedó sin resolver, se cuenta en el log como **"cerrada sin resolver"**
+    (las cerradas sin `RDV_UID`) y no se vuelve a mirar.
+
+    En el código: `esFilaActiva_` (`01_Utils.js`); `calcularPlan_` no evalúa las cerradas (veredicto
+    `cerrada`) y no pone decisiones para las cerradas con `RDV_UID`, pero sí les reserva el formulario;
+    `aplicarDecisiones_` las saltea. El log: *"filas activas: N (de … a …, hoy − 30) | cerradas: M (sin
+    resolver: X) | futuras: K"* y el tiempo de corrida.
+
+    **No es la ventana de análisis.** `VENTANA_ANALISIS_*` (3.5) decide sobre qué se calibra; ésta,
+    sobre qué se trabaja. Las mediciones de una vez (pasos 6 a 13, 17) y la calibración piden el plan
+    entero con `calcularPlan_(…, { historial: true })`; para la calibración, **`paso2b_calibrarHistorial()`**
+    (sólo log). `DIAS_ACTIVOS = null` vuelve a trabajar sobre todas las filas.
+
 ### Estructura de archivos
 
 ```
@@ -2409,6 +2476,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  B+A2 → destino, match uuid→score, 3 reportes   ← ya escrito (DRY_RUN)
 25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
+26_Fichas.js       REVISAR_MATCH como fichas: armado, frases, colores, desplegable, lector     ← 03/10 (apagado)
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

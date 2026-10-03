@@ -106,14 +106,20 @@ function verificarEscritura() {
   Logger.log('--- 4) filas con RDV_UID ---');
   const sinTraza = conUid.filter(function (f) { return !f.formOrigen; });
   const incompletas = [], sinClave = [];
+  // Incompletas y sin form_clave: sólo las filas ACTIVAS (DIAS_ACTIVOS, 03/10). Una fila cerrada no se
+  // completa más, así que no es un problema que le falte algo. El invariante (bloque 1) es sobre todas.
+  let cerradasConUid = 0;
   conUid.forEach(function (f) {
     const c = traza.get(f).c;
     if (!c) return;   // sin formulario, o ambigua: contadas aparte
+    if (!esFilaActiva_(f.fecha)) { cerradasConUid++; return; }
     const falta = _faltantesDeFila_diag8(dest, f, c, comunas);
     if (falta.clave) sinClave.push(f);
     if (falta.lista.length) incompletas.push({ f: f, falta: falta.lista });
   });
   Logger.log('  con RDV_UID: %s | sin form_origen: %s   (tiene que dar 0)', conUid.length, sinTraza.length);
+  Logger.log('  filas activas: %s — las incompletas y sin form_clave se cuentan sólo ahí (cerradas con RDV_UID, ' +
+             'no se miran: %s)', descActivas_(), cerradasConUid);
   Logger.log('  INCOMPLETAS (les falta alguna celda que el plan escribía en esa fila): %s   (tiene que dar 0;',
              incompletas.length);
   Logger.log('    si no da 0, la próxima corrida del upsert las completa: entran por RDV_UID)');
@@ -179,7 +185,7 @@ function _planSinUid_diag8(dest, cands, comunas) {
       return Object.assign({}, f, { uid: '', formOrigen: '', formClave: '' });
     })
   });
-  return calcularPlan_(true, { dest: limpio, cands: cands, comunas: comunas });
+  return calcularPlan_(true, { dest: limpio, cands: cands, comunas: comunas }, { historial: true });
 }
 
 /**

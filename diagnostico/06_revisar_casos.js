@@ -236,7 +236,7 @@ function resumenParaRevisar() {
 // ===================== helpers =====================
 
 function _contexto_diag6() {
-  const plan = calcularPlan_(true);
+  const plan = calcularPlan_(true, null, { historial: true });
   const tomadoPor = {}, resueltas = {}, traza = {};
   plan.decisiones.forEach(function (d) {
     traza[d.fila.fila] = d.nivel;

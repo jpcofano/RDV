@@ -452,6 +452,41 @@ const DIAS_PENDIENTE_BARRIO = 1;
 const OPCIONES_REVISION = 3;
 
 /**
+ * **Filas activas** (decisión del usuario, 03/10): el sistema trabaja sólo sobre lo relevante. Una fila
+ * es activa si su FECHA está entre hoy − DIAS_ACTIVOS y hoy (las futuras siguen afuera, como siempre).
+ * Lo anterior está **cerrado y no se toca**.
+ *
+ *   - sólo sobre filas activas: la escritura del upsert (datos, traza, STATUS, Asistentes), las fichas
+ *     de REVISAR_MATCH, la lectura de "elegido", EMPAREJAR_MANUAL y el rango por defecto del paso 20.
+ *     Una fila cerrada sin RDV_UID se cuenta en el log como "cerrada sin resolver";
+ *   - sobre TODO el historial, sin cambios: el invariante (un formulario de una fila vieja con RDV_UID
+ *     sigue ocupado), los candidatos de B (sin corte por fecha) y el invariante del paso 16 (las
+ *     "incompletas" del paso 16, sólo dentro de los activos).
+ *
+ * Por qué alcanza (dato del usuario, 03/10): **un formulario aparece en B recién cuando cerró**, así que
+ * sus números son finales y se escriben apenas hay match; no hay nada que esperar de una fila vieja.
+ *
+ * No es la ventana de análisis (`VENTANA_ANALISIS_*`): ésa decide sobre qué se calibra, ésta sobre qué
+ * se trabaja. `null` = todas las filas (el comportamiento de antes del 03/10; lo usan los tests).
+ * Las mediciones de una vez (pasos 6-13, la calibración) piden el plan con `{ historial: true }`.
+ */
+const DIAS_ACTIVOS = 30;
+
+/**
+ * **REVISAR_MATCH como fichas** (03/10, decisión del usuario; 26_Fichas.js): una ficha por reunión
+ * pendiente, con la reunión, hasta 3 opciones en las mismas columnas, colores por celda, "¿por qué está
+ * acá?", qué coincide y qué no, y "elegido" con desplegable. **Apagado hasta que el usuario valide las
+ * fichas** con `paso21_fichasDePrueba()` (escribe en RDV_HOJA_FICHAS_PRUEBA, no en REVISAR_MATCH). En
+ * `false`, REVISAR_MATCH sigue con el formato de una línea por fila. "elegido" se lee de los dos
+ * formatos (el lector reconoce cuál es por el encabezado).
+ */
+const REVISAR_COMO_FICHAS = false;
+/** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
+const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
+/** Las otras reuniones de la misma figura que se muestran como contexto en una ficha: a ± estos días. */
+const DIAS_CONTEXTO_FICHA = 7;
+
+/**
  * Inscriptos mínimos para listar un formulario sin fila (sin ningún candidato) en
  * `listarFormulariosSinFila` (paso 13, "formularios sin fila: canceladas o reubicadas"). Los de menos
  * sólo se cuentan. Es informativo: un formulario sin fila no es un faltante a reclamar (regla 9).

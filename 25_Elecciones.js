@@ -34,7 +34,7 @@
 
 /** Las columnas de ELECCIONES_MATCH. */
 const COLS_ELECCIONES_ = ['fecha_carga', 'hoja', 'figura', 'barrio', 'fecha', 'elegido', 'form_nombre',
-                          'form_clave', 'estado', 'resultado', 'fecha_resultado', 'claves_al_decidir'];
+                          'form_clave', 'estado', 'resultado', 'fecha_resultado', 'claves_al_decidir', 'comentario'];
 
 /**
  * Lee las elecciones: las nuevas de las solapas de revisión y las guardadas en ELECCIONES_MATCH.
@@ -45,20 +45,55 @@ const COLS_ELECCIONES_ = ['fecha_carga', 'hoja', 'figura', 'barrio', 'fecha', 'e
 function leerElecciones_(cands) {
   const guardadas = _leerEleccionesGuardadas_();
   const ya = {};
-  guardadas.forEach(function (g) { ya[_idEleccion_(g)] = true; });
+  guardadas.forEach(function (g) { if (!_esNota_(g)) ya[_idEleccion_(g)] = g; });
   const leidas = _leerEleccionesDeHoja_(RDV_HOJA_REVISAR, cands).concat(_leerEleccionesDeHoja_(RDV_HOJA_EMPAREJAR, cands));
   const nuevas = [];
+  let cerradas = 0;
+  // Las de la misma fila que una elección nueva de una ficha deja sin efecto (03/10): lo que muestra la
+  // ficha es lo que vale. Sólo las que todavía no se aplicaron (pendiente) y las notas.
+  const reemplazar = function (e, tambienPendientes) {
+    const fid = _filaEleccion_(e);
+    guardadas.concat(nuevas).forEach(function (g) {
+      if (g === e || _filaEleccion_(g) !== fid) return;
+      if (_esNota_(g) || (tambienPendientes && g.estado === 'pendiente')) {
+        g.estado = 'reemplazada'; g.resultado = 'reemplazada por otra elección'; g.fechaResultado = new Date();
+      }
+    });
+  };
   leidas.forEach(function (e) {
+    // Sólo filas activas (DIAS_ACTIVOS, 03/10): lo de una reunión cerrada no se lee.
+    if (!esFilaActiva_(e.fecha)) { cerradas++; return; }
+    if (_esNota_(e)) {
+      // "No sé" o sólo un comentario (fichas): una nota por fila, que se actualiza. "No sé" deja sin
+      // efecto una elección pendiente de la fila; un comentario solo, no.
+      const fid = _filaEleccion_(e);
+      const nota = guardadas.concat(nuevas).find(function (g) {
+        return _esNota_(g) && g.estado !== 'reemplazada' && _filaEleccion_(g) === fid;
+      });
+      if (e.elegido === 'no_se') reemplazar(nota || e, true);
+      if (nota) { nota.elegido = e.elegido; nota.estado = e.elegido; nota.comentario = e.comentario; return; }
+      e.estado = e.elegido; e.fechaCarga = new Date(); nuevas.push(e);
+      return;
+    }
     const id = _idEleccion_(e);
-    if (ya[id]) return;              // ya guardada (la solapa regenerada la muestra de nuevo)
-    ya[id] = true;
+    if (ya[id]) {                    // ya guardada (la solapa regenerada la muestra de nuevo)
+      if (e.comentario !== undefined) ya[id].comentario = e.comentario;
+      return;
+    }
+    ya[id] = e;
     e.estado = 'pendiente';
     e.fechaCarga = new Date();
+    if (e.desdeFicha) reemplazar(e, true);
     nuevas.push(e);
   });
   const todas = guardadas.concat(nuevas);
-  return { guardadas: guardadas, nuevas: nuevas, todas: todas,
+  return { guardadas: guardadas, nuevas: nuevas, todas: todas, leidasCerradas: cerradas,
            activas: todas.filter(function (e) { return e.estado === 'pendiente' || e.estado === 'ninguno'; }) };
+}
+
+/** "No sé" o sólo un comentario: no es una elección, no se aplica ni bloquea nada (fichas, 03/10). */
+function _esNota_(e) {
+  return e.elegido === 'no_se' || e.elegido === 'nota' || e.estado === 'no_se' || e.estado === 'nota';
 }
 
 /** La identidad de una elección: fila (figura | fecha | barrio) + lo elegido (clave del formulario o "ninguno"). */
@@ -75,7 +110,10 @@ function _valorElegido_(v) {
   if (!t) return null;
   if (t === 'si' || t === 'x' || t === 'ok') return 'si';
   if (t === 'ninguno' || t === 'ninguna' || t === 'no') return 'ninguno';
+  if (t === 'no se' || t === 'nose') return 'no_se';
   if (/^\d+$/.test(t)) return parseInt(t, 10);
+  const op = /^opcion\s*(\d+)$/.exec(t);            // el desplegable de las fichas: "Opción 2"
+  if (op) return parseInt(op[1], 10);
   return 'ilegible';
 }
 
@@ -88,6 +126,8 @@ function _leerEleccionesDeHoja_(nombre, cands) {
   const sh = ssIntermedia_().getSheetByName(nombre);
   if (!sh || sh.getLastRow() < 2) return [];
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  // REVISAR_MATCH como fichas (26_Fichas.js): se reconoce por el encabezado.
+  if (esHojaDeFichas_(vals[0])) return leerFichas_(vals, cands, nombre);
   const out = [];
   let hdr = vals[0];
   for (let i = 1; i < vals.length; i++) {
@@ -104,7 +144,7 @@ function _leerEleccionesDeHoja_(nombre, cands) {
     const e = { hoja: nombre, figura: iFig != null ? str(r[iFig]) : '', barrio: iBar != null ? str(r[iBar]) : '',
                 fecha: iFec != null ? toDate_(r[iFec]) : null, elegidoCrudo: str(r[iEl]), elegido: valor,
                 formNombre: '', formClave: '' };
-    if (valor === 'ninguno' || valor === 'ilegible') { out.push(e); continue; }
+    if (valor === 'ninguno' || valor === 'ilegible' || valor === 'no_se') { out.push(e); continue; }
     if (col('nombre_formulario') != null) {
       // Bloque de pares: la línea ES el formulario. Sólo "sí".
       if (valor !== 'si') { e.elegido = 'ilegible'; out.push(e); continue; }
@@ -136,10 +176,13 @@ function _leerEleccionesGuardadas_() {
   const i = function (n) { return findIdxOr_(hdr, [n], true); };
   return vals.slice(1).filter(function (r) { return !r.every(esVacio_); }).map(function (r) {
     const get = function (n) { return i(n) != null ? r[i(n)] : ''; };
-    const elegido = str(get('elegido'));
+    const elegido = str(get('elegido')), estado = str(get('estado'));
     return { fechaCarga: get('fecha_carga'), hoja: str(get('hoja')), figura: str(get('figura')),
              barrio: str(get('barrio')), fecha: toDate_(get('fecha')),
-             elegido: elegido === 'ninguno' ? 'ninguno' : (elegido === 'ilegible' ? 'ilegible' : 'formulario'),
+             // Las notas de las fichas (03/10): "No sé" o sólo un comentario. Las dice el estado.
+             elegido: (estado === 'no_se' || estado === 'nota') ? estado
+               : elegido === 'ninguno' ? 'ninguno' : (elegido === 'ilegible' ? 'ilegible' : 'formulario'),
+             comentario: str(get('comentario')),
              elegidoCrudo: elegido, formNombre: str(get('form_nombre')), formClave: str(get('form_clave')),
              estado: str(get('estado')), resultado: str(get('resultado')), fechaResultado: get('fecha_resultado'),
              clavesAlDecidir: str(get('claves_al_decidir')) };
@@ -152,7 +195,7 @@ function _leerEleccionesGuardadas_() {
  * `ninguno_por_persona`) y anota en cada elección su `resultadoPlan` / `motivo`. No escribe nada.
  */
 function aplicarElecciones_(elec, dest, evals, cands, comunas, tomadosGrupo, porFilaUid) {
-  const r = { validas: [], rechazadas: [], ningunos: [], vencidos: [], aplicadasAntes: [] };
+  const r = { validas: [], rechazadas: [], ningunos: [], vencidos: [], aplicadasAntes: [], cerradas: [] };
   if (!elec || !elec.activas.length) return r;
   const porEval = {};
   evals.forEach(function (x) { porEval[x.f.fila] = x; });
@@ -168,6 +211,8 @@ function aplicarElecciones_(elec, dest, evals, cands, comunas, tomadosGrupo, por
     });
     if (filas.length !== 1) { rechazar(e, filas.length ? 'hay 2+ filas con esa figura, fecha y barrio' : 'la fila no se encuentra'); return; }
     e.f = filas[0];
+    // Una reunión cerrada (DIAS_ACTIVOS, 03/10) no se toca: la elección queda como estaba.
+    if (!esFilaActiva_(e.f.fecha)) { e.resultadoPlan = 'cerrada'; r.cerradas.push(e); return; }
     (porFila[e.f.fila] = porFila[e.f.fila] || []).push(e);
   });
 
@@ -242,12 +287,14 @@ function _clavesCercanas_(f, cands) {
 function _logElecciones_(elec, ap) {
   if (!elec) return;
   Logger.log('--- ELEGIDO (regla 4): lo que eligió una persona en REVISAR_MATCH / EMPAREJAR_MANUAL ---');
-  Logger.log('  leídas nuevas: %s | guardadas: %s | activas (pendientes y "ninguno"): %s', elec.nuevas.length,
-             elec.guardadas.length, elec.activas.length);
+  Logger.log('  leídas nuevas: %s | guardadas: %s | activas (pendientes y "ninguno"): %s | leídas de reuniones ' +
+             'cerradas (no se toman): %s', elec.nuevas.length, elec.guardadas.length, elec.activas.length,
+             elec.leidasCerradas || 0);
   if (!ap) return;
   Logger.log('  válidas (se escriben en la corrida real): %s | rechazadas: %s | "ninguno" vigentes: %s | ' +
              '"ninguno" vencidos: %s | ya aplicadas: %s', ap.validas.length, ap.rechazadas.length,
              ap.ningunos.length, ap.vencidos.length, ap.aplicadasAntes.length);
+  if (ap.cerradas.length) Logger.log('  de reuniones cerradas (DIAS_ACTIVOS, no se tocan): %s', ap.cerradas.length);
   const linea = function (e) {
     return (e.f ? 'fila ' + e.f.fila : '¿fila?') + ' | ' + e.figura + ' | ' + fmtFecha_(e.fecha) + ' | ' +
            (e.elegido === 'ninguno' ? 'ninguno' : (e.formNombre || e.elegidoCrudo)) + ' (' + e.hoja + ')';
@@ -284,9 +331,11 @@ function guardarElecciones_(elec, ap, enSeco, completa) {
     }
   });
   const filas = [COLS_ELECCIONES_].concat(elec.todas.map(function (e) {
-    return [e.fechaCarga || '', e.hoja || '', e.figura, e.barrio, e.fecha || '',
-            e.elegido === 'formulario' ? (e.elegidoCrudo || 'sí') : e.elegido, e.formNombre || '', e.formClave || '',
-            e.estado || '', e.resultado || '', e.fechaResultado || '', e.clavesAlDecidir || ''];
+    const elegido = e.elegido === 'formulario' ? (e.elegidoCrudo || 'sí')
+      : e.elegido === 'no_se' ? 'no sé' : e.elegido === 'nota' ? '' : e.elegido;
+    return [e.fechaCarga || '', e.hoja || '', e.figura, e.barrio, e.fecha || '', elegido, e.formNombre || '',
+            e.formClave || '', e.estado || '', e.resultado || '', e.fechaResultado || '', e.clavesAlDecidir || '',
+            e.comentario || ''];
   }));
   escribirHoja_(RDV_HOJA_ELECCIONES, filas);
 }
@@ -309,6 +358,7 @@ function marcarEleccionesEnReportes_(plan) {
     const es = buscar(linea[i('figura') >= 0 ? i('figura') : i('Figura')], linea[i('fecha') >= 0 ? i('fecha') : i('Fecha')],
                       linea[i('barrio') >= 0 ? i('barrio') : i('Barrio')]);
     es.forEach(function (e) {
+      if (e.estado === 'reemplazada' || _esNota_(e)) return;   // las notas de las fichas no se copian acá (03/10)
       e._mostrada = true;
       let valor = '';
       if (e.elegido === 'ninguno') valor = 'ninguno';
@@ -322,7 +372,8 @@ function marcarEleccionesEnReportes_(plan) {
   };
   const hRev = ['clave', 'figura', 'barrio', 'fecha', 'form_origen', 'score', 'segundo', 'margen', 'motivo', 'senales',
                 'en_ventana'].concat(_encabezadoOpciones_(OPCIONES_REVISION));
-  plan.filasRevisar.forEach(function (l) { marcarPorFila(hRev, l); });
+  // Con REVISAR_MATCH como fichas, las fichas muestran las elecciones solas (armarFichas_).
+  if (!REVISAR_COMO_FICHAS) plan.filasRevisar.forEach(function (l) { marcarPorFila(hRev, l); });
   let hdr = plan.emp.matriz[0];
   for (let k = 1; k < plan.emp.matriz.length; k++) {
     const l = plan.emp.matriz[k];
@@ -332,7 +383,7 @@ function marcarEleccionesEnReportes_(plan) {
     if (hdr.indexOf('nombre_formulario') >= 0) {
       const i = function (n) { return hdr.indexOf(n); };
       buscar(l[i('Figura')], l[i('Fecha')], l[i('Barrio')]).forEach(function (e) {
-        if (e.elegido === 'formulario' && e.formClave === l[i('form_clave')]) {
+        if (e.elegido === 'formulario' && e.estado !== 'reemplazada' && e.formClave === l[i('form_clave')]) {
           e._mostrada = true;
           l[i('elegido')] = 'sí'; l[i('resultado')] = e.resultado || '';
         }
@@ -345,8 +396,9 @@ function marcarEleccionesEnReportes_(plan) {
    * línea al final de REVISAR_MATCH con lo elegido y el resultado, para que se vea al lado de "elegido".
    * Se re-lee como la misma elección (misma fila y misma clave), así que no se duplica.
    */
+  if (REVISAR_COMO_FICHAS) return;   // las resueltas van a la sección RESUELTAS de las fichas
   elec.todas.forEach(function (e) {
-    if (e._mostrada) return;
+    if (e._mostrada || _esNota_(e) || e.estado === 'reemplazada') return;
     const l = hRev.map(function () { return ''; });
     const pon = function (n, v) { l[hRev.indexOf(n)] = v; };
     pon('clave', claveNatural_(e.figura, e.fecha)); pon('figura', e.figura); pon('barrio', e.barrio);
