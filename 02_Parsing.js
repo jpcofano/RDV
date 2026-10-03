@@ -316,6 +316,30 @@ function _figurasPorApellidoEn_(t, yaEstan) {
 }
 
 /**
+ * **La figura de un nombre escrito "Apellido Nombre(s)"** (RDV CONJUNTO, 02/10: "Macri Jorge",
+ * "Gonzalez Bernaldo De Quiros Fernan", "Muzzio Maria Clara"). Una figura coincide si **todos los
+ * tokens de su nombre canónico** (la columna Figura del destino, normalizada) están entre los tokens
+ * del texto, sin importar el orden ni los nombres de más. Sólo figuras simples (no "A - B").
+ *
+ * Devuelve `{ figura, candidatas }`: `figura` sólo si coincide UNA; con varias o ninguna, '' y la
+ * lista para el log. No se elige entre varias.
+ */
+function figuraPorTokens_(texto) {
+  const tk = {};
+  _tokensNombre_(texto).forEach(function (t) { tk[t] = true; });
+  const m = _listas_().figuras.filter(function (f) {
+    if (/[-,\/+&]| y /.test(f.norm)) return false;
+    const propios = _tokensNombre_(f.norm);
+    return propios.length > 0 && propios.every(function (t) { return tk[t]; });
+  });
+  return { figura: m.length === 1 ? m[0].canon : '', candidatas: m.map(function (f) { return f.canon; }) };
+}
+
+function _tokensNombre_(s) {
+  return normalizeText_(s).split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
  * apellido normalizado → figura, para los apellidos ÚNICOS. El apellido es la última palabra del
  * nombre de la figura; es único si esa palabra no aparece en el nombre de ninguna otra figura
  * (ni como nombre ni como apellido). Se cuentan sólo las figuras simples: una entrada del destino

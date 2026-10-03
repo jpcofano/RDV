@@ -251,6 +251,41 @@ function _decideRealizada_(status, asistentes, callar) {
   return true;
 }
 
+// ===================== Deshacer lo que el sistema escribió mal =====================
+
+/**
+ * **Vacía celdas que escribió mal el sistema y les saca el color** (02/10, paso 18). No es la regla
+ * general ni la excepción de STATUS: es la corrección de un error NUESTRO (el upsert calculó con
+ * ceros cuando `B` cambió los encabezados y escribió `Sin identificar = Inscriptos`). Los errores del
+ * pasado no se corrigen; éste sí, porque lo escribió el sistema el 02/10.
+ *
+ * Cada `{fila, col, escrito}` se vacía **sólo si, en una lectura fresca, la celda sigue teniendo
+ * exactamente `escrito` y el fondo del sistema** (`#4F81BD`). Si alguien la cambió, no se toca. El
+ * fondo vuelve al de por defecto (`setBackground(null)`).
+ *
+ * @return {Array} las celdas que efectivamente vació
+ */
+function vaciarCeldasDelSistema_(sh, celdas) {
+  if (!celdas.length) return [];
+  let f1 = Infinity, f2 = 0, c1 = Infinity, c2 = 0;
+  celdas.forEach(function (e) {
+    f1 = Math.min(f1, e.fila); f2 = Math.max(f2, e.fila); c1 = Math.min(c1, e.col); c2 = Math.max(c2, e.col);
+  });
+  const rango = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1);
+  const vals = rango.getValues(), fondos = rango.getBackgrounds();
+  const hechas = celdas.filter(function (e) {
+    const v = vals[e.fila - f1][e.col - c1], bg = String(fondos[e.fila - f1][e.col - c1]).toLowerCase();
+    return v === e.escrito && bg === AZUL_SISTEMA_.toLowerCase();
+  });
+  const a1 = hechas.map(function (e) { return _a1_(e.fila, e.col); });
+  for (let i = 0; i < a1.length; i += 400) {
+    const rl = sh.getRangeList(a1.slice(i, i + 400));
+    rl.clearContent();
+    rl.setBackground(null);
+  }
+  return hechas;
+}
+
 // ===================== La guarda de la solapa destino =====================
 
 /**

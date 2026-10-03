@@ -31,6 +31,8 @@ const RDV_HOJA_DESTINO   = 'AAA NOBORRAR';     // TEMPORAL 02/10 — revertir a 
  * solapa, sus encabezados tienen que ser exactamente los de ésta; si no, el upsert no corre.
  */
 const RDV_HOJA_DESTINO_REAL = 'RVD JM-CM - ES';
+/** La copia de prueba del destino (02/10). Queda como referencia cuando se vuelva al real. */
+const RDV_HOJA_COPIA_PRUEBA = 'AAA NOBORRAR';
 const RDV_HOJA_ASISTENTES_SRC = 'RDV CONJUNTO'; // origen de asistentes. NO se modifica
 const RDV_HOJA_COMUNAS   = 'Comunas';          // lookup barrio → comuna, A:H
 const RDV_HOJA_STAGING   = 'Para Revisar';     // staging legado. Se retira en la Fase 9
@@ -622,37 +624,103 @@ const TOLERANCIA_HORA_MIN = 30;
 // ===================== B2: la lógica de negocio que hay que no perder =====================
 
 /**
+ * **Las columnas de `B`, por nombre** (02/10). Es **el único lugar** que sabe cómo se llaman: si el
+ * origen vuelve a cambiar los encabezados, se toca sólo esta tabla.
+ *
+ * Por qué existe: desde que `B` es un `QUERY` sobre `Hoja1` (02/10), los encabezados son los del
+ * origen (`inscriptos_M`, `inscriptos_identificados`, `inscriptos_edades_66plus`…) y no los que tenía
+ * `B` antes (`Inscriptos M`, `Inscriptos unicos identificados`, `Inscriptos edades 66+`…). El upsert
+ * los buscaba con los nombres viejos, como opcionales, y al no encontrarlos **calculó con ceros**:
+ * `Sin identificar = Inscriptos`, y lo escribió donde estaba vacío (paso 18 lo deshace).
+ *
+ * Cada campo: `[nombre actual, alias viejo…]`. Se busca por encabezado normalizado. **Todos son
+ * obligatorios menos los de `COLUMNAS_B_OPCIONALES`**: si falta uno, `leerCandidatos_` tira error y
+ * nada se calcula ni se escribe. Nunca más un cero que salió de una columna no encontrada.
+ *
+ * Cambios de palabra, no sólo de formato: identificados ← `inscriptos_identificados` (antes "unicos
+ * identificados"); 66+ ← `inscriptos_edades_66plus`; Call Center ← `inscriptos_canal_CallCenter`.
+ * `inscriptos_conMail`, `inscriptos_conCelular` e `inscriptos_conFijo` no se usan.
+ */
+const COLUMNAS_B = {
+  nombre:            ['nombre', 'Nombre'],
+  fechaFin:          ['fecha_fin', 'Fecha_Fin'],
+  inscriptos:        ['inscriptos', 'Inscriptos'],
+  identificados:     ['inscriptos_identificados', 'Inscriptos unicos identificados'],
+  M:                 ['inscriptos_M', 'Inscriptos M'],
+  F:                 ['inscriptos_F', 'Inscriptos F'],
+  X:                 ['inscriptos_X'],                                       // nueva (02/10)
+  canalMailing:      ['inscriptos_canal_Mailing', 'Inscriptos canal Mailing'],
+  canalFacebook:     ['inscriptos_canal_Facebook', 'Inscriptos canal Facebook'],
+  canalGoogle:       ['inscriptos_canal_Google', 'Inscriptos canal Google'],
+  canalCallCenter:   ['inscriptos_canal_CallCenter', 'Inscriptos canal Call Center'],
+  canalDifusion:     ['inscriptos_canal_Difusion', 'Inscriptos canal Difusion'],
+  canalIVR:          ['inscriptos_canal_IVR', 'Inscriptos canal IVR'],
+  canalProgrammatic: ['inscriptos_canal_Programmatic', 'Inscriptos canal Programmatic'],
+  canalOtros:        ['inscriptos_canal_Otros', 'Inscriptos canal Otros'],
+  edad18_24:         ['inscriptos_edades_18_24', 'Inscriptos edades 18-24'],
+  edad25_39:         ['inscriptos_edades_25_39', 'Inscriptos edades 25-39'],
+  edad40_55:         ['inscriptos_edades_40_55', 'Inscriptos edades 40-55'],
+  edad56_65:         ['inscriptos_edades_56_65', 'Inscriptos edades 56-65'],
+  edad66:            ['inscriptos_edades_66plus', 'Inscriptos edades 66+']
+};
+/** Los campos de COLUMNAS_B que pueden faltar sin frenar nada. */
+const COLUMNAS_B_OPCIONALES = ['X'];
+
+/** Banda de edad del destino → campo de COLUMNAS_B. */
+const EDADES_B = {
+  '18-24': 'edad18_24', '25-39': 'edad25_39', '40-55': 'edad40_55', '56-65': 'edad56_65', '66+': 'edad66'
+};
+
+/**
  * **Colapso de canales: 8 en el origen → 5 en el destino.**
  *
  * Es lógica de negocio real y confirmada, y hasta hoy **existía sólo adentro de
  * `syncB_to_B2`** ([Sync B to B2.js:117-121](Sync%20B%20to%20B2.js#L117)). Vive acá para que
  * reescribir B2 no se la lleve puesta.
  *
- * La clave es el nombre de la columna en `B` **sin** el prefijo `Inscriptos canal `.
+ * Columna del destino → campos de `COLUMNAS_B` que suma.
  */
 const MAPEO_CANALES = {
-  'Mail':        ['Mailing'],
-  'Call Center': ['Call Center'],
-  'IVR':         ['IVR'],
-  'RRSS':        ['Facebook', 'Google', 'Programmatic'],
-  'Difusión':    ['Difusion', 'Otros']
+  'Mail':        ['canalMailing'],
+  'Call Center': ['canalCallCenter'],
+  'IVR':         ['canalIVR'],
+  'RRSS':        ['canalFacebook', 'canalGoogle', 'canalProgrammatic'],
+  'Difusión':    ['canalDifusion', 'canalOtros']
 };
 
-/** El prefijo que llevan las columnas de canal en `B`. */
-const PREFIJO_CANAL_B = 'Inscriptos canal ';
+/**
+ * **El divisor del escalado de sexo** (02/10). `B` trae `inscriptos_M` e `inscriptos_F` contados
+ * sobre un subconjunto de `inscriptos`; B2 los llevaba a proporción del total dividiendo por los
+ * identificados. Desde el 02/10 el origen manda además `inscriptos_X`, así que no es seguro que
+ * "identificados" siga siendo el mismo número que antes. Opciones: `'identificados'` (el del legado),
+ * `'M+F'`, `'M+F+X'`. El paso 17 mide cuál coincide con B2 antes de fijarlo.
+ */
+const DIVISOR_SEXO = 'identificados';
 
 /**
- * **Escalado de sexo.** `B` trae `Inscriptos M` y `Inscriptos F` contados sobre
- * `Inscriptos unicos identificados`, que es menor que `Inscriptos`. B2 los lleva a proporción
- * del total ([Sync B to B2.js:166-169](Sync%20B%20to%20B2.js#L166)):
+ * **En `Inscriptos`, un 0 del destino cuenta como vacío** (decisión del usuario, 02/10): es "sin
+ * cargar", como en el paso 10. Casos al 02/10: filas 6, 680, 696 y 697.
+ */
+const INSCRIPTOS_CERO_ES_VACIO = true;
+
+/**
+ * El backup del destino tomado el 02/10 antes de la primera escritura real (docs/backup.md §8.1). Lo
+ * lee —sólo lectura— el paso 18 para saber qué celdas estaban vacías antes de que escribiera el
+ * sistema.
+ */
+const RDV_SS_BACKUP_0210 = '1QLDcmTb01LC_pw4DRXBqIWOEcutvOBeOkVwvQd4OGEY';
+
+/**
+ * **Escalado de sexo.** `B` trae M y F contados sobre los identificados, que son menos que
+ * `inscriptos`. B2 los lleva a proporción del total ([Sync B to B2.js:166-169](Sync%20B%20to%20B2.js#L166)):
  *
- *     Masculinos = round(Inscriptos × Inscriptos M / Inscriptos unicos identificados)
- *     Femeninos  = round(Inscriptos × Inscriptos F / Inscriptos unicos identificados)
+ *     Masculinos = round(Inscriptos × M / divisor)      divisor: DIVISOR_SEXO
+ *     Femeninos  = round(Inscriptos × F / divisor)
  *
- * Con `identificados = 0` no se escala nada: quedan vacíos, no en cero (CLAUDE.md 0.a).
+ * Con divisor 0 no se escala nada: quedan vacíos, no en cero (CLAUDE.md 0.a).
  *
- * ⚠️ **No hay categoría X.** `B` sólo trae `M` y `F`. Si el origen empieza a mandar una
- * tercera, hoy no se lee y nadie se entera.
+ * Desde el 02/10 el origen manda también `inscriptos_X`. El destino no tiene columna para X: se lee
+ * sólo para medir el divisor (paso 17).
  */
 function escalarSexo_(inscriptos, cuenta, identificados) {
   const ins = numOcero_(inscriptos), c = numOcero_(cuenta), id = numOcero_(identificados);

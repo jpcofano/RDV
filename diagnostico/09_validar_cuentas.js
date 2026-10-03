@@ -21,11 +21,15 @@
  *   3) filas con Inscriptos del destino distinto del de B y sexo o edades vacíos: las que la regla
  *      nueva ("el desagregado se escribe sólo si Inscriptos está vacío o es igual al de B") dejaría
  *      sin desagregado;
- *   4) Asistentes desde RDV CONJUNTO con el cruce del legado (figura + barrio + fecha,
- *      `legKeyFBF_` de Upset Base FInal.js): cuántas filas encuentran fila en el destino, cuáles
- *      no, cuántos Asistentes del destino están vacíos y RDV CONJUNTO tiene el dato, y en cuántas
- *      difieren;
+ *   1c) el divisor del escalado de sexo contra B2: identificados (legado), M + F, M + F + X;
+ *   4) Asistentes desde RDV CONJUNTO (02/10, cruce nuevo): 4a, cómo están escritos los nombres en
+ *      RDV CONJUNTO y en A2, y cuántos Asistentes del destino están cargados y en azul; después, la
+ *      figura por tokens del nombre (`figuraPorTokens_`) + fecha, el barrio sólo confirma: cuántas
+ *      encuentran fila, cuáles no, cuántos Asistentes del destino están vacíos y RDV CONJUNTO tiene el
+ *      dato, y en cuántas difieren. "No aplica" y las de antes del destino, aparte;
  *   5) qué NO dice.
+ *
+ * Inscriptos: un 0 del destino cuenta como vacío (INSCRIPTOS_CERO_ES_VACIO, 02/10).
  */
 
 /** Las columnas que el paso B escribiría desde B, en el orden del log. */
@@ -55,6 +59,7 @@ function validarCuentas() {
                   b2Comparables: 0, b2IgualB: 0, difB2: { cambio: 0, otraFuente: 0, tres: 0, sinB2: 0 } };
   });
   let filas = 0, filasConB2 = 0;
+  const divisores = _nuevosDivisores_diag9();
   const desagregado = { distinto: 0, distintoConHueco: 0, lista: [] };
 
   dest.filas.forEach(function (f) {
@@ -64,12 +69,17 @@ function validarCuentas() {
     filas++;
     const deB = _cuentasDeB_diag9(c);
     const enB2 = b2 ? b2.porClave.get(_claveB2_diag9(c.nombre, c.det && c.det.fechaFin)) : null;
-    if (enB2) filasConB2++;
+    if (enB2) {
+      filasConB2++;
+      _sumarDivisores_diag9(divisores, c, enB2);
+    }
 
     CUENTAS_DIAG9.forEach(function (n) {
       if (iD[n] == null) return;
       const x = porCol[n];
-      const d = num(f.valores[iD[n]]), b = deB[n];
+      let d = num(f.valores[iD[n]]);
+      if (n === 'Inscriptos' && INSCRIPTOS_CERO_ES_VACIO && d === 0) d = '';   // un 0 es "sin cargar"
+      const b = deB[n];
       if (b === '') { x.bVacio++; return; }
       if (d === '') { x.destVacio++; return; }
       x.comparables++;
@@ -93,7 +103,8 @@ function validarCuentas() {
     });
 
     // --- 3) Inscriptos distinto y desagregado con huecos ---
-    const insD = iD['Inscriptos'] != null ? num(f.valores[iD['Inscriptos']]) : '';
+    let insD = iD['Inscriptos'] != null ? num(f.valores[iD['Inscriptos']]) : '';
+    if (INSCRIPTOS_CERO_ES_VACIO && insD === 0) insD = '';
     const insB = deB['Inscriptos'];
     if (insD !== '' && insB !== '' && insD !== insB) {
       desagregado.distinto++;
@@ -141,6 +152,8 @@ function validarCuentas() {
     });
   }
 
+  _logDivisores_diag9(divisores);
+
   Logger.log('--- 3) Inscriptos del destino distinto del de B ---');
   Logger.log('  filas con Inscriptos distinto (los dos con dato): %s', desagregado.distinto);
   Logger.log('  de ésas, con sexo o edades vacíos: %s  ← las que la regla nueva dejaría SIN desagregado', desagregado.distintoConHueco);
@@ -159,9 +172,12 @@ function validarCuentas() {
   Logger.log('    calculó con la misma fórmula sobre el mismo B. Eso valida la FÓRMULA, no que el número sea verdad.');
   Logger.log('  - "B vacío" no es un error: el formulario no trae ese canal o esa banda.');
   Logger.log('  - Las diferencias no se corrigen (criterio del 02/10): lo cargado queda como está.');
-  Logger.log('  - El cruce de Asistentes es el del legado (figura + barrio + fecha): una fila sin barrio, o con');
-  Logger.log('    el barrio escrito distinto, no se encuentra aunque la reunión sea la misma.');
-  return { filas: filas, porCol: porCol, desagregado: desagregado, asistentes: asis, b2: !!b2 };
+  Logger.log('  - Inscriptos: un 0 del destino cuenta como vacío (INSCRIPTOS_CERO_ES_VACIO).');
+  Logger.log('  - El cruce de Asistentes es por figura (tokens del nombre canónico) + fecha. Un nombre que entra en');
+  Logger.log('    dos figuras, o en ninguna, no se usa: se lista. Que una fila cruce no prueba que los asistentes');
+  Logger.log('    sean de esa reunión si el destino tuviera dos filas de la figura ese día (también se listan).');
+  return { filas: filas, porCol: porCol, desagregado: desagregado, asistentes: asis, b2: !!b2,
+           divisores: divisores };
 }
 
 /** Las 14 cuentas de un formulario de B, como las calcularía el sistema. '' = B no trae el dato. */
@@ -204,11 +220,62 @@ function _claveB2_diag9(nombre, fecha) {
 }
 
 /**
- * Asistentes: RDV CONJUNTO (en el archivo del destino) contra el destino, con la clave del legado
- * figura + barrio + fecha. Sólo cuenta y lista.
+ * 1c) **El divisor del escalado de sexo**, contra B2. Para cada fila con B2, Masculinos y Femeninos
+ * calculados con tres divisores —identificados (el del legado), M + F, M + F + X— y cuántos coinciden
+ * exacto con B2. Dice cuál usar en DIVISOR_SEXO.
+ */
+function _nuevosDivisores_diag9() {
+  const z = function () { return { M: 0, F: 0 }; };
+  return { comparables: { M: 0, F: 0 }, identificados: z(), 'M+F': z(), 'M+F+X': z(), conX: 0, ejemplos: [] };
+}
+
+function _sumarDivisores_diag9(dv, c, enB2) {
+  const s = c.sexo, ins = numOcero_(c.cuentas ? c.cuentas['Inscriptos'] : c.inscriptos);
+  if (!s) return;
+  if (s.X > 0) dv.conX++;
+  const divs = { identificados: s.identificados, 'M+F': s.M + s.F, 'M+F+X': s.M + s.F + s.X };
+  ['M', 'F'].forEach(function (sx) {
+    const b2 = num(enB2[sx === 'M' ? 'Masculinos' : 'Femeninos']);
+    if (b2 === '') return;
+    dv.comparables[sx]++;
+    Object.keys(divs).forEach(function (k) {
+      const v = divs[k] > 0 ? Math.round(ins * s[sx] / divs[k]) : '';
+      if (v === b2) dv[k][sx]++;
+    });
+    if (dv.ejemplos.length < 8 && s.X > 0) {
+      dv.ejemplos.push({ nombre: c.nombre, sx: sx, b2: b2, ins: ins, s: s });
+    }
+  });
+}
+
+function _logDivisores_diag9(dv) {
+  Logger.log('--- 1c) el divisor del escalado de sexo, contra B2 (DIVISOR_SEXO = "%s") ---', DIVISOR_SEXO);
+  Logger.log('  formularios con inscriptos_X > 0: %s', dv.conX);
+  ['identificados', 'M+F', 'M+F+X'].forEach(function (k) {
+    Logger.log('  divisor %s: Masculinos = B2 en %s de %s | Femeninos = B2 en %s de %s', _padD9_(k, 13),
+               dv[k].M, dv.comparables.M, dv[k].F, dv.comparables.F);
+  });
+  dv.ejemplos.forEach(function (x) {
+    Logger.log('    ej. %s: B2 %s | ins %s, M %s, F %s, X %s, identificados %s | %s', x.sx, x.b2, x.ins, x.s.M,
+               x.s.F, x.s.X, x.s.identificados, x.nombre);
+  });
+}
+
+/**
+ * 4) **Asistentes desde RDV CONJUNTO** (02/10, cruce nuevo).
+ *
+ * RDV CONJUNTO escribe a la figura "Apellido Nombre(s)" completo; el legado comparaba el nombre tal
+ * cual (figura + barrio + fecha) y por eso no cruzaba. Ahora:
+ *   - la figura sale de `figuraPorTokens_` (todos los tokens del nombre canónico, en cualquier orden);
+ *     con varias o ninguna, se lista y no se usa;
+ *   - la clave es **figura + fecha** (regla a de CLAUDE.md); el barrio sólo confirma: si difiere, se
+ *     lista pero cruza igual;
+ *   - "No aplica" y las filas de antes de que empiece el destino se ignoran y se cuentan aparte.
+ * Antes, la medición 4a: cómo están escritos los nombres en A2 (la última salida del legado) y en RDV
+ * CONJUNTO, y cuántos Asistentes del destino están cargados y cuántos en azul (los puso el legado).
  */
 function _validarAsistentes_diag9(dest) {
-  Logger.log('--- 4) Asistentes desde RDV CONJUNTO (cruce del legado: figura + barrio + fecha) ---');
+  Logger.log('--- 4) Asistentes desde RDV CONJUNTO ---');
   const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
   if (!sh) { Logger.log('  No existe "%s".', RDV_HOJA_ASISTENTES_SRC); return null; }
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
@@ -218,45 +285,74 @@ function _validarAsistentes_diag9(dest) {
   const iFec = findIdxOr_(hdr, ['fecha', 'fecha (fecha)', 'fecha_evento', 'fecha reunion', 'fecha reunión',
                                 'fecha_reunion', 'fecha_reunión', 'fecha evento'], true);
   const iAsi = findIdxOr_(hdr, ['asistentes', 'asistente'], true);
-  if (iFig == null || iBar == null || iFec == null || iAsi == null) {
-    Logger.log('  "%s" no tiene Figura, Barrio, FECHA y Asistentes por encabezado: %s', RDV_HOJA_ASISTENTES_SRC,
+  if (iFig == null || iFec == null || iAsi == null) {
+    Logger.log('  "%s" no tiene Figura, FECHA y Asistentes por encabezado: %s', RDV_HOJA_ASISTENTES_SRC,
                hdr.filter(String).join(' | '));
     return null;
   }
+
+  // --- 4a) la medición previa ---
+  _logNombres_diag9('RDV CONJUNTO', vals.slice(1).map(function (r) { return str(r[iFig]); }));
+  const a2 = ssIntermedia_().getSheetByName(RDV_HOJA_A2);
+  if (a2 && a2.getLastRow() > 1) {
+    const va = a2.getRange(1, 1, a2.getLastRow(), a2.getLastColumn()).getValues();
+    const iF2 = findIdxOr_(va[0], ['figura', 'persona', 'nombre'], true);
+    if (iF2 != null) _logNombres_diag9('A2 (la última salida del legado)', va.slice(1).map(function (r) { return str(r[iF2]); }));
+  } else {
+    Logger.log('  A2: no existe o está vacía.');
+  }
   const iAsD = dest.D['Asistentes'], iSt = dest.D['STATUS REUNIÓN'];
-  const clave = function (fig, bar, fec) {
-    const f = normalizeText_(fig), b = normalizeText_(bar), d = toDate_(fec);
-    return (f && b && d) ? f + '|' + b + '|' + ymd_(d) : '';
-  };
-  const porClave = new Map(), porFigFecha = new Map();
+  if (iAsD != null) {
+    const fondos = dest.sh.getRange(1, iAsD + 1, dest.sh.getLastRow(), 1).getBackgrounds();
+    let cargados = 0, azules = 0;
+    dest.filas.forEach(function (f) {
+      if (esVacio_(f.valores[iAsD])) return;
+      cargados++;
+      if (String(fondos[f.fila - 1][0]).toLowerCase() === AZUL_SISTEMA_.toLowerCase()) azules++;
+    });
+    Logger.log('  destino: Asistentes cargado en %s filas | de ésas, en azul (las cargó el legado): %s', cargados, azules);
+  }
+
+  // --- 4b-d) el cruce nuevo ---
+  let minFecha = null;
+  dest.filas.forEach(function (f) { if (f.fecha && (!minFecha || f.fecha < minFecha)) minFecha = f.fecha; });
+  const porFigFecha = new Map();
   dest.filas.forEach(function (f) {
-    const k = clave(f.figura, f.barrio, f.fecha);
-    if (k) { if (!porClave.has(k)) porClave.set(k, []); porClave.get(k).push(f); }
-    const k2 = normalizeText_(f.figura) + '|' + (f.fecha ? ymd_(f.fecha) : '');
-    if (!porFigFecha.has(k2)) porFigFecha.set(k2, []);
-    porFigFecha.get(k2).push(f);
+    const k = normalizeText_(f.figura) + '|' + (f.fecha ? ymd_(f.fecha) : '');
+    if (!porFigFecha.has(k)) porFigFecha.set(k, []);
+    porFigFecha.get(k).push(f);
   });
-  const r = { filas: 0, incompletas: 0, sinAsistentes: 0, encuentran: 0, noEncuentran: [], destinoDuplicado: 0,
-              vacioYRdvTiene: 0, iguales: 0, difieren: 0, destinoMenor: 0, destinoMayor: 0, peores: [],
-              agendaARealizada: 0 };
+  const r = { filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [], variasFiguras: [], encuentran: 0,
+              noEncuentran: [], duplicado: [], barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0,
+              vacioYRdvTiene: 0, agendaARealizada: 0, iguales: 0, difieren: 0, destinoMenor: 0, destinoMayor: 0,
+              peores: [] };
   for (let i = 1; i < vals.length; i++) {
     const row = vals[i];
     if (row.every(function (v) { return esVacio_(v); })) continue;
     r.filas++;
-    const fig = str(row[iFig]), bar = str(row[iBar]), fec = toDate_(row[iFec]);
+    if (row.some(function (v) { return normalizeText_(v) === 'no aplica'; })) { r.noAplica++; continue; }
+    const nombre = str(row[iFig]), bar = iBar != null ? str(row[iBar]) : '', fec = toDate_(row[iFec]);
     const asis = num(row[iAsi]);
-    if (!fig || !bar || !fec) { r.incompletas++; continue; }
-    if (!(asis > 0)) { r.sinAsistentes++; continue; }   // el legado tampoco las cruzaba
-    const lista = porClave.get(clave(fig, bar, fec));
-    if (!lista) {
-      const alt = porFigFecha.get(normalizeText_(fig) + '|' + ymd_(fec)) || [];
-      r.noEncuentran.push({ fig: fig, bar: bar, fec: fec, asis: asis,
-                            alt: alt.map(function (f) { return f.fila + ' (' + (f.barrio || 'sin barrio') + ')'; }) });
+    if (!fec) { r.sinFecha++; continue; }
+    if (minFecha && fec < minFecha) { r.antes++; continue; }
+    const fp = figuraPorTokens_(nombre);
+    if (!fp.figura) {
+      (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas });
+      continue;
+    }
+    const lista = porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
+    if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
+    if (lista.length > 1) {
+      r.duplicado.push({ nombre: nombre, fec: fec, filas: lista.map(function (f) { return f.fila; }) });
       continue;
     }
     r.encuentran++;
-    if (lista.length > 1) r.destinoDuplicado++;
     const f = lista[0];
+    if (!f.barrio) r.destinoSinBarrio++;
+    else if (bar && normalizeText_(bar) !== normalizeText_(f.barrio)) {
+      r.barrioDifiere.push({ f: f, bar: bar });
+    }
+    if (!(asis > 0)) { r.sinAsistentes++; continue; }
     const d = iAsD != null ? num(f.valores[iAsD]) : '';
     if (d === '') {
       r.vacioYRdvTiene++;
@@ -268,27 +364,56 @@ function _validarAsistentes_diag9(dest) {
       r.peores.push({ f: f, d: d, asis: asis });
     }
   }
-  Logger.log('  filas de RDV CONJUNTO: %s | sin figura, barrio o fecha: %s | sin asistentes (> 0): %s',
-             r.filas, r.incompletas, r.sinAsistentes);
-  Logger.log('  con asistentes: encuentran fila en el destino %s | NO encuentran %s | encuentran 2+ filas %s',
-             r.encuentran, r.noEncuentran.length, r.destinoDuplicado);
-  Logger.log('  de las que encuentran: Asistentes del destino VACÍO y RDV CONJUNTO lo tiene: %s  ← las que se ' +
-             'escribirían (de ésas, con STATUS "en agenda" que pasaría a Realizada: %s)', r.vacioYRdvTiene, r.agendaARealizada);
-  Logger.log('    iguales: %s | difieren: %s (destino menor %s, destino mayor %s) — sólo se cuentan, no se corrigen',
+
+  Logger.log('  filas de RDV CONJUNTO: %s | ignoradas: "No aplica" %s, antes del destino (< %s) %s, sin fecha %s',
+             r.filas, r.noAplica, fmtFecha_(minFecha), r.antes, r.sinFecha);
+  Logger.log('  figura por tokens: sin ninguna %s | con varias %s (se listan, no se usan)', r.sinFigura.length,
+             r.variasFiguras.length);
+  Logger.log('  cruce figura + fecha: ENCUENTRAN %s | no encuentran %s | 2+ filas en el destino %s', r.encuentran,
+             r.noEncuentran.length, r.duplicado.length);
+  Logger.log('    de las que encuentran: barrio distinto %s (cruzan igual: el barrio sólo confirma) | destino sin ' +
+             'barrio %s | sin asistentes (> 0) en RDV CONJUNTO %s', r.barrioDifiere.length, r.destinoSinBarrio,
+             r.sinAsistentes);
+  Logger.log('  Asistentes del destino VACÍO y RDV CONJUNTO lo tiene: %s  ← se escribirían (con STATUS "en agenda" ' +
+             'que pasaría a Realizada: %s)', r.vacioYRdvTiene, r.agendaARealizada);
+  Logger.log('    iguales %s | difieren %s (destino menor %s, mayor %s) — sólo se cuentan, no se corrigen',
              r.iguales, r.difieren, r.destinoMenor, r.destinoMayor);
   Logger.log('    (el legado pisaba si el número nuevo era mayor o igual; la regla nueva escribe sólo si está vacío)');
   r.peores.sort(function (a, b) { return Math.abs(b.d - b.asis) - Math.abs(a.d - a.asis); }).slice(0, 10)
     .forEach(function (p) {
-      Logger.log('      difiere: fila %s | %s | %s | %s | destino %s | RDV CONJUNTO %s', p.f.fila, p.f.figura,
-                 fmtFecha_(p.f.fecha), p.f.barrio, p.d, p.asis);
+      Logger.log('      difiere: fila %s | %s | %s | destino %s | RDV CONJUNTO %s', p.f.fila, p.f.figura,
+                 fmtFecha_(p.f.fecha), p.d, p.asis);
     });
-  Logger.log('  las que NO encuentran fila (figura | barrio | fecha | asistentes | por figura + fecha):');
-  r.noEncuentran.slice(0, 60).forEach(function (x) {
-    Logger.log('    %s | %s | %s | %s | %s', x.fig, x.bar, fmtFecha_(x.fec), x.asis,
-               x.alt.length ? 'fila ' + x.alt.join(', ') : 'ninguna');
-  });
-  if (r.noEncuentran.length > 60) Logger.log('    … y %s más', r.noEncuentran.length - 60);
+  const lista = function (titulo, l, fmt) {
+    Logger.log('  %s: %s', titulo, l.length);
+    l.slice(0, 40).forEach(function (x) { Logger.log('    %s', fmt(x)); });
+    if (l.length > 40) Logger.log('    … y %s más', l.length - 40);
+  };
+  lista('sin figura (ningún nombre canónico entra en el texto)', r.sinFigura,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec); });
+  lista('con varias figuras posibles', r.variasFiguras,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' → ' + x.cands.join(' / '); });
+  lista('no encuentran fila (figura + fecha)', r.noEncuentran,
+        function (x) { return x.nombre + ' → ' + x.figura + ' | ' + fmtFecha_(x.fec) + ' | ' + x.bar + ' | asistentes ' + x.asis; });
+  lista('2+ filas en el destino con esa figura y fecha', r.duplicado,
+        function (x) { return x.nombre + ' | ' + fmtFecha_(x.fec) + ' → filas ' + x.filas.join(', '); });
+  lista('barrio distinto (cruzan igual)', r.barrioDifiere,
+        function (x) { return 'fila ' + x.f.fila + ' | ' + x.f.figura + ' | ' + fmtFecha_(x.f.fecha) + ' | destino ' +
+                              x.f.barrio + ' / RDV CONJUNTO ' + x.bar; });
   return r;
+}
+
+/** Cómo están escritos los nombres de una lista: distintos, los 12 más frecuentes y cuántos resuelven por tokens. */
+function _logNombres_diag9(titulo, nombres) {
+  const cuenta = new Map();
+  nombres.filter(String).forEach(function (n) { cuenta.set(n, (cuenta.get(n) || 0) + 1); });
+  let resuelven = 0;
+  cuenta.forEach(function (k, n) { if (figuraPorTokens_(n).figura) resuelven++; });
+  Logger.log('  4a) nombres en %s: %s distintos | resuelven a UNA figura por tokens: %s', titulo, cuenta.size, resuelven);
+  Array.from(cuenta.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 12).forEach(function (e) {
+    const fp = figuraPorTokens_(e[0]);
+    Logger.log('      "%s" × %s → %s', e[0], e[1], fp.figura || (fp.candidatas.length ? 'varias' : 'ninguna'));
+  });
 }
 
 function _padD9_(s, n) { s = String(s); while (s.length < n) s += ' '; return s; }

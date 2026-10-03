@@ -4225,9 +4225,11 @@ const CAMPOS_DATO_ = ['Masculinos', 'Femeninos',
 
 // ===================== Lecturas =====================
 
-function leerDestino_() {
-  const sh = ssDestino_().getSheetByName(RDV_HOJA_DESTINO);
-  if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');
+/** El destino (RDV_HOJA_DESTINO), o la solapa `nombreHoja` del mismo archivo (paso 18: real y copia). */
+function leerDestino_(nombreHoja) {
+  const hoja = nombreHoja || RDV_HOJA_DESTINO;
+  const sh = ssDestino_().getSheetByName(hoja);
+  if (!sh) throw new Error('No existe la hoja "' + hoja + '".');
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const bloque = sh.getRange(1, 1, nFilas, nCols).getValues();
   const hdr = bloque[0];
@@ -4291,6 +4293,27 @@ function leerDestino_() {
   return { sh: sh, hdr: hdr, D: D, T: T, filas: filas };
 }
 
+/**
+ * Los índices de las columnas de `B`, por `COLUMNAS_B` (00_Config.js). **Si falta una obligatoria,
+ * error**: nada se calcula con un cero que salió de una columna no encontrada (02/10: así se escribió
+ * `Sin identificar = Inscriptos`). El mensaje dice cuáles faltan y qué encabezados hay.
+ */
+function indicesB_(hdr) {
+  const out = {}, faltan = [];
+  Object.keys(COLUMNAS_B).forEach(function (campo) {
+    out[campo] = findIdxOr_(hdr, COLUMNAS_B[campo], true);
+    if (out[campo] == null && COLUMNAS_B_OPCIONALES.indexOf(campo) < 0) {
+      faltan.push(campo + ' (' + COLUMNAS_B[campo].join(' / ') + ')');
+    }
+  });
+  if (faltan.length) {
+    throw new Error('Faltan columnas en "' + RDV_HOJA_B + '": ' + faltan.join('; ') + '. No se calculó ni ' +
+                    'se escribió nada. Si el origen cambió los nombres, corregir COLUMNAS_B en 00_Config.js. ' +
+                    'Encabezados de B: ' + hdr.filter(String).join(' | '));
+  }
+  return out;
+}
+
 /** Candidatos desde `B`, el import crudo. Los `NO USAR` quedan afuera del todo. */
 function leerCandidatos_() {
   const sh = ssIntermedia_().getSheetByName(RDV_HOJA_B);
@@ -4299,20 +4322,9 @@ function leerCandidatos_() {
   const bloque = sh.getRange(1, 1, nFilas, sh.getLastColumn()).getValues();
   const hdr = bloque[0];
 
-  const i = function (n, opt) { return findIdxOr_(hdr, [n], opt); };
-  const iNombre = i('Nombre');
-  const iFin    = i('Fecha_Fin', true);
-  const iIns    = i('Inscriptos', true);
-  const iM      = i('Inscriptos M', true);
-  const iF      = i('Inscriptos F', true);
-  const iUni    = i('Inscriptos unicos identificados', true);
-  const edades  = ['18-24', '25-39', '40-55', '56-65', '66+']
-    .map(function (e) { return i('Inscriptos edades ' + e, true); });
-  // Los canales de B que suma cada columna del destino (MAPEO_CANALES, decisión 1.e de CLAUDE.md).
-  const iCanales = {};
-  Object.keys(MAPEO_CANALES).forEach(function (dst) {
-    iCanales[dst] = MAPEO_CANALES[dst].map(function (s) { return i(PREFIJO_CANAL_B + s, true); });
-  });
+  const iB = indicesB_(hdr);   // por COLUMNAS_B; tira error si falta una obligatoria (02/10)
+  const iNombre = iB.nombre, iFin = iB.fechaFin, iIns = iB.inscriptos;
+  const val = function (r, campo) { return iB[campo] != null ? r[iB[campo]] : ''; };
 
   // La huella de B se calcula sobre B CRUDO, antes de cualquier descarte (02/10).
   const huellaCruda = _md5corto_(bloque.map(function (r) {
@@ -4330,27 +4342,28 @@ function leerCandidatos_() {
 
     if (esFormularioAnulado_(nombre)) { anulados++; continue; }
 
-    const ins = numOcero_(iIns != null ? r[iIns] : '');
-    const uni = numOcero_(iUni != null ? r[iUni] : '');
-    const nM = numOcero_(iM != null ? r[iM] : '');
-    const nF = numOcero_(iF != null ? r[iF] : '');
+    const ins = numOcero_(r[iIns]);
+    const sexo = { M: numOcero_(val(r, 'M')), F: numOcero_(val(r, 'F')), X: numOcero_(val(r, 'X')),
+                   identificados: numOcero_(val(r, 'identificados')) };
+    const div = DIVISOR_SEXO === 'M+F' ? sexo.M + sexo.F
+              : DIVISOR_SEXO === 'M+F+X' ? sexo.M + sexo.F + sexo.X : sexo.identificados;
 
     const datos = {};
-    datos['Masculinos'] = uni > 0 ? Math.round(ins * (nM / uni)) : '';
-    datos['Femeninos']  = uni > 0 ? Math.round(ins * (nF / uni)) : '';
+    datos['Masculinos'] = div > 0 ? Math.round(ins * (sexo.M / div)) : '';
+    datos['Femeninos']  = div > 0 ? Math.round(ins * (sexo.F / div)) : '';
     let sumaEdades = 0;
-    ['18-24', '25-39', '40-55', '56-65', '66+'].forEach(function (e, n) {
-      const v = edades[n] != null ? num(r[edades[n]]) : '';
+    Object.keys(EDADES_B).forEach(function (e) {
+      const v = num(val(r, EDADES_B[e]));
       datos[e] = v;
       sumaEdades += numOcero_(v);
     });
     datos['Sin identificar'] = ins > 0 ? Math.max(0, ins - sumaEdades) : '';
 
-    // Inscriptos y canales tal como vienen (sin cero por vacío). Hoy sólo los lee el paso 17
-    // (validarCuentas); no cambian nada de lo que se escribe.
-    const cuentas = { 'Inscriptos': iIns != null ? num(r[iIns]) : '' };
-    Object.keys(iCanales).forEach(function (dst) {
-      const vals = iCanales[dst].map(function (j) { return j != null ? num(r[j]) : ''; });
+    // Inscriptos y canales tal como vienen (sin cero por vacío), con MAPEO_CANALES. Hoy sólo los lee
+    // el paso 17 (validarCuentas); el upsert todavía no los escribe (paso B).
+    const cuentas = { 'Inscriptos': num(r[iIns]) };
+    Object.keys(MAPEO_CANALES).forEach(function (dst) {
+      const vals = MAPEO_CANALES[dst].map(function (campo) { return num(val(r, campo)); });
       cuentas[dst] = vals.every(function (v) { return v === ''; }) ? ''
         : vals.reduce(function (s, v) { return s + numOcero_(v); }, 0);
     });
@@ -4373,7 +4386,8 @@ function leerCandidatos_() {
       finRaw: iFin != null ? r[iFin] : null,  // Fecha_Fin tal cual: con hora, si la trae (claveFormulario_)
       inscriptos: ins,
       datos: datos,
-      cuentas: cuentas
+      cuentas: cuentas,
+      sexo: sexo                              // M, F, X e identificados crudos (paso 17: el divisor)
     });
   }
   /*

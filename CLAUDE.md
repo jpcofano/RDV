@@ -491,6 +491,15 @@ negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería co
 
 **Se conserva.** Vive en `MAPEO_CANALES` en `00_Config.js`.
 
+> **Los nombres de las columnas de `B` viven en `COLUMNAS_B` (`00_Config.js`), y son obligatorios**
+> (02/10). Desde que `B` es un `QUERY` sobre `Hoja1`, sus encabezados son los del origen
+> (`inscriptos_M`, `inscriptos_identificados`, `inscriptos_canal_CallCenter`,
+> `inscriptos_edades_66plus`…). El upsert los buscaba con los nombres viejos, como opcionales, calculó
+> con ceros y escribió `Sin identificar = Inscriptos` (lo deshace el paso 18). Ahora cada campo tiene
+> su nombre actual y el viejo como alias, y **si falta uno, no se calcula ni se escribe nada**. El
+> origen manda además `inscriptos_X`: el divisor del sexo (`DIVISOR_SEXO`) queda configurable hasta que
+> el paso 17 mida cuál coincide con B2. Detalle: docs/ESTADO.md, 0.m.
+
 **2. Escala el sexo, y NO escala las edades.** La asimetría es real y hay que conocerla.
 
 ```

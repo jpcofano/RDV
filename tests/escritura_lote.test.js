@@ -29,7 +29,7 @@ const { execSync } = require('child_process');
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
-                  'diagnostico/09_validar_cuentas.js'];
+                  'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -110,6 +110,7 @@ function crearEntorno(opts) {
       return {
         setBackground: function (color) { escribir(rangos.length); rangos.forEach(function (r) { r._pintar(color); }); },
         setValue: function (v) { escribir(rangos.length); rangos.forEach(function (r) { r._poner(v); }); },
+        clearContent: function () { escribir(rangos.length); rangos.forEach(function (r) { r._poner(''); }); },
         getRanges: function () { return rangos; }
       };
     }
@@ -262,11 +263,18 @@ const HDR_DESTINO = (function () {
   return fx.map(function (h) { const m = /^PENDIENTE_([A-Z]+)$/.exec(h); return m && nombres[m[1]] ? nombres[m[1]] : h; })
            .concat(['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave']);
 })();
-const HDR_B = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos identificados', 'Inscriptos M', 'Inscriptos F',
+// Los encabezados de B desde el 02/10 (los de Hoja1 del origen), en el orden en que el generador arma las filas.
+const HDR_B = ['nombre', 'fecha_fin', 'inscriptos', 'inscriptos_identificados', 'inscriptos_M', 'inscriptos_F',
+  'inscriptos_edades_18_24', 'inscriptos_edades_25_39', 'inscriptos_edades_40_55', 'inscriptos_edades_56_65',
+  'inscriptos_edades_66plus', 'inscriptos_canal_Mailing', 'inscriptos_canal_Facebook', 'inscriptos_canal_Google',
+  'inscriptos_canal_CallCenter', 'inscriptos_canal_Difusion', 'inscriptos_canal_IVR', 'inscriptos_canal_Programmatic',
+  'inscriptos_canal_Otros', 'inscriptos_X'];
+// Los de antes (B con encabezados propios): tienen que seguir leyéndose por los alias de COLUMNAS_B.
+const HDR_B_VIEJO = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos identificados', 'Inscriptos M', 'Inscriptos F',
   'Inscriptos edades 18-24', 'Inscriptos edades 25-39', 'Inscriptos edades 40-55', 'Inscriptos edades 56-65',
   'Inscriptos edades 66+', 'Inscriptos canal Mailing', 'Inscriptos canal Facebook', 'Inscriptos canal Google',
   'Inscriptos canal Call Center', 'Inscriptos canal Difusion', 'Inscriptos canal IVR', 'Inscriptos canal Programmatic',
-  'Inscriptos canal Otros'];
+  'Inscriptos canal Otros', 'Inscriptos X (no existía)'];
 const HDR_CONJUNTO = ['Figura', 'Barrio', 'FECHA', 'HORA', 'Dirección', 'Asistentes', 'STATUS REUNIÓN'];
 const SEXO_EDADES = ['Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
 const DERIVADAS = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion', 'Comuna', 'Poblacion',
@@ -300,13 +308,17 @@ function generarDatos(E, n) {
             // canales: los mismos del destino (Mailing, Facebook = RRSS, Google, Call Center, Difusion, IVR, Programmatic, Otros)
             r[col('Mail')], r[col('RRSS')], 0, r[col('Call Center')], r[col('Difusión')], r[col('IVR')], 0, 0]);
     // RDV CONJUNTO: el barrio real (aunque el destino no lo tenga) y los asistentes del destino.
-    conjunto.push([fig, bar[0], fecha, '18:00', '', r[col('Asistentes')], r[col('STATUS REUNIÓN')]]);
+    // "Apellido Nombre", como lo escribe RDV CONJUNTO (02/10).
+    conjunto.push([fig.split(' ').reverse().join(' '), bar[0], fecha, '18:00', '', r[col('Asistentes')],
+                   r[col('STATUS REUNIÓN')]]);
   }
   for (let k = 0; k < 25; k++) {   // ruido: formularios que no son de ninguna fila
     b.push(['OTRO EVENTO ' + k + ' - Comuna 3 - 15/3', new D(2024, 2, 13, 12, 0, 0), 10, 8, 4, 4, 1, 2, 2, 2, 1]);
   }
   const comunas = [['Barrio', 'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'Eje geográfico']]
     .concat(BARRIOS.map(function (x) { return [x[0], x[1], 1000, 500, 500, 2, 500, 'Centro', '']; }));
+  conjunto.push(['No aplica', 'No aplica', new D(2026, 0, 10, 12, 0, 0), '', '', 'No aplica', '']);
+  conjunto.push(['Pereyra Ana', 'Palermo', new D(2024, 4, 3, 12, 0, 0), '', '', 50, '']);   // antes del destino
   return { dest: dest, b: b, comunas: comunas, conjunto: conjunto };
 }
 
@@ -659,15 +671,27 @@ function escenarioGemelos() {
      [v2.choques, v2.ambiguas, v2.distintas, v2.incompletas, v2.sinClave].join('/') + ')');
 }
 
-/**
- * El PASO A (validarCuentas, 02/10): no escribe nada; Inscriptos y canales de B dan lo mismo que el
- * destino (en los datos sintéticos son iguales por construcción); las filas sin barrio no cruzan con
- * RDV CONJUNTO por la clave del legado; los Asistentes vaciados se cuentan como "se escribirían".
- */
+/** B2 como lo armaba el legado (Sync B to B2.js), a partir de las filas de B. */
+function armarB2(E, b) {
+  const p2 = function (n) { return ('0' + n).slice(-2); };
+  const filas = [['ID', 'Nombre', 'Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión', 'Masculino', 'Femenino',
+                  '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar']];
+  b.slice(1).forEach(function (r) {
+    const ins = r[2], uni = r[3], e = r.slice(6, 11), suma = e.reduce(function (s, v) { return s + v; }, 0);
+    const ff = r[1];
+    filas.push([r[0] + ' - ' + p2(ff.getDate()) + '/' + p2(ff.getMonth() + 1) + '/' + ff.getFullYear(), r[0], ins,
+                r[11], r[14], r[16], r[12] + r[13] + r[17], r[15] + r[18],   // Mail, Call Center, IVR, RRSS, Difusión
+                uni > 0 ? Math.round(ins * r[4] / uni) : 0, uni > 0 ? Math.round(ins * r[5] / uni) : 0]
+                .concat(e, [Math.max(0, ins - suma)]));
+  });
+  return filas;
+}
+
 function escenarioPasoA() {
   console.log('\n[9] PASO A: validación de cuentas (sólo lectura)');
   const E = crearEntorno();
   const m = montar(E, 300, true);
+  m.ssI.hojas['B2'] = new E.Hoja('B2', armarB2(E, m.ssI.hojas['B'].v));
   const hoja = m.ssD.hojas['AAA NOBORRAR'];
   const iAs = colD('Asistentes'), iBar = colD('Barrio');
   let vaciados = 0, sinBarrio = 0;
@@ -675,24 +699,108 @@ function escenarioPasoA() {
     if (hoja.v[i][iBar] === '') { sinBarrio++; continue; }
     if (i % 40 === 7 && vaciados < 7) { hoja.v[i][iAs] = ''; vaciados++; }
   }
-  const antes = JSON.stringify(Object.keys(m.ssD.hojas).map(function (k) { return [m.ssD.hojas[k].v, m.ssD.hojas[k].bg]; })) +
-                JSON.stringify(Object.keys(m.ssI.hojas).map(function (k) { return [m.ssI.hojas[k].v, m.ssI.hojas[k].bg]; }));
+  const foto2 = function () {
+    return JSON.stringify(Object.keys(m.ssD.hojas).map(function (k) { return [m.ssD.hojas[k].v, m.ssD.hojas[k].bg]; })) +
+           JSON.stringify(Object.keys(m.ssI.hojas).map(function (k) { return [m.ssI.hojas[k].v, m.ssI.hojas[k].bg]; }));
+  };
+  const antes = foto2();
   const r = E.ejecutar('validarCuentas');
   ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
-  const despues = JSON.stringify(Object.keys(m.ssD.hojas).map(function (k) { return [m.ssD.hojas[k].v, m.ssD.hojas[k].bg]; })) +
-                  JSON.stringify(Object.keys(m.ssI.hojas).map(function (k) { return [m.ssI.hojas[k].v, m.ssI.hojas[k].bg]; }));
-  ok(antes === despues, 'no escribió nada en ninguna planilla');
+  ok(antes === foto2(), 'no escribió nada en ninguna planilla');
   const x = r.resultado;
   ['Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].forEach(function (n) {
     const c = x.porCol[n];
-    ok(c.comparables > 0 && c.exacto === c.comparables, n + ': exacto ' + c.exacto + ' de ' + c.comparables);
+    ok(c.comparables > 0 && c.exacto === c.comparables && c.b2IgualB === c.b2Comparables,
+       n + ': exacto ' + c.exacto + ' de ' + c.comparables + ' | B = B2 ' + c.b2IgualB + ' de ' + c.b2Comparables);
   });
-  ok(x.porCol['Masculinos'].destVacio > 0, 'Masculinos: las del hueco cuentan como "destino vacío" (' + x.porCol['Masculinos'].destVacio + ')');
-  ok(x.asistentes.noEncuentran.length === sinBarrio, 'Asistentes: no encuentran fila las ' + sinBarrio + ' sin barrio (' +
-     x.asistentes.noEncuentran.length + ')');
-  ok(x.asistentes.vacioYRdvTiene === vaciados, 'Asistentes vacíos que RDV CONJUNTO tiene: ' + x.asistentes.vacioYRdvTiene);
+  ['Masculinos', 'Femeninos', '18-24', '66+', 'Sin identificar'].forEach(function (n) {
+    const c = x.porCol[n];
+    ok(c.b2Comparables > 0 && c.b2IgualB === c.b2Comparables, n + ' con los encabezados nuevos de B: B = B2 ' +
+       c.b2IgualB + ' de ' + c.b2Comparables);
+  });
+  const dv = x.divisores;
+  ok(dv.identificados.M === dv.comparables.M && dv.comparables.M > 0,
+     '1c: con el divisor "identificados", Masculinos = B2 en ' + dv.identificados.M + ' de ' + dv.comparables.M +
+     ' (M+F: ' + dv['M+F'].M + ')');
+  const a = x.asistentes;
+  ok(a.encuentran === 300 && a.noEncuentran.length === 0,
+     'Asistentes: "Apellido Nombre" cruza por tokens + fecha: ' + a.encuentran + ' de 300, no encuentran ' + a.noEncuentran.length);
+  ok(a.destinoSinBarrio === sinBarrio, 'las ' + sinBarrio + ' sin barrio en el destino cruzan igual (el barrio sólo confirma): ' +
+     a.destinoSinBarrio);
+  ok(a.noAplica === 1 && a.antes === 1, '"No aplica" y la de 2024 se ignoran aparte (' + a.noAplica + ' / ' + a.antes + ')');
+  ok(a.vacioYRdvTiene === vaciados, 'Asistentes vacíos que RDV CONJUNTO tiene: ' + a.vacioYRdvTiene);
   ok(/formularios en B: \d+ \| NO USAR 0 \| gemelos descartados \d+ \| candidatos \d+/.test(r.logs.join('\n')),
      'la línea nueva del log: ' + (r.logs.find(function (l) { return /formularios en B/.test(l); }) || ''));
+}
+
+/** Los encabezados de B: los viejos se leen por alias; si falta uno obligatorio, nada se calcula ni se escribe. */
+function escenarioEncabezadosB() {
+  console.log('\n[10] encabezados de B (02/10): alias viejos, y una columna obligatoria que falta');
+  const E = crearEntorno();
+  const m = montar(E, 200, true);
+  m.ssI.hojas['B'].v[0] = HDR_B_VIEJO.slice();
+  const r = E.ejecutar('upsertDestino');
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const filaHueco = hoja.v.findIndex(function (f, i) { return i > 0 && (i - 1) % 10 < 3; });
+  ok(!r.error && hoja.v[filaHueco][colD('Masculinos')] !== '' && hoja.v[filaHueco][colD('18-24')] !== '',
+     'con los encabezados VIEJOS se lee todo (alias): sexo y edades escritos');
+  const ins = hoja.v[filaHueco][colD('Inscriptos')], sinId = hoja.v[filaHueco][colD('Sin identificar')];
+  ok(sinId !== ins && sinId !== '', 'y Sin identificar NO es Inscriptos (' + sinId + ' contra ' + ins + ')');
+
+  const E2 = crearEntorno();
+  const m2 = montar(E2, 200, true);
+  m2.ssI.hojas['B'].v[0][HDR_B.indexOf('inscriptos_edades_40_55')] = 'otra cosa';
+  const antes = JSON.stringify(foto(m2.ssD.hojas['AAA NOBORRAR']));
+  const r2 = E2.ejecutar('upsertDestino');
+  ok(r2.error && /Faltan columnas en "B"/.test(r2.error.message) && /edad40_55/.test(r2.error.message),
+     'falta una obligatoria: error — ' + (r2.error ? r2.error.message.slice(0, 120) : 'sin error'));
+  ok(JSON.stringify(foto(m2.ssD.hojas['AAA NOBORRAR'])) === antes, 'y no escribió nada');
+  const r3 = E2.ejecutar('validarCuentas');
+  ok(r3.error && /Faltan columnas/.test(r3.error.message), 'el paso 17 también se frena');
+}
+
+/**
+ * El paso 18: el sistema escribió Sin identificar = Inscriptos (el bug del 02/10) en filas con RDV_UID.
+ * Se listan en seco (con el backup del 02/10 para no tocar lo que ya estaba), se vacían y se les saca el
+ * color, y la corrida siguiente las completa con el valor correcto.
+ */
+function escenarioMalEscritas() {
+  console.log('\n[11] paso 18: deshacer lo mal escrito (Sin identificar = Inscriptos)');
+  const E = crearEntorno();
+  const m = montar(E, 200, true);
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  // El backup: el destino antes de escribir.
+  const backup = new E.Hoja('RVD JM-CM - ES', hoja.v);
+  E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'] = backup;
+  E.ejecutar('upsertDestino');
+  const iSin = colD('Sin identificar'), iIns = colD('Inscriptos');
+  // El bug: en 6 filas del hueco, Sin identificar = Inscriptos (azul, como lo escribió el sistema).
+  const tocadas = [];
+  for (let i = 1; i < hoja.v.length && tocadas.length < 6; i++) {
+    if ((i - 1) % 10 < 3 && hoja.v[i][colD('RDV_UID')]) {
+      tocadas.push({ i: i, correcto: hoja.v[i][iSin] });
+      hoja.v[i][iSin] = hoja.v[i][iIns];
+    }
+  }
+  // Una que ya estaba así en el backup (la dejó el legado): no se toca.
+  const legado = tocadas[5];
+  backup.v[legado.i][iSin] = hoja.v[legado.i][iIns];
+  const antes = JSON.stringify(foto(hoja));
+  const l = E.ejecutar('listarMalEscritas');
+  ok(!l.error && JSON.stringify(foto(hoja)) === antes, 'listar: en seco, no toca nada' + (l.error ? ' — ' + l.error.message : ''));
+  const enCopia = l.resultado['AAA NOBORRAR'], enReal = l.resultado['RVD JM-CM - ES'];
+  ok(enCopia.lista.length === 5 && enCopia.estabanAntes === 1, 'copia: 5 mal escritas, 1 ya estaba en el backup (' +
+     enCopia.lista.length + ' / ' + enCopia.estabanAntes + ')');
+  ok(enReal.lista.length === 0, 'real: ninguna (no se escribió) — ' + enReal.lista.length);
+  E.ctx.vaciarCopia_test_ = function () { return E.ctx.vaciarMalEscritas('AAA NOBORRAR'); };
+  const v = E.ejecutar('vaciarCopia_test_');
+  ok(!v.error && v.resultado.vaciadas === 5, 'vaciar la copia: ' + (v.resultado ? v.resultado.vaciadas : v.error.message));
+  ok(tocadas.slice(0, 5).every(function (t) { return hoja.v[t.i][iSin] === '' && hoja.bg[t.i][iSin] === null; }),
+     'quedaron vacías y sin color');
+  ok(hoja.v[legado.i][iSin] === hoja.v[legado.i][iIns], 'la del legado sigue como estaba');
+  E.ejecutar('upsertDestino');
+  ok(tocadas.slice(0, 5).every(function (t) { return hoja.v[t.i][iSin] === t.correcto; }),
+     'la corrida siguiente las completa con el valor correcto');
 }
 
 function escenarioSecoIgualReal() {
@@ -727,7 +835,8 @@ const fuenteVieja = conViejo ? function (f) {
 
 const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0) {   // uno solo, para iterar
-  if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos(); else escenarioPasoA();
+  if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
+  else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
 }
@@ -751,6 +860,8 @@ escenarioGuarda();
 escenarioSecoIgualReal();
 escenarioGemelos();
 escenarioPasoA();
+escenarioEncabezadosB();
+escenarioMalEscritas();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

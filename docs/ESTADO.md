@@ -256,6 +256,80 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### m) 02/10 19:25: el paso A destapó un bug — `B` cambió los encabezados
+
+> ⛔ **NO correr `upsertDestino()` en ninguna solapa hasta terminar la secuencia de abajo** (pasos 1 a
+> 3). El código ya está arreglado, pero las celdas mal escritas siguen en el destino.
+
+**Resultado del paso 17** (02/10 19:25, sobre la copia): **Inscriptos B = B2 en 702 de 703** (la
+fórmula es la del legado). Destino ≠ B en 64 filas, 63 porque el destino no vino de B2 (carga a mano):
+no se corrigen. Pero **sexo, edades y canales no se leían**, y **Asistentes no cruzó ninguna fila (0
+de 766)**.
+
+**1. El bug.** Desde que `B` es un `QUERY` sobre `Hoja1` (02/10), sus encabezados son los del origen:
+`nombre | fecha_fin | inscriptos | inscriptos_identificados | inscriptos_M | inscriptos_F | inscriptos_X |
+inscriptos_conMail | inscriptos_conCelular | inscriptos_conFijo | inscriptos_canal_Mailing | … |
+inscriptos_canal_CallCenter | … | inscriptos_edades_18_24 | … | inscriptos_edades_66plus`. El upsert los
+buscaba con los nombres viejos (`Inscriptos M`, `Inscriptos unicos identificados`, `Inscriptos edades
+18-24`…), **como opcionales**, y calculó con ceros: **`Sin identificar = Inscriptos`**, y **lo escribió**
+donde estaba vacío (real 14:50 y copia 17:01). Masculinos, Femeninos y las bandas daban vacío y no se
+escribieron. `Nombre`, `Fecha_Fin` e `Inscriptos` sí se leían: el encabezado se compara normalizado.
+
+**El arreglo:**
+
+- **`COLUMNAS_B`** en `00_Config.js`: cada campo con su nombre actual y el viejo como alias. Si el origen
+  vuelve a cambiar, se toca sólo esa tabla. `MAPEO_CANALES` ahora apunta a esos campos.
+- **Obligatorios**: sexo, identificados, las 5 edades, los 8 canales (y nombre, cierre, inscriptos). Si
+  falta uno, `leerCandidatos_` tira error y **nada se calcula ni se escribe** —ni el upsert, ni el paso
+  17, ni ningún paso que arme el plan—. `inscriptos_X` es opcional.
+- **El divisor del sexo** (`DIVISOR_SEXO = 'identificados'`, el del legado) queda configurable:
+  `'M+F'` o `'M+F+X'`. El paso 17 (bloque **1c**) mide con los tres cuál da lo mismo que B2.
+- **Paso 18, lo mal escrito** (esto sí se corrige: es error nuestro, no del pasado):
+  `paso18_malEscritas_listar()` en seco lista, en el real y en la copia, cada celda de sexo o edades
+  de una fila con `RDV_UID` que tiene el azul, tiene el valor que daba el cálculo roto, es distinta de
+  la correcta y **estaba vacía en el backup del 02/10** (buscada por figura + fecha). Muestra el valor
+  escrito y el correcto. Después, `paso18_malEscritas_vaciarCopia()` y `paso18_malEscritas_vaciarReal()`
+  las vacían y les sacan el color, y sólo si siguen como se listaron. La corrida siguiente del upsert
+  las completa bien: entran por `RDV_UID`. Por construcción, la única columna afectada es `Sin
+  identificar`.
+
+**2. Asistentes: el cruce nuevo.** RDV CONJUNTO escribe "Apellido Nombre(s)" ("Macri Jorge", "Gonzalez
+Bernaldo De Quiros Fernan", "Muzzio Maria Clara"). Ahora (bloque 4 del paso 17):
+
+- **4a, la medición previa**: cómo están escritos los nombres en RDV CONJUNTO y en **A2** (la última
+  salida del legado), con cuántos resuelven a una figura; y en el destino, cuántas filas tienen
+  Asistentes y cuántas de ésas en azul (las puso el legado). Dice si RDV CONJUNTO cambió de formato o si
+  los asistentes se cargaban por otro lado;
+- **figura por tokens** (`figuraPorTokens_`, `02_Parsing.js`): coincide si **todos** los tokens del
+  nombre canónico están en el texto, en cualquier orden. **`FIGURAS_CANONICAS` no existe**: los nombres
+  canónicos son los de la columna `Figura` del destino. Con varias o ninguna, se lista y no se usa;
+- **clave figura + fecha**; el barrio sólo confirma (si difiere, se lista y cruza igual);
+- "No aplica" y las filas de antes del inicio del destino se ignoran y se cuentan aparte.
+
+**3. `INSCRIPTOS_CERO_ES_VACIO = true`**: en Inscriptos, un 0 del destino cuenta como vacío (filas 6,
+680, 696, 697). Hoy lo usa el paso 17; el paso B lo va a usar para escribir.
+
+**Test en Node:** [9] el paso 17 con los encabezados nuevos (sexo, edades y Sin identificar B = B2 en
+todas; el divisor "identificados" coincide; los Asistentes "Apellido Nombre" cruzan por tokens + fecha,
+también las filas sin barrio; "No aplica" y 2024 aparte); [10] los encabezados viejos se leen por alias, y
+con una obligatoria faltando el upsert y el paso 17 se frenan sin escribir; [11] el paso 18 lista en seco,
+respeta lo que estaba en el backup, vacía, saca el color, y la corrida siguiente completa bien. Todo en
+verde.
+
+**La secuencia, con la predicción anotada antes de correr:**
+
+1. **`paso17_validarCuentas()`**. Predicción: **Masculinos, Femeninos, las 5 bandas y Sin identificar
+   con B = B2 en casi todas las filas** (antes, Sin identificar 7 de 698); en 1c, el divisor
+   "identificados" coincide con B2 en casi todas (si "M+F" coincide más, se cambia `DIVISOR_SEXO`);
+   canales con B = B2 casi siempre; **Asistentes: casi todas las de 2025-2026 cruzan**, con la lista de
+   las que no y de los nombres que caen en varias figuras.
+2. **`paso18_malEscritas_listar()`** (en seco). Predicción: sólo `Sin identificar`; en la copia del orden
+   de las celdas de dato que escribió la corrida de las 17:01 (72) más las de la corrida cortada; en el
+   real, las de las 123 filas que tenían `Sin identificar` vacío.
+3. Si la lista está bien: **`paso18_malEscritas_vaciarCopia()`** y, cuando el usuario decida,
+   **`paso18_malEscritas_vaciarReal()`**.
+4. Recién ahí se puede volver a correr el upsert (en la copia) y seguir con el paso B.
+
 ### l) 02/10: alcance nuevo del sistema — PASO A (validar) hecho, PASO B (implementar) esperando
 
 **Criterio del usuario (02/10): los errores del pasado no se corrigen.** Lo cargado en el destino

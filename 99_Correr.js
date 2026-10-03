@@ -24,8 +24,13 @@
  *      ajuste de los gemelos (GEMELOS_MAX_DIAS = 7, casi cero fuera del grupo; ESTADO 0.k):
  *        1. upsertDestino() una vez       [20_UpsertDestino.js] → form_clave en 697, 709, 134, 315, 768
  *        2. paso16_verificarEscritura()  → invariante 0, traza ambigua 0, 0 "<<< HOY", 0 incompletas
- *      Alcance nuevo (Inscriptos, canales, Asistentes; ESTADO 0.l): PASO A, sólo lectura:
- *        3. paso17_validarCuentas()      → las cuentas desde B contra el destino y B2, y los Asistentes
+ *      Alcance nuevo (Inscriptos, canales, Asistentes; ESTADO 0.l): PASO A, sólo lectura.
+ *  !!! 02/10 19:25: B cambió los encabezados y el upsert escribió Sin identificar = Inscriptos.
+ *      NO CORRER upsertDestino() hasta terminar esto (ESTADO 0.m):
+ *        1. paso17_validarCuentas()          → sexo, edades y Sin identificar B = B2; divisor (1c);
+ *                                               Asistentes por tokens + fecha
+ *        2. paso18_malEscritas_listar()      → EN SECO: lo mal escrito en el real y en la copia
+ *        3. paso18_malEscritas_vaciarCopia() / paso18_malEscritas_vaciarReal()  → las vacía
  *      El PASO B (implementar) espera a que el usuario vea el paso A.
  *      Para volver: RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push (ESTADO 0.f).
  *      El activador NO se instala hasta volver y verificar la escritura real.
@@ -267,6 +272,32 @@ function paso17_validarCuentas() {
              'Inscriptos distinto y desagregado vacío, y el cruce de Asistentes del legado. Las ' +
              'diferencias se cuentan, NO se corrigen (criterio del 02/10)');
   return validarCuentas();
+}
+
+/*
+ * PASO 18 — lo que el sistema escribió MAL el 02/10 (Sin identificar = Inscriptos, por los encabezados
+ * nuevos de B). Primero LISTAR (en seco); después vaciar, la copia y el real por separado.
+ */
+function paso18_malEscritas_listar() {
+  _anunciar_('paso 18 — mal escritas por el sistema desde el 02/10 (EN SECO)',
+             'listarMalEscritas()  [diagnostico/10_mal_escritas.js]',
+             'NO escribe en ninguna planilla (lee el real, la copia, B y el backup del 02/10)',
+             'sólo el log: por solapa, cada celda mal escrita con el valor escrito y el correcto');
+  return listarMalEscritas();
+}
+
+function paso18_malEscritas_vaciarCopia() {
+  _anunciar_('paso 18 — VACIAR las mal escritas en la COPIA', 'vaciarMalEscritas()  [diagnostico/10_mal_escritas.js]',
+             'SÍ, en "' + RDV_HOJA_COPIA_PRUEBA + '": vacía esas celdas y les saca el color (nada más)',
+             'el log dice cuántas vació');
+  return vaciarMalEscritas(RDV_HOJA_COPIA_PRUEBA);
+}
+
+function paso18_malEscritas_vaciarReal() {
+  _anunciar_('paso 18 — VACIAR las mal escritas en el DESTINO REAL', 'vaciarMalEscritas()  [diagnostico/10_mal_escritas.js]',
+             'SÍ, en "' + RDV_HOJA_DESTINO_REAL + '": vacía esas celdas y les saca el color (nada más)',
+             'el log dice cuántas vació');
+  return vaciarMalEscritas(RDV_HOJA_DESTINO_REAL);
 }
 
 // =============================================================================================
