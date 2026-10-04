@@ -37,6 +37,10 @@
  *      Y las FICHAS de REVISAR_MATCH (26_Fichas.js), APAGADAS (REVISAR_COMO_FICHAS = false) hasta validarlas:
  *        1. paso21_fichasDePrueba()  → las fichas de 631, 521, 274, 618, 309 al log + la solapa de prueba
  *        2. upsertDestino() una vez  → ~40-50 filas activas, nada nuevo que escribir, menos tiempo (ESTADO 0.q)
+ *      03/10 16:37: 44 activas, 14 s, 3 fichas. Arreglos (ESTADO 0.r): opciones por puntaje, "¿por qué?" sobre
+ *      la opción 1, confianza en palabras, eje sólo para la persona, gemelos descartados en el contexto,
+ *      EMPAREJAR sin los formularios de reuniones cerradas. Otra vez paso21_fichasDePrueba() y mirar
+ *      REVISAR_FICHAS_PRUEBA ANTES de prender REVISAR_COMO_FICHAS.
  *  03/10: paso20_porQueVacia() (sólo lectura: la causa de cada celda vacía; "DEBERÍA ESTAR ESCRITA"
  *      tiene que dar 0) y la lectura de "elegido" en REVISAR_MATCH / EMPAREJAR_MANUAL (regla 4,
  *      25_Elecciones.js, docs/elegir-match.md). Con 0 elecciones cargadas, el upsert no cambia nada.

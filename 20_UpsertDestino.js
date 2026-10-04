@@ -2111,15 +2111,14 @@ function _encabezadoOpciones_(n) {
 }
 
 /**
- * Hasta `n` formularios candidatos de una fila, en el orden del sistema: `primero` (el que el
- * sistema eligió o propone), después los limpios y las posibles reubicaciones por score y
- * cercanía, y al final los demás descalificados por ubicación. Siete celdas por opción; las que faltan, vacías.
+ * Hasta `n` formularios candidatos de una fila, por puntaje de mayor a menor (`listaOpcionesFila_`), con
+ * `primero` (el que el sistema eligió o propone) siempre adentro. Siete celdas por opción; las que faltan, vacías.
  *
  * Del destino no muestra nada más que lo que ya está en la fila (CLAUDE.md 1: los inscriptos del
  * destino son sólo validación). Los inscriptos que se muestran son los del FORMULARIO.
  */
 function _opcionesDeFila_(f, vivos, comunas, tomadoPor, primero, n) {
-  const lista = listaOpcionesFila_(f, vivos, comunas, primero);
+  const lista = listaOpcionesFila_(f, vivos, comunas, primero, n);
   const out = [];
   for (let k = 0; k < n; k++) {
     const sc = lista[k];
@@ -2132,11 +2131,11 @@ function _opcionesDeFila_(f, vivos, comunas, tomadoPor, primero, n) {
 }
 
 /**
- * Los formularios candidatos de una fila, como puntajes (`puntuar_`), en el orden del sistema: `primero`,
- * después los limpios y las posibles reubicaciones por score y cercanía, y al final los demás
- * descalificados por ubicación. La usan REVISAR_MATCH (las dos formas: línea y fichas) y EMPAREJAR_MANUAL.
+ * Los formularios candidatos de una fila, como puntajes (`puntuar_`): **por puntaje, de mayor a menor**, a
+ * igual puntaje por cercanía de fecha (03/10). Con `n`, las n primeras, con `primero` (el que el sistema
+ * eligió o propone) siempre adentro. La usan REVISAR_MATCH (las dos formas: línea y fichas) y EMPAREJAR_MANUAL.
  */
-function listaOpcionesFila_(f, vivos, comunas, primero) {
+function listaOpcionesFila_(f, vivos, comunas, primero, n) {
   const lista = [];
   for (let j = 0; j < vivos.length; j++) {
     const sc = puntuar_(f, vivos[j], comunas);
@@ -2144,17 +2143,23 @@ function listaOpcionesFila_(f, vivos, comunas, primero) {
     if (!sc.desacuerdo && sc.score <= 0) continue;
     lista.push(sc);
   }
-  // Una posible reubicación (regla 8) compite por score con los limpios; los demás
-  // descalificados por ubicación van al final.
-  const grupo = function (sc) {
-    return sc.c === primero ? 0 : (sc.desacuerdo && !_esReubicacion_(sc) ? 2 : 1);
-  };
+  // Por puntaje, de mayor a menor; a igual puntaje, la más cercana en fecha; después, la clave del
+  // formulario (orden estable, no depende de la fila de B). Corregido el 03/10: antes iba primero el
+  // que el sistema eligió o propone, y en la 631 y la 309 la opción 1 tenía menos puntaje que la 2.
   lista.sort(function (a, b) {
-    if (grupo(a) !== grupo(b)) return grupo(a) - grupo(b);
     if (b.score !== a.score) return b.score - a.score;
-    return (a.dist === null ? Infinity : a.dist) - (b.dist === null ? Infinity : b.dist);
+    const da = a.dist === null ? Infinity : a.dist, db = b.dist === null ? Infinity : b.dist;
+    if (da !== db) return da - db;
+    return a.c.clave < b.c.clave ? -1 : (a.c.clave > b.c.clave ? 1 : 0);
   });
-  return lista;
+  if (!n) return lista;
+  // El que el sistema eligió o propone (`primero`) está siempre entre las n: si quedó afuera, ocupa la última.
+  const top = lista.slice(0, n);
+  if (primero && top.length === n && !top.some(function (sc) { return sc.c === primero; })) {
+    const sc = lista.find(function (x) { return x.c === primero; });
+    if (sc) top[n - 1] = sc;
+  }
+  return top;
 }
 
 /** "figura ✓ · fecha 1 d · ubicación coincide (comuna) · eje -", para una persona. */
@@ -2690,7 +2695,13 @@ function logResumen_(plan) {
         Logger.log('      %s  %s  →  %s', _padD_(x[0], 26), _dc_(x[1].antes), _dc_(x[1].despues));
       });
   }
-  Logger.log('  formularios sin candidato ... %s', _dc_(e.formulariosHuerfanos));
+  Logger.log('  formularios sin candidato ... %s   (sólo de reuniones activas: DIAS_ACTIVOS)', _dc_(e.formulariosHuerfanos));
+  if (e.cerrados) {
+    Logger.log('    formularios de reuniones CERRADAS sin usar, descartados (no proponen ni son huérfanos): %s',
+               _dc_(e.cerrados.sinUsar));
+    Logger.log('      de ésos, los que antes del 03/10 se contaban como "sin candidato": %s',
+               _dc_(e.cerrados.habrianSidoHuerfanos));
+  }
   Logger.log('    de esos, con el tema de alguna fila en el nombre: %s', _dc_(e.huerfConEvento));
   Logger.log('  filas del destino sin ninguno %s', _dc_(e.filasHuerfanas));
   Logger.log('    de esas, con EVENTO cargado: %s', _dc_(e.filasHuerfConEvento));
@@ -3893,6 +3904,21 @@ function puntuar_(f, c, comunas) {
  * se trabaja una lista así. Y los candidatos de un mismo formulario van **juntos y seguidos**,
  * para poder elegir entre ellos sin buscarlos.
  */
+/**
+ * ¿El formulario puede ser de una reunión ACTIVA (DIAS_ACTIVOS)? Su fecha (la del nombre, o el cierre) no
+ * es anterior al primer día activo menos la tolerancia de siempre: ±TOLERANCIA_REPROGRAMACION_DIAS con
+ * fecha en el nombre, FECHA_FIN_VENTANA.max con el cierre (que cae antes de la reunión). Sin fecha: no.
+ * Con DIAS_ACTIVOS = null, todos.
+ */
+function formularioDeReunionActiva_(c) {
+  const ini = inicioActivas_();
+  if (!ini) return true;
+  const d = c.det && c.det.mejor;
+  if (!d) return false;
+  const tol = c.det.fuente === 'fecha_fin' ? FECHA_FIN_VENTANA.max : TOLERANCIA_REPROGRAMACION_DIAS;
+  return ymd_(d) >= ymd_(new Date(ini.getTime() - tol * 86400000));
+}
+
 function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) {
   const librosDestino = dest.filas.filter(function (f) {
     if (f.uid) return false;                        // ya identificada
@@ -3902,16 +3928,17 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
   });
 
   const grupos = [];
-  // Filas activas (DIAS_ACTIVOS, 03/10): un formulario de antes de hoy − DIAS_ACTIVOS − VENTANA_EMPAREJAR_DIAS
-  // no puede ser de una reunión activa; si no, llenaría el bloque "sin ningún candidato" con los de
-  // reuniones cerradas.
-  const iniAct = inicioActivas_();
-  const desdeForm = iniAct ? new Date(iniAct.getTime() - VENTANA_EMPAREJAR_DIAS * 86400000) : null;
+  /*
+   * Filas activas (DIAS_ACTIVOS, 03/10): un formulario de una reunión CERRADA se descarta de EMPAREJAR —ni
+   * propone pares ni cuenta como "sin ningún candidato"—. Se cuentan aparte (`cerrados`). Antes del
+   * arreglo del 03/10 el bloque de huérfanos los sumaba (29 → 65): recorría todos los formularios sin usar.
+   */
+  const cerrados = { sinUsar: contador_(), habrianSidoHuerfanos: contador_() };
 
   for (let i = 0; i < cands.vivos.length; i++) {
     const c = cands.vivos[i];
     if (usados[c.fila]) continue;                  // ya se lo llevó una fila del destino
-    if (desdeForm && !(c.det && c.det.mejor && c.det.mejor >= desdeForm)) continue;   // de una reunión cerrada
+    if (!formularioDeReunionActiva_(c)) { sumar_(cerrados.sinUsar, enVentanaAnalisis_(c.det && c.det.mejor)); continue; }
 
     const props = [];
     for (let j = 0; j < librosDestino.length; j++) {
@@ -3993,7 +4020,12 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
   for (let i = 0; i < cands.vivos.length; i++) {
     const c = cands.vivos[i];
     if (usados[c.fila]) continue;
-    if (!grupos.some(function (g) { return g.c.fila === c.fila; })) huerfanos.push(c);
+    if (grupos.some(function (g) { return g.c.fila === c.fila; })) continue;
+    if (!formularioDeReunionActiva_(c)) {          // de una reunión cerrada: descartado, no es huérfano
+      sumar_(cerrados.habrianSidoHuerfanos, enVentanaAnalisis_(c.det && c.det.mejor));
+      continue;
+    }
+    huerfanos.push(c);
   }
 
   /*
@@ -4069,7 +4101,7 @@ function calcularEmparejar_(dest, cands, comunas, usados, resueltas, tomadoPor) 
   salida.forEach(function (r) { while (r.length < ancho) r.push(''); });
 
   // Sólo calcula. La escritura la hace escribirReportes_, para poder reintentarla sola.
-  return { matriz: salida, pares: pares, huerfanos: huerfanos, paresSet: paresSet,
+  return { matriz: salida, pares: pares, huerfanos: huerfanos, paresSet: paresSet, cerrados: cerrados,
            porFigura: porFigura, deSoloPrefijo: deSoloPrefijo, topeSim: topeSim,
            formulariosHuerfanos: huerfanosVent,
            filasConPropuesta: Object.keys(conPropuesta).length,

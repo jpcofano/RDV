@@ -2149,9 +2149,10 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    Principio del usuario: **lo que el sistema no resuelve, se lo presenta a una persona con las
    opciones y sus puntajes.** En `REVISAR_MATCH` (todos los motivos) cada fila, y en
    `EMPAREJAR_MANUAL` un bloque *"POR FILA DEL DESTINO"* al final, muestran hasta
-   `OPCIONES_REVISION` (3) formularios candidatos en el orden del sistema —primero el que el
-   sistema eligió o propone, después los limpios y las posibles reubicaciones por score, y al final
-   los demás descalificados—, cada uno con: nombre, fila de `B`, inscriptos **del formulario**,
+   `OPCIONES_REVISION` (3) formularios candidatos **por puntaje, de mayor a menor, y a igual puntaje
+   por cercanía de fecha** (corregido el 03/10: antes iba primero el que el sistema eligió o propone, y
+   en la 631 y la 309 la opción 1 tenía menos puntaje que la 2; el elegido sigue estando siempre
+   entre las 3, `listaOpcionesFila_`), cada uno con: nombre, fila de `B`, inscriptos **del formulario**,
    score normalizado, señales (figura / fecha en días / ubicación: coincide, desacuerdo o no
    evaluable / eje) y si ya lo toma otra fila. Del destino no se muestra nada más que lo que ya
    muestra la fila.
@@ -2183,14 +2184,26 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    - **¿por qué?**: una frase por motivo (`formulario_compartido`, `ubicacion_en_desacuerdo`,
      `multi_figura`, `margen_chico`, `score_bajo`, `sin_formulario_propio`, `formulario_gemelo`,
      `clave_repetida`, …), completada con los datos de la fila;
-   - **Opción 1..3** (el mismo orden de siempre, `listaOpcionesFila_`): figura(s) del formulario,
-     `Fecha_Fin`, ubicación detectada, nombre, inscriptos **del formulario**, días de diferencia,
-     puntaje y "ocupado por" (la fila que ya lo tiene, o su gemelo). **Verde** si la celda coincide con
-     la reunión, **rojo** si no, **gris** si no se puede comparar. Debajo, la línea *coincide / no
-     coincide* (✅ figura · ✅ fecha (cierra N días antes) · ❌ comuna (C11, la reunión es C15) · ⚠️ ya
-     usado por la fila X), traducida de `puntuar_`: las mismas señales que el puntaje, nada nuevo;
-   - **otra reunión** (en gris): las otras reuniones de la figura a ±`DIAS_CONTEXTO_FICHA` (7) días,
-     con su estado (con formulario / en revisión / cerrada…).
+   - **Opción 1..3**, **por puntaje de mayor a menor** (a igual puntaje, por cercanía de fecha):
+     figura(s) del formulario, `Fecha_Fin`, ubicación detectada, nombre, inscriptos **del formulario**,
+     días de diferencia, **confianza en palabras** —*alta* (≥ `UMBRAL_MATCH`, 0,88), *media* (≥
+     `CONFIANZA_MEDIA`, 0,6), *baja*; el número queda en una columna oculta— y "ocupado por" (la fila
+     que ya lo tiene, o su gemelo). **Verde** si la celda coincide con la reunión, **rojo** si no,
+     **gris** si no se puede comparar. Debajo, la línea *coincide / no coincide* (✅ figura · ✅ fecha
+     (cierra N días antes) · ❌ comuna (C11, la reunión es C15) · ⚠️ ya usado por la fila X), traducida
+     de `puntuar_`: las mismas señales que el puntaje, nada nuevo;
+   - **el eje, sólo para la persona**: si el formulario dice un eje y el barrio de la reunión tiene eje
+     (`Comunas`, columna I), "✅ Eje Sur" o "⚠️ Eje Sur, la reunión está en el Eje Oeste", y la celda de
+     ubicación en verde o **amarillo** cuando no hay barrio ni comuna que comparar. **No cambia el
+     puntaje ni la decisión**: `EJE_COMO_UBICACION` sigue en `false` (1.d);
+   - **"¿por qué?" habla de la opción 1.** Cuando el motivo es de otro formulario (una posible
+     reubicación, un `multi_figura`, una clave repetida) lo nombra por su número y dice por qué la
+     opción 1 no se escribe sola (ya la tiene otra fila, otra ubicación, …). Caso que lo destapó: en la
+     309 hablaba del 12/11 Constitución (0,63, lo que dejó la re-evaluación del invariante) cuando la
+     mejor era el 07/11 Villa Pueyrredón (1, a 2 días, el gemelo que tiene la 315);
+   - **en gris**: las otras reuniones de la figura a ±`DIAS_CONTEXTO_FICHA` (7) días, con su estado (con
+     formulario / en revisión / cerrada…), y los **formularios de la figura descartados por la regla
+     3** a ±7 días ("descartado: 0 inscriptos, cierra 04/11; su gemelo tiene N").
 
    Al final, **RESUELTAS**: aplicadas, válidas (se escriben en la próxima corrida real) y "ninguno",
    con su resultado y su fecha. **"No sé"** y un comentario sin elección son **notas**: se guardan en
@@ -2445,7 +2458,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     | sólo sobre filas activas | sobre TODO el historial, sin cambios |
     |---|---|
     | la escritura del upsert (datos, traza, STATUS, Asistentes) | el invariante: un formulario de una fila vieja con `RDV_UID` sigue ocupado |
-    | las fichas de REVISAR_MATCH, SIN_MATCH y EMPAREJAR_MANUAL (en éste, también los formularios: desde hoy − 30 − `VENTANA_EMPAREJAR_DIAS`) | los candidatos de `B` para el match (sin corte por fecha) |
+    | las fichas de REVISAR_MATCH, SIN_MATCH y EMPAREJAR_MANUAL (en éste, también los formularios: uno de una reunión cerrada —su fecha, antes del primer día activo menos la tolerancia— no propone pares ni cuenta como "sin candidato"; se cuenta aparte, `formularioDeReunionActiva_`) | los candidatos de `B` para el match (sin corte por fecha) |
     | la lectura de "elegido" (una elección de una reunión cerrada queda como estaba) | el invariante del paso 16 (las "incompletas" del paso 16: sólo activas) |
     | el rango por defecto del paso 20 | |
 

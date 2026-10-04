@@ -9,11 +9,17 @@
  *                 no son señal del sistema (regla 5). Acá van "elegido" (desplegable), "comentario" y
  *                 "resultado" (lo escribe el sistema);
  *   ¿por qué?     una frase por motivo, con los datos de la fila;
- *   Opción 1..3   figura(s) del formulario, Fecha_Fin, ubicación detectada, nombre, inscriptos DEL
- *                 FORMULARIO, días de diferencia, puntaje y "ocupado por". Verde si coincide con la
- *                 reunión, rojo si no, gris si no se puede comparar;
+ *   Opción 1..3   POR PUNTAJE, de mayor a menor (a igual puntaje, por cercanía de fecha): figura(s) del
+ *                 formulario, Fecha_Fin, ubicación detectada, nombre, inscriptos DEL FORMULARIO, días de
+ *                 diferencia, confianza en palabras (alta / media / baja; el número, en una columna
+ *                 oculta) y "ocupado por". Verde si coincide con la reunión, rojo si no, gris si no se
+ *                 puede comparar, amarillo para el eje (sólo para la persona: no puntúa);
  *                 debajo, la línea "coincide / no coincide" (✅ ❌ ⚪ ⚠️), traducida del puntaje;
- *   otra reunión  en gris: las otras reuniones de la misma figura a ±DIAS_CONTEXTO_FICHA días.
+ *   en gris       las otras reuniones de la misma figura a ±DIAS_CONTEXTO_FICHA días, y los formularios
+ *                 de la figura descartados por la regla 3 (casi sin inscriptos, gemelo de otro).
+ *
+ * "¿por qué?" habla de la opción 1, salvo cuando el motivo es de otro formulario (una posible
+ * reubicación, un multi_figura): entonces lo nombra con su número y dice por qué la opción 1 no se escribe.
  *
  * Al final, la sección RESUELTAS: las elecciones aplicadas, válidas (se aplican en la próxima corrida
  * real) y "ninguno", con su resultado y su fecha. El lector no la lee.
@@ -28,13 +34,16 @@
 
 /** Las columnas de una ficha. Las cuatro últimas, ocultas: la identidad. */
 const COLS_FICHA_ = ['ficha', 'fila', 'figura', 'fecha', 'ubicación', 'evento / formulario', 'inscriptos',
-                     'asistentes', 'días', 'puntaje', 'ocupado por', 'elegido', 'comentario', 'resultado',
-                     'id_figura', 'id_fecha', 'id_barrio', 'form_clave'];
-const FICHA_COLS_OCULTAS_ = 4;
-const FICHA_COLOR_ = { si: '#d9ead3', no: '#f4cccc', gris: '#eeeeee', reunion: '#fff2cc', titulo: '#d9d9d9',
-                       textoGris: '#888888', textoNormal: '#000000' };
+                     'asistentes', 'días', 'confianza', 'ocupado por', 'elegido', 'comentario', 'resultado',
+                     'id_figura', 'id_fecha', 'id_barrio', 'form_clave', 'puntaje'];
+/** Las últimas, ocultas: la identidad (id_*, form_clave) y el puntaje en número (la ficha lo dice en palabras). */
+const FICHA_COLS_OCULTAS_ = 5;
+/** Colores: verde coincide, rojo no, gris no se puede comparar, amarillo sólo para la persona (el eje). */
+const FICHA_COLOR_ = { si: '#d9ead3', no: '#f4cccc', gris: '#eeeeee', amarillo: '#fff2cc', reunion: '#e4dff2',
+                       titulo: '#d9d9d9', textoGris: '#888888', textoNormal: '#000000' };
 const FICHA_ETIQUETA_ = { reunion: 'REUNIÓN', porQue: '¿por qué?', opcion: 'Opción ', contexto: 'otra reunión',
-                          resueltas: 'RESUELTAS', resuelta: 'resuelta', pendientes: 'PENDIENTES' };
+                          descartado: 'formulario descartado', resueltas: 'RESUELTAS', resuelta: 'resuelta',
+                          pendientes: 'PENDIENTES' };
 const DIAS_SEMANA_ = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 /** ¿Es una hoja de fichas? Por el encabezado. */
@@ -86,7 +95,7 @@ function armarFichas_(plan, asis, opts) {
   lista.forEach(function (f) {
     const pf = porFila[f.fila] || {};
     const primero = pf.cand || null;
-    const ops = listaOpcionesFila_(f, vivos, comunas, primero).slice(0, OPCIONES_REVISION);
+    const ops = listaOpcionesFila_(f, vivos, comunas, primero, OPCIONES_REVISION);
     const elec = _eleccionDeFicha_(ctx, f);
     const motivo = pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH' ? (pf.motivo || pf.veredicto)
                  : (pf.veredicto || 'sin_veredicto');
@@ -121,20 +130,28 @@ function armarFichas_(plan, asis, opts) {
     if (!nOps) linea(['', '(no hay ningún formulario para proponer)'], { fc: _gris_(ancho) });
     ops.forEach(function (sc, k) {
       const c = sc.c, duenio = _duenio_(ctx, c, f);
-      const colF = _colorFecha_(sc), colU = _colorUbic_(sc);
+      const colF = _colorFecha_(sc), colU = _colorUbic_(sc, f);
       const colFig = sc.nombraFigura ? FICHA_COLOR_.si : (sc.sinFigura ? FICHA_COLOR_.gris : FICHA_COLOR_.no);
       const bg = COLS_FICHA_.map(function () { return null; });
       bg[2] = colFig; bg[3] = colF; bg[4] = colU; bg[8] = colF;
       if (duenio) bg[10] = FICHA_COLOR_.no;
       linea([FICHA_ETIQUETA_.opcion + (k + 1), '', _figurasDe_(c), _cierre_(c), _ubicForm_(c), c.nombre,
-             c.inscriptos || 0, '', _diasTxt_(f, c), sc.score, duenio ? _descFila_(duenio) : '', '', '', '',
-             '', '', '', c.clave], { bg: bg });
+             c.inscriptos || 0, '', _diasTxt_(f, c), _confianza_(sc.score), duenio ? _descFila_(duenio) : '', '', '',
+             '', '', '', '', c.clave, sc.score], { bg: bg });
       linea(['', _lineaCoincide_(f, sc, ctx)]);
     });
     // --- contexto: las otras reuniones de la figura a ±DIAS_CONTEXTO_FICHA ---
     _otrasReuniones_(ctx, f).forEach(function (o) {
       linea([FICHA_ETIQUETA_.contexto, o.f.fila, o.f.figura, _fechaLarga_(o.f.fecha), _ubicFila_(o.f, comunas),
              o.f.evento, '', '', _signo_(o.d), '', o.estado], { fc: _gris_(ancho) });
+    });
+    // --- contexto: los formularios de la figura descartados por la regla 3 (casi sin inscriptos) ---
+    _descartadosCercanos_(ctx, f).forEach(function (x) {
+      const c = x.c;
+      linea([FICHA_ETIQUETA_.descartado, '', _figurasDe_(c), _cierre_(c), _ubicForm_(c), c.nombre, c.inscriptos || 0,
+             '', _diasTxt_(f, c), '', 'descartado: ' + (c.inscriptos || 0) + ' inscriptos, cierra ' +
+             _ddmm_(c.det && c.det.fechaFin) + (x.gemelo ? '; su gemelo tiene ' + (x.gemelo.inscriptos || 0) : '')],
+            { fc: _gris_(ancho) });
     });
     linea([]);
     fichas.push({ f: f, desde: desde, hasta: salida.length - 1, motivo: motivo, veredicto: pf.veredicto || '' });
@@ -178,7 +195,15 @@ function _contextoFichas_(plan, asis) {
   (plan.elecciones ? plan.elecciones.todas : []).forEach(function (e) {
     (elecPorFila[_filaEleccion_(e)] = elecPorFila[_filaEleccion_(e)] || []).push(e);
   });
-  return { plan: plan, porNum: porNum, porFig: porFig, duenioGrupo: duenioGrupo, elecPorFila: elecPorFila, asis: asis };
+  // Los descartados por la regla 3 (no están en los candidatos): por figura, con su gemelo con inscriptos.
+  const descartados = [];
+  ((plan.cands.gemelos && plan.cands.gemelos.grupos) || []).forEach(function (g) {
+    const vivo = g.forms.filter(function (c) { return !c.descartadoRegla3; })
+      .sort(function (a, b) { return (b.inscriptos || 0) - (a.inscriptos || 0); })[0] || null;
+    g.forms.forEach(function (c) { if (c.descartadoRegla3) descartados.push({ c: c, gemelo: vivo }); });
+  });
+  return { plan: plan, porNum: porNum, porFig: porFig, duenioGrupo: duenioGrupo, elecPorFila: elecPorFila, asis: asis,
+           descartados: descartados };
 }
 
 /** La fila que ya tiene el formulario (o su gemelo), si no es `f`. */
@@ -220,6 +245,16 @@ function _resueltas_(ctx) {
   }).sort(function (a, b) { return (b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0); });
 }
 
+/** Los formularios de la figura de `f` descartados por la regla 3, a ±DIAS_CONTEXTO_FICHA días de su fecha. */
+function _descartadosCercanos_(ctx, f) {
+  const fig = normalizeText_(f.figura);
+  return ctx.descartados.filter(function (x) {
+    if (x.c.figurasNorm.indexOf(fig) < 0) return false;
+    const d = distanciaFecha_(f.fecha, x.c.det);
+    return d !== null && d <= DIAS_CONTEXTO_FICHA;
+  });
+}
+
 /** Las otras reuniones de la figura de `f` a ±DIAS_CONTEXTO_FICHA días, con su estado. */
 function _otrasReuniones_(ctx, f) {
   if (!f.fecha) return [];
@@ -242,81 +277,118 @@ function _otrasReuniones_(ctx, f) {
 
 // ===================== Las frases =====================
 
-/** "¿Por qué está acá?": una frase por motivo, con los datos de la fila. */
+/**
+ * "¿Por qué está acá?": una frase por motivo, con los datos de la fila. **Habla de la opción 1** (la de
+ * más puntaje), salvo los motivos que son de un formulario en particular —una posible reubicación, un
+ * multi_figura, dos formularios con la misma clave, el único descalificado—: entonces lo nombra por su
+ * número y, si no es la 1, agrega por qué la opción 1 no se escribe sola.
+ */
 function _fraseMotivo_(f, pf, ops, ctx) {
-  const op1 = ops[0] || null, c1 = op1 ? op1.c : null;
-  const nom = function (c) { return '«' + c.nombre + '»'; };
-  const dueno = c1 ? _duenio_(ctx, c1, f) : null;
+  const m = pf.motivo || pf.veredicto;
+  const comunas = ctx.plan.comunas;
   const fig = f.figura || 'la figura';
-  switch (pf.motivo || pf.veredicto) {
-    case 'formulario_compartido': {
-      if (!c1) return 'Su formulario lo ganó otra reunión y no le quedó ninguno claro.';
-      if (dueno) return 'El formulario que mejor le corresponde, ' + nom(c1) + ', ya lo tiene la fila ' + _descFila_(dueno) +
-                        ', que tenía más evidencia. Sin ése, ningún otro alcanza para escribirla sola.';
-      const otras = _otrasConMismoFormulario_(ctx, f, c1);
-      return 'El formulario ' + nom(c1) + ' lo reclaman esta reunión' +
-             (otras.length ? ' y la fila ' + otras.map(_descFila_).join(', la fila ') : ' y otra') +
-             ' con la misma evidencia: el sistema no puede elegir de cuál es.';
-    }
-    case 'formulario_gemelo': {
-      if (!c1) return 'Hay dos formularios con el mismo nombre (la misma reunión) y su grupo lo tiene otra fila.';
-      return 'Hay ' + (c1.gemelos || 2) + ' formularios con el mismo nombre, ' + nom(c1) + ', que son la misma reunión' +
-             (dueno ? ', y uno de ellos ya lo tiene la fila ' + _descFila_(dueno) + '. Una reunión no puede tener dos formularios iguales.'
-                    : ': no se puede saber cuál es el de esta reunión.');
-    }
-    case 'clave_repetida': {
-      if (!c1) return 'Hay dos formularios con el mismo nombre y el mismo cierre.';
-      const mismos = ctx.plan.cands.vivos.filter(function (c) { return c.clave === c1.clave; });
-      return 'Hay ' + mismos.length + ' formularios con el mismo nombre y el mismo cierre (' + nom(c1) + ', cierra ' +
-             fmtFecha_(c1.det && c1.det.fechaFin) + '), todos con inscriptos (' +
-             mismos.map(function (c) { return c.inscriptos || 0; }).join(' y ') + '): no se sabe cuál es el de esta reunión.';
-    }
-    case 'ubicacion_en_desacuerdo': {
-      if (!c1) return 'El formulario dice otra ubicación.';
-      return nom(c1) + ' nombra a ' + fig + ' y ' + _fraseFecha_(f, op1) + ', pero dice ' + _ubicForm_(c1) +
-             ' y la reunión está cargada en ' + _ubicFila_(f, ctx.plan.comunas) +
-             '. Puede ser una reunión que cambió de lugar (si es ésta, vale el barrio de RDV): el sistema no la escribe solo.';
-    }
-    case 'multi_figura': {
-      if (!c1) return 'El formulario nombra a varias figuras.';
-      return 'El mejor formulario, ' + nom(c1) + ', nombra a ' + c1.figurasNorm.length + ' figuras (' + _figurasDe_(c1) +
-             '): es una inscripción compartida y no se sabe a qué reunión van sus inscriptos.';
-    }
-    case 'margen_chico': {
-      const s2 = ops[1] ? ops[1].score : pf.segundo;
-      return 'Hay formularios casi igual de buenos (puntajes ' + _num_(op1 ? op1.score : pf.score) + ' y ' + _num_(s2) +
-             ') y ninguno tiene más evidencia que el otro.';
-    }
-    case 'score_bajo': {
-      if (!c1) return 'Ningún formulario alcanza el mínimo para escribirse solo.';
-      return 'El mejor formulario, ' + nom(c1) + ' (puntaje ' + _num_(op1.score) + '), no llega al mínimo para escribirse ' +
-             'solo (' + _num_(UMBRAL_MATCH) + '): ' + _queFalla_(f, op1, ctx) + '.';
-    }
-    case 'sin_formulario_propio':
-      return 'No hay ningún formulario de ' + fig + ' a ' + TOLERANCIA_REPROGRAMACION_DIAS + ' días o menos de la reunión ' +
-             '(ni uno sin figura de su comuna). Puede faltar en el origen o tener otra fecha.' +
-             (ops.length ? ' Las opciones son de otras fechas o de otra figura.' : '');
-    case 'desacuerdo_y_resto_bajo':
-      return c1 ? 'El único formulario cercano, ' + nom(c1) + ', dice ' + _ubicForm_(c1) + ' (la reunión: ' +
-                  _ubicFila_(f, ctx.plan.comunas) + ') y además no coincide en lo demás: ' + _queFalla_(f, op1, ctx) + '.'
-                : 'El único formulario cercano dice otra ubicación.';
-    case 'sin_candidatos':
-      return 'No hay ningún formulario de ' + fig + ', ni ninguno a 7 días o menos de la reunión.';
-    case 'escribiria':
-      return 'No está pendiente: el sistema la escribe con ' + (c1 ? nom(c1) : 'su formulario') + '.';
-    case 'rdv_uid':
-      return 'No está pendiente: ya tiene formulario (' + (f.formOrigen || 'RDV_UID') + ').';
-    case 'cerrada':
-      return 'Cerrada: tiene más de ' + DIAS_ACTIVOS + ' días y no tiene formulario. No aparece en la solapa ni se toca.';
-    case 'futura':
-      return 'Todavía no pasó: no se empareja.';
-    case 'pendiente_barrio':
-      return 'Esperando el barrio: es de hoy o de ayer y RDV todavía no tiene el barrio. Se vuelve a mirar en la próxima corrida.';
-    case 'ninguno_por_persona':
-      return 'Una persona eligió "ninguno": no se propone ni se escribe.';
-    default:
-      return 'Motivo: ' + (pf.motivo || pf.veredicto || '?') + '.';
+  const Nom = function (k) { return 'La opción ' + (k + 1) + ', «' + ops[k].c.nombre + '»,'; };
+  // De qué opción habla el motivo: la 1, o la del formulario del motivo.
+  let k = 0;
+  if (['ubicacion_en_desacuerdo', 'multi_figura', 'clave_repetida', 'desacuerdo_y_resto_bajo'].indexOf(m) >= 0) {
+    const i = ops.findIndex(function (x) { return x.c === pf.cand; });
+    if (i >= 0) k = i;
   }
+  const sc = ops[k] || null;
+  const c = sc ? sc.c : null;
+  const dueno = c ? _duenio_(ctx, c, f) : null;
+  let t;
+  switch (m) {
+    case 'formulario_compartido':
+      if (!c) { t = 'Su formulario lo ganó otra reunión y no le quedó ninguno claro.'; break; }
+      if (dueno) {
+        t = Nom(k) + ' es la que más coincide, pero ya la tiene la fila ' + _descFila_(dueno) +
+            ', que tenía más evidencia. Sin ésa, ninguna otra alcanza para escribirla sola.';
+      } else {
+        const otras = _otrasConMismoFormulario_(ctx, f, c);
+        t = Nom(k) + ' la reclaman esta reunión y ' + (otras.length ? 'la fila ' + otras.map(_descFila_).join(', la fila ') : 'otra') +
+            ' con la misma evidencia: el sistema no puede elegir de cuál es.';
+      }
+      break;
+    case 'formulario_gemelo':
+      if (!c) { t = 'Hay dos formularios con el mismo nombre (la misma reunión) y otra fila ya tiene uno.'; break; }
+      if ((c.gemelos || 1) > 1) {
+        t = Nom(k) + ' tiene ' + (c.gemelos - 1) + ' gemelo(s) con el mismo nombre: son la misma reunión' +
+            (dueno ? ', y la fila ' + _descFila_(dueno) + ' ya tiene uno. Una reunión no puede tener dos formularios iguales.'
+                   : ', y no se puede saber cuál es el de esta reunión.');
+      } else {
+        t = Nom(k) + ' es la que más coincide' + (dueno ? ', pero ya la tiene la fila ' + _descFila_(dueno) +
+            ' (un formulario con el mismo nombre es la misma reunión).' : ', pero tiene un gemelo con el mismo nombre en otra fila.');
+      }
+      break;
+    case 'clave_repetida': {
+      if (!c) { t = 'Hay dos formularios con el mismo nombre y el mismo cierre.'; break; }
+      const mismos = ctx.plan.cands.vivos.filter(function (x) { return x.clave === c.clave; });
+      t = Nom(k) + ' tiene otro formulario con el mismo nombre y el mismo cierre (' + _ddmm_(c.det && c.det.fechaFin) +
+          '), los dos con inscriptos (' + mismos.map(function (x) { return x.inscriptos || 0; }).join(' y ') +
+          '): no se sabe cuál es el de esta reunión.';
+      break;
+    }
+    case 'ubicacion_en_desacuerdo':
+      if (!c) { t = 'El formulario dice otra ubicación.'; break; }
+      t = Nom(k) + ' nombra a ' + fig + ' y ' + _fraseFecha_(f, sc) + ', pero dice ' + _ubicForm_(c) +
+          ' y la reunión está cargada en ' + _ubicFila_(f, comunas) +
+          '. Puede ser una reunión que cambió de lugar (si es ésta, vale el barrio de RDV): el sistema no la escribe sola.';
+      break;
+    case 'multi_figura':
+      if (!c) { t = 'El formulario nombra a varias figuras.'; break; }
+      t = Nom(k) + ' nombra a ' + c.figurasNorm.length + ' figuras (' + _figurasDe_(c) +
+          '): es una inscripción compartida y no se sabe a qué reunión van sus inscriptos.';
+      break;
+    case 'margen_chico':
+      t = ops.length >= 2
+        ? 'Las opciones 1 y 2 coinciden casi igual (confianza ' + _confianza_(ops[0].score) + ' y ' +
+          _confianza_(ops[1].score) + ') y ninguna tiene más evidencia que la otra.'
+        : 'Hay formularios casi igual de buenos y ninguno tiene más evidencia que el otro.';
+      break;
+    case 'score_bajo':
+      t = c ? Nom(k) + ' es la que más coincide, pero con confianza ' + _confianza_(sc.score) + ': ' +
+              _queFalla_(f, sc, ctx) + '. No alcanza para escribirla sola.'
+            : 'Ningún formulario alcanza para escribirla sola.';
+      break;
+    case 'sin_formulario_propio':
+      t = 'No hay ningún formulario de ' + fig + ' a ' + TOLERANCIA_REPROGRAMACION_DIAS + ' días o menos de la reunión ' +
+          '(ni uno sin figura de su comuna). Puede faltar en el origen o tener otra fecha.' +
+          (c ? ' La opción 1 es la más parecida (confianza ' + _confianza_(sc.score) + ').' : '');
+      break;
+    case 'desacuerdo_y_resto_bajo':
+      t = c ? Nom(k) + ' es la única cercana, pero dice ' + _ubicForm_(c) + ' (la reunión: ' + _ubicFila_(f, comunas) +
+              ') y además ' + _queFalla_(f, sc, ctx) + '.'
+            : 'El único formulario cercano dice otra ubicación.';
+      break;
+    case 'sin_candidatos':
+      t = 'No hay ningún formulario de ' + fig + ', ni ninguno a 7 días o menos de la reunión.'; break;
+    case 'escribiria':
+      t = 'No está pendiente: el sistema la escribe con «' + (pf.cand ? pf.cand.nombre : '?') + '».'; break;
+    case 'rdv_uid':
+      t = 'No está pendiente: ya tiene formulario (' + (f.formOrigen || 'RDV_UID') + ').'; break;
+    case 'cerrada':
+      t = 'Cerrada: tiene más de ' + DIAS_ACTIVOS + ' días y no tiene formulario. No aparece en la solapa ni se toca.'; break;
+    case 'futura':
+      t = 'Todavía no pasó: no se empareja.'; break;
+    case 'pendiente_barrio':
+      t = 'Esperando el barrio: es de hoy o de ayer y RDV todavía no tiene el barrio. Se vuelve a mirar en la próxima corrida.'; break;
+    case 'ninguno_por_persona':
+      t = 'Una persona eligió "ninguno": no se propone ni se escribe.'; break;
+    default:
+      t = 'Motivo: ' + (m || '?') + '.';
+  }
+  // Si el motivo es de otra opción, por qué la 1 (la de más puntaje) no se escribe sola.
+  if (k > 0 && ops[0]) {
+    const s1 = ops[0], d1 = _duenio_(ctx, s1.c, f);
+    t += ' La opción 1 tiene más puntaje (confianza ' + _confianza_(s1.score) + ')' +
+         (d1 ? ', pero ya la tiene la fila ' + _descFila_(d1) + '.'
+          : s1.desacuerdo ? ', pero dice otra ubicación (' + _ubicForm_(s1.c) + ').'
+          : s1.multiFigura ? ', pero nombra a varias figuras.'
+          : !s1.nombraFigura ? ', pero no nombra a ' + fig + '.'
+          : ': si es ésta, elegila.');
+  }
+  return t;
 }
 
 /** Las otras filas pendientes cuyo mejor formulario es el mismo (empate en formulario_compartido). */
@@ -373,6 +445,9 @@ function _lineaCoincide_(f, sc, ctx) {
                                            : 'el formulario no dice dónde') + ')');
   }
   if (sc.evaluables.hora) p.push(sc.perdido.hora === 0 ? '✅ hora' : '❌ hora');
+  // eje: sólo para la persona (EJE_COMO_UBICACION sigue apagado: no puntúa ni decide)
+  const ej = _ejeFicha_(f, c);
+  if (ej) p.push(ej.coincide ? '✅ Eje ' + ej.form : '⚠️ Eje ' + ej.form + ', la reunión está en el Eje ' + ej.fila);
   // ojo
   const d = _duenio_(ctx, c, f);
   if (d) p.push('⚠️ ya usado por la fila ' + _descFila_(d));
@@ -448,10 +523,31 @@ function _colorFecha_(sc) {
   if (!sc.evaluables.fecha) return FICHA_COLOR_.gris;
   return sc.perdido.fecha === 0 ? FICHA_COLOR_.si : FICHA_COLOR_.no;
 }
-function _colorUbic_(sc) {
+function _colorUbic_(sc, f) {
   if (sc.desacuerdo) return FICHA_COLOR_.no;
-  if (!sc.evaluables.ubic) return FICHA_COLOR_.gris;
-  return sc.perdido.ubic === 0 ? FICHA_COLOR_.si : FICHA_COLOR_.no;
+  if (sc.evaluables.ubic) return sc.perdido.ubic === 0 ? FICHA_COLOR_.si : FICHA_COLOR_.no;
+  // Sin barrio ni comuna que comparar: el eje, sólo para la persona (verde si coincide, amarillo si no).
+  const ej = f ? _ejeFicha_(f, sc.c) : null;
+  if (ej) return ej.coincide ? FICHA_COLOR_.si : FICHA_COLOR_.amarillo;
+  return FICHA_COLOR_.gris;
+}
+
+/**
+ * El eje, **sólo para mostrar** (03/10): si el formulario dice un eje y el barrio de la reunión tiene eje
+ * (`Comunas`, columna I; uno pendiente con "?" no cuenta), `{ form, fila, coincide }`; si no, null. No
+ * cambia el puntaje ni la decisión: EJE_COMO_UBICACION sigue apagado.
+ */
+function _ejeFicha_(f, c) {
+  if (!c.eje || c.eje.tipo !== 'eje' || !f.barrio) return null;
+  const ejeFila = ejeDeBarrio_(f.barrio);
+  if (!ejeFila) return null;
+  return { form: c.eje.eje, fila: ejeFila, coincide: barrioEnEje_(f.barrio, c.eje.eje) };
+}
+
+/** El puntaje en palabras: alta (≥ UMBRAL_MATCH), media (≥ CONFIANZA_MEDIA), baja. */
+function _confianza_(score) {
+  if (score === null || score === undefined || score === '') return '';
+  return score >= UMBRAL_MATCH ? 'alta' : (score >= CONFIANZA_MEDIA ? 'media' : 'baja');
 }
 
 /** Los valores del desplegable de "elegido". */
@@ -563,9 +659,12 @@ function fichaComoTexto_(fx, ficha) {
       if (bg === FICHA_COLOR_.si) v = '[v] ' + v;
       else if (bg === FICHA_COLOR_.no) v = '[x] ' + v;
       else if (bg === FICHA_COLOR_.gris) v = '[·] ' + v;
+      else if (bg === FICHA_COLOR_.amarillo) v = '[!] ' + v;
       celdas.push(v);
     }
     if (fmt.desplegable) celdas.push('elegido ▾ {' + fmt.desplegable.join(' / ') + '}');
+    const iP = COLS_FICHA_.indexOf('puntaje');
+    if (r[iP] !== '' && r[iP] !== null && r[iP] !== undefined) celdas.push('(puntaje ' + r[iP] + ', oculto)');
     if (!celdas.length) continue;
     const t = String(r[0]);
     out.push((t === '' ? '      ' : '  ') + celdas.join(' | '));

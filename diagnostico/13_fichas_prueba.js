@@ -26,7 +26,8 @@ function fichasDePrueba(filas) {
   const planH = calcularPlan_(true, entradas, { historial: true });
   const fxH = armarFichas_(planH, asis, { filas: filas });
   Logger.log('--- 1) las fichas de las filas %s ---', filas.join(', '));
-  Logger.log('    marcas de color: [v] verde = coincide con la reunión · [x] rojo = no coincide · [·] gris = no se puede comparar');
+  Logger.log('    marcas de color: [v] verde = coincide con la reunión · [x] rojo = no coincide · [·] gris = no se puede comparar' +
+             ' · [!] amarillo = el eje no coincide (sólo para la persona)');
   filas.forEach(function (n) {
     const fi = fxH.fichas.filter(function (x) { return x.f.fila === n; })[0];
     if (!fi) { Logger.log('  ===== fila %s: no existe en el destino (o es una fila vacía) =====', n); return; }

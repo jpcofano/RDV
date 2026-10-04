@@ -1124,6 +1124,11 @@ function escenarioFichas() {
   }
   ok(cerradasTocadas === 0, 'ninguna fila cerrada (más de 30 días) se tocó (' + cerradasTocadas + ')');
   ok(activasEscritas > 0, 'las activas sí se escriben (' + activasEscritas + ')');
+  // EMPAREJAR_MANUAL: los formularios de una reunión cerrada (Iván, 22/08) no son "sin candidato".
+  const emp = m.ssI.hojas['EMPAREJAR_MANUAL'];
+  const mCerr = /formularios de reuniones CERRADAS sin usar, descartados \(no proponen ni son huérfanos\):\s+\d+ \|\s+(\d+)/.exec(log);
+  ok(emp && !emp.v.some(function (x) { return /IVÁN ROBLES/.test(String(x[0])); }) && mCerr && +mCerr[1] > 0,
+     'EMPAREJAR: los formularios de reuniones cerradas se descartan y se cuentan aparte (' + (mCerr ? mCerr[0] : 'sin línea') + ')');
 
   const rev = m.ssI.hojas['REVISAR_MATCH'];
   ok(rev && rev.v[0][0] === 'ficha' && rev.v[0].indexOf('id_figura') >= 0, 'REVISAR_MATCH tiene el formato de fichas');
@@ -1137,7 +1142,7 @@ function escenarioFichas() {
   ok(kRita < kLia, 'de la más reciente a la más vieja (Rita 25/09 antes que Lía 20/09)');
   const dv = rev.dv && rev.dv[kLia] && rev.dv[kLia][h.indexOf('elegido')];
   ok(dv && /^Opción 1|Opción 2|(Opción 3|)?Ninguno|No sé$/.test(dv.lista.join('|')), 'desplegable en "elegido": ' + (dv ? dv.lista.join(' / ') : '-'));
-  ok(JSON.stringify(rev.ocultas) === JSON.stringify([15, 16, 17, 18]), 'las 4 columnas de identidad, ocultas');
+  ok(JSON.stringify(rev.ocultas) === JSON.stringify([15, 16, 17, 18, 19]), 'las 5 columnas ocultas (identidad y puntaje)');
   const porQueRita = rev.v[kRita + 1][1], coincideRita = rev.v[kRita + 3][1];
   console.log('       ¿por qué? (Rita): ' + porQueRita);
   console.log('       coincide (Rita):  ' + coincideRita);
@@ -1148,7 +1153,7 @@ function escenarioFichas() {
   ok(rev.bg[kRita + 2][h.indexOf('ubicación')] === '#f4cccc' && rev.bg[kRita + 2][h.indexOf('figura')] === '#d9ead3',
      'colores por celda: ubicación en rojo, figura en verde');
   console.log('       ¿por qué? (Lía):  ' + rev.v[kLia + 1][1]);
-  ok(/casi igual de buenos/.test(rev.v[kLia + 1][1]), '¿por qué? de un margen chico');
+  ok(/coinciden casi igual \(confianza alta y alta\)/.test(rev.v[kLia + 1][1]), '¿por qué? de un margen chico');
 
   // Una persona elige: la opción 2 para Lía; "No sé" con un comentario para Rita.
   const opcion2 = rev.v.find(function (x, i) { return i > kLia && x[0] === 'Opción 2'; })[h.indexOf('evento / formulario')];
@@ -1216,6 +1221,68 @@ function escenarioFichas() {
   p.logs.filter(function (l) { return /^ {2}/.test(l); }).slice(0, 14).forEach(function (l) { console.log('     ' + l); });
 }
 
+function casosOrdenFichas(E, datos) {
+  casosGemelos(E, datos);
+  const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+  // La "309": además de su gemelo (que tiene la "315") y el gemelo con 0 inscriptos (regla 3), un formulario
+  // de otra reunión de la figura, más flojo. Sin el gemelo, la re-evaluación cae en éste (0,63).
+  datos.b.push(['VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 12/08 Constitución',
+                new D(2026, 7, 11, 12, 0, 0), 30, 24, 10, 14, 2, 6, 6, 4, 2]);
+  // El eje, sólo para la persona: Flores es del Eje Oeste (Comunas, columna I); el formulario dice Eje Sur.
+  datos.comunas.forEach(function (r) { if (r[0] === 'Flores') r[8] = 'Oeste'; });
+  const r = HDR_DESTINO.map(function () { return ''; });
+  r[col('Figura')] = 'Sofía Ibarra'; r[col('Barrio')] = 'Flores'; r[col('FECHA')] = new D(2026, 8, 26, 12, 0, 0);
+  r[col('HORA')] = '18:00'; r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada';
+  r[col('Asistentes')] = 40;
+  datos.dest.push(r);
+  datos.b.push(['SOFÍA IBARRA - Encuentro Temático Salud - Eje Sur - 26/9', new D(2026, 8, 24, 12, 0, 0), 90, 72, 30, 42,
+                7, 20, 20, 15, 10]);
+}
+
+function escenarioOrdenFichas() {
+  console.log('\n[16] fichas: opciones por puntaje y "¿por qué?" sobre la opción 1 (la 309); gemelo descartado; eje');
+  const E = crearEntorno({ config: { REVISAR_COMO_FICHAS: 'true' } });   // DIAS_ACTIVOS = null: fechas de agosto
+  const m = montar(E, 150, true, casosOrdenFichas);
+  const s = E.ejecutar('correrEnSeco');
+  ok(!s.error, 'en seco sin error' + (s.error ? ': ' + s.error.stack : ''));
+  const rev = m.ssI.hojas['REVISAR_MATCH'], h = rev.v[0];
+  const k = rev.v.findIndex(function (x) {
+    return x[0] === 'REUNIÓN' && x[h.indexOf('figura')] === 'Clara Mendieta' && /05\/08\/2026/.test(x[h.indexOf('fecha')]);
+  });
+  ok(k > 0, 'la ficha de la "309" (Clara Mendieta 05/08, sin barrio) está');
+  const ops = [];
+  for (let i = k + 1; i < rev.v.length && rev.v[i][0] !== 'REUNIÓN' && !/^RESUELTAS/.test(rev.v[i][0]); i++) {
+    if (/^Opción \d$/.test(rev.v[i][0])) ops.push(rev.v[i]);
+  }
+  const puntajes = ops.map(function (x) { return x[h.indexOf('puntaje')]; });
+  ok(ops.length >= 2 && puntajes.every(function (p, i) { return i === 0 || puntajes[i - 1] >= p; }),
+     'opciones por puntaje, de mayor a menor: ' + puntajes.join(' ≥ '));
+  ok(ops[0] && /07\/08 Recoleta/.test(ops[0][h.indexOf('evento / formulario')]) && ops[0][h.indexOf('confianza')] === 'alta',
+     'la opción 1 es el gemelo 07/08 Recoleta, confianza alta (' + (ops[0] ? ops[0][h.indexOf('evento / formulario')] : '-') + ')');
+  ok(ops.some(function (x) { return /12\/08 Constitución/.test(x[h.indexOf('evento / formulario')]) && x[h.indexOf('confianza')] === 'media'; }),
+     'el 12/08 Constitución va después, confianza media');
+  const porQue = rev.v[k + 1][1];
+  console.log('       ¿por qué? (309): ' + porQue);
+  ok(/^La opción 1, «[^»]*07\/08 Recoleta»/.test(porQue) && /ya tiene|ya la tiene/.test(porQue) && !/Constitución/.test(porQue),
+     '"¿por qué?" habla de la opción 1 (el 07/08 Recoleta, que tiene otra fila), no del 12/08');
+  const desc = rev.v.slice(k).find(function (x) { return x[0] === 'formulario descartado'; });
+  console.log('       contexto: ' + (desc ? desc[h.indexOf('ocupado por')] : '(no está)'));
+  ok(desc && /descartado: 0 inscriptos, cierra 04\/08; su gemelo tiene 49/.test(desc[h.indexOf('ocupado por')]),
+     'el contexto muestra el gemelo descartado por la regla 3');
+  ok(rev.v.every(function (x) { return x[h.indexOf('confianza')] === '' || ['alta', 'media', 'baja', 'confianza'].indexOf(x[h.indexOf('confianza')]) >= 0; }),
+     'la confianza, en palabras');
+
+  // El eje (paso 21 sobre una fila que se escribe): amarillo y "⚠️", sin cambiar el puntaje ni la decisión.
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const nS = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Sofía Ibarra'; }) + 1;
+  vm.runInContext('function __paso21b() { return fichasDePrueba([' + nS + ']); }', E.ctx);
+  const p = E.ejecutar('__paso21b');
+  const t = p.logs.join('\n');
+  ok(!p.error && /FICHA fila \d+ — escribiria/.test(t), 'la fila del eje se escribe igual (EJE_COMO_UBICACION apagado)');
+  ok(/\[!\] Eje Sur/.test(t) && /⚠️ Eje Sur, la reunión está en el Eje Oeste/.test(t), 'eje distinto: amarillo y "⚠️ Eje Sur, la reunión está en el Eje Oeste"');
+  ok(/\(puntaje 1, oculto\)/.test(t), 'el puntaje no cambia por el eje (1)');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1252,7 +1319,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
-  else if (process.argv.indexOf('--fichas') >= 0) escenarioFichas();
+  else if (process.argv.indexOf('--fichas') >= 0) { escenarioFichas(); escenarioOrdenFichas(); }
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1283,6 +1350,7 @@ escenarioPasoB();
 escenarioPorQueVacia();
 escenarioElegido();
 escenarioFichas();
+escenarioOrdenFichas();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

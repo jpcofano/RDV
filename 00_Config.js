@@ -483,6 +483,8 @@ const DIAS_ACTIVOS = 30;
 const REVISAR_COMO_FICHAS = false;
 /** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
 const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
+/** La confianza de una opción en la ficha, en palabras: "alta" ≥ UMBRAL_MATCH, "media" ≥ esto, "baja" debajo. */
+const CONFIANZA_MEDIA = 0.6;
 /** Las otras reuniones de la misma figura que se muestran como contexto en una ficha: a ± estos días. */
 const DIAS_CONTEXTO_FICHA = 7;
 

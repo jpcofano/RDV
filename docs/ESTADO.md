@@ -256,6 +256,55 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### r) 03/10 noche: lo que dejó el paso 21 de las 16:37 (antes de prender las fichas)
+
+**Resultado del paso 21 y del upsert** (03/10 16:37–16:39, sobre la copia): las frases y las líneas
+✅/❌ se entienden; **el corte de 30 días anda: 44 filas activas, 14 s, 3 fichas pendientes.** Cinco
+arreglos antes de prender `REVISAR_COMO_FICHAS`:
+
+1. **ERROR, el orden de las opciones.** Iba primero el que el sistema eligió o propone; en la 631 la
+   opción 1 tenía 0,81 y la 2 tenía 1, en la 309 0,63 y 1. Ahora **por puntaje, de mayor a menor, y a
+   igual puntaje por cercanía de fecha** (`listaOpcionesFila_`; el elegido sigue siempre entre las 3;
+   también en el formato viejo de REVISAR_MATCH y en el bloque "POR FILA" de EMPAREJAR). **"¿por qué?"
+   habla de la opción 1**; si el motivo es de otro formulario (reubicación, `multi_figura`, clave
+   repetida), lo nombra por su número y dice por qué la 1 no se escribe. En la 309 hablaba del 12/11
+   Constitución (0,63, lo que dejó la re-evaluación del invariante) cuando la mejor es el 07/11 Villa
+   Pueyrredón (1, a 2 días). Test [16] (la 309 sintética).
+2. **El eje, sólo para la persona**: "✅ Eje X" o "⚠️ Eje Sur, la reunión está en el Eje Oeste" (columna
+   I de `Comunas`), y la celda de ubicación en verde o **amarillo** si no hay barrio ni comuna que
+   comparar. **No cambia el puntaje ni la decisión** (`EJE_COMO_UBICACION` sigue en `false`). Test [16].
+3. **Confianza en palabras**: *alta* (≥ 0,88) / *media* (≥ `CONFIANZA_MEDIA` = 0,6) / *baja*. El número,
+   en una columna oculta (`puntaje`; ahora son 5 las ocultas). El paso 21 lo muestra en el log.
+4. **Contexto**: en gris, los formularios de la figura **descartados por la regla 3** a ±7 días
+   ("descartado: 0 inscriptos, cierra 04/11; su gemelo tiene 49"). Caso: la 309.
+5. **EMPAREJAR_MANUAL, "formularios sin candidato" 29 → 65**: era un bug mío del 03/10 tarde. El filtro
+   de formularios viejos estaba sólo en la lista de pares; **el bloque de huérfanos recorría todos los
+   formularios sin usar**, y al sacar las filas cerradas, los de esas reuniones quedaron sin pares y
+   pasaron a contar. Ahora un formulario de una reunión cerrada (su fecha antes del primer día activo
+   menos la tolerancia: 3 días con fecha en el nombre, 6 con el cierre; `formularioDeReunionActiva_`)
+   **no propone pares ni es huérfano**: se cuenta aparte. **Cuántos de los 65 eran de reuniones cerradas
+   lo dice el próximo log** (no puedo leer la planilla desde acá), en el bloque 3:
+   - `formularios sin candidato` → sólo los de reuniones activas;
+   - `formularios de reuniones CERRADAS sin usar, descartados` → todos los de reuniones cerradas;
+   - `de ésos, los que antes del 03/10 se contaban como "sin candidato"` → **ésta es la parte de los 65
+     que era de reuniones cerradas** (columna ventana | total, como el 65).
+   **Predicción:** `sin candidato` vuelve a **menos de 29** (sólo formularios de los últimos 30 días) y
+   `antes se contaban` da **≈ 65 − ese número** en la columna de la ventana. Test: [15].
+
+**Test en Node**: [15] actualizado (5 columnas ocultas, frase del margen chico, EMPAREJAR sin los
+formularios de reuniones cerradas) y [16] nuevo (`--fichas` corre los dos). Toda la suite en verde.
+
+**La secuencia, con la predicción anotada antes de correr:**
+
+1. `clasp push` (hecho con este commit).
+2. **`paso21_fichasDePrueba()`** (las mismas 5 filas). **Predicción:** en las 5 fichas, las opciones con
+   la confianza de mayor a menor; **en la 309, la opción 1 es el 07/11 Villa Pueyrredón** (confianza alta,
+   ocupado por la 315) y "¿por qué?" habla de ella; en la 631, la opción 1 es la de puntaje 1; la 309
+   muestra en gris el gemelo descartado. La solapa `REVISAR_FICHAS_PRUEBA`, regenerada: **la ve el
+   usuario antes de prender `REVISAR_COMO_FICHAS`.**
+3. `upsertDestino()` una vez (o `paso2_upsertEnSeco()`): el bloque 3 del log con los dos números de
+   EMPAREJAR del punto 5.
+
 ### q) 03/10 tarde: filas activas (`DIAS_ACTIVOS = 30`) y REVISAR_MATCH como fichas
 
 **Dos decisiones del usuario**, implementadas juntas porque se tocan (CLAUDE.md, decisión 13 y
@@ -267,8 +316,7 @@ toca. Dato del usuario que lo sostiene: **un formulario aparece en `B` recién c
 sus números son finales y se escriben apenas hay match (anotado en CLAUDE.md, sección 0).
 
 - **sólo filas activas**: la escritura del upsert (datos, traza, STATUS, Asistentes), REVISAR_MATCH,
-  SIN_MATCH, EMPAREJAR_MANUAL (y en éste sólo formularios desde hoy − 30 − 21 días: los de reuniones
-  cerradas llenaban el bloque "sin ningún candidato"), la lectura de "elegido" y el rango por defecto
+  SIN_MATCH, EMPAREJAR_MANUAL (sin los formularios de reuniones cerradas: ver 0.r, punto 5), la lectura de "elegido" y el rango por defecto
   del paso 20 (`PASO20_DESDE = null`);
 - **todo el historial, sin cambios**: el invariante (una fila vieja con `RDV_UID` sigue teniendo su
   formulario), los candidatos de `B` y el invariante del paso 16. Las "incompletas" y "sin

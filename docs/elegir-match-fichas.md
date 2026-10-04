@@ -19,17 +19,20 @@ reunión más reciente a la más vieja.
 
 | línea | qué tiene |
 |---|---|
-| **REUNIÓN** (fondo amarillo) | la reunión: fila del destino, figura, fecha, barrio y comuna, evento, inscriptos y asistentes cargados. Acá elegís |
-| **¿por qué?** | en una frase, por qué el sistema no decidió solo |
-| **Opción 1, 2, 3** | los formularios candidatos, del más probable al menos probable, en las mismas columnas que la reunión |
+| **REUNIÓN** (en negrita, fondo lila) | la reunión: fila del destino, figura, fecha, barrio y comuna, evento, inscriptos y asistentes cargados. Acá elegís |
+| **¿por qué?** | en una frase, por qué el sistema no decidió solo. Habla de la opción 1 |
+| **Opción 1, 2, 3** | los formularios candidatos, de la que más coincide a la que menos, en las mismas columnas que la reunión. La columna **confianza** dice cuánto coincide: *alta*, *media* o *baja* |
 | debajo de cada opción | qué coincide y qué no: ✅ coincide · ❌ no coincide · ⚪ no se puede comparar · ⚠️ ojo |
 | **otra reunión** (en gris) | otras reuniones de la misma figura a 7 días o menos, para tener contexto |
+| **formulario descartado** (en gris) | un formulario de la misma figura que el sistema no tiene en cuenta porque casi no tiene inscriptos y tiene un gemelo con el mismo nombre que sí |
 
 En las opciones, cada celda tiene color:
 
 - **verde**: coincide con la reunión (la figura, la fecha o la ubicación);
 - **rojo**: no coincide, o el formulario ya lo tiene otra reunión ("ocupado por");
-- **gris**: no se puede comparar (por ejemplo, el formulario no dice el barrio).
+- **gris**: no se puede comparar (por ejemplo, el formulario no dice el barrio);
+- **amarillo**: el formulario dice un eje (Norte, Sur, …) distinto del eje del barrio de la reunión. Es
+  sólo un aviso para vos: el sistema no lo usa para decidir.
 
 Los inscriptos de una opción son **los del formulario**. Los de la línea REUNIÓN son los que ya están
 cargados: sirven para que compares, pero el sistema no los usa para decidir.
