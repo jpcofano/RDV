@@ -61,7 +61,8 @@ const VENTANA_NINGUNO_DIAS = 7;
  */
 const LINEA_BASE_AZULES = {
   // Total: 02/10 12:44 antes de la primera escritura real; 6368 después de la corrida cortada (14:50).
-  'RVD JM-CM - ES': { barrio: null, total: 6368 },
+  // Barrio: 0, paso 16 del 04/10 00:20, antes de completar el historial (y 0 después: no puede subir).
+  'RVD JM-CM - ES': { barrio: 0, total: 6368 },
   // La copia de prueba (TEMPORAL 02/10): total del paso 16 de las 16:59, antes de escribir en ella.
   'AAA NOBORRAR':   { barrio: null, total: 6368 }
 };

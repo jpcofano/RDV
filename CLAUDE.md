@@ -3329,7 +3329,8 @@ origen", que llevan a trabajos completamente distintos.
 - **El activador del upsert corre cada 1 hora** (decisión del usuario, 02/10; reemplaza a "a las
   18:00, nunca antes de las 17" del 01/10). Preparado y **no instalado**: `99_Pipeline.js` tiene
   `upsertDiario` (respeta `DRY_RUN`), `instalarActivadorDiario_` y `borrarActivadorDiario_`; los
-  wrappers `fase7_…` de `99_Correr.js` están comentados. Antes de instalarlo, anotarlo en
+  wrappers son `paso23_listarActivadores` (sólo lectura: marca los del legado a BORRAR) y
+  `paso24_instalarActivadorCadaHora` (se niega si queda alguno del legado), desde el 04/10. Antes de instalarlo, anotarlo en
   `docs/triggers-legado.md`. **No se instala mientras `RDV_HOJA_DESTINO` apunte a la copia de
   prueba** (02/10): `instalarActivadorDiario_` se niega; primero se revierte y se verifica la
   escritura real (docs/ESTADO.md, 0.f).

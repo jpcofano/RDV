@@ -162,7 +162,7 @@ reportes, que se rehacen corriendo el paso 2.
 ### 8.2 Cómo volver atrás
 
 1. **Frenar**: `DRY_RUN = true` en `20_UpsertDestino.js` y `clasp push`. Si el activador diario
-   estuviera instalado, borrarlo (`fase7_borrarActivadorDiario`, ver `99_Pipeline.js`).
+   estuviera instalado, borrarlo (`paso24_borrarActivadorCadaHora`, ver `99_Pipeline.js`).
 2. **Restaurar el destino**, una de dos:
    - **por versión** (lo normal): en (1), **Archivo → Historial de versiones → Ver historial**,
      elegir `Antes de DRY_RUN false …` → **Restablecer esta versión**. Conserva el ID del archivo,

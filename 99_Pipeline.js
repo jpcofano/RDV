@@ -1,15 +1,17 @@
 /**
- * 99_Pipeline.js — el activador del upsert. **PREPARADO, NO INSTALADO** (02/10).
+ * 99_Pipeline.js — el activador del upsert. **LISTO PARA INSTALAR, NO INSTALADO** (04/10).
  *
- * Nada de este archivo corre solo. El activador no existe hasta que alguien llame a
- * `instalarActivadorDiario_()`, y eso no lo hace ningún código: las dos funciones de gestión
- * terminan en `_`, así que no aparecen en el desplegable del editor. Para usarlas, descomentar los
- * wrappers `fase7_…` al final de `99_Correr.js` (y volver a comentarlos después).
+ * Nada de este archivo corre solo. El activador no existe hasta que el usuario corra
+ * `paso24_instalarActivadorCadaHora()` (99_Correr.js), cuando haya confirmado que el legado está
+ * apagado. La instalación **se niega** si el destino no es el real o si queda algún activador del legado
+ * marcado BORRAR (`activadoresABorrar_`, diagnostico/14_activadores.js; listarlos: paso 23).
  *
  * --- Cuándo corre (02/10, decisión del usuario) ---
  * **Cada 1 hora**, no una vez a las 18:00. Ya no hay restricción de "no antes de las 17": lo que
  * protege las filas del día es la regla `pendiente_barrio` del upsert (00_Config.js): una fila de
- * hoy o de ayer sin barrio en RDV no se escribe y se reevalúa en la corrida siguiente.
+ * hoy o de ayer sin barrio en RDV no se escribe y se reevalúa en la corrida siguiente. Así se resuelven
+ * los formularios "Comuna 1 Norte/Sur" de una reunión del día (regla 10): cuando el equipo carga los
+ * barrios, la subzona decide en la corrida siguiente.
  *
  * --- Qué hace cuando corre ---
  * `upsertDiario` llama a `upsertDestino()`, que **respeta `DRY_RUN`** (con `true` es una corrida en
@@ -36,6 +38,12 @@ function instalarActivadorDiario_() {
   if (RDV_HOJA_DESTINO !== RDV_HOJA_DESTINO_REAL) {
     throw new Error('RDV_HOJA_DESTINO apunta a "' + RDV_HOJA_DESTINO + '", no al destino real. ' +
                     'El activador no se instala hasta revertirla y verificar la escritura real.');
+  }
+  // 04/10: no se instala con activadores del legado vivos (paso 23 los lista).
+  const legado = activadoresABorrar_();
+  if (legado.length) {
+    throw new Error('Quedan activadores del legado que hay que borrar antes: ' +
+                    legado.map(function (x) { return x.fn; }).join(', ') + '. Ver paso23_listarActivadores().');
   }
   const ya = _activadoresDiarios_();
   if (ya.length) {

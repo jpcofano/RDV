@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-03 (destino: el real, "RVD JM-CM - ES")
+# Estado de la migración — al 2026-10-04 (destino: el real, "RVD JM-CM - ES"; migración hecha)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -10,7 +10,7 @@ Rama: **`migracion`**. `main` queda intacto como referencia.
 
 ## 0. Prueba de escritura sobre la copia "AAA NOBORRAR" (02/10–03/10) — TERMINADA
 
-> ✅ **03/10: `RDV_HOJA_DESTINO` volvió al destino real (`RVD JM-CM - ES`).** La secuencia en el real, con la
+> ✅ **03/10: `RDV_HOJA_DESTINO` volvió al destino real (`RVD JM-CM - ES`).** **04/10: migración al real hecha (0.t).** La secuencia en el real, con la
 > predicción: **0.s**. Lo que sigue en 0.a–0.r es la historia de la prueba sobre la copia.
 >
 > (Antes: `RDV_HOJA_DESTINO` apuntaba a la copia, no al destino real. Ver f) para volver.)
@@ -258,6 +258,62 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### t) 04/10: migración al real — HECHA. Lo que falta: los activadores
+
+**Migración al real (04/10 00:20–00:21): OK, coincide con la predicción de 0.s.**
+
+| | resultado |
+|---|---|
+| antes (paso 16) | Barrio con color del sistema **0**, **123** con `RDV_UID`, **1** incompleta (la fila 6) |
+| paso 1 | `form_clave` agregada (columna 47) |
+| **paso 22** | **757 filas**, **634 uids nuevos** (123 ya estaban), **781 celdas de dato**, **0 pisadas**, 14 s de escritura (33 s en total), `HISTORICO_SIN_RESOLVER` **50**, **3 fichas** |
+| paso 16 después | **OK**: invariante 0, Barrio 0, **0 incompletas en todo el destino** |
+| paso 20 (activas) | **f = 0** |
+
+**Línea de base del real anotada**: `LINEA_BASE_AZULES['RVD JM-CM - ES'] = { barrio: 0, … }` (`00_Config.js`).
+Barrio no puede subir de 0.
+
+**Lo que sigue de la secuencia de 0.s:** el 7 sobre todo el destino (`PASO20_DESDE = 2`, si se quiere: el de
+las activas ya dio f = 0), el 8 (`upsertDestino()` normal: no escribe nada), el 9 (paso 19, sin "Semaforo
+politico") y el 10, **los activadores**:
+
+1. **`paso23_listarActivadores()`** (`diagnostico/14_activadores.js`, **sólo lectura**): lista los
+   activadores del proyecto —**el legado está en el mismo proyecto de Apps Script** (mismo scriptId)— y
+   marca cada uno **BORRAR / MANTENER / AGENDA / NUEVO / DESCONOCIDO** según docs/triggers-legado.md (la
+   lista exacta de lo que no tiene que tener activador está ahí, sección "04/10"). **Límite:**
+   `getProjectTriggers()` ve sólo los de la cuenta que lo corre; los de otra cuenta, en el editor →
+   Activadores (columna "Propietario"). Un script atado a otra planilla es otro proyecto: no se puede
+   listar desde acá. **Predicción:** ninguno a BORRAR de esta cuenta (los tres del legado se apagaron el
+   24/09); `syncAgendaSheetInBaseFromAgenda_2` como MANTENER, si es de esta cuenta.
+2. Borrar en el editor lo que marque BORRAR (si hay algo).
+3. **`paso24_instalarActivadorCadaHora()`** (**lo corre el usuario** cuando confirme que el legado está
+   apagado): crea UN activador de tiempo, `upsertDiario` cada 1 hora (respeta `DRY_RUN`; `LockService` y
+   `REGISTRO_UPSERT` ya están en el upsert). **Se niega** si el destino no es el real o si el paso 23
+   marca alguno a BORRAR; si ya existe, no crea otro. Las filas de hoy o de ayer sin barrio quedan
+   `pendiente_barrio` y se reevalúan en la corrida siguiente (con los barrios cargados, la subzona de la
+   Comuna 1 —regla 10— decide). Después: anotarlo en docs/triggers-legado.md (fecha, dueño).
+   `paso24_borrarActivadorCadaHora()` lo saca (sólo ése).
+
+**Test en Node** [18]: el paso 23 marca a BORRAR el legado y una función que no existe, Agenda como
+MANTENER; el paso 24 se niega con legado vivo o con el destino en la copia, instala uno solo y no
+duplica; borrarlo no toca los demás. Toda la suite en verde.
+
+#### Pendientes al 04/10
+
+- **Agenda**: otro proceso (Fase 8). Las columnas de agenda del destino (`Figura`, `Barrio`, `FECHA`,
+  `HORA`, `Dirección`, `EVENTO`) no las escribe el sistema.
+- **Eliminar B2**: el sistema ya no la usa (calcula desde `B`); falta sacar la solapa y el código legado que
+  la escribe (`Sync B to B2.js`).
+- **Borrar la solapa "AAA NOBORRAR"** (la copia de prueba) y su entrada en `LINEA_BASE_AZULES`.
+- **Consultas al equipo** (1a):
+  - **"Otros"**: ¿a qué canal va? Mientras tanto, Otros → Difusión (como el legado);
+  - **`Jorge Macri - Genérico 2026`** (774 inscriptos): ¿un formulario genérico tiene que matchear con
+    alguna reunión?;
+  - **Mraida Comuna 3, 20/7 y 22/7**: sin fila, los dos con más de 100 inscriptos;
+  - **Flores 29/1 contra CCV Versalles 29/1**: ¿una reunión o dos?;
+  - **1 a 1 Villa Riachuelo 11/8 contra Parque Avellaneda 12/8**: ¿reubicación?;
+  - **Boedo**: el equipo puso "Sur | Centro" en el eje; quedó "Sur". ¿Va con los dos?
 
 ### s) 03/10 22:00: fichas aprobadas y prendidas; paso 22 (completar el historial) y la secuencia en el real
 

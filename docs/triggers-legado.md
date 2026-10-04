@@ -13,6 +13,39 @@ dispararon de verdad en el último mes y cuáles están muertos.
 > ⚠️ Fase 0 es sólo inventario. **No dar de baja nada todavía.** Las bajas son Fase 7,
 > recién cuando el pipeline nuevo esté corriendo.
 
+## 04/10: qué puede tener activador y qué no (antes de instalar el del pipeline)
+
+**El legado y el código nuevo están en el MISMO proyecto de Apps Script** (el scriptId de `.clasp.json`
+es el mismo en `main` y en `migracion`): los activadores del legado, si quedan, están acá.
+`paso23_listarActivadores()` (`diagnostico/14_activadores.js`, sólo lectura) los lista y los marca con
+esta tabla. Ve sólo los de la cuenta que lo corre: los de otra cuenta, en el editor → Activadores
+(columna "Propietario"). Un script atado a otra planilla es otro proyecto: mirarlo en su editor.
+
+**No tienen que tener activador (BORRAR si aparecen):**
+
+| función | por qué |
+|---|---|
+| `runFullPipelineWithDelays` | orquestador del pipeline legado (`Completo.js`) |
+| `runFullPipelineWithDelays2` | archivado: no existe |
+| `syncA_to_A2_upsert` | paso 1 del legado |
+| `syncB_to_B2` | paso 2 del legado; B2 se elimina |
+| `normalizeBarriosToBarrioN_A2B2` | paso 3 del legado (archivado) |
+| `upsertBaseFinal_A2_B2`, `runUpsertAndNormalize` | paso 4 del legado |
+| `syncBaseFinal_ParaRevisar_y_RVD` | paso 5 del legado: **escribe `RVD JM-CM - ES`** sin `setSiDelSistema_` |
+| `syncManualCorrections_B2` | archivado: escribía `BarrioN` en B2 |
+| `syncBarriosFromBaseToAjusteRDV` | apagado desde el 24/09; alimentaba el circuito de B2. Antes de reactivarlo, saber si alguien usa "Ajuste Formularios RDV" |
+| `marcarRevisadaEnOrden` | archivado: reescribe y **ordena** el destino |
+| `backfillEtarios_B_to_B2`, `backfillEtarios_B2_to_BaseFinal`, `compareA2_vs_B2`, `validateConsistencyA2B2_vs_BaseFinal`, `auditClaves_Final_A2_B2`, `testKeys_A2_B2_toSheet` | diagnósticos de época (archivados) |
+| `fillFechaC_into_A2`, `splitPersonaBarrioFecha` | sueltos (archivados) |
+| cualquier función que ya no exista en el proyecto | falla en cada disparo |
+
+**Puede seguir:** `syncAgendaSheetInBaseFromAgenda_2` (Agenda: arma la solapa espejo; no escribe el
+destino). **Agenda a mano** (no bloquean, pero un activador ahí no es del pipeline): `agenda_syncFromEmails`,
+`agenda_pushReadyToBaseFinal` (escribe `Para Revisar`, el staging). **El del pipeline:** `upsertDiario`.
+
+**El activador cada hora** se instala con `paso24_instalarActivadorCadaHora()` y **se niega** si el destino
+no es el real o si `paso23` marca alguno a BORRAR. Se borra con `paso24_borrarActivadorCadaHora()`.
+
 ## Activadores
 
 Eran cuatro. **Al 24/09/2026 queda uno activo.**
@@ -32,8 +65,8 @@ Falta completar tipo, frecuencia y dueño de cada uno.
 |---|---|---|---|---|---|
 | `upsertDiario` | `99_Pipeline.js` | **NO INSTALADO** | tiempo | **cada 1 hora** (02/10; antes se pensó a las 18:00). Las filas del día sin barrio quedan `pendiente_barrio` | |
 
-Se instala con `instalarActivadorDiario_()` y se borra con `borrarActivadorDiario_()` (wrappers
-`fase7_…` comentados en `99_Correr.js`). `upsertDiario` respeta `DRY_RUN`. Al instalarlo, pasar
+Se instala con `paso24_instalarActivadorCadaHora()` y se borra con `paso24_borrarActivadorCadaHora()`
+(`99_Correr.js`; listo desde el 04/10). `upsertDiario` respeta `DRY_RUN`. Al instalarlo, pasar
 esta fila a "ACTIVO" con la fecha y el dueño.
 
 > **El pipeline principal está frenado a propósito.** No es una falla: es un estado elegido

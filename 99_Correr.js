@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 04/10: MIGRACIÓN AL REAL HECHA (ESTADO 0.t): paso 22 OK, paso 16 OK, paso 20 f = 0. Falta:
+ *      paso23_listarActivadores() (sólo lectura) → borrar lo que marque BORRAR → paso24_instalarActivadorCadaHora()
+ *      cuando el usuario confirme que el legado está apagado.
  *  >>> 03/10: RDV_HOJA_DESTINO VOLVIÓ AL REAL ("RVD JM-CM - ES"). Sigue la secuencia del real, desde el
  *      paso 2 (abajo, "Al pasar al real"; ESTADO 0.s). Lo que sigue de 02/10 es historia de la copia.
  *  02/10: RDV_HOJA_DESTINO apuntaba a la copia "AAA NOBORRAR" (00_Config.js).
@@ -130,7 +133,7 @@
  *                                                motivo, con la 1ª opción y su puntaje.
  *   paso16_verificarEscritura() → verificarEscritura()   sólo log: después de escribir (y antes,
  *                                                para la línea de base de azules).
- *   (fase7_… — el activador del upsert, cada 1 hora: PREPARADO Y COMENTADO, ver 99_Pipeline.js.)
+ *   (paso23_listarActivadores / paso24_instalarActivadorCadaHora — los activadores, ver 99_Pipeline.js.)
  *
  *  Los pasos 4 y 5 ya corrieron y cerraron su pregunta; están abajo, en YA CORRIDOS:
  *   rehacer_medirFiguraEnPrefijo()  (25/09 20:18) EVITA 0 | 0, PIERDE 18 | 41 → la figura se
@@ -408,25 +411,33 @@ function paso19_repintarAzulViejo() {
 }
 
 // =============================================================================================
-//  FASE 7 — el activador del upsert, cada 1 hora. PREPARADO, NO INSTALADO (02/10).
-//  Está comentado a propósito: para instalarlo, descomentar el wrapper, correrlo UNA vez y volver
-//  a comentarlo. Antes, anotarlo en docs/triggers-legado.md. Ver 99_Pipeline.js.
+//  FASE 7 — los activadores (04/10).
+//    paso 23: listar los instalados y marcar los del legado a BORRAR (sólo lectura).
+//    paso 24: instalar el del upsert, cada 1 hora. LISTO, NO INSTALADO: lo corre el usuario cuando
+//             confirme que el legado está apagado (se niega si el paso 23 marca alguno a BORRAR).
+//  Después de instalarlo: anotarlo en docs/triggers-legado.md (fecha, dueño). Ver 99_Pipeline.js.
 // =============================================================================================
-/*
-function fase7_instalarActivadorDiario() {
-  _anunciar_('fase 7 — instalar el activador (cada 1 hora)', 'instalarActivadorDiario_()  [99_Pipeline.js]',
-             'crea UN activador de tiempo que llama a upsertDiario cada 1 hora',
+function paso23_listarActivadores() {
+  _anunciar_('paso 23 — listar los activadores', 'listarActivadores()  [diagnostico/14_activadores.js]',
+             'NO: sólo lee (no borra ni crea nada)',
+             'el log: cada activador con BORRAR / MANTENER / NUEVO / DESCONOCIDO, y el resumen');
+  return listarActivadores();
+}
+
+function paso24_instalarActivadorCadaHora() {
+  _anunciar_('paso 24 — instalar el activador (cada ' + ACTIVADOR_CADA_HORAS + ' hora)', 'instalarActivadorDiario_()  [99_Pipeline.js]',
+             'crea UN activador de tiempo que llama a ' + ACTIVADOR_DIARIO_FUNCION + ' cada ' + ACTIVADOR_CADA_HORAS +
+             ' hora; se niega si el destino no es el real o si queda un activador del legado',
              'el log dice si lo creó o si ya existía');
   return instalarActivadorDiario_();
 }
 
-function fase7_borrarActivadorDiario() {
-  _anunciar_('fase 7 — borrar el activador diario', 'borrarActivadorDiario_()  [99_Pipeline.js]',
-             'borra los activadores que llaman a upsertDiario; ningún otro',
+function paso24_borrarActivadorCadaHora() {
+  _anunciar_('paso 24 — borrar el activador del upsert', 'borrarActivadorDiario_()  [99_Pipeline.js]',
+             'borra los activadores que llaman a ' + ACTIVADOR_DIARIO_FUNCION + '; ningún otro',
              'el log dice cuántos borró');
   return borrarActivadorDiario_();
 }
-*/
 
 // =============================================================================================
 //  YA CORRIDOS — dejar por si hace falta rehacerlos. No son parte de la secuencia de ahora.

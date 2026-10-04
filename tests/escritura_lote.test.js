@@ -31,7 +31,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
-                  'diagnostico/11_repintar.js'];
+                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -43,7 +43,7 @@ const CALIBRACION = { k: null };
 function crearEntorno(opts) {
   opts = opts || {};
   const COSTO = Object.assign({}, COSTO_BASE, opts.costo || {});
-  const E = { reloj: new Date(2026, 9, 2, 15, 0, 0).getTime(), inicio: 0, cola: 0, colaCeldas: 0,
+  const E = { reloj: new Date(2026, 9, 2, 15, 0, 0).getTime(), inicio: 0, cola: 0, colaCeldas: 0, activadores: [],
               logs: [], props: {}, stats: { lecturas: 0, escrituras: 0 }, leyoB: false, specs: {} };
 
   class FakeDate extends Date {
@@ -233,6 +233,22 @@ function crearEntorno(opts) {
         return b;
       },
       flush: function () { vigilar(); vaciar(); }
+    },
+    // Activadores (04/10): E.activadores es la lista de nombres de función con activador.
+    ScriptApp: {
+      getProjectTriggers: function () {
+        return E.activadores.map(function (fn, i) {
+          return { getHandlerFunction: function () { return fn; }, getEventType: function () { return 'CLOCK'; },
+                   getTriggerSource: function () { return 'CLOCK'; }, getTriggerSourceId: function () { return ''; },
+                   getUniqueId: function () { return 't' + i; }, _fn: fn };
+        });
+      },
+      newTrigger: function (fn) {
+        const b = { timeBased: function () { return b; }, everyHours: function () { return b; },
+                    create: function () { E.activadores.push(fn); return {}; } };
+        return b;
+      },
+      deleteTrigger: function (t) { const i = E.activadores.indexOf(t._fn); if (i >= 0) E.activadores.splice(i, 1); }
     },
     LockService: { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } },
     PropertiesService: { getScriptProperties: function () {
@@ -1360,6 +1376,34 @@ function escenarioCompletarHistorial() {
   ok(sinUuids(mC.ssD.hojas['AAA NOBORRAR']) === sinUuids(mA.ssD.hojas['AAA NOBORRAR']), 'y termina igual que de una sola vez');
 }
 
+function escenarioActivadores() {
+  console.log('\n[18] paso 23 (listar activadores) y la guarda del paso 24 (instalar cada hora)');
+  const E = crearEntorno({ config: { RDV_HOJA_DESTINO: "'RVD JM-CM - ES'" } });
+  montar(E, 50, false);
+  E.activadores = ['runFullPipelineWithDelays', 'syncAgendaSheetInBaseFromAgenda_2', 'funcionQueYaNoExiste'];
+  const r = E.ejecutar('listarActivadores');
+  ok(!r.error, 'paso 23 sin error' + (r.error ? ': ' + r.error.stack : ''));
+  const x = r.resultado;
+  ok(x.borrar.join('|') === 'runFullPipelineWithDelays|funcionQueYaNoExiste' && !x.nuevoInstalado,
+     'marca a BORRAR el legado y la función que no existe; Agenda se mantiene: ' + x.borrar.join(', '));
+  ok(/\[MANTENER\] syncAgendaSheetInBaseFromAgenda_2/.test(r.logs.join('\n')), 'el espejo de Agenda: MANTENER');
+  const i1 = E.ejecutar('instalarActivadorDiario_');
+  ok(i1.error && /activadores del legado/.test(i1.error.message) && E.activadores.indexOf('upsertDiario') < 0,
+     'paso 24 se niega con activadores del legado vivos');
+  E.activadores = ['syncAgendaSheetInBaseFromAgenda_2'];
+  const i2 = E.ejecutar('instalarActivadorDiario_');
+  ok(!i2.error && E.activadores.filter(function (f) { return f === 'upsertDiario'; }).length === 1, 'sin legado: instala UNO');
+  E.ejecutar('instalarActivadorDiario_');
+  ok(E.activadores.filter(function (f) { return f === 'upsertDiario'; }).length === 1, 'otra vez: no crea un segundo');
+  ok(E.ejecutar('listarActivadores').resultado.nuevoInstalado, 'paso 23: el del pipeline, INSTALADO');
+  E.ejecutar('borrarActivadorDiario_');
+  ok(E.activadores.join('|') === 'syncAgendaSheetInBaseFromAgenda_2', 'borrarlo no toca los demás');
+  const E2 = crearEntorno();   // el destino apunta a la copia (como en los demás escenarios)
+  montar(E2, 50, true);
+  const i3 = E2.ejecutar('instalarActivadorDiario_');
+  ok(i3.error && /no al destino real/.test(i3.error.message), 'con el destino en la copia, tampoco se instala');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1393,12 +1437,13 @@ const fuenteVieja = conViejo ? function (f) {
 const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
-    process.argv.indexOf('--historial') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
   else if (process.argv.indexOf('--fichas') >= 0) { escenarioFichas(); escenarioOrdenFichas(); }
   else if (process.argv.indexOf('--historial') >= 0) escenarioCompletarHistorial();
+  else if (process.argv.indexOf('--activadores') >= 0) escenarioActivadores();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1431,6 +1476,7 @@ escenarioElegido();
 escenarioFichas();
 escenarioOrdenFichas();
 escenarioCompletarHistorial();
+escenarioActivadores();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
