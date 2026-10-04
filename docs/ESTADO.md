@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-03
+# Estado de la migración — al 2026-10-03 (destino: el real, "RVD JM-CM - ES")
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -8,9 +8,12 @@ Rama: **`migracion`**. `main` queda intacto como referencia.
 
 ---
 
-## 0. Prueba de escritura sobre la copia "AAA NOBORRAR" (02/10) — EN CURSO
+## 0. Prueba de escritura sobre la copia "AAA NOBORRAR" (02/10–03/10) — TERMINADA
 
-> ⚠️ **`RDV_HOJA_DESTINO` apunta a la copia, no al destino real. TEMPORAL.** Ver f) para volver.
+> ✅ **03/10: `RDV_HOJA_DESTINO` volvió al destino real (`RVD JM-CM - ES`).** La secuencia en el real, con la
+> predicción: **0.s**. Lo que sigue en 0.a–0.r es la historia de la prueba sobre la copia.
+>
+> (Antes: `RDV_HOJA_DESTINO` apuntaba a la copia, no al destino real. Ver f) para volver.)
 > El activador **no se instala** hasta volver y verificar la escritura real
 > (`instalarActivadorDiario_` se niega mientras apunte a la copia).
 
@@ -292,12 +295,17 @@ entradas (destino, `B`, figuras, `Comunas`) cambió.
 4. **Paso 19 sin "Semaforo politico"**: `COLUMNAS_NO_REPINTAR` (`00_Config.js`); el log dice cuántas
    celdas de esa columna dejó sin repintar.
 
-**`RDV_HOJA_DESTINO` sigue en `'AAA NOBORRAR'`: no se cambia hasta que el usuario lo confirme.**
+**Paso 22 sobre la copia (03/10 22:15), como se esperaba:** 0 celdas escritas (la copia ya estaba
+completa), `HISTORICO_SIN_RESOLVER` con **50 filas**, **3 fichas**, EMPAREJAR con **1 formulario sin
+candidato** (y **64 de reuniones cerradas, descartados**: los que antes sumaban al 65), **15 s**.
+`COLUMNAS_NO_REPINTAR` con "Semaforo politico": correcto.
+
+**Confirmado por el usuario: `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` (commit del 03/10, push y clasp push).**
 
 **La secuencia en el real, con la predicción anotada ANTES de correr:**
 
-1. `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` en `00_Config.js`, commit, `git push` y `clasp push`. **(Espera
-   la confirmación del usuario.)**
+1. ~~`RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` en `00_Config.js`, commit, `git push` y `clasp push`.~~ **Hecho
+   el 03/10**, con la confirmación del usuario. **Lo próximo es el paso 2.**
 2. El usuario le pone nombre a la versión del destino (Archivo → Historial de versiones).
 3. **`paso16_verificarEscritura()`** → la línea de base de Barrio del real: anotarla en
    `LINEA_BASE_AZULES['RVD JM-CM - ES'].barrio`.

@@ -20,12 +20,11 @@ const RDV_SS_AGENDA     = '1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U'; // (4)
  * La solapa que el upsert, los pasos y los diagnósticos leen y escriben como destino. **Es la única
  * referencia**: nada lleva el nombre escrito a mano. El log de cada paso dice a cuál apunta.
  *
- * TEMPORAL 02/10 — revertir a 'RVD JM-CM - ES' (RDV_HOJA_DESTINO_REAL). Apunta a la copia
- * "AAA NOBORRAR" para probar la escritura en lote mientras el equipo trabaja en la solapa real
- * (docs/ESTADO.md, "Prueba de escritura sobre la copia"). Para volver: cambiar el valor, commit,
- * git push y clasp push. El activador no se instala hasta volver y verificar la escritura real.
+ * Del 02/10 al 03/10 apuntó a la copia "AAA NOBORRAR" para probar la escritura en lote mientras el
+ * equipo trabajaba en la solapa real (docs/ESTADO.md, sección 0). **Volvió al real el 03/10**, confirmado
+ * por el usuario después del paso 22 sobre la copia (22:15). Secuencia en el real: ESTADO 0.s.
  */
-const RDV_HOJA_DESTINO   = 'AAA NOBORRAR';     // TEMPORAL 02/10 — revertir a 'RVD JM-CM - ES'
+const RDV_HOJA_DESTINO   = 'RVD JM-CM - ES';   // el destino real (03/10; antes, la copia 'AAA NOBORRAR')
 /**
  * El destino real. Sólo para la guarda (`verificarHojaDestino_`): si RDV_HOJA_DESTINO apunta a otra
  * solapa, sus encabezados tienen que ser exactamente los de ésta; si no, el upsert no corre.

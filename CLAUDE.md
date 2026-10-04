@@ -182,8 +182,9 @@ antes de que nadie haya cargado nada en ellas.
 Solapas que importan:
 
 - **(1) `RVD JM-CM - ES`** → destino final, 41 columnas, 802 filas con datos. **Es el único destino.**
-- **(1) `AAA NOBORRAR`** → copia temporal del destino para pruebas de escritura (02/10). Se borra al
-  terminar. Mientras dure, `RDV_HOJA_DESTINO` (`00_Config.js`) apunta acá (docs/ESTADO.md, sección 0).
+- **(1) `AAA NOBORRAR`** → copia del destino para las pruebas de escritura (02/10–03/10). Desde el 03/10
+  `RDV_HOJA_DESTINO` (`00_Config.js`) volvió a `RVD JM-CM - ES`; la copia queda como referencia hasta
+  que se borre (docs/ESTADO.md, 0.f y 0.s).
 - **(1) `RDV CONJUNTO`** → origen de asistentes (12 col).
 - **(1) `Comunas`** → tabla de lookup, A:H. Estable, no cambia.
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4

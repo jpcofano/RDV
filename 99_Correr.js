@@ -17,7 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  !!! 02/10: RDV_HOJA_DESTINO APUNTA A LA COPIA "AAA NOBORRAR" (TEMPORAL, 00_Config.js). !!!
+ *  >>> 03/10: RDV_HOJA_DESTINO VOLVIÓ AL REAL ("RVD JM-CM - ES"). Sigue la secuencia del real, desde el
+ *      paso 2 (abajo, "Al pasar al real"; ESTADO 0.s). Lo que sigue de 02/10 es historia de la copia.
+ *  02/10: RDV_HOJA_DESTINO apuntaba a la copia "AAA NOBORRAR" (00_Config.js).
  *      La primera escritura real (14:50) se cortó a los 6 minutos; la escritura se rehízo en lote
  *      y se prueba sobre la copia (el equipo trabaja en la real). Secuencia y predicción:
  *      docs/ESTADO.md, sección 0. La 309 ya está deshecha y form_clave agregada (18:14). Con el
@@ -42,8 +44,8 @@
  *      EMPAREJAR sin los formularios de reuniones cerradas. Otra vez paso21_fichasDePrueba() y mirar
  *      REVISAR_FICHAS_PRUEBA ANTES de prender REVISAR_COMO_FICHAS.
  *  03/10 21:51: fichas APROBADAS y PRENDIDAS (REVISAR_COMO_FICHAS = true). paso21_borrarSolapaDePrueba().
- *      Al pasar al real (ESTADO 0.s, con la predicción; RDV_HOJA_DESTINO NO se cambia sin confirmación):
- *        1. RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push   2. nombre a la versión del destino
+ *      Al pasar al real (ESTADO 0.s, con la predicción):
+ *        1. RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push  [HECHO 03/10]   2. nombre a la versión del destino
  *        3. paso16_verificarEscritura()  (línea de base de Barrio)   4. paso1_columnasDeTraza()
  *        5. paso22_completarHistorial()  (repetir si se corta; una sola vez, todo el historial)
  *        6. paso16_verificarEscritura()  → OK, 0 incompletas en TODO el destino

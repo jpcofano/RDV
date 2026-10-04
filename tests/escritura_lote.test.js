@@ -248,13 +248,15 @@ function crearEntorno(opts) {
    * filas): los escenarios de antes del 03/10 usan fechas de 2025 y 2026 contra un "hoy" del 02/10/2026.
    * El escenario [15] pone DIAS_ACTIVOS = 30 y las fichas.
    */
-  const config = Object.assign({ DIAS_ACTIVOS: 'null' }, opts.config || {});
+  // RDV_HOJA_DESTINO: los escenarios escriben en la copia simulada y verifican que la real no se toque (desde el
+  // 03/10 la constante apunta al real).
+  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'" }, opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;
     try { s = fuente(f); } catch (e) { return; }   // el código viejo no tiene todos los archivos
     if (f === '00_Config.js') {
       Object.keys(config).forEach(function (k) {
-        s = s.replace(new RegExp('^const ' + k + ' = .*', 'm'), function () { return 'const ' + k + ' = ' + config[k] + ';'; });
+        s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), function () { return 'const ' + k + ' = ' + config[k] + ';'; });
       });
     }
     vm.runInContext(s, ctx, { filename: f });
