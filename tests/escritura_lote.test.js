@@ -1003,7 +1003,8 @@ function casosElegido(E, datos) {
 
 function escenarioElegido() {
   console.log('\n[14] "elegido" (regla 4): válida, choque con el invariante, "ninguno", solapa regenerada');
-  const E = crearEntorno();
+  // REVISAR_MATCH en el formato de una línea por fila (las fichas tienen su escenario, [15] y [16]).
+  const E = crearEntorno({ config: { REVISAR_COMO_FICHAS: 'false' } });
   const m = montar(E, 150, true, casosElegido);
   const hoja = m.ssD.hojas['AAA NOBORRAR'];
   const filaDe = function (fig, d, mes) {
@@ -1281,6 +1282,80 @@ function escenarioOrdenFichas() {
   ok(!p.error && /FICHA fila \d+ — escribiria/.test(t), 'la fila del eje se escribe igual (EJE_COMO_UBICACION apagado)');
   ok(/\[!\] Eje Sur/.test(t) && /⚠️ Eje Sur, la reunión está en el Eje Oeste/.test(t), 'eje distinto: amarillo y "⚠️ Eje Sur, la reunión está en el Eje Oeste"');
   ok(/\(puntaje 1, oculto\)/.test(t), 'el puntaje no cambia por el eje (1)');
+  ok(!/⚪ ubicación \(el formulario dice Eje/.test(t), 'con el eje a la vista, no se repite "⚪ ubicación (el formulario dice Eje …)"');
+}
+
+/** La hoja sin los RDV_UID (son uuids al azar): sólo si hay o no. Para comparar dos corridas. */
+function sinUuids(h) {
+  return JSON.stringify({ v: h.v.map(function (r, i) {
+    return r.map(function (x, k) { return i > 0 && k === colD('RDV_UID') ? !!x : (x instanceof Date ? x.getTime() : x); });
+  }), bg: h.bg });
+}
+
+function escenarioCompletarHistorial() {
+  console.log('\n[17] paso 22: completar el historial una vez (sin DIAS_ACTIVOS), después el modo normal');
+  // A: lo que escribe hoy el upsert sin límite (DIAS_ACTIVOS = null), como en la copia.
+  const EA = crearEntorno();
+  const mA = montar(EA, 300, true, casosFichas);
+  const rA = EA.ejecutar('upsertDestino');
+  ok(!rA.error, 'referencia (DIAS_ACTIVOS = null) sin error');
+  // B: DIAS_ACTIVOS = 30 y el paso 22.
+  const EB = crearEntorno({ config: { DIAS_ACTIVOS: '30' } });
+  const mB = montar(EB, 300, true, casosFichas);
+  const hB = mB.ssD.hojas['AAA NOBORRAR'];
+  const ini = new EB.Date(2026, 8, 2, 12, 0, 0);
+  const antes = foto(hB);
+  const rB = EB.ejecutar('completarHistorial');
+  ok(!rB.error, 'paso 22 sin error' + (rB.error ? ': ' + rB.error.stack : ''));
+  const logB = rB.logs.join('\n');
+  ok(/TODO EL HISTORIAL/.test(logB) && /filas activas: \d+ \(todo el historial\)/.test(logB), 'el log dice que es sobre todo el historial');
+  ok(sinUuids(hB) === sinUuids(mA.ssD.hojas['AAA NOBORRAR']), 'escribe lo mismo que el upsert sin límite (salvo los uuids)');
+  let viejasEscritas = 0, viejasRealizadas = 0;
+  for (let i = 1; i < hB.v.length; i++) {
+    const f = antes.v[i][colD('FECHA')];
+    if (!(f instanceof Date) || f >= ini) continue;
+    if (hB.v[i][colD('RDV_UID')] && !antes.v[i][colD('RDV_UID')]) viejasEscritas++;
+    if (antes.v[i][colD('STATUS REUNIÓN')] === 'en agenda' && hB.v[i][colD('STATUS REUNIÓN')] === 'Realizada') viejasRealizadas++;
+  }
+  ok(viejasEscritas > 200 && viejasRealizadas > 0, 'completa las filas viejas: ' + viejasEscritas + ' con RDV_UID, ' +
+     viejasRealizadas + ' en agenda → Realizada');
+  const a = auditar(antes, hB);
+  ok(a.pisadas === 0 && a.sinAzul === 0 && a.manualesODerivadas === 0, '0 pisadas, todo en el color del sistema, nada en Barrio ni derivadas');
+  const reg = mB.ssI.hojas['REGISTRO_UPSERT'];
+  ok(reg && reg.v[reg.v.length - 1][reg.v[0].indexOf('alcance')] === 'historial (paso 22)', 'REGISTRO_UPSERT: alcance "historial (paso 22)"');
+  // Lo viejo sin resolver: a HISTORICO_SIN_RESOLVER, no a las fichas.
+  const his = mB.ssI.hojas['HISTORICO_SIN_RESOLVER'], rev = mB.ssI.hojas['REVISAR_MATCH'];
+  ok(his && his.v.some(function (x) { return x[1] === 'Iván Robles' && x[5] === 'margen_chico' && /IVÁN ROBLES/.test(x[6]); }),
+     'HISTORICO_SIN_RESOLVER: la fila vieja en revisión (Iván, margen chico, con su mejor opción)');
+  const hr = rev.v[0];
+  ok(rev.v.some(function (x) { return x[0] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Lía Ferrante'; }) &&
+     !rev.v.some(function (x) { return x[0] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Iván Robles'; }),
+     'las fichas siguen con los últimos 30 días (Lía sí, Iván no)');
+  // Paso 16 y paso 20 sobre todo el destino.
+  const v = EB.ejecutar('verificarEscritura').resultado;
+  ok(v.incompletas === 0 && v.incompletasCerradas === 0 && v.choques === 0, 'paso 16: 0 incompletas en TODO el destino, invariante 0');
+  vm.runInContext('function __paso20todo() { return porQueVacia(2); }', EB.ctx);
+  const q = EB.ejecutar('__paso20todo').resultado;
+  ok(q && q.deberia === 0, 'paso 20 sobre todo el destino: "DEBERÍA ESTAR ESCRITA" = ' + (q ? q.deberia : '?'));
+  // Después, el modo normal: no escribe nada.
+  const f0 = JSON.stringify(foto(hB));
+  const rN = EB.ejecutar('upsertDestino');
+  ok(!rN.error && rN.resultado.escritura.filasPendientes === 0 && JSON.stringify(foto(hB)) === f0,
+     'después, un upsert normal no escribe nada (' + (rN.resultado ? rN.resultado.escritura.filasPendientes : '?') + ' filas)');
+
+  // Reanudable: con el servicio 50 veces más lento se corta sola, y el paso 22 otra vez sigue.
+  const EC = crearEntorno({ config: { DIAS_ACTIVOS: '30' }, costo: { op: 2000, lectura: 3000 } });
+  const mC = montar(EC, 300, true, casosFichas);
+  let corridas = 0, completa = false, falta = false;
+  while (!completa && corridas < 8) {
+    const r = EC.ejecutar('completarHistorial');
+    corridas++;
+    if (r.error) { ok(false, 'corrida ' + corridas + ': ' + r.error.message); break; }
+    completa = r.resultado.escritura.completa;
+    if (!completa && /FALTAN \d+ filas del historial: volver a correr paso22_completarHistorial/.test(r.logs.join('\n'))) falta = true;
+  }
+  ok(completa && corridas > 1 && falta, 'reanudable: ' + corridas + ' corridas, el log dice cuántas filas faltan');
+  ok(sinUuids(mC.ssD.hojas['AAA NOBORRAR']) === sinUuids(mA.ssD.hojas['AAA NOBORRAR']), 'y termina igual que de una sola vez');
 }
 
 function escenarioSecoIgualReal() {
@@ -1315,11 +1390,13 @@ const fuenteVieja = conViejo ? function (f) {
 
 const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
-    process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
+    process.argv.indexOf('--historial') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
   else if (process.argv.indexOf('--fichas') >= 0) { escenarioFichas(); escenarioOrdenFichas(); }
+  else if (process.argv.indexOf('--historial') >= 0) escenarioCompletarHistorial();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1351,6 +1428,7 @@ escenarioPorQueVacia();
 escenarioElegido();
 escenarioFichas();
 escenarioOrdenFichas();
+escenarioCompletarHistorial();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

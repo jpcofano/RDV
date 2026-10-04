@@ -41,6 +41,14 @@
  *      la opción 1, confianza en palabras, eje sólo para la persona, gemelos descartados en el contexto,
  *      EMPAREJAR sin los formularios de reuniones cerradas. Otra vez paso21_fichasDePrueba() y mirar
  *      REVISAR_FICHAS_PRUEBA ANTES de prender REVISAR_COMO_FICHAS.
+ *  03/10 21:51: fichas APROBADAS y PRENDIDAS (REVISAR_COMO_FICHAS = true). paso21_borrarSolapaDePrueba().
+ *      Al pasar al real (ESTADO 0.s, con la predicción; RDV_HOJA_DESTINO NO se cambia sin confirmación):
+ *        1. RDV_HOJA_DESTINO = 'RVD JM-CM - ES', push y clasp push   2. nombre a la versión del destino
+ *        3. paso16_verificarEscritura()  (línea de base de Barrio)   4. paso1_columnasDeTraza()
+ *        5. paso22_completarHistorial()  (repetir si se corta; una sola vez, todo el historial)
+ *        6. paso16_verificarEscritura()  → OK, 0 incompletas en TODO el destino
+ *        7. paso20_porQueVacia() con PASO20_DESDE = 2 → f = 0   8. upsertDestino() → no escribe nada
+ *        9. paso19 en seco, después real (sin "Semaforo politico")   10. activador cada hora
  *  03/10: paso20_porQueVacia() (sólo lectura: la causa de cada celda vacía; "DEBERÍA ESTAR ESCRITA"
  *      tiene que dar 0) y la lectura de "elegido" en REVISAR_MATCH / EMPAREJAR_MANUAL (regla 4,
  *      25_Elecciones.js, docs/elegir-match.md). Con 0 elecciones cargadas, el upsert no cambia nada.
@@ -342,6 +350,35 @@ function paso21_fichasDePrueba() {
              'NO escribe el destino ni REVISAR_MATCH; escribe sólo la solapa "' + RDV_HOJA_FICHAS_PRUEBA + '" (intermedia)',
              'el log: las fichas pedidas, como texto con las marcas de color; la solapa de prueba, entera');
   return fichasDePrueba(PASO21_FILAS);
+}
+
+/** PASO 21b — borra la solapa de prueba de las fichas (aprobadas el 03/10). Sólo esa solapa, por nombre. */
+function paso21_borrarSolapaDePrueba() {
+  _anunciar_('paso 21b — borrar la solapa de prueba de las fichas', 'borrarSolapaFichasPrueba()  [diagnostico/13_fichas_prueba.js]',
+             'SÍ, en la intermedia: borra la solapa "' + RDV_HOJA_FICHAS_PRUEBA + '" (nada más)', 'el log dice si la borró');
+  return borrarSolapaFichasPrueba();
+}
+
+/**
+ * PASO 22 — completar el historial (03/10): el upsert UNA VEZ sobre TODAS las filas, sin el límite de
+ * DIAS_ACTIVOS (sólo esa corrida: la constante no cambia). Mismas reglas (sólo celda vacía, invariante,
+ * traza, color, LockService, REGISTRO_UPSERT). Si se corta, se vuelve a correr y sigue. Lo viejo que no se
+ * resuelve solo va a HISTORICO_SIN_RESOLVER (informativa); las fichas, sólo los últimos 30 días.
+ */
+function paso22_completarHistorial() {
+  _anunciar_('paso 22 — completar el historial (todas las filas, una vez)', 'completarHistorial()  [20_UpsertDestino.js]',
+             DRY_RUN ? 'NO (DRY_RUN = true): sólo calcula' : 'SÍ, en "' + RDV_HOJA_DESTINO + '": sólo celdas vacías, en ' + COLOR_SISTEMA,
+             'el log de siempre del upsert, con cuántas filas faltan si se corta; REVISAR_MATCH (fichas de 30 días) y ' +
+             RDV_HOJA_HISTORICO + ' (intermedia)');
+  return completarHistorial();
+}
+
+/** PASO 22, en seco: lo mismo sin tocar el destino (escribe sólo las solapas de la intermedia). */
+function paso22_completarHistorial_enSeco() {
+  _anunciar_('paso 22 — completar el historial (EN SECO)', 'completarHistorialEnSeco()  [20_UpsertDestino.js]',
+             'NO escribe el destino; sí REVISAR_MATCH y ' + RDV_HOJA_HISTORICO + ' (intermedia)',
+             'el log del upsert con lo que escribiría en todo el historial');
+  return completarHistorialEnSeco();
 }
 
 /**

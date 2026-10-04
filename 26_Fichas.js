@@ -437,16 +437,16 @@ function _lineaCoincide_(f, sc, ctx) {
   else p.push((sc.perdido.fecha === 0 ? '✅ fecha (' : '❌ fecha (a ' + sc.dist + ' días: ') + _detalleFecha_(f, c) + ')');
   // ubicación
   const tipo = (c.barrio && f.barrio) ? 'barrio' : 'comuna';
+  const ej = _ejeFicha_(f, c);
   if (sc.desacuerdo) p.push('❌ ' + tipo + ' (' + _ubicForm_(c) + ', la reunión es ' + _ubicFila_(f, ctx.plan.comunas) + ')');
   else if (sc.evaluables.ubic) p.push((sc.perdido.ubic === 0 ? '✅ ' : '❌ ') + tipo + ' (' + _ubicForm_(c) + ')');
-  else {
+  else if (!ej) {   // con el eje a la vista, "⚪ ubicación (el formulario dice Eje …)" sería lo mismo dos veces
     const uf = _ubicForm_(c);
     p.push('⚪ ubicación (' + (uf !== '—' ? 'el formulario dice ' + uf + (f.barrio ? '' : ', la reunión no tiene barrio')
                                            : 'el formulario no dice dónde') + ')');
   }
   if (sc.evaluables.hora) p.push(sc.perdido.hora === 0 ? '✅ hora' : '❌ hora');
   // eje: sólo para la persona (EJE_COMO_UBICACION sigue apagado: no puntúa ni decide)
-  const ej = _ejeFicha_(f, c);
   if (ej) p.push(ej.coincide ? '✅ Eje ' + ej.form : '⚠️ Eje ' + ej.form + ', la reunión está en el Eje ' + ej.fila);
   // ojo
   const d = _duenio_(ctx, c, f);
@@ -555,6 +555,38 @@ function _opcionesDesplegable_(nOps) {
   const l = [];
   for (let k = 1; k <= nOps; k++) l.push('Opción ' + k);
   return l.concat(['Ninguno', 'No sé']);
+}
+
+// ===================== HISTORICO_SIN_RESOLVER (paso 22) =====================
+
+/**
+ * Lo viejo que no se resolvió solo en la corrida de completar el historial (paso 22): las filas en
+ * REVISAR_MATCH o SIN_MATCH de más de DIAS_ACTIVOS días. **Sólo informativa**: no son fichas, no tiene
+ * "elegido", nadie la lee. Una línea por fila: fila, figura, fecha, barrio, motivo y la mejor opción (la
+ * de más puntaje, como la opción 1 de una ficha), con su confianza. De la más reciente a la más vieja.
+ */
+function escribirHistoricoSinResolver_(plan) {
+  const enc = ['fila', 'figura', 'fecha', 'barrio', 'veredicto', 'motivo', 'mejor_opcion', 'confianza', 'puntaje',
+               'form_clave', 'en_ventana'];
+  const porMotivo = {};
+  const filas = plan.dest.filas.filter(function (f) {
+    const pf = plan.porFila[f.fila];
+    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && !esFilaActiva_(f.fecha);
+  }).sort(function (a, b) {
+    return ((b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0)) || (a.fila - b.fila);
+  }).map(function (f) {
+    const pf = plan.porFila[f.fila];
+    const m = pf.motivo || pf.veredicto;
+    porMotivo[m] = (porMotivo[m] || 0) + 1;
+    const op = listaOpcionesFila_(f, plan.cands.vivos, plan.comunas, null, 1)[0] || null;
+    return [f.fila, f.figura, fmtFecha_(f.fecha), f.barrio, pf.veredicto, m, op ? op.c.nombre : '',
+            op ? _confianza_(op.score) : '', op ? op.score : '', op ? op.c.clave : '', _sn_(enVentanaAnalisis_(f.fecha))];
+  });
+  escribirHoja_(RDV_HOJA_HISTORICO, [enc].concat(filas));
+  Logger.log('[upsert] %s: %s filas de más de %s días sin resolver (sólo informativa: no son fichas) — %s',
+             RDV_HOJA_HISTORICO, filas.length, DIAS_ACTIVOS, Object.keys(porMotivo).map(function (k) {
+               return k + ' ' + porMotivo[k]; }).join(' | ') || 'ninguna');
+  return filas.length;
 }
 
 // ===================== Escritura (intermedia) =====================

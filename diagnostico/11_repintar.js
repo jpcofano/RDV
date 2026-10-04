@@ -21,19 +21,27 @@ function repintarAzulViejo(aplicar) {
   const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0];
   const fondos = sh.getRange(1, 1, nFilas, nCols).getBackgrounds();
   const viejo = AZUL_VIEJO_.toLowerCase();
-  const celdas = [], porCol = {};
+  // Las columnas que no se repintan (COLUMNAS_NO_REPINTAR, 03/10): su azul no es la marca del sistema.
+  const noRepintar = hdr.map(function (h) {
+    return COLUMNAS_NO_REPINTAR.some(function (n) { return normalizeHeader_(n) === normalizeHeader_(h); });
+  });
+  const celdas = [], porCol = {}, salteadas = {};
   for (let i = 1; i < fondos.length; i++) {
     for (let k = 0; k < fondos[i].length; k++) {
       if (String(fondos[i][k]).toLowerCase() !== viejo) continue;
+      if (noRepintar[k]) { salteadas[hdr[k]] = (salteadas[hdr[k]] || 0) + 1; continue; }
       celdas.push({ fila: i + 1, col: k + 1 });
       const n = hdr[k] || ('col ' + (k + 1));
       porCol[n] = (porCol[n] || 0) + 1;
     }
   }
-  Logger.log('  celdas en %s: %s', AZUL_VIEJO_, celdas.length);
+  Logger.log('  celdas en %s: %s (sin contar las columnas que no se repintan)', AZUL_VIEJO_, celdas.length);
+  Logger.log('  NO se repintan (COLUMNAS_NO_REPINTAR: %s): %s', COLUMNAS_NO_REPINTAR.join(', '),
+             Object.keys(salteadas).map(function (n) { return n + ' ' + salteadas[n]; }).join(' | ') ||
+             (noRepintar.some(Boolean) ? 'ninguna en ' + AZUL_VIEJO_ : 'la columna no está en esta solapa'));
   Object.keys(porCol).sort(function (a, b) { return porCol[b] - porCol[a]; })
     .forEach(function (n) { Logger.log('    %s: %s', n, porCol[n]); });
-  if (!escribe) return { contadas: celdas.length, porColumna: porCol, repintadas: 0 };
+  if (!escribe) return { contadas: celdas.length, porColumna: porCol, repintadas: 0, salteadas: salteadas };
   const n = repintarAzulViejo_(sh, celdas);
   SpreadsheetApp.flush();
   Logger.log('>>> Repintadas %s celdas a %s (los valores no se tocaron).', n, COLOR_SISTEMA);

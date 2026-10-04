@@ -53,3 +53,16 @@ function fichasDePrueba(filas) {
   Logger.log('  tiempo de corrida: %s s', ((new Date() - t0) / 1000).toFixed(1));
   return { fichas: fx.pendientes, porMotivo: fx.porMotivo, pedidas: fxH.fichas.length };
 }
+
+/**
+ * Borra la solapa de prueba de las fichas (RDV_HOJA_FICHAS_PRUEBA) de la intermedia, una vez aprobadas
+ * (03/10). Sólo esa solapa, por nombre: si no existe, no hace nada. No toca el destino ni REVISAR_MATCH.
+ */
+function borrarSolapaFichasPrueba() {
+  const ss = ssIntermedia_();
+  const sh = ss.getSheetByName(RDV_HOJA_FICHAS_PRUEBA);
+  if (!sh) { Logger.log('No existe la solapa "%s": nada que borrar.', RDV_HOJA_FICHAS_PRUEBA); return false; }
+  ss.deleteSheet(sh);
+  Logger.log('Borrada la solapa "%s" de la intermedia.', RDV_HOJA_FICHAS_PRUEBA);
+  return true;
+}

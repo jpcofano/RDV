@@ -108,18 +108,22 @@ function verificarEscritura() {
   const incompletas = [], sinClave = [];
   // Incompletas y sin form_clave: sólo las filas ACTIVAS (DIAS_ACTIVOS, 03/10). Una fila cerrada no se
   // completa más, así que no es un problema que le falte algo. El invariante (bloque 1) es sobre todas.
+  // Las cerradas se miran igual, aparte y sin que cuenten como problema: después del paso 22 (completar el
+  // historial) tienen que dar 0 también.
   let cerradasConUid = 0;
+  const incompletasCerradas = [], sinClaveCerradas = [];
   conUid.forEach(function (f) {
     const c = traza.get(f).c;
     if (!c) return;   // sin formulario, o ambigua: contadas aparte
-    if (!esFilaActiva_(f.fecha)) { cerradasConUid++; return; }
+    const activa = esFilaActiva_(f.fecha);
+    if (!activa) cerradasConUid++;
     const falta = _faltantesDeFila_diag8(dest, f, c, comunas);
-    if (falta.clave) sinClave.push(f);
-    if (falta.lista.length) incompletas.push({ f: f, falta: falta.lista });
+    if (falta.clave) (activa ? sinClave : sinClaveCerradas).push(f);
+    if (falta.lista.length) (activa ? incompletas : incompletasCerradas).push({ f: f, falta: falta.lista });
   });
   Logger.log('  con RDV_UID: %s | sin form_origen: %s   (tiene que dar 0)', conUid.length, sinTraza.length);
-  Logger.log('  filas activas: %s — las incompletas y sin form_clave se cuentan sólo ahí (cerradas con RDV_UID, ' +
-             'no se miran: %s)', descActivas_(), cerradasConUid);
+  Logger.log('  filas activas: %s — el control (incompletas, sin form_clave) es sobre ésas. Las cerradas con ' +
+             'RDV_UID (%s) se cuentan aparte, al final del bloque', descActivas_(), cerradasConUid);
   Logger.log('  INCOMPLETAS (les falta alguna celda que el plan escribía en esa fila): %s   (tiene que dar 0;',
              incompletas.length);
   Logger.log('    si no da 0, la próxima corrida del upsert las completa: entran por RDV_UID)');
@@ -128,6 +132,12 @@ function verificarEscritura() {
   });
   Logger.log('  sin form_clave, con el formulario resuelto sin ambigüedad: %s   (la próxima corrida la completa)',
              sinClave.length);
+  Logger.log('  en filas CERRADAS (información; después del paso 22 tienen que dar 0): incompletas %s | sin form_clave %s',
+             incompletasCerradas.length, sinClaveCerradas.length);
+  incompletasCerradas.slice(0, 20).forEach(function (x) {
+    Logger.log('    cerrada: fila %s | %s | %s | falta: %s', x.f.fila, x.f.figura, fmtFecha_(x.f.fecha), x.falta.join(', '));
+  });
+  Logger.log('  incompletas en TODO el destino: %s', incompletas.length + incompletasCerradas.length);
   Logger.log('  traza AMBIGUA (gemelos y sin form_clave: se sabe el nombre, no cuál): %s', ambiguas.length);
   ambiguas.forEach(function (f) {
     Logger.log('    fila %s | %s | %s | %s', f.fila, f.figura, fmtFecha_(f.fecha), f.formOrigen);
@@ -170,6 +180,7 @@ function verificarEscritura() {
   Logger.log(problemas.length ? '>>> HAY PROBLEMAS: ' + problemas.join(' | ') + '. Ver docs/backup.md §8.2.'
                               : '>>> OK: invariante 0, fórmulas bien, Barrio sin subir, traza con el color del sistema, 0 incompletas.');
   return { problemas: problemas, conUid: conUid.length, incompletas: incompletas.length,
+           incompletasCerradas: incompletasCerradas.length,
            sinClave: sinClave.length, ambiguas: ambiguas.length, choques: choques.length,
            azulManual: az.manual, azulTotal: az.total, trazaSinAzul: az.trazaSinAzul,
            distintas: distintas, hoy: hoy };

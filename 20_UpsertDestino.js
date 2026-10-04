@@ -73,6 +73,31 @@ function correrEnSeco() {
   return _correrUpsert_(true);
 }
 
+/**
+ * **Completar el historial** (paso 22, decisión del usuario del 03/10): el mismo upsert, UNA VEZ al pasar
+ * al destino real, sobre TODAS las filas —sin el límite de DIAS_ACTIVOS, sólo para esta corrida: la
+ * constante no se toca—. Las mismas reglas: sólo celda vacía, invariante sobre todo el destino, traza y
+ * COLOR_SISTEMA, LockService, REGISTRO_UPSERT (alcance "historial"). Asistentes y STATUS también en las
+ * filas viejas. Respeta DRY_RUN.
+ *
+ *   - **reanudable**: si se corta por tiempo, se vuelve a correr y sigue (las filas ya escritas entran por
+ *     RDV_UID y sólo se completan sus celdas vacías). El log dice cuántas filas faltan;
+ *   - **lo viejo que no se resuelve solo** (REVISAR_MATCH o SIN_MATCH de más de DIAS_ACTIVOS días) NO va a
+ *     las fichas: va a HISTORICO_SIN_RESOLVER, sólo informativa. Las fichas siguen con los últimos 30
+ *     días. SIN_MATCH y EMPAREJAR_MANUAL no se reescriben en esta corrida (las regenera la próxima normal).
+ *
+ * Después, el modo normal: una corrida normal no escribe nada en las filas viejas (están completas o
+ * cerradas).
+ */
+function completarHistorial() {
+  return _correrUpsert_(DRY_RUN, { historial: true });
+}
+
+/** Ídem, en seco: calcula, loguea y escribe sólo las solapas de la intermedia. No toca el destino. */
+function completarHistorialEnSeco() {
+  return _correrUpsert_(true, { historial: true });
+}
+
 /*
  * Un entry point por reporte. Recalculan y escriben **sólo el suyo**.
  *
@@ -1546,9 +1571,11 @@ function medirDesacuerdoUbicacion() {
  * números que hacían falta, que ya estaban calculados. No pasa más: para cuando se toca la
  * primera solapa, el log ya tiene todo.
  */
-function _correrUpsert_(enSeco) {
+function _correrUpsert_(enSeco, opciones) {
   const t0 = new Date();
-  Logger.log('=== upsertDestino (%s) ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL');
+  const historial = !!(opciones && opciones.historial);
+  Logger.log('=== upsertDestino (%s)%s ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL',
+             historial ? ' — TODO EL HISTORIAL (paso 22, una vez: sin el límite de DIAS_ACTIVOS)' : '');
   Logger.log('  solapa destino: %s', descripcionHojaDestino_());
 
   /*
@@ -1561,13 +1588,13 @@ function _correrUpsert_(enSeco) {
     return null;
   }
   try {
-    return _correrUpsertConBloqueo_(enSeco, t0);
+    return _correrUpsertConBloqueo_(enSeco, t0, historial);
   } finally {
     lock.releaseLock();
   }
 }
 
-function _correrUpsertConBloqueo_(enSeco, t0) {
+function _correrUpsertConBloqueo_(enSeco, t0, historial) {
   // La guarda (02/10): la solapa destino existe y, si es la copia, tiene los encabezados del real.
   // Si no, error ANTES de calcular: no se escribe nada.
   verificarHojaDestino_(ssDestino_());
@@ -1581,7 +1608,7 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
                'escritas entran por RDV_UID y se completan; las que faltan, se escriben.', anterior);
   }
 
-  const plan = calcularPlan_(enSeco);
+  const plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
   logResumen_(plan);                 // ← ANTES de escribir nada
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
   plan.asistentes = cruzarAsistentes_(plan.dest, plan.comunas);
@@ -1589,7 +1616,7 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
   _logCruceAsistentes_(plan.asistentes, false);
 
   if (!enSeco) {
-    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes);
+    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes, historial);
     plan.res.escritas = w.celdas;
     plan.res.uidsEstampados = w.uids;
     plan.res.escritura = w;
@@ -1605,11 +1632,16 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
       Logger.log('    COMPLETA: no queda ninguna fila con algo que escribir.');
     } else {
       const estado = Utilities.formatDate(new Date(), RDV_TZ, 'dd/MM HH:mm') + ' en "' + RDV_HOJA_DESTINO +
-                     '", ' + w.filasHechas + ' de ' + w.filasPendientes + ' filas';
+                     '", ' + w.filasHechas + ' de ' + w.filasPendientes + ' filas' +
+                     (historial ? ' (TODO EL HISTORIAL: seguir con paso22_completarHistorial)' : '');
       props.setProperty(PROP_ESCRITURA_INCOMPLETA, estado);
       Logger.log('    CORTE PROPIO a los %s ms (límite %s): quedan %s filas para la próxima corrida. ' +
                  'Nada quedó a medias: se corta entre tandas.', new Date() - t0, UPSERT_CORTE_PROPIO_MS,
                  w.filasPendientes - w.filasHechas);
+      if (historial) {
+        Logger.log('    >>> FALTAN %s filas del historial: volver a correr paso22_completarHistorial(). Sigue sola: ' +
+                   'las ya escritas entran por RDV_UID.', w.filasPendientes - w.filasHechas);
+      }
     }
   } else {
     Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones calculadas y no ' +
@@ -1621,7 +1653,14 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
   marcarEleccionesEnReportes_(plan);
 
   const fallaron = [];
-  escribirReportes_(plan, fallaron, null);
+  if (historial) {
+    // Las fichas, sólo de los últimos DIAS_ACTIVOS días (armarFichas_ filtra con esFilaActiva_); lo viejo
+    // sin resolver, a HISTORICO_SIN_RESOLVER. SIN_MATCH y EMPAREJAR los regenera la próxima corrida normal.
+    escribirReportes_(plan, fallaron, [RDV_HOJA_REVISAR]);
+    _intentar_(fallaron, RDV_HOJA_HISTORICO, function () { escribirHistoricoSinResolver_(plan); });
+  } else {
+    escribirReportes_(plan, fallaron, null);
+  }
   if (fallaron.length) {
     Logger.log('>>> NO se pudieron escribir: %s. Los demás reportes SÍ quedaron escritos, y los',
                fallaron.join(', '));
@@ -1629,7 +1668,7 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
                'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
   }
 
-  _registrarCorrida_(plan, enSeco, t0, fallaron);
+  _registrarCorrida_(plan, enSeco, t0, fallaron, historial);
   Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
              ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
              plan.res.cerradasSinResolver);
@@ -1641,7 +1680,7 @@ function _correrUpsertConBloqueo_(enSeco, t0) {
  * escribiría, en seco), celdas y uids escritos, pendientes de barrio, a revisar y sin match
  * [ventana | total]. Se acumula; no se limpia. Si falla, la corrida sigue: sólo lo loguea.
  */
-function _registrarCorrida_(plan, enSeco, t0, fallaron) {
+function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
   try {
     const r = plan.res;
     const ss = ssIntermedia_();
@@ -1653,7 +1692,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
                         'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
                         'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
-                        'huella_entradas', 'huella_plan', 'por_columna'];
+                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance'];
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1667,7 +1706,8 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron) {
                   (fallaron || []).join(', '), new Date() - t0,
                   RDV_HOJA_DESTINO, w ? _sn_(w.completa) : '', w ? w.filasPendientes : '',
                   w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan,
-                  w ? JSON.stringify(w.porColumna) : '']);
+                  w ? JSON.stringify(w.porColumna) : '',
+                  historial ? 'historial (paso 22)' : 'activas (' + DIAS_ACTIVOS + ' días)']);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }
@@ -4224,7 +4264,7 @@ function _simularTopePorFila_(grupos, n) {
  *     escriben ahora).
  * `Barrio` (manual) y las derivadas no se escriben nunca.
  */
-function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
+function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial) {
   const sh = dest.sh;
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
   const conStatus = iSt != null && iAs != null;
@@ -4243,7 +4283,7 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes) {
   const pendientes = [];
   dest.filas.forEach(function (f) {
     if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
-    if (!esFilaActiva_(f.fecha)) return;                           // cerrada (DIAS_ACTIVOS): no se toca
+    if (!historial && !esFilaActiva_(f.fecha)) return;             // cerrada (DIAS_ACTIVOS): no se toca, salvo el paso 22
     const d = decisionDeFila_(f, porDecision, asistentes);
     const c = celdasDeDecision_(dest, d, f.valores, true);
     if (c.celdas.length || c.status) pendientes.push(d);

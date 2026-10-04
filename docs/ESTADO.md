@@ -256,6 +256,67 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
+### s) 03/10 22:00: fichas aprobadas y prendidas; paso 22 (completar el historial) y la secuencia en el real
+
+**Paso 21 de las 21:51: fichas aprobadas** (orden por confianza y "¿por qué?" sobre la opción 1 —631 y
+309 correctas—, eje en amarillo, confianza en palabras, gemelo descartado en la 309).
+
+**Hecho en este commit:**
+
+1. **El eje no se repite**: con "⚠️/✅ Eje …" a la vista, ya no se agrega "⚪ ubicación (el formulario dice
+   Eje …)" (631, opción 1). Test [16].
+2. **`REVISAR_COMO_FICHAS = true`**: la próxima corrida del upsert escribe REVISAR_MATCH como fichas.
+   **docs/elegir-match.md es ahora la página de las fichas** (la vieja quedó en git). **La solapa
+   `REVISAR_FICHAS_PRUEBA` la borra el usuario**: `paso21_borrarSolapaDePrueba()` (sólo esa solapa, por
+   nombre), o a mano.
+3. **`paso22_completarHistorial()`** (`completarHistorial`, decisión 13 de CLAUDE.md): el upsert UNA VEZ
+   sobre todas las filas, `{ historial: true }` sólo para esa corrida (**`DIAS_ACTIVOS` no se toca**).
+   Mismas reglas: sólo celda vacía, invariante sobre todo el destino, traza y `#CFE2F3`, `LockService`,
+   `REGISTRO_UPSERT` (columna nueva **`alcance`**: "historial (paso 22)" / "activas (30 días)"). Asistentes
+   y STATUS también en las filas viejas. **Reanudable**: si se corta, el log dice *"FALTAN N filas del
+   historial: volver a correr paso22_completarHistorial()"* y la siguiente sigue por `RDV_UID`. Lo viejo
+   sin resolver va a **`HISTORICO_SIN_RESOLVER`** (intermedia, sólo informativa: fila, figura, fecha,
+   barrio, veredicto, motivo, mejor opción, confianza); las fichas siguen con los últimos 30 días;
+   SIN_MATCH y EMPAREJAR no se reescriben en esa corrida (los regenera la próxima normal). Hay versión en
+   seco: `paso22_completarHistorial_enSeco()`.
+   - **paso 16**: las incompletas de las filas cerradas se cuentan aparte (información) y suma *"incompletas
+     en TODO el destino"*; el control sigue siendo sobre las activas.
+   - **paso 20 con rango** (`PASO20_DESDE = 2`): usa el plan de todo el historial, así una fila cerrada
+     tiene su decisión y "DEBERÍA ESTAR ESCRITA" se puede leer sobre todo el destino.
+   - **Test [17]**: con `DIAS_ACTIVOS = 30`, el paso 22 escribe **lo mismo** que el upsert con `DIAS_ACTIVOS
+     = null` (salvo los uuids); completa las viejas (Asistentes y en agenda → Realizada incluidos); 0
+     pisadas; la fila vieja en revisión va a HISTORICO_SIN_RESOLVER y no a las fichas; paso 16 con 0
+     incompletas en todo el destino; paso 20 sobre todo el destino con f = 0; **después, un upsert normal
+     no escribe nada**; con el servicio 50 veces más lento se corta, dice cuánto falta, sigue y termina
+     igual. Toda la suite en verde.
+4. **Paso 19 sin "Semaforo politico"**: `COLUMNAS_NO_REPINTAR` (`00_Config.js`); el log dice cuántas
+   celdas de esa columna dejó sin repintar.
+
+**`RDV_HOJA_DESTINO` sigue en `'AAA NOBORRAR'`: no se cambia hasta que el usuario lo confirme.**
+
+**La secuencia en el real, con la predicción anotada ANTES de correr:**
+
+1. `RDV_HOJA_DESTINO = 'RVD JM-CM - ES'` en `00_Config.js`, commit, `git push` y `clasp push`. **(Espera
+   la confirmación del usuario.)**
+2. El usuario le pone nombre a la versión del destino (Archivo → Historial de versiones).
+3. **`paso16_verificarEscritura()`** → la línea de base de Barrio del real: anotarla en
+   `LINEA_BASE_AZULES['RVD JM-CM - ES'].barrio`.
+4. **`paso1_columnasDeTraza()`** → agrega `form_clave` al real (sólo el encabezado, al final).
+5. **`paso22_completarHistorial()`** (repetir si se corta). **Predicción:** **unas 757 filas con
+   `RDV_UID`** (123 ya estaban: entran por `RDV_UID` y sólo se completa lo que les falta); cantidades por
+   columna (`por columna` del log y `REGISTRO_UPSERT`) **parecidas a lo que se escribió en la copia**
+   (Inscriptos, canales, sexo, edades, Sin identificar, Asistentes); **0 valores pisados**; **Sin
+   identificar de la fila 6 = 13**; invariante 0; **`HISTORICO_SIN_RESOLVER` con ~50 filas**.
+6. **`paso16_verificarEscritura()`** → **OK**: invariante 0, traza ambigua 0, Barrio sin subir, **0
+   incompletas en TODO el destino**.
+7. **`paso20_porQueVacia()` sobre todo el destino** (`PASO20_DESDE = 2` en `99_Correr.js`) → **f = 0**.
+   Después, volver `PASO20_DESDE = null`.
+8. **`upsertDestino()` normal** → **no escribe nada** (todo completo); REVISAR_MATCH con las fichas de los
+   últimos 30 días.
+9. **`paso19_repintarAzulViejo_enSeco()`**, después **`paso19_repintarAzulViejo()`** (sin "Semaforo
+   politico").
+10. **El activador cada hora** (`docs/triggers-legado.md` antes).
+
 ### r) 03/10 noche: lo que dejó el paso 21 de las 16:37 (antes de prender las fichas)
 
 **Resultado del paso 21 y del upsert** (03/10 16:37–16:39, sobre la copia): las frases y las líneas

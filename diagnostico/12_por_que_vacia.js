@@ -28,11 +28,12 @@ const COLUMNAS_PASO20_ = ['Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'D
 function porQueVacia(desde, hasta) {
   Logger.log('=== porQueVacia (paso 20) — sólo lectura, no escribe nada ===');
   Logger.log('  solapa destino: %s', descripcionHojaDestino_());
-  const plan = calcularPlan_(true);
+  // Sin rango: las filas activas, con el plan del upsert. Con rango (p. ej. PASO20_DESDE = 2, todo el
+  // destino, después del paso 22): el plan de TODO el historial, para que una fila cerrada tenga su decisión.
+  const soloActivas = !desde && !hasta;
+  const plan = calcularPlan_(true, null, soloActivas ? null : { historial: true });
   const dest = plan.dest;
   const asis = cruzarAsistentes_(dest, plan.comunas);
-  // Sin rango: las filas activas (DIAS_ACTIVOS, 03/10). Con rango: ese rango, activas o no.
-  const soloActivas = !desde && !hasta;
   const d1 = desde || 2, d2 = hasta || Infinity;
   if (soloActivas) Logger.log('  filas: las activas (%s)', descActivas_());
   else Logger.log('  filas: de la %s a la %s', d1, d2 === Infinity ? 'última' : d2);

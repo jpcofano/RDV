@@ -42,7 +42,7 @@ Verificado sobre la planilla: ese azul aparece **3.779 veces en `RVD JM-CM - ES`
 veces en `Para Revisar`**. Es una marca de procedencia real, no decoración. **Se sigue pintando en
 cada escritura del sistema.** ~~Mismo color~~ **Desde el 02/10 (paso B) el color es `#CFE2F3`
 (`COLOR_SISTEMA`, azul claro)**, y todos los controles reconocen también el `#4F81BD` viejo
-(`esColorSistema_`); `paso19_repintarAzulViejo` cambia el viejo por el nuevo sin tocar valores. Lo que no hace es decidir si escribir
+(`esColorSistema_`); `paso19_repintarAzulViejo` cambia el viejo por el nuevo sin tocar valores, salvo en `COLUMNAS_NO_REPINTAR` (`Semaforo politico`, 03/10: su azul no es la marca del sistema). Lo que no hace es decidir si escribir
 — ver "Por qué esa regla alcanza", más abajo. El detalle de cuándo pinta hoy y cuándo
 no está en [docs/sync-bidireccional.md](docs/sync-bidireccional.md).
 
@@ -2214,10 +2214,15 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    **La identidad no cambia**: la fila por figura + fecha + barrio (columnas ocultas `id_*` de la
    línea REUNIÓN; la fecha en `yyyy-MM-dd`, que Sheets lee igual en cualquier configuración regional) y
    el formulario por `form_clave` (columna oculta de cada opción). El lector reconoce el formato por el
-   encabezado, así que "elegido" se lee de los dos formatos. **Apagado (`REVISAR_COMO_FICHAS = false`)
-   hasta que el usuario valide las fichas** con el paso 21, que las escribe en otra solapa
-   (`REVISAR_FICHAS_PRUEBA`). `EMPAREJAR_MANUAL` queda como está (se mejora después). Para el equipo:
-   docs/elegir-match-fichas.md, que reemplaza a docs/elegir-match.md cuando se encienda.
+   encabezado, así que "elegido" se lee de los dos formatos. **Prendido el 03/10** (`REVISAR_COMO_FICHAS =
+   true`), con las fichas aprobadas por el usuario en el paso 21 (21:51). El paso 21 sigue sirviendo de vista
+   previa (escribe en `REVISAR_FICHAS_PRUEBA`). `EMPAREJAR_MANUAL` queda como está (se mejora después). Para
+   el equipo: docs/elegir-match.md.
+
+   **Lo viejo sin resolver no son fichas.** En la corrida de completar el historial (paso 22, decisión 13),
+   lo que queda en revisión o sin match con más de `DIAS_ACTIVOS` días va a `HISTORICO_SIN_RESOLVER`
+   (intermedia), **sólo informativa**: fila, figura, fecha, barrio, motivo y la mejor opción con su
+   confianza. Nadie elige ahí.
 
    #### `EMPAREJAR_MANUAL`: el lado que falta
 
@@ -2476,6 +2481,17 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     sobre qué se trabaja. Las mediciones de una vez (pasos 6 a 13, 17) y la calibración piden el plan
     entero con `calcularPlan_(…, { historial: true })`; para la calibración, **`paso2b_calibrarHistorial()`**
     (sólo log). `DIAS_ACTIVOS = null` vuelve a trabajar sobre todas las filas.
+    **Una sola vez, al pasar al real: completar el historial** (decisión del usuario, 03/10).
+    `paso22_completarHistorial()` (`completarHistorial`, `20_UpsertDestino.js`) corre el mismo upsert sobre
+    TODAS las filas —`{ historial: true }` sólo para esa corrida; `DIAS_ACTIVOS` no se toca— para que el
+    corte de 30 días no deje sin completar lo que nunca se escribió. Mismas reglas: sólo celda vacía,
+    invariante sobre todo el destino, traza y `COLOR_SISTEMA`, `LockService`, `REGISTRO_UPSERT` (columna
+    `alcance`), y Asistentes y STATUS también en las filas viejas. **Reanudable**: si se corta, se vuelve
+    a correr y sigue por `RDV_UID`; el log dice cuántas filas faltan. Lo viejo que no se resuelve solo va
+    a `HISTORICO_SIN_RESOLVER` (informativa), no a las fichas. Después, el modo normal: una corrida normal
+    no escribe nada en las filas viejas (test [17]). El paso 16 cuenta aparte las incompletas de las filas
+    cerradas (información: después del paso 22 tienen que dar 0), y el paso 20 con rango
+    (`PASO20_DESDE = 2`) usa el plan de todo el historial.
 
 ### Estructura de archivos
 
@@ -2489,7 +2505,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 10_LeerOrigenes.js openById → A2 y B2, con RDV_UID
 20_UpsertDestino.js  B+A2 → destino, match uuid→score, 3 reportes   ← ya escrito (DRY_RUN)
 25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
-26_Fichas.js       REVISAR_MATCH como fichas: armado, frases, colores, desplegable, lector     ← 03/10 (apagado)
+26_Fichas.js       REVISAR_MATCH como fichas (armado, frases, colores, desplegable, lector) y
+                   HISTORICO_SIN_RESOLVER                                          ← 03/10
 30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

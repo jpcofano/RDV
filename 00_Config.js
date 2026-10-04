@@ -91,6 +91,11 @@ const UPSERT_CORTE_PROPIO_MS = 4.5 * 60 * 1000;
  * escritas entran por RDV_UID—; es para que el log lo diga. Se borra al terminar completa.
  */
 const PROP_ESCRITURA_INCOMPLETA = 'UPSERT_ESCRITURA_INCOMPLETA';
+/**
+ * Columnas que el paso 19 (repintar el #4F81BD viejo al color nuevo) NO repinta (03/10, decisión del
+ * usuario): su azul no es la marca del sistema. Por encabezado, normalizado.
+ */
+const COLUMNAS_NO_REPINTAR = ['Semaforo politico'];
 
 // --- solapas de (3) y (4) ---
 const RDV_HOJA_ORIGEN = 'Hoja1';   // en (3). NO somos dueños, no se modifica
@@ -475,12 +480,16 @@ const DIAS_ACTIVOS = 30;
 /**
  * **REVISAR_MATCH como fichas** (03/10, decisión del usuario; 26_Fichas.js): una ficha por reunión
  * pendiente, con la reunión, hasta 3 opciones en las mismas columnas, colores por celda, "¿por qué está
- * acá?", qué coincide y qué no, y "elegido" con desplegable. **Apagado hasta que el usuario valide las
- * fichas** con `paso21_fichasDePrueba()` (escribe en RDV_HOJA_FICHAS_PRUEBA, no en REVISAR_MATCH). En
- * `false`, REVISAR_MATCH sigue con el formato de una línea por fila. "elegido" se lee de los dos
+ * acá?", qué coincide y qué no, y "elegido" con desplegable. Validadas con `paso21_fichasDePrueba()` y
+ * prendidas el 03/10. En `false`, REVISAR_MATCH vuelve al formato de una línea por fila. "elegido" se lee de los dos
  * formatos (el lector reconoce cuál es por el encabezado).
  */
-const REVISAR_COMO_FICHAS = false;
+const REVISAR_COMO_FICHAS = true;   // prendido el 03/10, con las fichas aprobadas (paso 21 de las 21:51)
+/**
+ * Lo viejo que no se resuelve solo (REVISAR_MATCH o SIN_MATCH de más de DIAS_ACTIVOS días), en la corrida
+ * de completar el historial (paso 22): sólo informativa, no son fichas (intermedia).
+ */
+const RDV_HOJA_HISTORICO = 'HISTORICO_SIN_RESOLVER';
 /** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
 const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
 /** La confianza de una opción en la ficha, en palabras: "alta" ≥ UMBRAL_MATCH, "media" ≥ esto, "baja" debajo. */
