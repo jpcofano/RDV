@@ -307,15 +307,21 @@ normal, paso 19 y paso 24 (0.t).
 cada hora. **Si el equipo lo necesita, se puede agregar un activador de edición** (`onEdit` instalable) que
 recalcule la fila editada: anotado acá, no hecho.
 
+**Validación previa, fuera de la planilla (05/10):** con el archivo exportado del destino
+(`RDV JM CM ES + funcionarios.xlsx`, 02/10) se sacó el **texto exacto de las once fórmulas** (ahora en
+docs/formulas-respaldo.md: real y copia idénticas; las de AB a AF empiezan en `$B$1`, así que su
+encabezado es el de `Comunas`) y se corrió **el cálculo de `30_Derivadas.js`** contra los valores que
+guardó la planilla: **0 distintas en las once columnas, 810 filas, en las dos solapas**. Quedan confirmados
+el día en minúscula ("sábado"), el `IFERROR` de % vacío (Inscriptos = 0 → vacío) y el sufijo ", Buenos
+Aires, Argentina". No hubo que cambiar el cálculo. (La comparación se hizo en Node con el código del repo;
+el archivo, con datos reales, no está en el repo.)
+
 **La secuencia, con la predicción anotada ANTES de cada corrida:**
 
 *En la copia* (`PASO_DERIVADAS_SOLAPA = 'AAA NOBORRAR'`):
 
-1. **`paso25_compararDerivadas()`**. **Predicción:** **0 distintas** en las ~810 filas con datos. Si hay
-   distintas, lo más probable: el día de la semana (mayúscula inicial o idioma), el sufijo de
-   `Direccion2` (la fórmula está cortada en CLAUDE.md) o el valor del `IFERROR` de % (asumido vacío). Se
-   ajusta el script y se repite. **Pegar el bloque de las fórmulas** para completar
-   docs/formulas-respaldo.md.
+1. **`paso25_compararDerivadas()`**. **Predicción:** **0 distintas** en las 810 filas con datos (ya dio 0
+   sobre el export del 02/10). Si aparece alguna, es un dato cargado después del 02/10: mirar los ejemplos.
 2. **`paso26_quitarFormulasDerivadas_enSeco()`**. **Predicción:** "quitaría 11 columnas, ~8.900 celdas"
    (11 × ~810), 0 distintas, nada cambia.
 3. **`paso26_quitarFormulasDerivadas()`** (con `DRY_RUN = false`). **Predicción:** quitadas 11, con

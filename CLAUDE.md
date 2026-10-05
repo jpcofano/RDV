@@ -707,11 +707,11 @@ fórmulas de array que viven **en la celda del encabezado** y se expanden hacia 
 | col | fórmula |
 |---|---|
 | `D` Día de la semana | `={"Día de la semana"; IF(E2:E2374="","",TEXT(E2:E2374,"dddd"))}` |
-| `W` % de Asistencia | `={"% de Asistencia"; IF(LEN(K2:K2374)=0,"",IFERROR(Q2:Q2374/K2:K2374,...))}` |
-| `X` Direccion2 | `={"Direccion2"; IF(G2:G2374="","",G2:G2374&", Buenos Aires, ...")}` |
+| `W` % de Asistencia | `={"% de Asistencia"; IF(LEN(K2:K2374)=0,"",IFERROR(Q2:Q2374/K2:K2374,""))}` |
+| `X` Direccion2 | `={"Direccion2"; IF(G2:G2374="","",G2:G2374&", Buenos Aires, Argentina")}` |
 | `Y` Falta Informacion | `={"Falta Informacion"; IF(K2:K2374="","","No")}` |
 | `AA` Comuna | `={"Comuna"; IFERROR(VLOOKUP(B2:B2374, Comunas!A:B, 2, FALSE),)}` |
-| `AB`–`AF` | `VLOOKUP($B, Comunas!$A:$G, 3..7)` → Poblacion, p.Mujer, P.Varon, km2, hab/km2 |
+| `AB`–`AF` | `IFERROR(VLOOKUP($B$1:$B2374, Comunas!$A:$G, 3..7, FALSE), )` → Poblacion, p.Mujer, P.Varon, km2, hab/km2 (empiezan en la fila 1: el encabezado es el de `Comunas`) |
 | `AG` Zona | `={"Zona"; IFERROR(VLOOKUP(B2:B2374, Comunas!A:Z, 8, FALSE),)}` |
 
 Un `setValue()` en cualquier celda de esas columnas rompe el array completo
@@ -2880,7 +2880,8 @@ Verificacion: correr `correrEnSeco()` despues, y que el aviso de columnas faltan
 > lectura), paso 26 (respaldo en `DERIVADAS_RESPALDO` + quitar las fórmulas + protección con
 > advertencia), paso 27 (volver atrás). Con `DERIVADAS_POR_SCRIPT = true` el upsert las recalcula en
 > TODAS las filas en cada corrida. Primero en la copia, después en el real. Recalcular al editar: por
-> ahora no (sólo cada hora). Respaldo legible: docs/formulas-respaldo.md.
+> ahora no (sólo cada hora). Respaldo legible, con el texto exacto: docs/formulas-respaldo.md. **Validado
+> el 05/10 contra el export del destino: 0 distintas en las once columnas, 810 filas, real y copia.**
 
 **Es prerrequisito duro de la Fase 9.** No se saca el staging con las fórmulas de array
 todavía puestas: sería poner un upsert nuevo a escribir contra once bloques que se rompen
