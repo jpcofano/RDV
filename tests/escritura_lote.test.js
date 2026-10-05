@@ -31,7 +31,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
-                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js'];
+                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -106,6 +106,7 @@ function crearEntorno(opts) {
       if (typeof a === 'string') { const p = parseA1(a); return new Rango(this, p.r, p.c, p.nr, p.nc); }
       return new Rango(this, a, b, c || 1, d || 1);
     }
+    getProtections() { return (this.protecciones || []).slice(); }
     getRangeList(lista) {
       const h = this;
       const rangos = lista.map(function (a1) { const p = parseA1(a1); return new Rango(h, p.r, p.c, p.nr, p.nc); });
@@ -152,9 +153,31 @@ function crearEntorno(opts) {
       }
       return out;
     }
-    getFormulas() { leer(this._celdas()); return this.getValuesSinCosto_().map(function (f) { return f.map(function () { return ''; }); }); }
+    // Fórmulas (05/10): h.f['fila,col'] = texto. Sin cálculo: los valores que "muestran" los pone el test.
+    getFormulas() {
+      leer(this._celdas());
+      const h = this.h, out = [];
+      for (let i = 0; i < this.nr; i++) { const f = []; for (let j = 0; j < this.nc; j++) f.push((h.f || {})[(this.r + i) + ',' + (this.c + j)] || ''); out.push(f); }
+      return out;
+    }
+    getFormula() { return this.getFormulas()[0][0]; }
+    getFormulaR1C1() { return this.getFormulas()[0][0]; }
+    setFormula(f) { escribir(1); this.h.f = this.h.f || {}; this.h.f[this.r + ',' + this.c] = f; }
+    setFormulaR1C1(f) { escribir(this._celdas()); this.h.f = this.h.f || {};
+      for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.h.f[(this.r + i) + ',' + (this.c + j)] = f; }
+    clearContent() { escribir(this._celdas()); this._poner(''); }
+    protect() {
+      const pr = { desc: '', warning: false, rango: [this.r, this.c, this.nr, this.nc], h: this.h,
+                   setDescription: function (d) { pr.desc = d; return pr; }, setWarningOnly: function (w) { pr.warning = w; return pr; },
+                   getDescription: function () { return pr.desc; },
+                   remove: function () { pr.h.protecciones = pr.h.protecciones.filter(function (x) { return x !== pr; }); } };
+      this.h.protecciones = this.h.protecciones || [];
+      this.h.protecciones.push(pr);
+      return pr;
+    }
     getValuesSinCosto_() { const o = []; for (let i = 0; i < this.nr; i++) { o.push(new Array(this.nc).fill('')); } return o; }
     setValues(m) {
+      this._borrarFormulas_();
       if (m.length !== this.nr || m.some((f) => f.length !== this.nc)) throw new Error('setValues: dimensiones');
       escribir(this._celdas());
       this.h._asegurar(this.r + this.nr - 1, this.c + this.nc - 1);
@@ -179,7 +202,12 @@ function crearEntorno(opts) {
     setDataValidations(m) { this._matriz('dv', m); }
     clearDataValidations() { this.h.dv = []; }
     setBackground(c) { escribir(this._celdas()); this._pintar(c); }
+    _borrarFormulas_() {
+      if (!this.h.f) return;
+      for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) delete this.h.f[(this.r + i) + ',' + (this.c + j)];
+    }
     _poner(v) {
+      this._borrarFormulas_();
       this.h._asegurar(this.r + this.nr - 1, this.c + this.nc - 1);
       for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.h.v[this.r + i - 1][this.c + j - 1] = v;
     }
@@ -211,6 +239,7 @@ function crearEntorno(opts) {
       return Array.from(crypto.createHash('md5').update(String(s), 'utf8').digest()).map(function (b) { return b > 127 ? b - 256 : b; });
     },
     formatDate: function (d, tz, fmt) {
+      if (fmt === 'u') return String(d.getDay() || 7);   // 1 = lunes … 7 = domingo
       const p = function (n) { return ('0' + n).slice(-2); };
       return fmt.replace('yyyy', d.getFullYear()).replace('MM', p(d.getMonth() + 1)).replace('dd', p(d.getDate()))
                 .replace('HH', p(d.getHours())).replace('mm', p(d.getMinutes())).replace('ss', p(d.getSeconds()));
@@ -232,7 +261,8 @@ function crearEntorno(opts) {
                     build: function () { return r; } };
         return b;
       },
-      flush: function () { vigilar(); vaciar(); }
+      flush: function () { vigilar(); vaciar(); },
+      ProtectionType: { RANGE: 'RANGE' }
     },
     // Activadores (04/10): E.activadores es la lista de nombres de función con activador.
     ScriptApp: {
@@ -278,6 +308,7 @@ function crearEntorno(opts) {
     vm.runInContext(s, ctx, { filename: f });
   });
   // El paso 14 mira fórmulas reales: en el mock no hay. Se lo reemplaza por "todo bien".
+  vm.runInContext('var __diagFormulasReal = typeof diagFormulasDestino === "function" ? diagFormulasDestino : null;', ctx);
   vm.runInContext('function diagFormulasDestino() { return { difs: {} }; }', ctx);
   // El cálculo del plan cuesta tiempo en Apps Script; acá se carga en el reloj una vez por ejecución.
   if (vm.runInContext('typeof calcularPlan_', ctx) === 'function') {
@@ -1404,6 +1435,116 @@ function escenarioActivadores() {
   ok(i3.error && /no al destino real/.test(i3.error.message), 'con el destino en la copia, tampoco se instala');
 }
 
+/**
+ * Lo que mostrarían las once fórmulas, calculado aparte (otra implementación, la de la planilla): para poner
+ * en el mock los valores "de la fórmula" y comparar contra el script.
+ */
+function ponerFormulasDerivadas(h, comunas) {
+  const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const tabla = {};
+  comunas.slice(1).forEach(function (r) { if (!tabla[String(r[0]).toLowerCase()]) tabla[String(r[0]).toLowerCase()] = r; });
+  const c = function (n) { return colD(n); };
+  h.f = h.f || {};
+  DERIVADAS.forEach(function (n) { h.f['1,' + (c(n) + 1)] = '={"' + n + '"; ARRAYFORMULA(…)}'; });
+  for (let i = 1; i < h.v.length; i++) {
+    const r = h.v[i];
+    const fecha = r[c('FECHA')], ins = r[c('Inscriptos')], asis = r[c('Asistentes')], dir = r[c('Dirección')];
+    r[c('Día de la semana')] = fecha instanceof Date ? DIAS[fecha.getDay()] : '';
+    r[c('% de Asistencia')] = ins === '' ? '' : (typeof ins === 'number' && ins !== 0 && (asis === '' || typeof asis === 'number') ? (asis === '' ? 0 : asis) / ins : '');
+    r[c('Direccion2')] = dir === '' ? '' : dir + ', Buenos Aires, Argentina';
+    r[c('Falta Informacion')] = ins === '' ? '' : 'No';
+    const t = r[c('Barrio')] === '' ? null : tabla[String(r[c('Barrio')]).toLowerCase()];
+    ['Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'].forEach(function (n, k) {
+      r[c(n)] = t ? t[k + 1] : '';
+    });
+  }
+}
+
+function escenarioDerivadas() {
+  console.log('\n[19] derivadas por script: comparar, quitar las fórmulas, recalcular, el upsert, restaurar');
+  const E = crearEntorno({ config: { RDV_HOJA_DESTINO: "'RVD JM-CM - ES'", DERIVADAS_POR_SCRIPT: 'true' } });
+  let comunasDatos = null;
+  const m = montar(E, 120, true, function (E2, datos) {
+    const c = function (n) { return colD(n); };
+    datos.dest.forEach(function (r, i) {
+      if (i === 0) return;
+      if (i % 3 === 0) r[c('Dirección')] = 'Av. Siempre Viva ' + (100 + i);
+      if (i === 7) r[c('Barrio')] = 'Barrio Que No Está';
+      if (i === 8) r[c('Inscriptos')] = 0;                       // división por cero: vacío
+      if (i === 9) r[c('Asistentes')] = '';                      // asistentes vacío: 0
+      if (i === 10) r[c('Barrio')] = 'PALERMO';                  // VLOOKUP no distingue mayúsculas
+    });
+    comunasDatos = datos.comunas;
+  });
+  vm.runInContext('diagFormulasDestino = __diagFormulasReal;', E.ctx);   // el paso 14 de verdad
+  const copia = m.ssD.hojas['AAA NOBORRAR'], real = m.ssD.hojas['RVD JM-CM - ES'];
+  ponerFormulasDerivadas(copia, comunasDatos);
+  ponerFormulasDerivadas(real, comunasDatos);
+  const corre = function (expr) {
+    vm.runInContext('function __der() { return ' + expr + '; }', E.ctx);
+    return E.ejecutar('__der');
+  };
+
+  const c0 = corre("compararDerivadas('AAA NOBORRAR')");
+  ok(!c0.error && c0.resultado.distintas === 0 && c0.resultado.filas === 120, 'paso 25: 0 distintas en las 120 filas' +
+     (c0.error ? ': ' + c0.error.stack : ' (' + c0.resultado.distintas + ')'));
+  ok(/Día de la semana \| columna D \| array/.test(c0.logs.join('\n')), 'paso 25: loguea el texto de cada fórmula, con su columna');
+  const k = colD('% de Asistencia'), guardado = copia.v[5][k];
+  copia.v[5][k] = 0.123456;
+  const c1 = corre("compararDerivadas('AAA NOBORRAR')");
+  ok(c1.resultado.distintas === 1 && c1.resultado.porCol['% de Asistencia'].ejemplos[0].fila === 6, 'una distinta: la cuenta y la muestra (fila 6)');
+  const q0 = corre("quitarFormulasDerivadas('AAA NOBORRAR', true)");
+  ok(q0.resultado.quitadas === 0 && q0.resultado.distintas === 1, 'con una distinta, el paso 26 no quita nada');
+  copia.v[5][k] = guardado;
+
+  const f0 = JSON.stringify(foto(copia));
+  const s0 = corre("quitarFormulasDerivadas('AAA NOBORRAR', false)");
+  ok(!s0.error && s0.resultado.enSeco && JSON.stringify(foto(copia)) === f0, 'paso 26 en seco: no cambia nada');
+  const antes = foto(copia);
+  const q = corre("quitarFormulasDerivadas('AAA NOBORRAR', true)");
+  ok(!q.error && q.resultado.quitadas === 11 && q.resultado.distintas === 0, 'paso 26: quita las 11 y vuelve a dar 0 distintas' +
+     (q.error ? ': ' + q.error.stack : ''));
+  ok(!Object.keys(copia.f).some(function (key) { return /^1,/.test(key); }), 'no queda ninguna fórmula en el encabezado');
+  ok(DERIVADAS.every(function (n) { return copia.v[0][colD(n)] === n; }), 'el encabezado queda como texto');
+  // (el mock agrega filas vacías al vaciar hasta el final de la hoja: se comparan las filas que había)
+  const n0 = antes.v.length;
+  ok(JSON.stringify(foto(copia).v.slice(0, n0)) === JSON.stringify(antes.v) && JSON.stringify(copia.bg.slice(0, n0)) === JSON.stringify(antes.bg),
+     'los valores son los mismos que mostraban las fórmulas, y sin color');
+  ok((copia.protecciones || []).length === 11 && copia.protecciones.every(function (x) { return x.warning; }),
+     'las 11 columnas protegidas con advertencia');
+  const resp = m.ssI.hojas['DERIVADAS_RESPALDO'];
+  ok(resp && resp.v.filter(function (r) { return r[0] === 'AAA NOBORRAR' && r[3] === 'array'; }).length === 11, 'respaldo: las 11 fórmulas');
+
+  // Cambia lo que las origina: se recalculan sólo esas celdas.
+  copia.v[3][colD('Inscriptos')] = 999;
+  copia.v[4][colD('Barrio')] = 'Recoleta';
+  const r1 = corre("recalcularDerivadas('AAA NOBORRAR', true)");
+  ok(!r1.error && r1.resultado.total === 2 && r1.resultado.porCol['% de Asistencia'] === 1 && r1.resultado.porCol['Comuna'] === 1,
+     'recalcular: sólo las celdas que cambiaron (el %, y la Comuna: en los datos sintéticos el resto de Comunas es igual) → ' + (r1.resultado ? r1.resultado.total : r1.error));
+  ok(copia.v[3][k] === copia.v[3][colD('Asistentes')] / 999 && copia.v[4][colD('Comuna')] === 2, 'con los valores nuevos');
+  ok(JSON.stringify(copia.bg.slice(0, n0)) === JSON.stringify(antes.bg), 'sin color');
+  const d14 = corre("diagFormulasDestino('AAA NOBORRAR')");
+  ok(!d14.error && d14.resultado.porScript === 11 && d14.resultado.sinFormula === 0 && d14.resultado.difFila === 0 &&
+     /CONFIRMADO: valores = Comunas/.test(d14.logs.join('\n')), 'paso 14 sin fórmulas: "valores = Comunas" (11 por script)' +
+     (d14.error ? ': ' + d14.error.stack : ''));
+
+  // El upsert sobre el real, que todavía tiene las fórmulas: no las toca.
+  const fr = JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); }));
+  const u = E.ejecutar('upsertDestino');
+  ok(!u.error && /todavía con fórmula \(no se escriben\): Día de la semana/.test(u.logs.join('\n')) &&
+     JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); })) === fr,
+     'el upsert no escribe las derivadas de una solapa que todavía tiene fórmulas');
+
+  // Volver atrás.
+  const t0 = corre("restaurarFormulasDerivadas('AAA NOBORRAR', false)");
+  ok(!t0.error && t0.resultado.enSeco && !Object.keys(copia.f).some(function (key) { return /^1,/.test(key); }), 'paso 27 en seco: nada cambia');
+  const t1 = corre("restaurarFormulasDerivadas('AAA NOBORRAR', true)");
+  ok(!t1.error && t1.resultado.restauradas === 11 && DERIVADAS.every(function (n) { return /^=\{/.test(copia.f['1,' + (colD(n) + 1)] || ''); }) &&
+     DERIVADAS.every(function (n) { return copia.v.slice(1).every(function (r) { return r[colD(n)] === '' || r[colD(n)] === undefined; }); }) &&
+     !(copia.protecciones || []).length, 'paso 27: las 11 fórmulas de vuelta, columnas vacías para el array, sin protección');
+  ok(E.ejecutar('verificarEscritura').resultado !== null, 'paso 16 corre con el paso 14 de verdad');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1437,13 +1578,15 @@ const fuenteVieja = conViejo ? function (f) {
 const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
-    process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
+    process.argv.indexOf('--derivadas') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
   else if (process.argv.indexOf('--fichas') >= 0) { escenarioFichas(); escenarioOrdenFichas(); }
   else if (process.argv.indexOf('--historial') >= 0) escenarioCompletarHistorial();
   else if (process.argv.indexOf('--activadores') >= 0) escenarioActivadores();
+  else if (process.argv.indexOf('--derivadas') >= 0) escenarioDerivadas();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1477,6 +1620,7 @@ escenarioFichas();
 escenarioOrdenFichas();
 escenarioCompletarHistorial();
 escenarioActivadores();
+escenarioDerivadas();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

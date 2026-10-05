@@ -1648,6 +1648,16 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
                'aplicadas.', plan.decisiones.length);
   }
 
+  // Las derivadas por script (05/10): en TODAS las filas, sólo donde cambió, sin color. En seco sólo cuenta.
+  if (DERIVADAS_POR_SCRIPT) {
+    try {
+      const d = recalcDerivadas_(RDV_HOJA_DESTINO, !enSeco);
+      plan.res.derivadas = d.total;
+    } catch (err) {
+      Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
+    }
+  }
+
   // Las elecciones: se guardan con su resultado y se vuelven a mostrar en las solapas regeneradas.
   guardarElecciones_(plan.elecciones, plan.eleccionesAp, enSeco, !enSeco && plan.res.escritura ? plan.res.escritura.completa : false);
   marcarEleccionesEnReportes_(plan);
@@ -1692,7 +1702,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                         'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
                         'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
-                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance'];
+                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas'];
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1707,7 +1717,8 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   RDV_HOJA_DESTINO, w ? _sn_(w.completa) : '', w ? w.filasPendientes : '',
                   w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan,
                   w ? JSON.stringify(w.porColumna) : '',
-                  historial ? 'historial (paso 22)' : 'activas (' + DIAS_ACTIVOS + ' días)']);
+                  historial ? 'historial (paso 22)' : 'activas (' + DIAS_ACTIVOS + ' días)',
+                  DERIVADAS_POR_SCRIPT ? (r.derivadas || 0) : 'fórmulas']);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }

@@ -135,12 +135,28 @@ const COLORES_SISTEMA = [COLOR_SISTEMA, '#4F81BD'];
  * que no detecta las celdas expandidas de un bloque de array.
  *
  * Después de la Fase 3 la lista no se borra: cambia de significado y pasa a ser "lo que calcula
- * `recalcDerivadas_()`". El upsert las sigue sin tocar.
+ * `recalcDerivadas_()`" (30_Derivadas.js, 05/10). La regla general (sólo celda vacía) no las escribe nunca:
+ * las escribe `escribirDerivadas_` (05_Escritura.js), la excepción anunciada para las columnas del sistema.
  */
 const COLUMNAS_DERIVADAS = [
   'Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion',
   'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'
 ];
+
+/**
+ * **Las derivadas por Apps Script** (etapa "antes de Agenda", 05/10; docs/prompts/PROMPT-04-…). Con
+ * `true`, el upsert (cada corrida, también el paso 22) recalcula las once COLUMNAS_DERIVADAS en TODAS las
+ * filas y sobrescribe sólo donde el valor cambió, sin color (`recalcDerivadas_`, 30_Derivadas.js). Una
+ * columna que todavía tiene su fórmula NO se escribe (romperia el array): se saltea y se loguea.
+ * **`false` hasta validar** (paso 25: 0 distintas) y quitar las fórmulas (paso 26).
+ */
+const DERIVADAS_POR_SCRIPT = false;
+/** Lo que la fórmula de `Direccion2` le agrega a la Dirección (CLAUDE.md 3.1.b). El paso 25 lo valida. */
+const SUFIJO_DIRECCION2 = ', Buenos Aires, Argentina';
+/** Dónde se guarda el texto exacto de las once fórmulas antes de quitarlas (intermedia). Lo lee el paso 27. */
+const RDV_HOJA_RESPALDO_DERIVADAS = 'DERIVADAS_RESPALDO';
+/** La descripción de la protección (sólo advertencia) que se pone sobre las once columnas al quitar las fórmulas. */
+const DESC_PROTECCION_DERIVADAS = 'RDV: columna derivada, la calcula el sistema (no editar a mano)';
 
 // ===================== Ventana de análisis =====================
 

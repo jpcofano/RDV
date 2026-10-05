@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 05/10: ANTES DE AGENDA — las derivadas por script (ESTADO 0.u). En la copia primero:
+ *      paso25_compararDerivadas() (0 distintas) → paso26_…_enSeco() → paso26_quitarFormulasDerivadas() →
+ *      DERIVADAS_POR_SCRIPT = true → paso26_recalcularDerivadas() → paso26_formulasDerivadas(). Volver: paso27.
  *  >>> 04/10: MIGRACIÓN AL REAL HECHA (ESTADO 0.t): paso 22 OK, paso 16 OK, paso 20 f = 0. Falta:
  *      paso23_listarActivadores() (sólo lectura) → borrar lo que marque BORRAR → paso24_instalarActivadorCadaHora()
  *      cuando el usuario confirme que el legado está apagado.
@@ -384,6 +387,69 @@ function paso22_completarHistorial_enSeco() {
              'NO escribe el destino; sí REVISAR_MATCH y ' + RDV_HOJA_HISTORICO + ' (intermedia)',
              'el log del upsert con lo que escribiría en todo el historial');
   return completarHistorialEnSeco();
+}
+
+// =============================================================================================
+//  DERIVADAS POR SCRIPT (05/10, antes de Agenda; ESTADO 0.u). La solapa sobre la que trabajan los
+//  pasos 25 a 27: primero la copia; después el real (cambiar esta constante).
+// =============================================================================================
+const PASO_DERIVADAS_SOLAPA = 'AAA NOBORRAR';
+
+/** PASO 25 — SÓLO LECTURA: las once derivadas por script contra lo que muestran las fórmulas. Tiene que dar 0. */
+function paso25_compararDerivadas() {
+  _anunciar_('paso 25 — comparar las derivadas (script contra fórmulas) en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'compararDerivadas()  [30_Derivadas.js]', 'NO escribe nada',
+             'el log: el texto exacto de las once fórmulas, y por columna iguales / distintas (10 primeras distintas)');
+  return compararDerivadas(PASO_DERIVADAS_SOLAPA);
+}
+
+/** PASO 26 — quitar las fórmulas, EN SECO: dice qué haría (y si da 0 distintas). */
+function paso26_quitarFormulasDerivadas_enSeco() {
+  _anunciar_('paso 26 — quitar las fórmulas de las derivadas (EN SECO) en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'quitarFormulasDerivadas(solapa, false)  [30_Derivadas.js]', 'NO escribe nada',
+             'el log: cuántas columnas y celdas; si hay distintas, no seguiría');
+  return quitarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, false);
+}
+
+/** PASO 26 — quitar las fórmulas: respaldo, fórmula → valores en la misma tanda, protección con advertencia. */
+function paso26_quitarFormulasDerivadas() {
+  _anunciar_('paso 26 — QUITAR las fórmulas de las derivadas en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'quitarFormulasDerivadas(solapa, true)  [30_Derivadas.js]',
+             'con DRY_RUN = false, SÍ: guarda el respaldo en ' + RDV_HOJA_RESPALDO_DERIVADAS + ', cambia las once fórmulas por ' +
+             'sus valores (sólo si da 0 distintas) y las protege con advertencia', 'el log: quitadas, y la verificación (0 distintas)');
+  return quitarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, true);
+}
+
+/** PASO 26b — recalcular las derivadas por script a mano (lo que hace el upsert al final de cada corrida). */
+function paso26_recalcularDerivadas() {
+  _anunciar_('paso 26b — recalcular las derivadas en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'recalcularDerivadas(solapa, true)  [30_Derivadas.js]',
+             'con DRY_RUN = false, SÍ: sobrescribe sólo las celdas de las once que cambiaron (las que no tienen fórmula)',
+             'el log: celdas que cambian, por columna');
+  return recalcularDerivadas(PASO_DERIVADAS_SOLAPA, true);
+}
+
+/** PASO 26c — el paso 14 sobre la solapa de las derivadas: "valores = Comunas" con o sin fórmula. */
+function paso26_formulasDerivadas() {
+  _anunciar_('paso 26c — paso 14 sobre "' + PASO_DERIVADAS_SOLAPA + '"', 'diagFormulasDestino(solapa)  [diagnostico/07_formulas_destino.js]',
+             'NO escribe nada', 'el log: fórmula o "por script" de cada una, valores contra Comunas y las de la fila contra el script');
+  return diagFormulasDestino(PASO_DERIVADAS_SOLAPA);
+}
+
+/** PASO 27 — volver atrás, EN SECO: lista las fórmulas del respaldo que pondría. */
+function paso27_restaurarFormulasDerivadas_enSeco() {
+  _anunciar_('paso 27 — restaurar las fórmulas (EN SECO) en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'restaurarFormulasDerivadas(solapa, false)  [30_Derivadas.js]', 'NO escribe nada', 'el log: las fórmulas del respaldo');
+  return restaurarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, false);
+}
+
+/** PASO 27 — volver atrás: borra los valores de las once y pone las fórmulas del respaldo. */
+function paso27_restaurarFormulasDerivadas() {
+  _anunciar_('paso 27 — RESTAURAR las fórmulas en "' + PASO_DERIVADAS_SOLAPA + '"',
+             'restaurarFormulasDerivadas(solapa, true)  [30_Derivadas.js]',
+             'con DRY_RUN = false, SÍ: borra los valores de las once columnas y pone las fórmulas de ' + RDV_HOJA_RESPALDO_DERIVADAS,
+             'el log: cuántas restauró. Después, DERIVADAS_POR_SCRIPT = false');
+  return restaurarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, true);
 }
 
 /**

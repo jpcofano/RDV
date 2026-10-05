@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-04 (destino: el real, "RVD JM-CM - ES"; migración hecha)
+# Estado de la migración — al 2026-10-05 (destino: el real; migración hecha; etapa: derivadas por script, 0.u)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,80 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### u) 05/10: ANTES DE AGENDA — las once derivadas por Apps Script
+
+Etapa nueva, decisión del usuario (docs/prompts/PROMPT-04-DERIVADAS-POR-SCRIPT.md). Se reemplazan por
+script **sólo** las once derivadas del destino (hoy fórmulas de array en la fila 1: Día de la semana, %
+de Asistencia, Direccion2, Falta Informacion, Comuna, Poblacion, p. Mujer, P. Varon, (km2), (hab/km2),
+Zona). Ninguna otra fórmula se toca. Queda pendiente, de la etapa anterior: paso 23, `upsertDestino()`
+normal, paso 19 y paso 24 (0.t).
+
+**Lo hecho (05/10):**
+
+- **`30_Derivadas.js`**: el cálculo, con la lógica exacta de la fórmula: Día = TEXT(FECHA; "dddd") en
+  castellano ("lunes" … "domingo", minúsculas, como la planilla en español); % = Asistentes / Inscriptos
+  (número, no texto; vacío si Inscriptos está vacío o la división da error: 0, texto); Direccion2 =
+  Dirección & `SUFIJO_DIRECCION2` (", Buenos Aires, Argentina"); Falta Informacion = "No" si Inscriptos
+  tiene algo; las siete = VLOOKUP exacto del Barrio en `Comunas` (columnas 2 a 8, sin distinguir
+  mayúsculas, sin redondeo), vacío si no está.
+- **La escritura**, en `05_Escritura.js`: **la segunda excepción anunciada** (CLAUDE.md, sección 0):
+  sólo esas once columnas, sobrescribe sólo lo que cambió, sin color; una columna con fórmula no se
+  escribe.
+- **`DERIVADAS_POR_SCRIPT = false`** hasta validar. Con `true`, el upsert (y el paso 22) las recalcula al
+  final de cada corrida en **TODAS** las filas (no sólo 30 días); `REGISTRO_UPSERT` suma la columna
+  `derivadas` (celdas que cambió, o "fórmulas").
+- **Paso 25 — `paso25_compararDerivadas()`** (sólo lectura): el texto **exacto** de las once fórmulas
+  (para completar docs/formulas-respaldo.md) y, por columna, iguales / distintas con las 10 primeras.
+- **Paso 26 — `paso26_quitarFormulasDerivadas_enSeco()` / `paso26_quitarFormulasDerivadas()`**: compara
+  (si hay alguna distinta, **no hace nada**), guarda el respaldo en **`DERIVADAS_RESPALDO`**
+  (intermedia), cambia cada fórmula por sus valores **en la misma tanda** (el encabezado queda como texto),
+  pone la **protección con advertencia** y verifica (sin fórmula, 0 distintas).
+  `paso26_recalcularDerivadas()`: lo que hace el upsert, a mano, sobre la solapa de la etapa (para la
+  copia: **el upsert escribe en el real**, así que en la copia el "upsert" de la secuencia es este paso).
+  `paso26_formulasDerivadas()`: el paso 14 sobre esa solapa.
+- **Paso 14 adaptado**: una columna sin fórmula con `DERIVADAS_POR_SCRIPT = true` no es error ("la calcula
+  el script"); c) sigue comparando los valores contra `Comunas`, y d) compara las cuatro de la fila
+  contra el script. Termina en "CONFIRMADO: valores = Comunas…" con o sin fórmula.
+- **Paso 27 — volver atrás**: `paso27_restaurarFormulasDerivadas_enSeco()` / `…()`, desde
+  `DERIVADAS_RESPALDO`. Respaldo legible: **docs/formulas-respaldo.md** (con lo de CLAUDE.md 3.1.b; el
+  texto exacto se completa con el log del paso 25).
+- La solapa de los pasos 25 a 27: `PASO_DERIVADAS_SOLAPA` en `99_Correr.js` (hoy `'AAA NOBORRAR'`).
+- **Test en Node** [19]: 0 distintas; una distinta la cuenta y frena el paso 26; en seco no cambia nada;
+  quitar deja los mismos valores, sin fórmula, el encabezado como texto, sin color, protegidas, con
+  respaldo; recalcular escribe sólo lo que cambió; el paso 14 sin fórmulas dice "valores = Comunas"; el
+  upsert no escribe en una solapa que todavía tiene fórmulas; restaurar vuelve a poner las once. Toda la
+  suite en verde.
+
+**Recalcular al editar** (barrio, fecha, inscriptos, asistentes): **por ahora no**; sólo en la corrida de
+cada hora. **Si el equipo lo necesita, se puede agregar un activador de edición** (`onEdit` instalable) que
+recalcule la fila editada: anotado acá, no hecho.
+
+**La secuencia, con la predicción anotada ANTES de cada corrida:**
+
+*En la copia* (`PASO_DERIVADAS_SOLAPA = 'AAA NOBORRAR'`):
+
+1. **`paso25_compararDerivadas()`**. **Predicción:** **0 distintas** en las ~810 filas con datos. Si hay
+   distintas, lo más probable: el día de la semana (mayúscula inicial o idioma), el sufijo de
+   `Direccion2` (la fórmula está cortada en CLAUDE.md) o el valor del `IFERROR` de % (asumido vacío). Se
+   ajusta el script y se repite. **Pegar el bloque de las fórmulas** para completar
+   docs/formulas-respaldo.md.
+2. **`paso26_quitarFormulasDerivadas_enSeco()`**. **Predicción:** "quitaría 11 columnas, ~8.900 celdas"
+   (11 × ~810), 0 distintas, nada cambia.
+3. **`paso26_quitarFormulasDerivadas()`** (con `DRY_RUN = false`). **Predicción:** quitadas 11, con
+   fórmula 0, **0 distintas** después; `DERIVADAS_RESPALDO` con 11 líneas de la copia; las 11 columnas con
+   protección (advertencia). Visualmente, la copia se ve igual.
+4. **`DERIVADAS_POR_SCRIPT = true`**, push y clasp push.
+5. **`paso26_recalcularDerivadas()`** (en la copia, en lugar del upsert). **Predicción:** **0 celdas** que
+   cambian (recién quitadas, ya son las del script). Para probarlo de verdad: cambiar a mano el barrio o
+   los inscriptos de una fila de la copia y volver a correrlo: cambian sólo esas celdas.
+6. **`paso26_formulasDerivadas()`** (paso 14 sobre la copia). **Predicción:** "sin fórmula: 0 |
+   calculadas por script: 11", c) todas coinciden, d) 0 distintas, **"CONFIRMADO: valores = Comunas"**.
+   El upsert de esa hora sobre el real loguea "todavía con fórmula (no se escriben): …" las once: correcto.
+
+*En el real* (`PASO_DERIVADAS_SOLAPA = 'RVD JM-CM - ES'`, push y clasp push), con la predicción escrita
+antes de correr: la misma secuencia 1 → 3 y 6, y el upsert normal en lugar del paso 26b (las derivadas
+del log: 0 celdas que cambian en la primera corrida). Si algo sale mal: paso 27.
 
 ### t) 04/10: migración al real — HECHA. Lo que falta: los activadores
 

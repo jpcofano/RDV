@@ -149,6 +149,22 @@ No decide nada, y no hace falta que decida.
 > nada. **No reabrirlo.** Lo que sí hace falta —enterarse si un número cerrado se movió— lo
 > resuelve `verificarCambiosRecientes_()` (sección 4, decisión 11), que avisa en vez de escribir.
 
+### La segunda excepción: las once derivadas (05/10)
+
+Las once `COLUMNAS_DERIVADAS` (Día de la semana, % de Asistencia, Direccion2, Falta Informacion y las
+siete de `Comunas`) eran fórmulas de array: **no son carga del usuario**, nadie las tipea. En la etapa
+"antes de Agenda" pasan a calcularse por script (`30_Derivadas.js`, con la misma lógica que la fórmula), y
+como dependen de datos que cambian (barrio, fecha, inscriptos, asistentes, dirección, `Comunas`) **se
+sobrescriben**: "sólo celda vacía" las congelaría con el primer valor. Es una excepción anunciada, igual
+que la de STATUS, y vive aparte en `05_Escritura.js` (`escribirDerivadas_`):
+
+- **sólo esas once columnas**, por nombre: cualquier otra es un error y no se escribe nada;
+- **una columna que todavía tiene su fórmula no se escribe** (rompería el array);
+- **sin color**: no es la marca de procedencia;
+- sólo las celdas cuyo valor cambió; las columnas, protegidas con advertencia.
+
+`setSiDelSistema_` sigue siendo verificable con un grep: las derivadas nunca pasan por él.
+
 ### Tres consecuencias que no son negociables
 
 **a) El cero cuenta como valor escrito.** Escribir `0` sobre una celda vacía la marca como
@@ -2508,7 +2524,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
 26_Fichas.js       REVISAR_MATCH como fichas (armado, frases, colores, desplegable, lector) y
                    HISTORICO_SIN_RESOLVER                                          ← 03/10
-30_Derivadas.js    recalcDerivadas_() — las 11 columnas que hoy son fórmulas
+30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (apagado)
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
@@ -2858,7 +2874,13 @@ Verificacion: correr `correrEnSeco()` despues, y que el aviso de columnas faltan
 > cambiar lo que quiera** y esa fila sigue siendo encontrable. Es la única parte del plan que
 > se vuelve más barata cuanto antes se haga, y más cara cada semana que pasa.
 
-### Fase 3 — Derivadas a valores
+### Fase 3 — Derivadas a valores  *(en curso desde el 05/10: etapa "antes de Agenda", ESTADO 0.u)*
+
+> **05/10**: `30_Derivadas.js` (cálculo con la misma lógica de la fórmula), paso 25 (comparar, sólo
+> lectura), paso 26 (respaldo en `DERIVADAS_RESPALDO` + quitar las fórmulas + protección con
+> advertencia), paso 27 (volver atrás). Con `DERIVADAS_POR_SCRIPT = true` el upsert las recalcula en
+> TODAS las filas en cada corrida. Primero en la copia, después en el real. Recalcular al editar: por
+> ahora no (sólo cada hora). Respaldo legible: docs/formulas-respaldo.md.
 
 **Es prerrequisito duro de la Fase 9.** No se saca el staging con las fórmulas de array
 todavía puestas: sería poner un upsert nuevo a escribir contra once bloques que se rompen

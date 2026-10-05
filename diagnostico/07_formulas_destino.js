@@ -18,6 +18,11 @@
  *   c) fila por fila, el valor que muestra el destino es el que da `Comunas` hoy para su barrio.
  *
  * Una diferencia en c) no se arregla desde acá: se lista para mirarla.
+ *
+ * Desde el 05/10 (derivadas por script, 30_Derivadas.js): una columna **sin fórmula con
+ * DERIVADAS_POR_SCRIPT = true** no es un error —la calcula el script— y c) se hace igual ("valores =
+ * Comunas"). Además, d): las cuatro de la fila (Día de la semana, % de Asistencia, Direccion2, Falta
+ * Informacion) contra el cálculo del script. Recibe la solapa (por defecto, RDV_HOJA_DESTINO).
  */
 
 /** Columna de `Comunas` (1 = A) que cada derivada de lookup debería leer. */
@@ -25,12 +30,13 @@ const DIAG7_LOOKUP = {
   'Comuna': 2, 'Poblacion': 3, 'p. Mujer': 4, 'P. Varon': 5, '(km2)': 6, '(hab/km2)': 7, 'Zona': 8
 };
 
-function diagFormulasDestino() {
+function diagFormulasDestino(solapa) {
+  solapa = solapa || RDV_HOJA_DESTINO;
   Logger.log('=== diagFormulasDestino — sólo lectura, no escribe nada ===');
-  Logger.log('  solapa destino: %s', descripcionHojaDestino_());
+  Logger.log('  solapa: "%s"%s', solapa, solapa === RDV_HOJA_DESTINO ? ' (' + descripcionHojaDestino_() + ')' : '');
   const ss = SpreadsheetApp.openById(RDV_SS_DESTINO);
-  const sh = ss.getSheetByName(RDV_HOJA_DESTINO);
-  if (!sh) throw new Error('No existe la hoja "' + RDV_HOJA_DESTINO + '".');
+  const sh = ss.getSheetByName(solapa);
+  if (!sh) throw new Error('No existe la hoja "' + solapa + '".');
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const hdrV = sh.getRange(1, 1, 1, nCols).getValues()[0];
   const hdrF = sh.getRange(1, 1, 1, nCols).getFormulas()[0];
@@ -43,7 +49,7 @@ function diagFormulasDestino() {
   // --- a) y b): la fórmula de cada derivada ---
   Logger.log('--- a) fórmulas de las %s COLUMNAS_DERIVADAS ---', COLUMNAS_DERIVADAS.length);
   const col = {};
-  let sinFormula = 0, enError = 0, malIndice = 0;
+  let sinFormula = 0, enError = 0, malIndice = 0, porScript = 0;
   COLUMNAS_DERIVADAS.forEach(function (nombre) {
     const k = idx(nombre);
     if (k < 0) { Logger.log('  %s: NO ESTÁ el encabezado', nombre); sinFormula++; return; }
@@ -53,6 +59,11 @@ function diagFormulasDestino() {
     if (!f && nFilas >= 2) { f = sh.getRange(2, k + 1).getFormula(); donde = 'fila 2 (por fila)'; }
     const err = /^#/.test(String(hdrV[k]));
     if (err) enError++;
+    if (!f && DERIVADAS_POR_SCRIPT) {
+      porScript++;
+      Logger.log('  %s (%s): sin fórmula — la calcula el script (DERIVADAS_POR_SCRIPT)', nombre, letra);
+      return;
+    }
     if (!f) { sinFormula++; Logger.log('  %s (%s): SIN FÓRMULA en fila 1 ni 2', nombre, letra); return; }
     let nota = '';
     if (DIAG7_LOOKUP[nombre]) {
@@ -65,8 +76,8 @@ function diagFormulasDestino() {
     Logger.log('  %s (%s): fórmula en %s%s%s', nombre, letra, donde, nota, err ? ' | ANCLA EN ERROR: ' + hdrV[k] : '');
     Logger.log('      %s', String(f).slice(0, 140));
   });
-  Logger.log('  sin fórmula: %s | ancla en error: %s | índice de Comunas distinto: %s',
-             sinFormula, enError, malIndice);
+  Logger.log('  sin fórmula: %s | calculadas por script: %s | ancla en error: %s | índice de Comunas distinto: %s',
+             sinFormula, porScript, enError, malIndice);
 
   // --- c): valores contra Comunas de hoy ---
   const kBarrio = idx('Barrio'), kFig = idx('Figura'), kFecha = idx('FECHA');
@@ -119,12 +130,29 @@ function diagFormulasDestino() {
   Object.keys(sinTabla).slice(0, 15).forEach(function (b) {
     Logger.log('      "%s" × %s', b, sinTabla[b]);
   });
-  const todoOk = !sinFormula && !enError && !malIndice &&
-                 Object.keys(difs).every(function (n) { return !difs[n]; });
+  // --- d): las cuatro de la fila, contra el cálculo del script (30_Derivadas.js) ---
+  const deFila = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion'];
+  let difFila = 0;
+  if (solapa === RDV_HOJA_DESTINO_REAL || solapa === RDV_HOJA_COPIA_PRUEBA) {
+    const cmp = _compararDerivadas_(_ctxDerivadas_(solapa), deFila);
+    Logger.log('--- d) las cuatro de la fila contra el cálculo del script ---');
+    deFila.forEach(function (n) {
+      const c = cmp.porCol[n];
+      if (!c) { Logger.log('  %s: no hay columna', n); return; }
+      Logger.log('  %s: %s iguales | %s distintas', n, c.iguales, c.distintas);
+      c.ejemplos.slice(0, 5).forEach(function (e) {
+        Logger.log('      fila %s | la planilla muestra %s | el script calcula %s', e.fila, _mostrar_(e.planilla), _mostrar_(e.script));
+      });
+    });
+    difFila = cmp.distintas;
+  }
+  const valoresOk = Object.keys(difs).every(function (n) { return !difs[n]; });
+  const todoOk = !sinFormula && !enError && !malIndice && valoresOk && !difFila;
   Logger.log(todoOk
-    ? '>>> CONFIRMADO: las once conservan su fórmula y los valores son los de Comunas de hoy.'
+    ? '>>> CONFIRMADO: valores = Comunas de hoy, y las de la fila = el cálculo del script (' +
+      (11 - porScript) + ' con fórmula, ' + porScript + ' calculadas por script).'
     : '>>> HAY DIFERENCIAS: ver arriba. Nada se corrigió desde acá.');
-  return { sinFormula: sinFormula, enError: enError, malIndice: malIndice, difs: difs };
+  return { sinFormula: sinFormula, enError: enError, malIndice: malIndice, difs: difs, porScript: porScript, difFila: difFila };
 }
 
 function _igual_diag7(a, b) {

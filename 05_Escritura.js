@@ -13,8 +13,11 @@
  *
  *   setSiDelSistema_(rango, valor)          la regla general: escribe sólo en celda vacía.
  *   setSiDelSistemaLote_(sh, hdr, lista)    ídem, por bloques (la usa el upsert).
- *   marcarRealizada_(...)                   la única excepción: una transición de estado.
+ *   marcarRealizada_(...)                   la excepción de STATUS: una transición de estado.
  *   marcarRealizadaLote_(...)               ídem, por bloques (la usa el upsert).
+ *   escribirDerivadas_(...)                 la excepción de las DERIVADAS (05/10): las once columnas que
+ *                                           eran fórmulas. No son carga del usuario: se sobrescriben.
+ *   quitarFormulasDerivadas_ / restaurarFormulasDerivadas_   el cambio de fórmula a script, y vuelta.
  *
  * La excepción está **afuera** de `setSiDelSistema_`, no adentro. Meterla adentro la volvería
  * inauditable: la regla general dejaría de ser cierta y nadie lo vería leyendo el helper.
@@ -319,6 +322,86 @@ function repintarAzulViejo_(sh, celdas) {
   const a1 = tramos.map(function (t) { return _a1_(t.desde, t.col) + ':' + _a1_(t.hasta, t.col); });
   for (let i = 0; i < a1.length; i += 400) sh.getRangeList(a1.slice(i, i + 400)).setBackground(COLOR_SISTEMA);
   return siguen.length;
+}
+
+// ===================== La excepción de las DERIVADAS (05/10) =====================
+
+/*
+ * Las once COLUMNAS_DERIVADAS (Día de la semana, % de Asistencia, Direccion2, Falta Informacion y las siete de
+ * Comunas) eran fórmulas de array en el encabezado. **No son carga del usuario**: nadie las tipea, las
+ * calcula la planilla y ahora el sistema (30_Derivadas.js). Por eso la regla general no aplica —escribir
+ * "sólo en celda vacía" las congelaría con el primer valor— y se **sobrescriben** cuando cambia lo que las
+ * origina (barrio, fecha, inscriptos, asistentes, dirección, Comunas). Es una excepción anunciada, como la
+ * de STATUS, y acotada igual:
+ *   - sólo estas once columnas, por nombre: cualquier otra columna es un error y no se escribe nada;
+ *   - una columna que todavía tiene su fórmula no se escribe (rompería el array): se saltea;
+ *   - sin color: no es la marca de procedencia (no es un dato que el sistema completó);
+ *   - sólo las celdas cuyo valor cambió (salvo al quitar la fórmula, donde se escribe la columna entera).
+ */
+
+/**
+ * Escribe tramos de una columna derivada: `tramos` = [{desde, valores: [v, …]}] (filas consecutivas).
+ * @return {number} celdas escritas
+ */
+function escribirDerivadas_(sh, hdr, col, tramos) {
+  _exigirDerivada_(hdr, col);
+  if (_tieneFormulaDerivada_(sh, col)) throw new Error('La columna "' + hdr[col - 1] + '" todavía tiene fórmula: no se escribe.');
+  let n = 0;
+  tramos.forEach(function (t) {
+    sh.getRange(t.desde, col, t.valores.length, 1).setValues(t.valores.map(function (v) { return [v]; }));
+    n += t.valores.length;
+  });
+  return n;
+}
+
+/**
+ * **Quita la fórmula de una derivada y deja los valores, en la misma tanda** (paso 26): el encabezado pasa
+ * a ser texto y las filas 2..N reciben los valores del script. Sin lecturas en el medio, así Apps Script
+ * manda todo junto y la columna no queda vacía. Las filas de más abajo (por si la fórmula era por fila) se
+ * vacían. Pone la protección con advertencia.
+ */
+function quitarFormulasDerivadas_(sh, hdr, cols, valoresPorCol, ultimaFila) {
+  cols.forEach(function (col) {
+    _exigirDerivada_(hdr, col);
+    const v = valoresPorCol[col];
+    sh.getRange(1, col).setValue(hdr[col - 1]);                                   // el encabezado, como texto
+    if (v.length) sh.getRange(2, col, v.length, 1).setValues(v.map(function (x) { return [x]; }));
+    const resto = sh.getMaxRows() - ultimaFila;
+    if (resto > 0) sh.getRange(ultimaFila + 1, col, resto, 1).clearContent();     // fórmulas por fila, si había
+  });
+  cols.forEach(function (col) {
+    sh.getRange(1, col, sh.getMaxRows(), 1).protect().setDescription(DESC_PROTECCION_DERIVADAS).setWarningOnly(true);
+  });
+}
+
+/**
+ * **Vuelve a poner las fórmulas** desde el respaldo (paso 27): borra los valores de la columna (si no, el
+ * array no se puede expandir) y escribe la fórmula en el encabezado (array) o en cada fila (por fila).
+ * Saca la protección de las derivadas.
+ */
+function restaurarFormulasDerivadas_(sh, hdr, respaldo) {
+  respaldo.forEach(function (x) {
+    _exigirDerivada_(hdr, x.col);
+    sh.getRange(2, x.col, sh.getMaxRows() - 1, 1).clearContent();
+    if (x.tipo === 'array') sh.getRange(1, x.col).setFormula(x.formula);
+    else sh.getRange(2, x.col, x.filas, 1).setFormulaR1C1(x.formulaR1C1);
+  });
+  sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).forEach(function (pr) {
+    if (pr.getDescription() === DESC_PROTECCION_DERIVADAS) pr.remove();
+  });
+}
+
+function _exigirDerivada_(hdr, col) {
+  if (!esColumnaDerivada_(hdr[col - 1])) {
+    throw new Error('"' + hdr[col - 1] + '" no es una de las COLUMNAS_DERIVADAS: no se escribe nada.');
+  }
+}
+
+/** ¿La columna tiene fórmula (en el encabezado, o por fila en la fila 2)? */
+function _tieneFormulaDerivada_(sh, col) {
+  const f1 = sh.getRange(1, col).getFormula();
+  const f2 = sh.getLastRow() >= 2 ? sh.getRange(2, col).getFormula() : '';
+  return !!(f1 || f2);
 }
 
 // ===================== La guarda de la solapa destino =====================
