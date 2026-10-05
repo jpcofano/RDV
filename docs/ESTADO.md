@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-05 (destino: el real; migración hecha; etapa: derivadas por script, 0.u)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,80 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### v) 06/10: ANTES DE AGENDA — los oradores desde RDV CONJUNTO
+
+Decisión del usuario: sumar al paso que copia Asistentes las dos columnas de oradores.
+
+| | RDV CONJUNTO | destino |
+|---|---|---|
+| Oradores anotados | la 1ª después de Asistentes | **R** |
+| Oradores que hablaron | la 2ª después de Asistentes | **S** |
+
+**Lo hecho:**
+
+- **Por encabezado, con la letra como control**: si en el destino no están en R/S, o en RDV CONJUNTO no son
+  las dos siguientes a Asistentes (o no se encuentran), **error y no se escribe nada** (`leerDestino_`,
+  `cruzarAsistentes_`).
+- **El mismo cruce de Asistentes** (figura por tokens + fecha; con 2+ filas, desempate por barrio o
+  comuna) y **las mismas reglas**: sólo celda vacía, **un 0 del destino es un valor y no se pisa**,
+  `#CFE2F3`, conteo por columna en `REGISTRO_UPSERT` (`por_columna`). Se toman sólo de las filas de RDV
+  CONJUNTO que tienen asistentes (como Asistentes). Si el cruce no es seguro —varias figuras, 2+ filas sin
+  desempate, dos asistentes distintos para la misma fila, **o dos valores de oradores distintos para la
+  misma fila** (por columna)— no se escribe y se lista en el log del cruce. Un número o un texto se copian
+  tal cual.
+- **R y S pasan a ser columnas del sistema** (CLAUDE.md, decisión 8). **Paso 16**: las incompletas cuentan
+  ahora también lo que trae RDV CONJUNTO (Asistentes y oradores; la misma `decisionDeFila_` que la
+  escritura). **Paso 20**: los oradores en la lista, con sus causas ("dos valores distintos en RDV
+  CONJUNTO", "RDV CONJUNTO tiene la fila, sin …", y las del cruce de Asistentes).
+- **En el proceso**: van dentro de la misma escritura que Asistentes: **el paso 22** los completa en todas
+  las filas (sólo vacías) y **`upsertDiario`** (cada hora) en las filas activas (30 días).
+- **Paso 28 — `paso28_medirOradores()`** (sólo lectura): a) las dos columnas en los dos lados, el tipo de
+  dato (número / texto / vacío) y 10 ejemplos de cada una; b) con el cruce, **por columna**: vacío en el
+  destino y RDV CONJUNTO lo tiene (se completaría) **[activas | cerradas]**, mismo valor, distinto (no se
+  toca) y dos valores en RDV CONJUNTO (no se escribe).
+- **Test en Node** [20]: celda vacía se completa (número y texto) en `#CFE2F3`; celda con valor —un 0
+  incluido— no se toca; cruce ambiguo (2 filas sin desempate) no escribe; dos valores distintos en RDV
+  CONJUNTO no escribe esa columna; `REGISTRO_UPSERT` por columna; paso 20 con las causas y f = 0; paso 16
+  con 0 incompletas; encabezado fuera de lugar → error y nada escrito, en los dos lados. El destino
+  sintético de los tests tiene ahora las columnas en el orden del real. Toda la suite en verde.
+
+**Medición previa, fuera de la planilla (06/10)**: el paso 28 corrido en Node, con el código del repo,
+sobre el export del destino del **02/10** (`RDV JM CM ES + funcionarios.xlsx`; no está en el repo):
+
+| | destino (R / S) | RDV CONJUNTO (K / L) |
+|---|---|---|
+| Oradores anotados | número 150, vacío 660 | número 642, vacío 358 |
+| Oradores que hablaron | número 145, vacío 665 | número 647, vacío 353 |
+
+Con el cruce: **614** filas del destino con algún orador en RDV CONJUNTO.
+
+| | se completaría [activas · cerradas] | mismo valor | distinto (no se toca) | dos valores en RDV CONJUNTO |
+|---|---|---|---|---|
+| Oradores anotados | **464** [27 · 437] | 134 | 11 | 0 |
+| Oradores que hablaron | **473** [27 · 446] | 134 | 7 | 0 |
+
+Todo número (ningún texto). Cruce no seguro: varias figuras 18, 2+ filas sin desempate 0. Los distintos son
+cargas a mano que difieren en 1 a 10 (p. ej. Macri 06/09/2025: 125 contra 71), y en la fila 422 (Macri
+11/02/2026) anotados y hablaron están **invertidos** (destino 26 / 20, RDV CONJUNTO 20 / 26): se cuentan, no se
+corrigen. Los números de la planilla de hoy pueden variar un poco (cargas desde el 02/10).
+
+**La secuencia, con la predicción anotada ANTES de cada corrida:**
+
+1. `clasp push` (hecho con este commit).
+2. **`paso28_medirOradores()`**. **Predicción:** a) en el destino, R = "Oradores anotados" y S = "Oradores que
+   hablaron"; en RDV CONJUNTO, las dos siguientes a Asistentes; mayoría **números** (algún texto posible);
+   b) por columna, la mayoría de las filas cruzadas con el **mismo valor** (los carga el equipo, como
+   Asistentes) y pocas "se completaría". **Pegar el bloque b): con esos números se anota la predicción
+   exacta del paso 3.**
+3. **`paso22_completarHistorial()`**. **Predicción:** escribe, por columna, **exactamente el "se completaría"
+   del paso 28** (activas + cerradas; con el export del 02/10, **≈ 464 y ≈ 473**) en "Oradores anotados" y "Oradores que hablaron" del `por columna`;
+   el resto, 0 (todo lo demás ya estaba completo); 0 pisadas; derivadas: 0 celdas que cambian.
+4. **`paso16_verificarEscritura()`**. **Predicción: OK**, 0 incompletas en todo el destino (ya cuentan
+   Asistentes y oradores).
+5. **`paso20_porQueVacia()`**: los oradores vacíos que quedan, con su causa; f = 0.
+6. Después, el proceso normal: cada `upsertDiario` copia los oradores de las filas activas, junto con
+   Asistentes.
 
 ### u) 05/10: ANTES DE AGENDA — las once derivadas por Apps Script
 

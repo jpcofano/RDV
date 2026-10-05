@@ -124,12 +124,14 @@ function verificarEscritura() {
   // historial) tienen que dar 0 también.
   let cerradasConUid = 0;
   const incompletasCerradas = [], sinClaveCerradas = [];
+  // Asistentes y oradores (06/10): lo que trae RDV CONJUNTO también cuenta para "incompleta".
+  const conjunto = cruzarAsistentes_(dest, comunas);
   conUid.forEach(function (f) {
     const c = traza.get(f).c;
     if (!c) return;   // sin formulario, o ambigua: contadas aparte
     const activa = esFilaActiva_(f.fecha);
     if (!activa) cerradasConUid++;
-    const falta = _faltantesDeFila_diag8(dest, f, c, comunas);
+    const falta = _faltantesDeFila_diag8(dest, f, c, comunas, conjunto);
     if (falta.clave) (activa ? sinClave : sinClaveCerradas).push(f);
     if (falta.lista.length) (activa ? incompletas : incompletasCerradas).push({ f: f, falta: falta.lista });
   });
@@ -263,7 +265,7 @@ function _azules_diag8(dest) {
  * (la misma función que usa la escritura). `form_clave` va aparte (`clave`): la completa la próxima
  * corrida, no es una fila a medio escribir.
  */
-function _faltantesDeFila_diag8(dest, f, c, comunas) {
+function _faltantesDeFila_diag8(dest, f, c, comunas, conjunto) {
   const v = f.valores, T = dest.T, falta = [];
   [['form_score', T.score], ['form_nivel', T.nivel]].forEach(function (x) {
     if (x[1] != null && esVacio_(v[x[1]])) falta.push(x[0]);
@@ -271,7 +273,8 @@ function _faltantesDeFila_diag8(dest, f, c, comunas) {
   if (T.fechaMatch != null && esVacio_(v[T.fechaMatch]) && puntuar_(f, c, comunas).dist !== null) {
     falta.push('form_fecha_match');
   }
-  const d = { fila: f, cand: c, score: 1, nivel: 'rdv_uid', dist: null };
+  // Con Asistentes y oradores de RDV CONJUNTO (06/10): la misma decisión que usa la escritura.
+  const d = decisionDeFila_(f, new Map([[f.fila, { fila: f, cand: c, score: 1, nivel: 'rdv_uid', dist: null }]]), conjunto);
   const pend = celdasDeDecision_(dest, d, v, true);
   let clave = false;
   pend.celdas.forEach(function (x) {

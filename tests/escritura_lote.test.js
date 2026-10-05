@@ -31,7 +31,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
-                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js'];
+                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -352,9 +352,11 @@ const FIGURAS = ['Ana Pereyra', 'Bruno Salvatierra', 'Carla Montenegro', 'Diego 
 /** El destino: 41 columnas con los nombres que lee el upsert (las PENDIENTE_ del fixture, completadas) + 5 de traza. */
 const HDR_DESTINO = (function () {
   const fx = fs.readFileSync(path.join(RAIZ, 'fixtures', 'RVD JM-CM - ES.csv'), 'utf8').split(/\r?\n/)[0].split(',');
-  const nombres = { C: 'EVENTO', F: 'HORA', H: 'STATUS REUNIÓN', L: 'Mail', M: 'Call Center', N: 'IVR', O: 'RRSS',
-    P: 'Difusión', R: 'Masculinos', S: 'Femeninos', T: '18-24', U: '25-39', V: '40-55', AH: '56-65',
-    AI: '66+', AJ: 'Sin identificar' };
+  // Las columnas como en el destino real (06/10: R y S son los oradores; el sexo y las edades, AH a AO).
+  const nombres = { C: 'EVENTO', F: 'HORA', H: 'One Page Entregado', I: 'STATUS REUNIÓN', J: 'Observaciones',
+    L: 'Mail', M: 'Call Center', N: 'IVR', O: 'RRSS', P: 'Difusión', R: 'Oradores anotados', S: 'Oradores que hablaron',
+    T: 'Temas mas comentados', U: 'Semaforo politico', V: 'Síntesis cualitativa:', AH: 'Masculinos', AI: 'Femeninos',
+    AJ: '18-24', AK: '25-39', AL: '40-55', AM: '56-65', AN: '66+', AO: 'Sin identificar' };
   return fx.map(function (h) { const m = /^PENDIENTE_([A-Z]+)$/.exec(h); return m && nombres[m[1]] ? nombres[m[1]] : h; })
            .concat(['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave']);
 })();
@@ -370,7 +372,8 @@ const HDR_B_VIEJO = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos ide
   'Inscriptos edades 66+', 'Inscriptos canal Mailing', 'Inscriptos canal Facebook', 'Inscriptos canal Google',
   'Inscriptos canal Call Center', 'Inscriptos canal Difusion', 'Inscriptos canal IVR', 'Inscriptos canal Programmatic',
   'Inscriptos canal Otros', 'Inscriptos X (no existía)'];
-const HDR_CONJUNTO = ['Figura', 'Barrio', 'FECHA', 'HORA', 'Dirección', 'Asistentes', 'STATUS REUNIÓN'];
+const HDR_CONJUNTO = ['Figura', 'Barrio', 'FECHA', 'HORA', 'Dirección', 'Asistentes', 'Oradores anotados',
+                      'Oradores que hablaron', 'STATUS REUNIÓN'];
 const SEXO_EDADES = ['Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
 const DERIVADAS = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion', 'Comuna', 'Poblacion',
   'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona'];
@@ -393,6 +396,8 @@ function generarDatos(E, n) {
     DERIVADAS.forEach(function (c) { if (col(c) >= 0) r[col(c)] = 'derivada-' + i; });
     // El 70% ya tiene sexo y edades (cargados por el equipo); el 30% es el hueco que llena el sistema.
     if (i % 10 >= 3) SEXO_EDADES.forEach(function (c, k) { r[col(c)] = 10 + k; });
+    // Los oradores: cargados por el equipo, iguales a RDV CONJUNTO, salvo unos pocos vacíos.
+    if (i % 50 !== 7) { r[col('Oradores anotados')] = 3 + i % 5; r[col('Oradores que hablaron')] = 2 + i % 3; }
     dest.push(r);
 
     const fin = new D(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() - 2, 12, 0, 0);
@@ -405,15 +410,15 @@ function generarDatos(E, n) {
     // RDV CONJUNTO: el barrio real (aunque el destino no lo tenga) y los asistentes del destino.
     // "Apellido Nombre", como lo escribe RDV CONJUNTO (02/10).
     conjunto.push([fig.split(' ').reverse().join(' '), bar[0], fecha, '18:00', '', r[col('Asistentes')],
-                   r[col('STATUS REUNIÓN')]]);
+                   3 + i % 5, 2 + i % 3, r[col('STATUS REUNIÓN')]]);
   }
   for (let k = 0; k < 25; k++) {   // ruido: formularios que no son de ninguna fila
     b.push(['OTRO EVENTO ' + k + ' - Comuna 3 - 15/3', new D(2024, 2, 13, 12, 0, 0), 10, 8, 4, 4, 1, 2, 2, 2, 1]);
   }
   const comunas = [['Barrio', 'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'Eje geográfico']]
     .concat(BARRIOS.map(function (x) { return [x[0], x[1], 1000, 500, 500, 2, 500, 'Centro', '']; }));
-  conjunto.push(['No aplica', 'No aplica', new D(2026, 0, 10, 12, 0, 0), '', '', 'No aplica', '']);
-  conjunto.push(['Pereyra Ana', 'Palermo', new D(2024, 4, 3, 12, 0, 0), '', '', 50, '']);   // antes del destino
+  conjunto.push(['No aplica', 'No aplica', new D(2026, 0, 10, 12, 0, 0), '', '', 'No aplica', '', '', '']);
+  conjunto.push(['Pereyra Ana', 'Palermo', new D(2024, 4, 3, 12, 0, 0), '', '', 50, 4, 2, '']);   // antes del destino
   return { dest: dest, b: b, comunas: comunas, conjunto: conjunto };
 }
 
@@ -1562,6 +1567,98 @@ function escenarioDerivadas() {
      /    Falta Informacion: 1/.test(u2.logs.join('\n')), 'el upsert recalcula y lo dice por columna (Falta Informacion: 1)');
 }
 
+function casosOradores(E, datos) {
+  const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+  const fila = function (fig, d, m, barrio, orA, orH) {
+    const r = HDR_DESTINO.map(function () { return ''; });
+    r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = new D(2026, m - 1, d, 12, 0, 0);
+    r[col('HORA')] = '18:00'; r[col('EVENTO')] = 'Encuentro con Vecinos'; r[col('STATUS REUNIÓN')] = 'Realizada';
+    r[col('Asistentes')] = 40; r[col('Oradores anotados')] = orA; r[col('Oradores que hablaron')] = orH;
+    datos.dest.push(r);
+  };
+  const conj = function (nombre, barrio, d, m, asis, orA, orH) {
+    datos.conjunto.push([nombre, barrio, new D(2026, m - 1, d, 12, 0, 0), '18:00', '', asis, orA, orH, 'Realizada']);
+  };
+  // V: vacío en el destino → se completa (también el texto)
+  fila('Vera Ocampo', 10, 9, 'Palermo', '', '');
+  conj('Ocampo Vera', 'Palermo', 10, 9, 40, 7, 'cuatro');
+  // C: con valor (y un 0) en el destino → no se toca, aunque RDV CONJUNTO diga otra cosa
+  fila('Ciro Ledesma', 11, 9, 'Recoleta', 0, 5);
+  conj('Ledesma Ciro', 'Recoleta', 11, 9, 40, 9, 9);
+  // A: dos filas de la misma figura el mismo día, y RDV CONJUNTO sin barrio → no desempata, no se escribe
+  fila('Ana Zubiría', 12, 9, 'Flores', '', '');
+  fila('Ana Zubiría', 12, 9, 'Caballito', '', '');
+  conj('Zubiría Ana', '', 12, 9, 40, 6, 3);
+  // X: dos filas de RDV CONJUNTO para la misma reunión, con oradores distintos → no se escribe
+  fila('Xavier Pons', 13, 9, 'Boedo', '', '');
+  conj('Pons Xavier', 'Boedo', 13, 9, 40, 5, 2);
+  conj('Pons Xavier', 'Boedo', 13, 9, 40, 8, 2);
+}
+
+function escenarioOradores() {
+  console.log('\n[20] oradores desde RDV CONJUNTO: medir, completar vacías, no pisar, no escribir lo ambiguo');
+  const E = crearEntorno();
+  const m = montar(E, 200, true, casosOradores);
+  const h = m.ssD.hojas['AAA NOBORRAR'];
+  const filaDe = function (fig, d) {
+    return h.v.findIndex(function (r, i) { return i > 0 && r[colD('Figura')] === fig && r[colD('FECHA')].getDate() === d; });
+  };
+  const OA = colD('Oradores anotados'), OH = colD('Oradores que hablaron');
+  // Medición (sólo lectura).
+  const f0 = JSON.stringify(foto(h));
+  const md = E.ejecutar('medirOradores');
+  ok(!md.error && JSON.stringify(foto(h)) === f0, 'paso 28 no escribe nada' + (md.error ? ': ' + md.error.stack : ''));
+  const pc = md.resultado.porColumna;
+  ok(pc['Oradores anotados'].completaria >= 2 && pc['Oradores anotados'].distinto === 1 &&
+     pc['Oradores que hablaron'].distinto === 1 && pc['Oradores anotados'].conflictos === 1,
+     'paso 28: se completarían, iguales, distintos (la del 0 y la del 5) y el conflicto, por columna: ' +
+     JSON.stringify({ completaria: pc['Oradores anotados'].completaria, igual: pc['Oradores anotados'].igual,
+                      distinto: pc['Oradores anotados'].distinto, conflictos: pc['Oradores anotados'].conflictos }));
+  ok(/número/.test(md.logs.join('\n')) && /"Oradores anotados": destino columna R \| RDV CONJUNTO columna G \(Asistentes en F\)/.test(md.logs.join('\n')),
+     'paso 28: las columnas (R y G, después de Asistentes) y los tipos');
+  // Escritura.
+  const antes = foto(h);
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'upsert sin error' + (r.error ? ': ' + r.error.stack : ''));
+  const v = filaDe('Vera Ocampo', 10), c = filaDe('Ciro Ledesma', 11), x = filaDe('Xavier Pons', 13);
+  ok(h.v[v][OA] === 7 && h.v[v][OH] === 'cuatro' && esColorSistemaTest(h.bg[v][OA]) && esColorSistemaTest(h.bg[v][OH]),
+     'celda vacía: se completa (número y texto), en el color del sistema');
+  ok(h.v[c][OA] === 0 && h.v[c][OH] === 5, 'celda con valor (un 0 incluido): no se toca');
+  const az = h.v.filter(function (rr, i) { return i > 0 && rr[colD('Figura')] === 'Ana Zubiría'; });
+  ok(az.length === 2 && az.every(function (rr) { return rr[OA] === '' && rr[OH] === ''; }), 'cruce ambiguo (2 filas sin desempate): no se escribe');
+  ok(h.v[x][OA] === '' && h.v[x][OH] === 2, 'dos valores distintos en RDV CONJUNTO: esa columna no se escribe (la otra, igual en las dos, sí)');
+  const a = auditar(antes, h);
+  ok(a.pisadas === 0 && a.sinAzul === 0, '0 pisadas, todo en el color del sistema');
+  const reg = m.ssI.hojas['REGISTRO_UPSERT'], hr = reg.v[0];
+  const pcol = JSON.parse(reg.v[reg.v.length - 1][hr.indexOf('por_columna')] || '{}');
+  ok(pcol['Oradores anotados'] >= 2 && pcol['Oradores que hablaron'] >= 2, 'REGISTRO_UPSERT: conteo por columna ' +
+     JSON.stringify({ A: pcol['Oradores anotados'], H: pcol['Oradores que hablaron'] }));
+  // Paso 20: la causa de las vacías de oradores.
+  const q = E.ejecutar('porQueVacia');
+  const ql = q.logs.join('\n');
+  ok(!q.error && /Oradores anotados → d\) oradores: dos valores distintos en RDV CONJUNTO/.test(ql) &&
+     /Ana Zubiría .*Oradores anotados → d\) oradores: 2\+ filas con esa figura y fecha, sin desempate/.test(ql) &&
+     q.resultado.deberia === 0, 'paso 20: las causas de los oradores vacíos, y "DEBERÍA ESTAR ESCRITA" = 0');
+  // Paso 16: 0 incompletas (con Asistentes y oradores en la cuenta).
+  const v16 = E.ejecutar('verificarEscritura').resultado;
+  ok(v16.incompletas === 0 && v16.problemas.length === 0, 'paso 16: 0 incompletas, sin problemas (' + v16.problemas.join('; ') + ')');
+  // Encabezado fuera de lugar: frena con error, no escribe nada.
+  const E2 = crearEntorno();
+  const m2 = montar(E2, 50, true);
+  const h2 = m2.ssD.hojas['AAA NOBORRAR'];
+  h2.v[0][colD('Oradores anotados')] = 'Oradores (anotados)';
+  m2.ssD.hojas['RVD JM-CM - ES'].v[0][colD('Oradores anotados')] = 'Oradores (anotados)';   // igual en el real (si no, frena la guarda)
+  const f2 = JSON.stringify(foto(h2));
+  const r2 = E2.ejecutar('upsertDestino');
+  ok(r2.error && /no tiene la columna "Oradores anotados"/.test(r2.error.message) && JSON.stringify(foto(h2)) === f2,
+     'sin el encabezado en R: error y nada escrito');
+  const E3 = crearEntorno();
+  const m3 = montar(E3, 50, true);
+  m3.ssD.hojas['RDV CONJUNTO'].v.forEach(function (rr) { const t = rr[6]; rr[6] = rr[7]; rr[7] = t; });   // invertidas
+  const r3 = E3.ejecutar('upsertDestino');
+  ok(r3.error && /se esperaba en G/.test(r3.error.message), 'en RDV CONJUNTO, fuera de lugar: error');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1596,7 +1693,7 @@ const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
     process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
-    process.argv.indexOf('--derivadas') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -1604,6 +1701,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--historial') >= 0) escenarioCompletarHistorial();
   else if (process.argv.indexOf('--activadores') >= 0) escenarioActivadores();
   else if (process.argv.indexOf('--derivadas') >= 0) escenarioDerivadas();
+  else if (process.argv.indexOf('--oradores') >= 0) escenarioOradores();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1638,6 +1736,7 @@ escenarioOrdenFichas();
 escenarioCompletarHistorial();
 escenarioActivadores();
 escenarioDerivadas();
+escenarioOradores();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

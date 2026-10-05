@@ -2323,7 +2323,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    >
    > **Alcance nuevo del sistema**: escribe, **sólo en celdas vacías**, `Inscriptos`, `Mail`, `Call
    > Center`, `IVR`, `RRSS`, `Difusión`, sexo, edades, `Sin identificar` y `Asistentes` (de RDV
-   > CONJUNTO), y pasa `STATUS` de `en agenda` a `Realizada` (sólo desde ahí y sólo con asistentes).
+   > CONJUNTO) —**y desde el 06/10 `Oradores anotados` y `Oradores que hablaron` (R y S)**, también de RDV
+   > CONJUNTO (las dos siguientes a Asistentes), con el mismo cruce y las mismas reglas: sólo celda vacía, un
+   > 0 del destino es un valor, cruce no seguro → no se escribe; se buscan por encabezado y la letra es un
+   > control (si no están en R/S, error)—, y pasa `STATUS` de `en agenda` a `Realizada` (sólo desde ahí y
+   > sólo con asistentes). **R y S son columnas del sistema**, no manuales.
    > `COLUMNAS_MANUALES` pasa a ser **sólo `['Barrio']`**. El desagregado (sexo y edades) se escribe
    > sólo si `Inscriptos` está vacío o es igual al de `B`, para que la fila no quede con un total que no
    > cierra con su desagregado. Las columnas de agenda (`Figura`, `Barrio`, `FECHA`, `HORA`,

@@ -509,6 +509,16 @@ const REVISAR_COMO_FICHAS = true;   // prendido el 03/10, con las fichas aprobad
 const RDV_HOJA_HISTORICO = 'HISTORICO_SIN_RESOLVER';
 /** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
 const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
+/**
+ * **Los oradores** (06/10, antes de Agenda): las dos columnas que siguen a Asistentes en RDV CONJUNTO, que
+ * el sistema copia al destino con el mismo cruce y las mismas reglas que Asistentes (sólo celda vacía, un 0
+ * del destino es un valor, #CFE2F3; cruce no seguro → no se escribe y se lista). Se buscan por encabezado;
+ * la letra es sólo un control: si en el destino no están en R y S, o en RDV CONJUNTO no son las dos
+ * siguientes a Asistentes, **error y no se escribe nada**.
+ */
+const COLUMNAS_ORADORES = ['Oradores anotados', 'Oradores que hablaron'];
+const LETRAS_ORADORES_DESTINO = ['R', 'S'];
+
 /** La confianza de una opción en la ficha, en palabras: "alta" ≥ UMBRAL_MATCH, "media" ≥ esto, "baja" debajo. */
 const CONFIANZA_MEDIA = 0.6;
 /** Las otras reuniones de la misma figura que se muestran como contexto en una ficha: a ± estos días. */

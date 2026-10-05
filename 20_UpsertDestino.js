@@ -4364,7 +4364,10 @@ function decisionesPorFila_(decisiones) {
 function decisionDeFila_(f, porDecision, asistentes) {
   const base = porDecision.get(f.fila) || { fila: f, cand: null, nivel: 'sin_formulario', score: null, dist: null };
   const a = asistentes && asistentes.porFila ? asistentes.porFila.get(f.fila) : null;
-  return Object.assign({}, base, { asis: a ? a.asis : '' });
+  const o = asistentes && asistentes.oradores ? asistentes.oradores.get(f.fila) : null;
+  const extra = { asis: a ? a.asis : '', oradores: {} };
+  COLUMNAS_ORADORES.forEach(function (n) { extra.oradores[n] = o && o[n] !== undefined ? o[n] : ''; });
+  return Object.assign({}, base, extra);
 }
 
 /**
@@ -4422,6 +4425,8 @@ function celdasDeDecision_(dest, d, valores, callar) {
     }
   }
   agregar(dest.D['Asistentes'], d.asis, 'dato');
+  // Los oradores (06/10): como Asistentes, sólo celda vacía (un 0 del destino es un valor y no se pisa).
+  COLUMNAS_ORADORES.forEach(function (n) { if (d.oradores) agregar(dest.D[n], d.oradores[n], 'dato'); });
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
   let status = false;
   if (iSt != null && iAs != null) {
@@ -4440,7 +4445,7 @@ const CAMPOS_CANALES_ = ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'];
  * Las columnas de dato que el upsert escribe (paso B, 02/10), siempre sólo en celda vacía: Inscriptos, los
  * canales, el desagregado y Asistentes. Las manuales (Barrio) y las derivadas no están.
  */
-const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_, ['Asistentes']);
+const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_, ['Asistentes'], COLUMNAS_ORADORES);
 
 // ===================== Asistentes desde RDV CONJUNTO =====================
 
@@ -4465,7 +4470,10 @@ const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_,
  * upsert escribe después sólo donde Asistentes está vacío; las que difieren se cuentan, nunca se pisan.
  */
 function cruzarAsistentes_(dest, comunas) {
-  const r = { error: null, porFila: new Map(), filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
+  // oradores (06/10): fila del destino → { 'Oradores anotados': v, 'Oradores que hablaron': v }; los que dan dos
+  // valores distintos para la misma fila, aparte (por columna).
+  const r = { error: null, porFila: new Map(), oradores: new Map(), conflictoOradores: [], iOradores: null,
+              filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
               variasFiguras: [], encuentran: 0, noEncuentran: [], ambiguas: [], desempatadas: [],
               barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, filasSinAsis: {}, conflicto: [], minFecha: null };
   const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
@@ -4482,6 +4490,19 @@ function cruzarAsistentes_(dest, comunas) {
               hdr.filter(String).join(' | ');
     return r;
   }
+  // Los oradores: las dos siguientes a Asistentes, por encabezado (la posición, sólo como control).
+  const iOr = COLUMNAS_ORADORES.map(function (n) { return findIdxOr_(hdr, [n], true); });
+  iOr.forEach(function (k, j) {
+    if (k == null) {
+      throw new Error('"' + RDV_HOJA_ASISTENTES_SRC + '" no tiene la columna "' + COLUMNAS_ORADORES[j] + '". No se escribió nada.');
+    }
+    if (k !== iAsi + 1 + j) {
+      throw new Error('En "' + RDV_HOJA_ASISTENTES_SRC + '", "' + COLUMNAS_ORADORES[j] + '" está en ' + _letraCol_(k + 1) +
+                      ' y se esperaba en ' + _letraCol_(iAsi + 2 + j) + ' (la ' + (j + 1) + 'ª después de Asistentes). ' +
+                      'No se escribió nada.');
+    }
+  });
+  r.iOradores = iOr; r.iAsi = iAsi;
   r.valores = vals; r.iFig = iFig;
   dest.filas.forEach(function (f) { if (f.fecha && (!r.minFecha || f.fecha < r.minFecha)) r.minFecha = f.fecha; });
   const porFigFecha = new Map();
@@ -4490,7 +4511,7 @@ function cruzarAsistentes_(dest, comunas) {
     if (!porFigFecha.has(k)) porFigFecha.set(k, []);
     porFigFecha.get(k).push(f);
   });
-  const conflictos = new Set();
+  const conflictos = new Set(), conflictosOr = new Set();
   for (let i = 1; i < vals.length; i++) {
     const row = vals[i];
     if (row.every(function (v) { return esVacio_(v); })) continue;
@@ -4531,9 +4552,40 @@ function cruzarAsistentes_(dest, comunas) {
       continue;
     }
     r.porFila.set(f.fila, { asis: asis, nombre: nombre });
+    // Los oradores, de la misma fila de RDV CONJUNTO (sólo de las que tienen asistentes, como Asistentes).
+    COLUMNAS_ORADORES.forEach(function (n, j) {
+      const v = row[iOr[j]];
+      if (esVacio_(v)) return;
+      const o = r.oradores.get(f.fila) || {};
+      if (o[n] !== undefined && !_igualOrador_(o[n], v)) {
+        const clave = f.fila + '|' + n;
+        if (!conflictosOr.has(clave)) r.conflictoOradores.push({ f: f, col: n, a: o[n], b: v });
+        conflictosOr.add(clave);
+        return;
+      }
+      o[n] = v;
+      r.oradores.set(f.fila, o);
+    });
   }
-  conflictos.forEach(function (fila) { r.porFila.delete(fila); });
+  conflictos.forEach(function (fila) { r.porFila.delete(fila); r.oradores.delete(fila); });
+  conflictosOr.forEach(function (clave) {
+    const p = clave.split('|'), o = r.oradores.get(Number(p[0]));
+    if (o) delete o[p[1]];
+  });
   return r;
+}
+
+/** Dos valores de oradores iguales: números iguales, o el mismo texto (sin espacios de más). */
+function _igualOrador_(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a === b;
+  return String(a).trim() === String(b).trim();
+}
+
+/** La letra de una columna (1 = A). */
+function _letraCol_(n) {
+  let t = '';
+  while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = Math.floor((n - 1) / 26); }
+  return t;
 }
 
 /**
@@ -4570,6 +4622,11 @@ function _logCruceAsistentes_(r, detalle) {
   Logger.log('    barrio distinto con una sola fila (cruzan igual) %s | destino sin barrio %s | sin asistentes %s | ' +
              'dos asistentes distintos para la misma fila (no se escriben) %s', r.barrioDifiere.length,
              r.destinoSinBarrio, r.sinAsistentes, r.conflicto.length);
+  Logger.log('  oradores: filas con algún valor %s | dos valores distintos para la misma fila (no se escriben) %s',
+             r.oradores.size, r.conflictoOradores.length);
+  r.conflictoOradores.slice(0, 20).forEach(function (x) {
+    Logger.log('    fila %s | %s | %s: %s / %s', x.f.fila, x.f.figura, x.col, x.a, x.b);
+  });
   if (detalle) _logListasAsistentes_(r);
 }
 
@@ -4614,6 +4671,17 @@ function leerDestino_(nombreHoja) {
   ['Figura', 'Barrio', 'FECHA', 'HORA', 'Inscriptos', 'Asistentes', 'STATUS REUNIÓN', 'EVENTO',
    'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión', 'Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar']
     .forEach(function (n) { D[n] = findIdxOr_(hdr, aliasColumna_(n), true); });
+  // Los oradores (06/10): por encabezado, y la letra como control (R y S). Si no, error: no se escribe nada.
+  COLUMNAS_ORADORES.forEach(function (n, k) {
+    const i = findIdxOr_(hdr, [n], true);
+    const letra = LETRAS_ORADORES_DESTINO[k];
+    if (i == null) throw new Error('El destino "' + hoja + '" no tiene la columna "' + n + '" (se esperaba en ' + letra + '). No se escribió nada.');
+    if (_letraCol_(i + 1) !== letra) {
+      throw new Error('En "' + hoja + '", "' + n + '" está en ' + _letraCol_(i + 1) + ' y se esperaba en ' + letra +
+                      '. Revisar las columnas antes de seguir. No se escribió nada.');
+    }
+    D[n] = i;
+  });
 
   // `EVENTO` es la única vía de ubicación para las reuniones temáticas (CLAUDE.md 1.c). Si no
   // está, el matching sigue andando: esas filas quedan sin señal de ubicación, como hoy.

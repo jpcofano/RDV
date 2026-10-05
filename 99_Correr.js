@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 06/10: oradores desde RDV CONJUNTO (ESTADO 0.v): paso28_medirOradores() (sólo lectura) →
+ *      paso22_completarHistorial() → paso16_verificarEscritura() → paso20_porQueVacia().
  *  >>> 05/10: derivadas — COPIA HECHA; DERIVADAS_POR_SCRIPT = true; ahora el REAL (ESTADO 0.u):
  *      paso25_compararDerivadas() → paso26_…_enSeco() → paso26_quitarFormulasDerivadas() → upsertDestino() →
  *      paso16_verificarEscritura().
@@ -453,6 +455,16 @@ function paso27_restaurarFormulasDerivadas() {
              'con DRY_RUN = false, SÍ: borra los valores de las once columnas y pone las fórmulas de ' + RDV_HOJA_RESPALDO_DERIVADAS,
              'el log: cuántas restauró. Después, DERIVADAS_POR_SCRIPT = false');
   return restaurarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, true);
+}
+
+/**
+ * PASO 28 — los oradores (06/10), SÓLO LECTURA: las dos columnas en los dos lados, el tipo de dato, y con el
+ * cruce de Asistentes, por columna, cuántas se completarían, iguales y distintas. Antes del paso 22.
+ */
+function paso28_medirOradores() {
+  _anunciar_('paso 28 — medir los oradores', 'medirOradores()  [diagnostico/15_oradores.js]', 'NO escribe nada',
+             'el log: columnas y tipos (10 ejemplos), y por columna: se completaría [activas | cerradas], igual, distinto');
+  return medirOradores();
 }
 
 /**

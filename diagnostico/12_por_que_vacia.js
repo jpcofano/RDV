@@ -10,8 +10,8 @@
  *      "ninguno" de una persona, o RDV_UID con la traza ambigua;
  *   b) B trae 0 o vacío en ese campo;
  *   c) desagregado retenido: Inscriptos del destino ≠ el de B;
- *   d) Asistentes: RDV CONJUNTO no tiene la fila / nombre con varias figuras o ninguna / 2+ filas sin
- *      poder desempatar / dos valores distintos / RDV CONJUNTO la tiene sin asistentes;
+ *   d) Asistentes y oradores (06/10): RDV CONJUNTO no tiene la fila / nombre con varias figuras o ninguna /
+ *      2+ filas sin poder desempatar / dos valores distintos / RDV CONJUNTO la tiene sin ese dato;
  *   e) STATUS: no está "en agenda", o la fila no tiene asistentes;
  *   f) **ninguna de las anteriores → DEBERÍA ESTAR ESCRITA**: el sistema la escribiría ahora mismo
  *      (`celdasDeDecision_`, la misma función que usa la escritura). Después de una corrida real del
@@ -23,7 +23,8 @@
 
 /** Las columnas que revisa, en el orden del log. */
 const COLUMNAS_PASO20_ = ['Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión', 'Masculinos', 'Femeninos',
-                          '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar', 'Asistentes', 'STATUS REUNIÓN'];
+                          '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar', 'Asistentes',
+                          'Oradores anotados', 'Oradores que hablaron', 'STATUS REUNIÓN'];
 
 function porQueVacia(desde, hasta) {
   Logger.log('=== porQueVacia (paso 20) — sólo lectura, no escribe nada ===');
@@ -70,6 +71,7 @@ function porQueVacia(desde, hasta) {
       if (futura) causa = 'reunión futura';
       else if (col === 'STATUS REUNIÓN') causa = _causaStatus_(f, v, d, ahora, dest);
       else if (col === 'Asistentes') causa = escribiria[k] ? null : _causaAsistentes_(f, asis, ambiguaDe, conflictoDe);
+      else if (COLUMNAS_ORADORES.indexOf(col) >= 0) causa = escribiria[k] ? null : _causaOradores_(f, col, asis, ambiguaDe, conflictoDe);
       else causa = escribiria[k] ? null : _causaDato_(f, col, pf, d, dest);
       if (!causa) {
         causa = 'f) DEBERÍA ESTAR ESCRITA';
@@ -130,6 +132,15 @@ function _causaAsistentes_(f, asis, ambiguaDe, conflictoDe) {
   })) return 'd) el nombre en RDV CONJUNTO tiene varias figuras';
   if (asis.sinFigura.some(mismaFecha)) return 'd) RDV CONJUNTO no tiene la fila (ese día hay nombres sin figura)';
   return 'd) RDV CONJUNTO no tiene la fila';
+}
+
+/** d') para los oradores (06/10): el mismo cruce que Asistentes, más lo propio de los oradores. */
+function _causaOradores_(f, col, asis, ambiguaDe, conflictoDe) {
+  if ((asis.conflictoOradores || []).some(function (x) { return x.f.fila === f.fila && x.col === col; })) {
+    return 'd) oradores: dos valores distintos en RDV CONJUNTO';
+  }
+  if (asis.porFila.has(f.fila)) return 'd) oradores: RDV CONJUNTO tiene la fila, sin ' + col.toLowerCase();
+  return _causaAsistentes_(f, asis, ambiguaDe, conflictoDe).replace(/^d\) /, 'd) oradores: ');
 }
 
 /** e) para STATUS (lo que no es "Realizada"). null = el sistema la pasaría a Realizada (f). */
