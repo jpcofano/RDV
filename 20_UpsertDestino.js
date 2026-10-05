@@ -3344,8 +3344,15 @@ function escribirReportes_(plan, fallaron, soloEstos) {
     // Las fichas (26_Fichas.js, 03/10): una por reunión pendiente activa, con las elecciones guardadas.
     _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
       const fx = armarFichas_(plan, plan.asistentes || cruzarAsistentes_(plan.dest, plan.comunas));
-      escribirFichas_(RDV_HOJA_REVISAR, fx);
-      Logger.log('[upsert] %s: %s fichas pendientes | %s resueltas', RDV_HOJA_REVISAR, fx.pendientes, fx.resueltas);
+      if (SOLAPA_FICHAS_EN_DESTINO) {
+        // En el archivo del destino, donde trabaja el equipo (06/10), protegida salvo ELEGIR y COMENTARIO.
+        escribirFichas_(RDV_HOJA_REVISAR, fx, { ss: ssDestino_(), proteger: true });
+        avisoFichasEnDestino_();
+      } else {
+        escribirFichas_(RDV_HOJA_REVISAR, fx);
+      }
+      Logger.log('[upsert] %s (%s): %s fichas pendientes | %s resueltas', RDV_HOJA_REVISAR,
+                 SOLAPA_FICHAS_EN_DESTINO ? 'archivo del destino' : 'intermedia', fx.pendientes, fx.resueltas);
     });
   } else if (quiere(RDV_HOJA_REVISAR)) {
     _intentar_(fallaron, RDV_HOJA_REVISAR, function () {

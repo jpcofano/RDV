@@ -2236,6 +2236,19 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    previa (escribe en `REVISAR_FICHAS_PRUEBA`). `EMPAREJAR_MANUAL` queda como está (se mejora después). Para
    el equipo: docs/elegir-match.md.
 
+   **Dónde (06/10): en el ARCHIVO del destino**, solapa `REVISAR_MATCH` (`SOLAPA_FICHAS_EN_DESTINO`), donde
+   trabaja el equipo. Lo que escribe una persona va **adelante**: `ELEGIR` (el desplegable) y `COMENTARIO`,
+   después `resultado` y recién después la ficha. Esas dos celdas de cada línea REUNIÓN, en amarillo claro con
+   borde, son **las únicas editables**: toda la solapa tiene **protección real** (sólo quien corre el script y
+   el dueño del archivo; si no se puede, queda como advertencia y el log lo dice). Formato en cada
+   regeneración: encabezado y ELEGIR/COMENTARIO congelados, una línea gruesa arriba de cada ficha, REUNIÓN en
+   negrita sobre gris suave, "¿por qué?" en itálica, anchos ajustados (máximo `FICHAS_ANCHO_MAX`) con ajuste
+   de texto en el nombre del formulario, RESUELTAS en gris. "elegido" y "comentario" se leen **de esa
+   solapa**, por su nombre; la REVISAR_MATCH de la intermedia queda con un aviso y no se lee.
+   `ELECCIONES_MATCH`, `HISTORICO_SIN_RESOLVER` y `EMPAREJAR_MANUAL` siguen en la intermedia. La regla de la
+   sección 0 es sobre la solapa `RVD JM-CM - ES`: esta otra solapa del mismo archivo es un reporte que el
+   sistema reescribe entero (como los de la intermedia), y ninguna lectura del destino la toca.
+
    **Lo viejo sin resolver no son fichas.** En la corrida de completar el historial (paso 22, decisión 13),
    lo que queda en revisión o sin match con más de `DIAS_ACTIVOS` días va a `HISTORICO_SIN_RESOLVER`
    (intermedia), **sólo informativa**: fila, figura, fecha, barrio, motivo y la mejor opción con su

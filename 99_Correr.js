@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 06/10: las FICHAS se mueven al ARCHIVO del destino (ESTADO 0.w): upsertDestino() a mano (pide autorizar
+ *      de nuevo: Session) → solapa REVISAR_MATCH en el destino, ELEGIR y COMENTARIO adelante y únicos editables.
  *  >>> 06/10: oradores desde RDV CONJUNTO (ESTADO 0.v): paso28_medirOradores() (sólo lectura) →
  *      paso22_completarHistorial() → paso16_verificarEscritura() → paso20_porQueVacia().
  *  >>> 05/10: derivadas — COPIA HECHA; DERIVADAS_POR_SCRIPT = true; ahora el REAL (ESTADO 0.u):

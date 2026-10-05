@@ -29,17 +29,28 @@
  * REUNIÓN); el formulario, por su clave (columna oculta form_clave de cada línea de opción). Nunca por
  * número de fila. Las elecciones se guardan en ELECCIONES_MATCH.
  *
- * Sólo calcula sobre el plan y escribe en la intermedia. No lee ni escribe el destino.
+ * Dónde (06/10): con SOLAPA_FICHAS_EN_DESTINO, en la solapa REVISAR_MATCH del ARCHIVO del destino (no en la
+ * solapa RVD JM-CM - ES), con ELEGIR y COMENTARIO adelante, marcados y como única zona editable; la de la
+ * intermedia queda con un aviso. Si no, en la intermedia.
  */
 
 /** Las columnas de una ficha. Las cuatro últimas, ocultas: la identidad. */
-const COLS_FICHA_ = ['ficha', 'fila', 'figura', 'fecha', 'ubicación', 'evento / formulario', 'inscriptos',
-                     'asistentes', 'días', 'confianza', 'ocupado por', 'elegido', 'comentario', 'resultado',
-                     'id_figura', 'id_fecha', 'id_barrio', 'form_clave', 'puntaje'];
+/*
+ * Dos órdenes de columnas: el del ARMADO (cómo se construye cada línea, abajo) y el de la SOLAPA (06/10): lo
+ * que escribe una persona va ADELANTE —ELEGIR y COMENTARIO, después "resultado"—, y recién después la ficha.
+ * `armarFichas_` arma con el primero y al final reordena al segundo.
+ */
+const COLS_FICHA_ARMADO_ = ['ficha', 'fila', 'figura', 'fecha', 'ubicación', 'evento / formulario', 'inscriptos',
+                            'asistentes', 'días', 'confianza', 'ocupado por', 'elegido', 'comentario', 'resultado',
+                            'id_figura', 'id_fecha', 'id_barrio', 'form_clave', 'puntaje'];
+const COLS_FICHA_ = ['ELEGIR', 'COMENTARIO', 'resultado'].concat(COLS_FICHA_ARMADO_.filter(function (c) {
+  return ['elegido', 'comentario', 'resultado'].indexOf(c) < 0;
+}));
 /** Las últimas, ocultas: la identidad (id_*, form_clave) y el puntaje en número (la ficha lo dice en palabras). */
 const FICHA_COLS_OCULTAS_ = 5;
 /** Colores: verde coincide, rojo no, gris no se puede comparar, amarillo sólo para la persona (el eje). */
-const FICHA_COLOR_ = { si: '#d9ead3', no: '#f4cccc', gris: '#eeeeee', amarillo: '#fff2cc', reunion: '#e4dff2',
+const FICHA_COLOR_ = { si: '#d9ead3', no: '#f4cccc', gris: '#eeeeee', amarillo: '#fff2cc', reunion: '#f3f3f3',
+                       elegir: '#fff9c4', bordeElegir: '#bf9000', separador: '#999999',
                        titulo: '#d9d9d9', textoGris: '#888888', textoNormal: '#000000' };
 const FICHA_ETIQUETA_ = { reunion: 'REUNIÓN', porQue: '¿por qué?', opcion: 'Opción ', contexto: 'otra reunión',
                           descartado: 'formulario descartado', resueltas: 'RESUELTAS', resuelta: 'resuelta',
@@ -48,7 +59,8 @@ const DIAS_SEMANA_ = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
 /** ¿Es una hoja de fichas? Por el encabezado. */
 function esHojaDeFichas_(hdr) {
-  return !!hdr && normalizeHeader_(hdr[0]) === 'ficha' && hdr.some(function (h) { return normalizeHeader_(h) === 'id_figura'; });
+  const tiene = function (n) { return !!hdr && hdr.some(function (h) { return normalizeHeader_(h) === n; }); };
+  return tiene('ficha') && tiene('id_figura');
 }
 
 // ===================== Armado =====================
@@ -65,7 +77,7 @@ function armarFichas_(plan, asis, opts) {
   const dest = plan.dest, comunas = plan.comunas, vivos = plan.cands.vivos, porFila = plan.porFila;
   const ctx = _contextoFichas_(plan, asis);
   const salida = [], formato = [], fichas = [], porMotivo = {};
-  const ancho = COLS_FICHA_.length;
+  const ancho = COLS_FICHA_ARMADO_.length;
   const linea = function (valores, fmt) {
     const v = valores.slice(); while (v.length < ancho) v.push('');
     salida.push(v);
@@ -73,7 +85,7 @@ function armarFichas_(plan, asis, opts) {
                                  negrita: false, desplegable: null }, fmt || {}));
     return salida.length - 1;
   };
-  linea(COLS_FICHA_, { negrita: true, bg: COLS_FICHA_.map(function () { return FICHA_COLOR_.titulo; }) });
+  linea(COLS_FICHA_ARMADO_, { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.titulo; }) });
 
   let lista;
   if (opts.filas) {
@@ -122,7 +134,7 @@ function armarFichas_(plan, asis, opts) {
     linea([FICHA_ETIQUETA_.reunion, f.fila, f.figura, _fechaLarga_(f.fecha), _ubicFila_(f, comunas), f.evento,
            ins == null ? '' : ins, a ? a.asis : (esVacio_(asD) ? '' : asD), '', '', '', elegidoTxt, elec.comentario,
            resultado, f.figura, _fechaId_(f.fecha), f.barrio, ''],
-          { negrita: true, bg: COLS_FICHA_.map(function () { return FICHA_COLOR_.reunion; }),
+          { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.reunion; }),
             desplegable: _opcionesDesplegable_(nOps) });
     // --- ¿por qué? ---
     linea([FICHA_ETIQUETA_.porQue, _fraseMotivo_(f, pf, ops, ctx)]);
@@ -132,7 +144,7 @@ function armarFichas_(plan, asis, opts) {
       const c = sc.c, duenio = _duenio_(ctx, c, f);
       const colF = _colorFecha_(sc), colU = _colorUbic_(sc, f);
       const colFig = sc.nombraFigura ? FICHA_COLOR_.si : (sc.sinFigura ? FICHA_COLOR_.gris : FICHA_COLOR_.no);
-      const bg = COLS_FICHA_.map(function () { return null; });
+      const bg = COLS_FICHA_ARMADO_.map(function () { return null; });
       bg[2] = colFig; bg[3] = colF; bg[4] = colU; bg[8] = colF;
       if (duenio) bg[10] = FICHA_COLOR_.no;
       linea([FICHA_ETIQUETA_.opcion + (k + 1), '', _figurasDe_(c), _cierre_(c), _ubicForm_(c), c.nombre,
@@ -162,7 +174,7 @@ function armarFichas_(plan, asis, opts) {
   linea([FICHA_ETIQUETA_.resueltas + ' (' + resueltas.length + ')',
          'lo que ya eligió una persona: aplicado, válido (se escribe en la próxima corrida) o "ninguno". ' +
          'Para anular: borrar su línea en ' + RDV_HOJA_ELECCIONES + '.'],
-        { negrita: true, bg: COLS_FICHA_.map(function () { return FICHA_COLOR_.titulo; }) });
+        { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.titulo; }) });
   resueltas.forEach(function (e) {
     const f = e.f;
     linea([FICHA_ETIQUETA_.resuelta, f ? f.fila : '', e.figura, _fechaLarga_(e.fecha),
@@ -171,8 +183,20 @@ function armarFichas_(plan, asis, opts) {
            (e.resultado || e.estado || '') + (e.fechaResultado instanceof Date ? ' · ' + fmtFecha_(e.fechaResultado) : '')]);
   });
 
+  _reordenarFichas_(salida, formato);
   return { matriz: salida, formato: formato, fichas: fichas, pendientes: lista.length,
            resueltas: resueltas.length, porMotivo: porMotivo };
+}
+
+/** Del orden del armado al de la solapa (ELEGIR, COMENTARIO, resultado adelante). Modifica en el lugar. */
+function _reordenarFichas_(salida, formato) {
+  const orden = COLS_FICHA_.map(function (c) {
+    return COLS_FICHA_ARMADO_.indexOf(c === 'ELEGIR' ? 'elegido' : (c === 'COMENTARIO' ? 'comentario' : c));
+  });
+  const mover = function (a) { return orden.map(function (k) { return a[k]; }); };
+  salida.forEach(function (r, i) { salida[i] = mover(r); });
+  salida[0] = COLS_FICHA_.slice();
+  formato.forEach(function (f) { f.bg = mover(f.bg); f.fc = mover(f.fc); });
 }
 
 /** Lo que las fichas necesitan del plan, armado una vez. */
@@ -597,9 +621,10 @@ function escribirHistoricoSinResolver_(plan) {
  * entera: contenido, formato y validaciones (es un reporte; las elecciones ya se leyeron y se guardaron
  * en ELECCIONES_MATCH antes de escribir).
  */
-function escribirFichas_(nombre, fx) {
+function escribirFichas_(nombre, fx, opts) {
+  opts = opts || {};
   const m = fx.matriz, n = m.length, w = COLS_FICHA_.length;
-  const ss = ssIntermedia_();
+  const ss = opts.ss || ssIntermedia_();
   let sh = ss.getSheetByName(nombre);
   if (!sh) sh = ss.insertSheet(nombre);
   else {
@@ -615,15 +640,127 @@ function escribirFichas_(nombre, fx) {
   rango.setBackgrounds(fx.formato.map(function (x) { return x.bg.map(function (c) { return c || '#ffffff'; }); }));
   rango.setFontColors(fx.formato.map(function (x) { return x.fc.map(function (c) { return c || FICHA_COLOR_.textoNormal; }); }));
   rango.setFontWeights(fx.formato.map(function (x) { return m[0].map(function () { return x.negrita ? 'bold' : 'normal'; }); }));
-  const iEl = COLS_FICHA_.indexOf('elegido');
+  const iEl = COLS_FICHA_.indexOf('ELEGIR');
   sh.getRange(1, iEl + 1, n, 1).setDataValidations(fx.formato.map(function (x) {
     return [x.desplegable ? SpreadsheetApp.newDataValidation().requireValueInList(x.desplegable, true)
                                 .setAllowInvalid(false).build() : null];
   }));
+  _formatoFichas_(sh, fx);
   sh.setFrozenRows(1);
+  sh.setFrozenColumns(2);                                       // ELEGIR y COMENTARIO, siempre a la vista
   sh.hideColumns(w - FICHA_COLS_OCULTAS_ + 1, FICHA_COLS_OCULTAS_);
+  if (opts.proteger) fx.proteccion = _protegerFichas_(sh, _filasDeTipo_(fx, 'reunion'));
   SpreadsheetApp.flush();
   return sh;
+}
+
+/** El tipo de cada línea de la solapa: encabezado, titulo, reunion, porque, opcion, coincide, contexto, resuelta, blanco. */
+function _tipoLineaFicha_(r, i) {
+  if (i === 0) return 'encabezado';
+  const t = str(r[COLS_FICHA_.indexOf('ficha')]);
+  if (t === FICHA_ETIQUETA_.reunion) return 'reunion';
+  if (t === FICHA_ETIQUETA_.porQue) return 'porque';
+  if (/^Opción \d+$/.test(t)) return 'opcion';
+  if (t === FICHA_ETIQUETA_.contexto || t === FICHA_ETIQUETA_.descartado) return 'contexto';
+  if (t === FICHA_ETIQUETA_.resuelta) return 'resuelta';
+  if (t.indexOf(FICHA_ETIQUETA_.pendientes) === 0 || t.indexOf(FICHA_ETIQUETA_.resueltas) === 0) return 'titulo';
+  return r.some(function (x) { return x !== '' && x !== null; }) ? 'coincide' : 'blanco';
+}
+
+/** Las filas (1-based) de un tipo. */
+function _filasDeTipo_(fx, tipo) {
+  const out = [];
+  fx.matriz.forEach(function (r, i) { if (_tipoLineaFicha_(r, i) === tipo) out.push(i + 1); });
+  return out;
+}
+
+/**
+ * El formato de la solapa, en cada regeneración (06/10): ELEGIR y COMENTARIO de cada línea REUNIÓN en
+ * amarillo claro con borde marcado; una línea gruesa arriba de cada ficha; "¿por qué?" en itálica; RESUELTAS
+ * en gris; anchos ajustados al texto (de las líneas de datos, no de las frases), con un máximo y ajuste de
+ * texto en el nombre del formulario.
+ */
+function _formatoFichas_(sh, fx) {
+  const m = fx.matriz, n = m.length, w = COLS_FICHA_.length, visibles = w - FICHA_COLS_OCULTAS_;
+  const tipos = m.map(_tipoLineaFicha_);
+  const reuniones = [];
+  tipos.forEach(function (t, i) { if (t === 'reunion') reuniones.push(i + 1); });
+  const ultima = _letraFicha_(visibles);
+  // Una línea gruesa arriba de cada ficha, y ELEGIR / COMENTARIO marcados.
+  for (let i = 0; i < reuniones.length; i += 300) {
+    const tramo = reuniones.slice(i, i + 300);
+    sh.getRangeList(tramo.map(function (f) { return 'A' + f + ':' + ultima + f; }))
+      .setBorder(true, null, null, null, null, null, FICHA_COLOR_.separador, SpreadsheetApp.BorderStyle.SOLID_THICK);
+    const el = sh.getRangeList(tramo.map(function (f) { return 'A' + f + ':B' + f; }));
+    el.setBackground(FICHA_COLOR_.elegir);
+    el.setBorder(true, true, true, true, true, null, FICHA_COLOR_.bordeElegir, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  }
+  // "¿por qué?" en itálica; el resto, normal.
+  sh.getRange(1, 1, n, w).setFontStyles(tipos.map(function (t) {
+    return m[0].map(function () { return t === 'porque' ? 'italic' : 'normal'; });
+  }));
+  // Los anchos: por el texto de las líneas de datos (encabezado, reunión, opciones, contexto, resueltas).
+  const cuentan = { encabezado: 1, reunion: 1, opcion: 1, contexto: 1, resuelta: 1 };
+  for (let j = 0; j < visibles; j++) {
+    let largo = 0;
+    for (let i = 0; i < n; i++) {
+      if (!cuentan[tipos[i]]) continue;
+      const v = m[i][j];
+      const t = v instanceof Date ? 'dd/mm/aaaa' : String(v === null || v === undefined ? '' : v);
+      largo = Math.max(largo, t.length);
+    }
+    sh.setColumnWidth(j + 1, Math.min(FICHAS_ANCHO_MAX, Math.max(j < 2 ? 120 : 50, largo * 7 + 20)));
+  }
+  // Los nombres largos de formularios: ajuste de texto en esa columna (sólo en las líneas de datos).
+  const iNom = COLS_FICHA_.indexOf('evento / formulario');
+  sh.getRange(1, iNom + 1, n, 1).setWraps(tipos.map(function (t) { return [!!cuentan[t]]; }));
+}
+
+function _letraFicha_(n) {
+  let t = '';
+  while (n > 0) { const k = (n - 1) % 26; t = String.fromCharCode(65 + k) + t; n = Math.floor((n - 1) / 26); }
+  return t;
+}
+
+/**
+ * **La protección de la solapa de fichas del destino** (06/10): toda la solapa, salvo ELEGIR y COMENTARIO de
+ * cada línea REUNIÓN. Protección REAL: sólo quien corre el script (y el dueño del archivo, que Google no deja
+ * sacar) puede escribir en el resto; el script sigue escribiendo. Si no se puede poner real (permisos), queda
+ * como advertencia y se avisa en el log. Se rehace en cada regeneración (las filas cambian).
+ */
+function _protegerFichas_(sh, filasReunion) {
+  let pr = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).filter(function (x) {
+    return x.getDescription() === DESC_PROTECCION_FICHAS;
+  })[0];
+  if (!pr) pr = sh.protect().setDescription(DESC_PROTECCION_FICHAS);
+  pr.setUnprotectedRanges(filasReunion.map(function (f) { return sh.getRange(f, 1, 1, 2); }));
+  try {
+    const yo = Session.getEffectiveUser();
+    pr.addEditor(yo);
+    const otros = pr.getEditors().filter(function (e) { return e.getEmail() !== yo.getEmail(); });
+    if (otros.length) pr.removeEditors(otros);
+    if (pr.canDomainEdit()) pr.setDomainEdit(false);
+    pr.setWarningOnly(false);
+    Logger.log('[fichas] "%s" protegida: sólo ELEGIR y COMENTARIO (%s fichas) se pueden editar.', sh.getName(), filasReunion.length);
+    return { real: true, editables: filasReunion.length };
+  } catch (err) {
+    pr.setWarningOnly(true);
+    Logger.log('>>> [fichas] la protección REAL de "%s" no se pudo poner (%s): quedó como ADVERTENCIA. Avisar.',
+               sh.getName(), err);
+    return { real: false, error: String(err), editables: filasReunion.length };
+  }
+}
+
+/** La REVISAR_MATCH de la intermedia cuando las fichas están en el destino: sólo un aviso, sin desplegables. */
+function avisoFichasEnDestino_() {
+  const ss = ssIntermedia_();
+  const sh = ss.getSheetByName(RDV_HOJA_REVISAR);
+  if (!sh) return;
+  sh.clearContents();
+  sh.clearFormats();
+  sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns()).clearDataValidations();
+  sh.getRange(1, 1).setValue('Las fichas de revisión están en el archivo del destino, solapa "' + RDV_HOJA_REVISAR +
+                             '" (desde el 06/10). Esta solapa ya no se lee: elegir allá.');
 }
 
 // ===================== Lectura de "elegido" =====================
@@ -637,7 +774,9 @@ function escribirFichas_(nombre, fx) {
 function leerFichas_(vals, cands, nombreHoja) {
   const hdr = vals[0];
   const i = function (n) { return findIdxOr_(hdr, [n], true); };
-  const iT = 0, iEl = i('elegido'), iCo = i('comentario'), iFig = i('id_figura'), iFec = i('id_fecha'),
+  // ELEGIR y COMENTARIO (06/10; antes "elegido" y "comentario"), y la etiqueta de la línea, por encabezado.
+  const iEl = i('elegir') != null ? i('elegir') : i('elegido');
+  const iT = i('ficha'), iCo = i('comentario'), iFig = i('id_figura'), iFec = i('id_fecha'),
         iBar = i('id_barrio'), iCla = i('form_clave'), iNom = i('evento / formulario');
   const out = [];
   let ficha = null;
@@ -694,11 +833,11 @@ function fichaComoTexto_(fx, ficha) {
       else if (bg === FICHA_COLOR_.amarillo) v = '[!] ' + v;
       celdas.push(v);
     }
-    if (fmt.desplegable) celdas.push('elegido ▾ {' + fmt.desplegable.join(' / ') + '}');
+    if (fmt.desplegable) celdas.push('ELEGIR ▾ {' + fmt.desplegable.join(' / ') + '}');
     const iP = COLS_FICHA_.indexOf('puntaje');
     if (r[iP] !== '' && r[iP] !== null && r[iP] !== undefined) celdas.push('(puntaje ' + r[iP] + ', oculto)');
     if (!celdas.length) continue;
-    const t = String(r[0]);
+    const t = String(r[COLS_FICHA_.indexOf('ficha')]);
     out.push((t === '' ? '      ' : '  ') + celdas.join(' | '));
   }
   return out;

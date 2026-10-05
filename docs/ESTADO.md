@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,51 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### w) 06/10: las fichas, en el ARCHIVO del destino (donde trabaja el equipo)
+
+**Lo hecho:**
+
+- **Ubicación**: `SOLAPA_FICHAS_EN_DESTINO = true`: REVISAR_MATCH (fichas) se escribe en el archivo del
+  destino (`RDV_SS_DESTINO`), solapa nueva **"REVISAR_MATCH"**. La de la intermedia queda **sólo con un aviso**
+  ("las fichas están en el archivo del destino…"), sin desplegables, y **no se lee**.
+- **Lectura**: "elegido" y "comentario" se leen de la solapa del destino, por su nombre (`leerElecciones_`).
+  `ELECCIONES_MATCH`, `HISTORICO_SIN_RESOLVER` y `EMPAREJAR_MANUAL` siguen en la intermedia. Ninguna lectura
+  del destino (`RDV_HOJA_DESTINO`) toca la solapa de fichas.
+- **Adelante, lo que escribe el usuario**: columnas **ELEGIR** (desplegable: Opción 1/2/3, Ninguno, No sé),
+  **COMENTARIO**, **resultado** (lo escribe el sistema), y recién después la ficha. ELEGIR y COMENTARIO sólo en
+  la línea REUNIÓN de cada ficha: **amarillo claro, borde marcado**, encabezado en negrita.
+- **Protección real** de toda la solapa salvo esas celdas (`_protegerFichas_`): quedan como editores sólo quien
+  corre el script (y el dueño del archivo, que Google no deja sacar); sin edición por dominio. Si no se puede
+  poner real (permisos), queda como **advertencia** y el log dice *"la protección REAL … no se pudo poner …
+  Avisar."*. Se rehace en cada regeneración.
+- **Formato** (en cada regeneración): encabezado congelado y ELEGIR/COMENTARIO congeladas a la izquierda; una
+  línea gruesa arriba de cada ficha; REUNIÓN en negrita sobre gris suave; "¿por qué?" en itálica; contexto
+  en gris; los colores de coincidencia como estaban; RESUELTAS al final, con título y en gris; anchos
+  ajustados al texto de las líneas de datos (no al de las frases), máximo `FICHAS_ANCHO_MAX` (400 px), con
+  ajuste de texto en el nombre del formulario.
+- **docs/elegir-match.md** actualizada (dónde está la solapa, ELEGIR adelante, qué es editable).
+- **Test en Node** [21]: la solapa en el archivo del destino con ELEGIR/COMENTARIO/resultado adelante;
+  protección real, sin proteger sólo ELEGIR y COMENTARIO de cada REUNIÓN; amarillo y borde; congeladas;
+  itálica; anchos ≤ 400; la de la intermedia con el aviso y sin desplegables; **una elección en ELEGIR del
+  destino se lee y se aplica**; **lo escrito fuera de ELEGIR (otra línea u otra columna) no se lee**; la de la
+  intermedia ya no se lee; sin permisos, advertencia y aviso. [15]–[17] adaptados al orden nuevo. Toda la
+  suite en verde.
+
+**Ojo con la autorización**: la protección real usa `Session.getEffectiveUser()` (permiso nuevo: "ver tu dirección de correo electrónico").
+**La primera vez que corras algo después de este `clasp push`, Apps Script pide autorizar de nuevo**: correr
+`upsertDestino()` a mano y aceptar. Si el activador de cada hora ya estuviera instalado, fallaría hasta
+autorizar.
+
+**La prueba, con la predicción anotada ANTES de correr:**
+
+1. **`upsertDestino()`** a mano (y autorizar). **Predicción:** en el archivo del destino aparece la solapa
+   **REVISAR_MATCH** con **3 fichas: las filas 778, 787 y 798**, con **ELEGIR y COMENTARIO adelante**, en
+   amarillo con borde, congeladas, y como **única zona editable** (el log: *"[fichas] "REVISAR_MATCH"
+   protegida: sólo ELEGIR y COMENTARIO (3 fichas) se pueden editar"*). La REVISAR_MATCH de la intermedia queda
+   con el aviso. Nada más cambia: 0 celdas escritas en RVD JM-CM - ES (salvo lo que haya entrado nuevo).
+2. **Probar con alguien del equipo** que pueda escribir en ELEGIR y COMENTARIO y en ningún otro lado. Si la
+   protección real le da problemas de permisos, avisar.
 
 ### v) 06/10: ANTES DE AGENDA — los oradores desde RDV CONJUNTO
 

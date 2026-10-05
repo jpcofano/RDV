@@ -507,6 +507,19 @@ const REVISAR_COMO_FICHAS = true;   // prendido el 03/10, con las fichas aprobad
  * de completar el historial (paso 22): sólo informativa, no son fichas (intermedia).
  */
 const RDV_HOJA_HISTORICO = 'HISTORICO_SIN_RESOLVER';
+/**
+ * **Las fichas, en el archivo del destino** (06/10, decisión del usuario): REVISAR_MATCH se escribe en una
+ * solapa "REVISAR_MATCH" del archivo del destino (RDV_SS_DESTINO), donde trabaja el equipo; "elegido" y
+ * "comentario" se leen de ahí. Toda la solapa protegida salvo las celdas ELEGIR y COMENTARIO de cada ficha.
+ * La REVISAR_MATCH de la intermedia queda sólo con un aviso (no se lee). ELECCIONES_MATCH,
+ * HISTORICO_SIN_RESOLVER y EMPAREJAR_MANUAL siguen en la intermedia. Esa solapa del destino se lee sólo por
+ * su nombre: ninguna lectura del destino (RDV_HOJA_DESTINO) la toca.
+ */
+const SOLAPA_FICHAS_EN_DESTINO = true;
+/** La descripción de la protección de la solapa de fichas del destino (se reemplaza en cada regeneración). */
+const DESC_PROTECCION_FICHAS = 'RDV: fichas de revisión — sólo se escribe en ELEGIR y COMENTARIO';
+/** Ancho máximo de una columna de las fichas (px): los nombres largos de formularios, con ajuste de texto. */
+const FICHAS_ANCHO_MAX = 400;
 /** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
 const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
 /**

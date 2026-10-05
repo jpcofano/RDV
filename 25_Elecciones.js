@@ -46,7 +46,11 @@ function leerElecciones_(cands) {
   const guardadas = _leerEleccionesGuardadas_();
   const ya = {};
   guardadas.forEach(function (g) { if (!_esNota_(g)) ya[_idEleccion_(g)] = g; });
-  const leidas = _leerEleccionesDeHoja_(RDV_HOJA_REVISAR, cands).concat(_leerEleccionesDeHoja_(RDV_HOJA_EMPAREJAR, cands));
+  // Las fichas (06/10): con SOLAPA_FICHAS_EN_DESTINO se leen de la solapa del ARCHIVO del destino, por su
+  // nombre; la de la intermedia ya no se lee (tiene sólo un aviso).
+  const ssRevisar = (REVISAR_COMO_FICHAS && SOLAPA_FICHAS_EN_DESTINO) ? ssDestino_() : ssIntermedia_();
+  const leidas = _leerEleccionesDeHoja_(RDV_HOJA_REVISAR, cands, ssRevisar)
+    .concat(_leerEleccionesDeHoja_(RDV_HOJA_EMPAREJAR, cands));
   const nuevas = [];
   let cerradas = 0;
   // Las de la misma fila que una elección nueva de una ficha deja sin efecto (03/10): lo que muestra la
@@ -122,8 +126,8 @@ function _valorElegido_(v) {
  * encabezado (fila 1); EMPAREJAR_MANUAL tiene el de arriba (fila 1) y el del bloque "POR FILA DEL
  * DESTINO" (la fila que empieza "---" | "fila_destino"); las filas de título ("--- …") cortan el bloque.
  */
-function _leerEleccionesDeHoja_(nombre, cands) {
-  const sh = ssIntermedia_().getSheetByName(nombre);
+function _leerEleccionesDeHoja_(nombre, cands, ss) {
+  const sh = (ss || ssIntermedia_()).getSheetByName(nombre);
   if (!sh || sh.getLastRow() < 2) return [];
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   // REVISAR_MATCH como fichas (26_Fichas.js): se reconoce por el encabezado.

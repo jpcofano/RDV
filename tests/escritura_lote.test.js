@@ -106,12 +106,33 @@ function crearEntorno(opts) {
       if (typeof a === 'string') { const p = parseA1(a); return new Rango(this, p.r, p.c, p.nr, p.nc); }
       return new Rango(this, a, b, c || 1, d || 1);
     }
-    getProtections() { return (this.protecciones || []).slice(); }
+    getProtections(tipo) {
+      return (this.protecciones || []).filter(function (x) { return !tipo || (x.tipo || 'RANGE') === tipo; });
+    }
+    // Protección de la hoja entera (06/10, fichas): con rangos sin proteger y editores.
+    protect() {
+      const h = this, pr = { tipo: 'SHEET', desc: '', warning: false, libres: [], editores: ['equipo@x', 'yo@x'], dominio: true,
+        setDescription: function (d) { pr.desc = d; return pr; }, getDescription: function () { return pr.desc; },
+        setWarningOnly: function (w) { pr.warning = w; return pr; },
+        setUnprotectedRanges: function (l) { pr.libres = l.map(function (r) { return [r.r, r.c, r.nr, r.nc]; }); return pr; },
+        addEditor: function (u) { const e = u.getEmail ? u.getEmail() : u; if (pr.editores.indexOf(e) < 0) pr.editores.push(e); return pr; },
+        removeEditors: function (l) { const q = l.map(function (u) { return u.getEmail(); }); pr.editores = pr.editores.filter(function (e) { return q.indexOf(e) < 0; }); return pr; },
+        getEditors: function () { return pr.editores.map(function (e) { return { getEmail: function () { return e; } }; }); },
+        canDomainEdit: function () { return pr.dominio; }, setDomainEdit: function (d) { pr.dominio = d; return pr; },
+        remove: function () { h.protecciones = h.protecciones.filter(function (x) { return x !== pr; }); } };
+      this.protecciones = this.protecciones || [];
+      this.protecciones.push(pr);
+      return pr;
+    }
+    setFrozenColumns(n) { this.congeladas = n; }
+    setColumnWidth(c, px) { this.anchos = this.anchos || {}; this.anchos[c] = px; }
     getRangeList(lista) {
       const h = this;
       const rangos = lista.map(function (a1) { const p = parseA1(a1); return new Rango(h, p.r, p.c, p.nr, p.nc); });
       return {
         setBackground: function (color) { escribir(rangos.length); rangos.forEach(function (r) { r._pintar(color); }); },
+        setBorder: function () { const a = [].slice.call(arguments); escribir(rangos.length);
+          rangos.forEach(function (r) { r.h.bordes = r.h.bordes || []; r.h.bordes.push({ r: r.r, c: r.c, nr: r.nr, nc: r.nc, args: a }); }); },
         setValue: function (v) { escribir(rangos.length); rangos.forEach(function (r) { r._poner(v); }); },
         clearContent: function () { escribir(rangos.length); rangos.forEach(function (r) { r._poner(''); }); },
         getRanges: function () { return rangos; }
@@ -199,6 +220,8 @@ function crearEntorno(opts) {
     }
     setFontColors(m) { this._matriz('fc', m); }
     setFontWeights(m) { this._matriz('fw', m); }
+    setFontStyles(m) { this._matriz('fs', m); }
+    setWraps(m) { this._matriz('wr', m); }
     setDataValidations(m) { this._matriz('dv', m); }
     clearDataValidations() { this.h.dv = []; }
     setBackground(c) { escribir(this._celdas()); this._pintar(c); }
@@ -253,6 +276,7 @@ function crearEntorno(opts) {
       E.logs.push(String(fmt).replace(/%s/g, function () { return String(args[i++]); }));
     } },
     Utilities: Utilities,
+    Session: { getEffectiveUser: function () { return { getEmail: function () { return 'yo@x'; } }; } },
     SpreadsheetApp: {
       openById: function (id) { vigilar(); E.reloj += COSTO.openById; return E.planilla(id); },
       newDataValidation: function () {
@@ -262,7 +286,8 @@ function crearEntorno(opts) {
         return b;
       },
       flush: function () { vigilar(); vaciar(); },
-      ProtectionType: { RANGE: 'RANGE' }
+      ProtectionType: { RANGE: 'RANGE', SHEET: 'SHEET' },
+      BorderStyle: { SOLID_MEDIUM: 'SOLID_MEDIUM', SOLID_THICK: 'SOLID_THICK' }
     },
     // Activadores (04/10): E.activadores es la lista de nombres de función con activador.
     ScriptApp: {
@@ -1187,20 +1212,20 @@ function escenarioFichas() {
   ok(emp && !emp.v.some(function (x) { return /IVÁN ROBLES/.test(String(x[0])); }) && mCerr && +mCerr[1] > 0,
      'EMPAREJAR: los formularios de reuniones cerradas se descartan y se cuentan aparte (' + (mCerr ? mCerr[0] : 'sin línea') + ')');
 
-  const rev = m.ssI.hojas['REVISAR_MATCH'];
-  ok(rev && rev.v[0][0] === 'ficha' && rev.v[0].indexOf('id_figura') >= 0, 'REVISAR_MATCH tiene el formato de fichas');
+  const rev = m.ssD.hojas['REVISAR_MATCH'];
+  ok(rev && rev.v[0][0] === 'ELEGIR' && rev.v[0].indexOf('ficha') === 3 && rev.v[0].indexOf('id_figura') >= 0, 'REVISAR_MATCH tiene el formato de fichas');
   const h = rev.v[0];
   const reunion = function (hj, fig) {
-    return hj.v.findIndex(function (x) { return x[0] === 'REUNIÓN' && x[h.indexOf('figura')] === fig; });
+    return hj.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[h.indexOf('figura')] === fig; });
   };
   const kLia = reunion(rev, 'Lía Ferrante'), kRita = reunion(rev, 'Rita Gómez'), kIvan = reunion(rev, 'Iván Robles');
   ok(kLia > 0 && kRita > 0, 'las fichas de Lía (margen chico) y Rita (otra comuna) están');
   ok(kIvan < 0, 'la de Iván (cerrada) no está');
   ok(kRita < kLia, 'de la más reciente a la más vieja (Rita 25/09 antes que Lía 20/09)');
-  const dv = rev.dv && rev.dv[kLia] && rev.dv[kLia][h.indexOf('elegido')];
+  const dv = rev.dv && rev.dv[kLia] && rev.dv[kLia][h.indexOf('ELEGIR')];
   ok(dv && /^Opción 1|Opción 2|(Opción 3|)?Ninguno|No sé$/.test(dv.lista.join('|')), 'desplegable en "elegido": ' + (dv ? dv.lista.join(' / ') : '-'));
   ok(JSON.stringify(rev.ocultas) === JSON.stringify([15, 16, 17, 18, 19]), 'las 5 columnas ocultas (identidad y puntaje)');
-  const porQueRita = rev.v[kRita + 1][1], coincideRita = rev.v[kRita + 3][1];
+  const porQueRita = rev.v[kRita + 1][4], coincideRita = rev.v[kRita + 3][4];
   console.log('       ¿por qué? (Rita): ' + porQueRita);
   console.log('       coincide (Rita):  ' + coincideRita);
   ok(/cambió de lugar/.test(porQueRita) && /dice C6/.test(porQueRita) && /Flores \(C7\)/.test(porQueRita),
@@ -1209,24 +1234,24 @@ function escenarioFichas() {
      'coincide / no coincide de una posible reubicación');
   ok(rev.bg[kRita + 2][h.indexOf('ubicación')] === '#f4cccc' && rev.bg[kRita + 2][h.indexOf('figura')] === '#d9ead3',
      'colores por celda: ubicación en rojo, figura en verde');
-  console.log('       ¿por qué? (Lía):  ' + rev.v[kLia + 1][1]);
-  ok(/coinciden casi igual \(confianza alta y alta\)/.test(rev.v[kLia + 1][1]), '¿por qué? de un margen chico');
+  console.log('       ¿por qué? (Lía):  ' + rev.v[kLia + 1][4]);
+  ok(/coinciden casi igual \(confianza alta y alta\)/.test(rev.v[kLia + 1][4]), '¿por qué? de un margen chico');
 
   // Una persona elige: la opción 2 para Lía; "No sé" con un comentario para Rita.
-  const opcion2 = rev.v.find(function (x, i) { return i > kLia && x[0] === 'Opción 2'; })[h.indexOf('evento / formulario')];
-  rev.v[kLia][h.indexOf('elegido')] = 'Opción 2';
-  rev.v[kRita][h.indexOf('elegido')] = 'No sé';
-  rev.v[kRita][h.indexOf('comentario')] = 'preguntar al equipo';
+  const opcion2 = rev.v.find(function (x, i) { return i > kLia && x[3] === 'Opción 2'; })[h.indexOf('evento / formulario')];
+  rev.v[kLia][h.indexOf('ELEGIR')] = 'Opción 2';
+  rev.v[kRita][h.indexOf('ELEGIR')] = 'No sé';
+  rev.v[kRita][h.indexOf('COMENTARIO')] = 'preguntar al equipo';
   const fSeco = JSON.stringify(foto(hoja));
   const s = E.ejecutar('correrEnSeco');
   ok(!s.error && JSON.stringify(foto(hoja)) === fSeco, 'en seco: no escribe el destino' + (s.error ? ': ' + s.error.stack : ''));
   ok(/VÁLIDA: .*Lía Ferrante/.test(s.logs.join('\n')), 'la elección de Lía es válida');
-  const rev2 = m.ssI.hojas['REVISAR_MATCH'];
+  const rev2 = m.ssD.hojas['REVISAR_MATCH'];
   const kRita2 = reunion(rev2, 'Rita Gómez');
-  ok(kRita2 > 0 && rev2.v[kRita2][h.indexOf('elegido')] === 'No sé' && rev2.v[kRita2][h.indexOf('comentario')] === 'preguntar al equipo',
+  ok(kRita2 > 0 && rev2.v[kRita2][h.indexOf('ELEGIR')] === 'No sé' && rev2.v[kRita2][h.indexOf('COMENTARIO')] === 'preguntar al equipo',
      '"No sé" queda pendiente, con su comentario');
-  const kRes = rev2.v.findIndex(function (x) { return /^RESUELTAS/.test(x[0]); });
-  const liaRes = rev2.v.findIndex(function (x, i) { return i > kRes && x[0] === 'resuelta' && x[2] === 'Lía Ferrante'; });
+  const kRes = rev2.v.findIndex(function (x) { return /^RESUELTAS/.test(x[3]); });
+  const liaRes = rev2.v.findIndex(function (x, i) { return i > kRes && x[3] === 'resuelta' && x[5] === 'Lía Ferrante'; });
   ok(kRes > 0 && liaRes > kRes && /válida/.test(rev2.v[liaRes][h.indexOf('resultado')]),
      'Lía pasa a RESUELTAS: ' + (liaRes > 0 ? rev2.v[liaRes][h.indexOf('resultado')] : '-'));
   const el = m.ssI.hojas['ELECCIONES_MATCH'];
@@ -1239,18 +1264,18 @@ function escenarioFichas() {
   const nLia = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Lía Ferrante'; });
   ok(hoja.v[nLia][colD('form_origen')] === opcion2 && /\+elegido_por_persona/.test(hoja.v[nLia][colD('form_nivel')]),
      'Lía se escribe con la opción 2 (+elegido_por_persona)');
-  const rev3 = m.ssI.hojas['REVISAR_MATCH'];
-  const liaRes3 = rev3.v.findIndex(function (x) { return x[0] === 'resuelta' && x[2] === 'Lía Ferrante'; });
+  const rev3 = m.ssD.hojas['REVISAR_MATCH'];
+  const liaRes3 = rev3.v.findIndex(function (x) { return x[3] === 'resuelta' && x[5] === 'Lía Ferrante'; });
   ok(liaRes3 > 0 && /^aplicado /.test(rev3.v[liaRes3][h.indexOf('resultado')]), 'RESUELTAS: "aplicado <fecha>"');
 
   // Rita: de "No sé" a "Ninguno" → la nota queda reemplazada y la ficha pasa a RESUELTAS.
-  rev3.v[reunion(rev3, 'Rita Gómez')][h.indexOf('elegido')] = 'Ninguno';
+  rev3.v[reunion(rev3, 'Rita Gómez')][h.indexOf('ELEGIR')] = 'Ninguno';
   const s4 = E.ejecutar('correrEnSeco');
   if (process.env.DEBUG_FICHAS) console.log(s4.logs.filter(function (l) { return /Rita|ELEGIDO|leídas/.test(l); }).join('\n'));
-  const rev4 = m.ssI.hojas['REVISAR_MATCH'];
+  const rev4 = m.ssD.hojas['REVISAR_MATCH'];
   if (process.env.DEBUG_FICHAS) rev4.v.filter(function (x) { return /Rita/.test(x.join('|')); }).forEach(function (x) { console.log(x.join(' | ')); });
   ok(reunion(rev4, 'Rita Gómez') < 0 &&
-     rev4.v.some(function (x) { return x[0] === 'resuelta' && x[2] === 'Rita Gómez' && x[h.indexOf('elegido')] === 'Ninguno'; }),
+     rev4.v.some(function (x) { return x[3] === 'resuelta' && x[5] === 'Rita Gómez' && x[h.indexOf('ELEGIR')] === 'Ninguno'; }),
      '"Ninguno": la ficha sale de las pendientes y queda en RESUELTAS');
   const el2 = m.ssI.hojas['ELECCIONES_MATCH'];
   ok(el2.v.some(function (x) { return x[iE('figura')] === 'Rita Gómez' && x[iE('estado')] === 'reemplazada'; }),
@@ -1266,7 +1291,7 @@ function escenarioFichas() {
   ok(p.resultado && p.resultado.pedidas === 2 && /FICHA fila \d+ — REVISAR_MATCH \(margen_chico\) \| CERRADA/.test(logs21),
      'paso 21: la ficha de una fila cerrada sale en el log, marcada CERRADA');
   ok(/\[v\] Iván Robles/.test(logs21), 'paso 21: las marcas de color en el texto');
-  ok(m.ssI.hojas['REVISAR_FICHAS_PRUEBA'] && m.ssI.hojas['REVISAR_FICHAS_PRUEBA'].v[0][0] === 'ficha' &&
+  ok(m.ssI.hojas['REVISAR_FICHAS_PRUEBA'] && m.ssI.hojas['REVISAR_FICHAS_PRUEBA'].v[0][0] === 'ELEGIR' &&
      JSON.stringify(foto(hoja)) === f21, 'paso 21: escribe la solapa de prueba y no toca el destino');
 
   // Paso 16 y paso 20, con DIAS_ACTIVOS.
@@ -1302,14 +1327,14 @@ function escenarioOrdenFichas() {
   const m = montar(E, 150, true, casosOrdenFichas);
   const s = E.ejecutar('correrEnSeco');
   ok(!s.error, 'en seco sin error' + (s.error ? ': ' + s.error.stack : ''));
-  const rev = m.ssI.hojas['REVISAR_MATCH'], h = rev.v[0];
+  const rev = m.ssD.hojas['REVISAR_MATCH'], h = rev.v[0];
   const k = rev.v.findIndex(function (x) {
-    return x[0] === 'REUNIÓN' && x[h.indexOf('figura')] === 'Clara Mendieta' && /05\/08\/2026/.test(x[h.indexOf('fecha')]);
+    return x[3] === 'REUNIÓN' && x[h.indexOf('figura')] === 'Clara Mendieta' && /05\/08\/2026/.test(x[h.indexOf('fecha')]);
   });
   ok(k > 0, 'la ficha de la "309" (Clara Mendieta 05/08, sin barrio) está');
   const ops = [];
-  for (let i = k + 1; i < rev.v.length && rev.v[i][0] !== 'REUNIÓN' && !/^RESUELTAS/.test(rev.v[i][0]); i++) {
-    if (/^Opción \d$/.test(rev.v[i][0])) ops.push(rev.v[i]);
+  for (let i = k + 1; i < rev.v.length && rev.v[i][3] !== 'REUNIÓN' && !/^RESUELTAS/.test(rev.v[i][3]); i++) {
+    if (/^Opción \d$/.test(rev.v[i][3])) ops.push(rev.v[i]);
   }
   const puntajes = ops.map(function (x) { return x[h.indexOf('puntaje')]; });
   ok(ops.length >= 2 && puntajes.every(function (p, i) { return i === 0 || puntajes[i - 1] >= p; }),
@@ -1318,11 +1343,11 @@ function escenarioOrdenFichas() {
      'la opción 1 es el gemelo 07/08 Recoleta, confianza alta (' + (ops[0] ? ops[0][h.indexOf('evento / formulario')] : '-') + ')');
   ok(ops.some(function (x) { return /12\/08 Constitución/.test(x[h.indexOf('evento / formulario')]) && x[h.indexOf('confianza')] === 'media'; }),
      'el 12/08 Constitución va después, confianza media');
-  const porQue = rev.v[k + 1][1];
+  const porQue = rev.v[k + 1][4];
   console.log('       ¿por qué? (309): ' + porQue);
   ok(/^La opción 1, «[^»]*07\/08 Recoleta»/.test(porQue) && /ya tiene|ya la tiene/.test(porQue) && !/Constitución/.test(porQue),
      '"¿por qué?" habla de la opción 1 (el 07/08 Recoleta, que tiene otra fila), no del 12/08');
-  const desc = rev.v.slice(k).find(function (x) { return x[0] === 'formulario descartado'; });
+  const desc = rev.v.slice(k).find(function (x) { return x[3] === 'formulario descartado'; });
   console.log('       contexto: ' + (desc ? desc[h.indexOf('ocupado por')] : '(no está)'));
   ok(desc && /descartado: 0 inscriptos, cierra 04\/08; su gemelo tiene 49/.test(desc[h.indexOf('ocupado por')]),
      'el contexto muestra el gemelo descartado por la regla 3');
@@ -1380,12 +1405,12 @@ function escenarioCompletarHistorial() {
   const reg = mB.ssI.hojas['REGISTRO_UPSERT'];
   ok(reg && reg.v[reg.v.length - 1][reg.v[0].indexOf('alcance')] === 'historial (paso 22)', 'REGISTRO_UPSERT: alcance "historial (paso 22)"');
   // Lo viejo sin resolver: a HISTORICO_SIN_RESOLVER, no a las fichas.
-  const his = mB.ssI.hojas['HISTORICO_SIN_RESOLVER'], rev = mB.ssI.hojas['REVISAR_MATCH'];
+  const his = mB.ssI.hojas['HISTORICO_SIN_RESOLVER'], rev = mB.ssD.hojas['REVISAR_MATCH'];
   ok(his && his.v.some(function (x) { return x[1] === 'Iván Robles' && x[5] === 'margen_chico' && /IVÁN ROBLES/.test(x[6]); }),
      'HISTORICO_SIN_RESOLVER: la fila vieja en revisión (Iván, margen chico, con su mejor opción)');
   const hr = rev.v[0];
-  ok(rev.v.some(function (x) { return x[0] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Lía Ferrante'; }) &&
-     !rev.v.some(function (x) { return x[0] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Iván Robles'; }),
+  ok(rev.v.some(function (x) { return x[3] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Lía Ferrante'; }) &&
+     !rev.v.some(function (x) { return x[3] === 'REUNIÓN' && x[hr.indexOf('figura')] === 'Iván Robles'; }),
      'las fichas siguen con los últimos 30 días (Lía sí, Iván no)');
   // Paso 16 y paso 20 sobre todo el destino.
   const v = EB.ejecutar('verificarEscritura').resultado;
@@ -1659,6 +1684,66 @@ function escenarioOradores() {
   ok(r3.error && /se esperaba en G/.test(r3.error.message), 'en RDV CONJUNTO, fuera de lugar: error');
 }
 
+function escenarioFichasEnDestino() {
+  console.log('\n[21] las fichas en el ARCHIVO del destino: ELEGIR y COMENTARIO adelante, marcados y únicos editables');
+  const E = crearEntorno({ config: { DIAS_ACTIVOS: '30', REVISAR_COMO_FICHAS: 'true', SOLAPA_FICHAS_EN_DESTINO: 'true' } });
+  const m = montar(E, 300, true, casosFichas);
+  // La REVISAR_MATCH de la intermedia, como está hoy (fichas viejas, con su desplegable).
+  m.ssI.hojas['REVISAR_MATCH'] = new E.Hoja('REVISAR_MATCH', [['ELEGIR', 'ficha'], ['', 'REUNIÓN']]);
+  m.ssI.hojas['REVISAR_MATCH'].dv = [[null], [{ lista: ['Opción 1'] }]];
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'upsert sin error' + (r.error ? ': ' + r.error.stack : ''));
+  const fx = m.ssD.hojas['REVISAR_MATCH'], h = fx && fx.v[0];
+  ok(!!fx && h[0] === 'ELEGIR' && h[1] === 'COMENTARIO' && h[2] === 'resultado' && h[3] === 'ficha',
+     'la solapa está en el archivo del destino, con ELEGIR, COMENTARIO y resultado adelante');
+  const reuniones = [];
+  fx.v.forEach(function (x, i) { if (x[3] === 'REUNIÓN') reuniones.push(i + 1); });
+  ok(reuniones.length === 2, 'las fichas pendientes (Rita y Lía): ' + reuniones.length);
+  const pr = (fx.protecciones || []).filter(function (x) { return x.tipo === 'SHEET'; })[0];
+  ok(pr && !pr.warning && pr.editores.join() === 'yo@x' && !pr.dominio, 'protección REAL de toda la solapa: sólo quien corre el script');
+  ok(pr && pr.libres.length === 2 && pr.libres.every(function (l, k) { return l[0] === reuniones[k] && l[1] === 1 && l[2] === 1 && l[3] === 2; }),
+     'sin proteger: sólo ELEGIR y COMENTARIO de cada línea REUNIÓN');
+  ok(reuniones.every(function (f) { return fx.bg[f - 1][0] === '#fff9c4' && fx.bg[f - 1][1] === '#fff9c4'; }) &&
+     (fx.bordes || []).some(function (b) { return b.c === 1 && b.nc === 2 && b.args[7] === 'SOLID_MEDIUM'; }),
+     'ELEGIR y COMENTARIO en amarillo claro, con borde');
+  ok(fx.congeladas === 2 && fx.dv[reuniones[0] - 1][0] && !fx.dv[reuniones[0]][0], 'ELEGIR y COMENTARIO congeladas; el desplegable sólo en la línea REUNIÓN');
+  ok(fx.fs[reuniones[0]][4] === 'italic', '"¿por qué?" en itálica');
+  ok(Object.keys(fx.anchos || {}).every(function (c) { return fx.anchos[c] <= 400; }) && fx.anchos[1] >= 120, 'anchos ajustados, máximo 400');
+  const avisoInt = m.ssI.hojas['REVISAR_MATCH'];
+  ok(avisoInt && /están en el archivo del destino/.test(avisoInt.v[0][0]) && !(avisoInt.dv || []).some(function (x) { return x && x[0]; }),
+     'la de la intermedia queda con un aviso, sin desplegables');
+
+  // Una elección en ELEGIR del destino se lee y se aplica; algo escrito fuera de ELEGIR, no.
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const kLia = fx.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[5] === 'Lía Ferrante'; });
+  const kRita = fx.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[5] === 'Rita Gómez'; });
+  fx.v[kLia][0] = 'Opción 2';
+  fx.v[kRita + 2][0] = 'Opción 1';      // en una línea de opción: no es ELEGIR de la ficha
+  fx.v[kRita][h.indexOf('evento / formulario')] = 'Opción 1';   // en otra columna de la línea REUNIÓN
+  const opcion2 = fx.v.find(function (x, i) { return i > kLia && x[3] === 'Opción 2'; })[h.indexOf('evento / formulario')];
+  const r2 = E.ejecutar('upsertDestino');
+  const nLia = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Lía Ferrante'; });
+  const nRita = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Rita Gómez'; });
+  ok(!r2.error && hoja.v[nLia][colD('form_origen')] === opcion2 && /\+elegido_por_persona/.test(hoja.v[nLia][colD('form_nivel')]),
+     'la elección de ELEGIR (solapa del destino) se lee y se aplica');
+  ok(!hoja.v[nRita][colD('RDV_UID')] && !/Rita Gómez/.test(JSON.stringify(m.ssI.hojas['ELECCIONES_MATCH'].v)),
+     'lo escrito fuera de ELEGIR (otra línea u otra columna) no se lee');
+  const fx2 = m.ssD.hojas['REVISAR_MATCH'];
+  ok(fx2.v.some(function (x) { return x[3] === 'resuelta' && x[5] === 'Lía Ferrante' && /^aplicado /.test(x[2]); }),
+     'la ficha pasa a RESUELTAS con "aplicado"');
+  // La de la intermedia ya no recibe elecciones.
+  m.ssI.hojas['REVISAR_MATCH'].v[0][0] = 'Opción 1';
+  const r3 = E.ejecutar('upsertDestino');
+  ok(/leídas nuevas: 0/.test(r3.logs.join('\n')), 'la de la intermedia ya no se lee');
+  // La solapa de fichas no entra en la lectura del destino (RDV_HOJA_DESTINO): el plan es el mismo.
+  ok(/filas activas: /.test(r3.logs.join('\n')) && !r3.error, 'el destino se sigue leyendo sólo por su solapa');
+  // Si la protección real falla (permisos), queda como advertencia y avisa.
+  vm.runInContext('Session = { getEffectiveUser: function () { throw new Error("sin permiso"); } };', E.ctx);
+  const r4 = E.ejecutar('upsertDestino');
+  const pr4 = (m.ssD.hojas['REVISAR_MATCH'].protecciones || []).filter(function (x) { return x.tipo === 'SHEET'; })[0];
+  ok(!r4.error && pr4.warning && /quedó como ADVERTENCIA/.test(r4.logs.join('\n')), 'sin permisos: advertencia y aviso en el log');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1693,7 +1778,8 @@ const t = Date.now();
 if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >= 0 || process.argv.indexOf('--pasoB') >= 0 ||
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
     process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
-    process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
+    process.argv.indexOf('--fichasdestino') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -1702,6 +1788,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--activadores') >= 0) escenarioActivadores();
   else if (process.argv.indexOf('--derivadas') >= 0) escenarioDerivadas();
   else if (process.argv.indexOf('--oradores') >= 0) escenarioOradores();
+  else if (process.argv.indexOf('--fichasdestino') >= 0) escenarioFichasEnDestino();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1737,6 +1824,7 @@ escenarioCompletarHistorial();
 escenarioActivadores();
 escenarioDerivadas();
 escenarioOradores();
+escenarioFichasEnDestino();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
