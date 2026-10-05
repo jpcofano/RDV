@@ -147,10 +147,11 @@ const COLUMNAS_DERIVADAS = [
  * **Las derivadas por Apps Script** (etapa "antes de Agenda", 05/10; docs/prompts/PROMPT-04-…). Con
  * `true`, el upsert (cada corrida, también el paso 22) recalcula las once COLUMNAS_DERIVADAS en TODAS las
  * filas y sobrescribe sólo donde el valor cambió, sin color (`recalcDerivadas_`, 30_Derivadas.js). Una
- * columna que todavía tiene su fórmula NO se escribe (romperia el array): se saltea y se loguea.
- * **`false` hasta validar** (paso 25: 0 distintas) y quitar las fórmulas (paso 26).
+ * columna que todavía tiene su fórmula NO se escribe (rompería el array): se saltea y se loguea.
+ * Prendido el 05/10, con la copia hecha (paso 25 en 0, fórmulas quitadas). En el real, hasta que se corra
+ * el paso 26, el recálculo saltea las once y lo avisa.
  */
-const DERIVADAS_POR_SCRIPT = false;
+const DERIVADAS_POR_SCRIPT = true;
 /** Lo que la fórmula de `Direccion2` le agrega a la Dirección (CLAUDE.md 3.1.b). El paso 25 lo valida. */
 const SUFIJO_DIRECCION2 = ', Buenos Aires, Argentina';
 /** Dónde se guarda el texto exacto de las once fórmulas antes de quitarlas (intermedia). Lo lee el paso 27. */

@@ -70,10 +70,22 @@ function verificarEscritura() {
     });
   }
 
-  // --- 2) fórmulas ---
-  Logger.log('--- 2) fórmulas de las derivadas (paso 14) ---');
+  // --- 2) las derivadas ---
+  // Desde el 05/10 (DERIVADAS_POR_SCRIPT): el control es "valores = cálculo" en las once columnas (0
+  // distintas), no la presencia de la fórmula. Sin el flag, el de antes: el paso 14.
+  if (DERIVADAS_POR_SCRIPT) {
+    Logger.log('--- 2) las once derivadas: valores = cálculo del script (paso 25) ---');
+    const cmp = compararDerivadas(RDV_HOJA_DESTINO);
+    Object.keys(cmp.porCol).forEach(function (n) {
+      const c = cmp.porCol[n];
+      if (c.distintas) Logger.log('  %s: %s distintas', n, c.distintas);
+    });
+    Logger.log('  distintas en las once: %s   (tiene que dar 0)', cmp.distintas);
+    if (cmp.distintas) problemas.push('derivadas: ' + cmp.distintas + ' celdas distintas del cálculo (bloque 2)');
+  }
+  Logger.log('--- 2b) fórmulas de las derivadas (paso 14)%s ---', DERIVADAS_POR_SCRIPT ? ', informativo' : '');
   const fx = diagFormulasDestino();
-  const formulasOk = fx && !fx.sinFormula && !fx.enError && !fx.malIndice &&
+  const formulasOk = DERIVADAS_POR_SCRIPT || fx && !fx.sinFormula && !fx.enError && !fx.malIndice &&
     Object.keys(fx.difs || {}).every(function (k) { return !fx.difs[k]; });
   if (!formulasOk) problemas.push('fórmulas: ver el bloque 2');
 

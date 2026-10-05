@@ -296,7 +296,9 @@ function crearEntorno(opts) {
    */
   // RDV_HOJA_DESTINO: los escenarios escriben en la copia simulada y verifican que la real no se toque (desde el
   // 03/10 la constante apunta al real).
-  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'" }, opts.config || {});
+  // DERIVADAS_POR_SCRIPT: los datos sintéticos traen derivadas de mentira ("derivada-i"); sólo [19] lo prende.
+  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'", DERIVADAS_POR_SCRIPT: 'false' },
+                               opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;
     try { s = fuente(f); } catch (e) { return; }   // el código viejo no tiene todos los archivos
@@ -1531,7 +1533,7 @@ function escenarioDerivadas() {
   // El upsert sobre el real, que todavía tiene las fórmulas: no las toca.
   const fr = JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); }));
   const u = E.ejecutar('upsertDestino');
-  ok(!u.error && /todavía con fórmula \(no se escriben\): Día de la semana/.test(u.logs.join('\n')) &&
+  ok(!u.error && /la columna Día de la semana todavía tiene fórmula: no se escribe\. Correr paso26_quitarFormulasDerivadas/.test(u.logs.join('\n')) &&
      JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); })) === fr,
      'el upsert no escribe las derivadas de una solapa que todavía tiene fórmulas');
 
@@ -1542,7 +1544,22 @@ function escenarioDerivadas() {
   ok(!t1.error && t1.resultado.restauradas === 11 && DERIVADAS.every(function (n) { return /^=\{/.test(copia.f['1,' + (colD(n) + 1)] || ''); }) &&
      DERIVADAS.every(function (n) { return copia.v.slice(1).every(function (r) { return r[colD(n)] === '' || r[colD(n)] === undefined; }); }) &&
      !(copia.protecciones || []).length, 'paso 27: las 11 fórmulas de vuelta, columnas vacías para el array, sin protección');
-  ok(E.ejecutar('verificarEscritura').resultado !== null, 'paso 16 corre con el paso 14 de verdad');
+  // Paso 16 con DERIVADAS_POR_SCRIPT: "valores = cálculo" (0 distintas), aunque el real tenga fórmulas.
+  // (El upsert de arriba completó datos del real; en Sheets las fórmulas se recalculan solas, en el mock no.)
+  ponerFormulasDerivadas(real, comunasDatos);
+  const v16 = E.ejecutar('verificarEscritura');
+  ok(!v16.error && /distintas en las once: 0/.test(v16.logs.join('\n')) &&
+     !v16.resultado.problemas.some(function (x) { return /derivadas|fórmulas/.test(x); }),
+     'paso 16: el control de las derivadas es "valores = cálculo" (0 distintas)' + (v16.error ? ': ' + v16.error.stack : ''));
+  real.v[3][colD('Falta Informacion')] = 'Sí';                 // alguien tipea en una derivada
+  const v16b = E.ejecutar('verificarEscritura');
+  ok(v16b.resultado.problemas.some(function (x) { return /derivadas: 1 celdas distintas/.test(x); }),
+     'paso 16: una celda que no es la del cálculo es un problema');
+  // El upsert (cada hora) en el real ya sin fórmulas: recalcula y la corrige; el log dice por columna.
+  real.f = {};
+  const u2 = E.ejecutar('upsertDestino');
+  ok(!u2.error && real.v[3][colD('Falta Informacion')] === 'No' && /celdas que cambió: 1/.test(u2.logs.join('\n')) &&
+     /    Falta Informacion: 1/.test(u2.logs.join('\n')), 'el upsert recalcula y lo dice por columna (Falta Informacion: 1)');
 }
 
 function escenarioSecoIgualReal() {

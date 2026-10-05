@@ -2524,7 +2524,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
 26_Fichas.js       REVISAR_MATCH como fichas (armado, frases, colores, desplegable, lector) y
                    HISTORICO_SIN_RESOLVER                                          ← 03/10
-30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (apagado)
+30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
@@ -2882,6 +2882,8 @@ Verificacion: correr `correrEnSeco()` despues, y que el aviso de columnas faltan
 > TODAS las filas en cada corrida. Primero en la copia, después en el real. Recalcular al editar: por
 > ahora no (sólo cada hora). Respaldo legible, con el texto exacto: docs/formulas-respaldo.md. **Validado
 > el 05/10 contra el export del destino: 0 distintas en las once columnas, 810 filas, real y copia.**
+> **Copia hecha (05/10); `DERIVADAS_POR_SCRIPT = true`; el real, pendiente (ESTADO 0.u).** Mientras una
+> columna tenga su fórmula, el recálculo no la escribe y lo avisa. El paso 16 controla "valores = cálculo".
 
 **Es prerrequisito duro de la Fase 9.** No se saca el staging con las fórmulas de array
 todavía puestas: sería poner un upsert nuevo a escribir contra once bloques que se rompen

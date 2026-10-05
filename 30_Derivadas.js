@@ -248,12 +248,16 @@ function recalcDerivadas_(solapa, escribe) {
     if (escribe) escribirDerivadas_(ctx.sh, ctx.hdr, k + 1, tramos);
   });
   if (escribe && out.total) SpreadsheetApp.flush();
-  Logger.log('--- derivadas por script en "%s" (%s) ---', solapa, escribe ? 'ESCRIBE' : 'sólo cuenta');
-  Logger.log('  celdas que cambian: %s%s', out.total, out.total ? ' → ' + Object.keys(out.porCol).map(function (n) {
-    return n + ' ' + out.porCol[n]; }).join(' | ') : '');
-  if (out.conFormula.length) {
-    Logger.log('  todavía con fórmula (no se escriben): %s', out.conFormula.join(', '));
-  }
+  Logger.log('--- derivadas por script en "%s" (%s), todas las filas ---', solapa, escribe ? 'ESCRIBE' : 'sólo cuenta');
+  Logger.log('  celdas %s: %s', escribe ? 'que cambió' : 'que cambiarían', out.total);
+  Object.keys(ctx.cols).forEach(function (n) {
+    if (out.conFormula.indexOf(n) >= 0) return;
+    Logger.log('    %s: %s', n, out.porCol[n] || 0);
+  });
+  // La protección (05/10): una columna que todavía tiene su fórmula no se escribe (rompería el array).
+  out.conFormula.forEach(function (n) {
+    Logger.log('  >>> la columna %s todavía tiene fórmula: no se escribe. Correr paso26_quitarFormulasDerivadas.', n);
+  });
   return out;
 }
 

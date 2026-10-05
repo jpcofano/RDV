@@ -335,9 +335,40 @@ el archivo, con datos reales, no está en el repo.)
    calculadas por script: 11", c) todas coinciden, d) 0 distintas, **"CONFIRMADO: valores = Comunas"**.
    El upsert de esa hora sobre el real loguea "todavía con fórmula (no se escriben): …" las once: correcto.
 
-*En el real* (`PASO_DERIVADAS_SOLAPA = 'RVD JM-CM - ES'`, push y clasp push), con la predicción escrita
-antes de correr: la misma secuencia 1 → 3 y 6, y el upsert normal en lugar del paso 26b (las derivadas
-del log: 0 celdas que cambian en la primera corrida). Si algo sale mal: paso 27.
+**COPIA: HECHA (05/10).** Paso 25 en 0, las once fórmulas quitadas, los valores por script.
+
+**Cambios para el real (05/10):**
+
+- **`DERIVADAS_POR_SCRIPT = true`** y **`PASO_DERIVADAS_SOLAPA = 'RVD JM-CM - ES'`** (push y clasp push).
+- **La protección**: si una derivada todavía tiene su fórmula en la fila 1, el recálculo **no escribe en esa
+  columna** y lo avisa en el log, una línea por columna: *"la columna X todavía tiene fórmula: no se escribe.
+  Correr paso26_quitarFormulasDerivadas"*. Así, mientras el real tenga las fórmulas (hasta el paso 26), las
+  corridas de cada hora no rompen nada aunque el flag ya esté prendido.
+- **En el proceso**: el recálculo de las once corre dentro de `upsertDestino` —y por lo tanto de
+  `upsertDiario`, el del activador de cada hora, y del paso 22—, **después de escribir**, sobre **todas las
+  filas**, sólo donde el valor cambió, sin color. El log dice cuántas celdas cambió **por columna**;
+  `REGISTRO_UPSERT`, el total (columna `derivadas`).
+- **Paso 16**: con `DERIVADAS_POR_SCRIPT`, el control del bloque 2 pasa a ser **"valores = cálculo" en las once
+  columnas** (`compararDerivadas`: tiene que dar **0 distintas**; si no, es un problema), no la presencia de
+  la fórmula. El paso 14 se sigue mostrando, como información (2b).
+- **Test** [19] ampliado: el aviso por columna con fórmula; el paso 16 con 0 distintas aunque el real tenga
+  fórmulas; una celda tipeada a mano en una derivada es un problema del paso 16; el upsert la corrige y lo
+  dice por columna. Toda la suite en verde.
+
+**REAL: PENDIENTE.** La secuencia, con la predicción anotada ANTES de correr:
+
+1. **`paso25_compararDerivadas()`**. **Predicción: 0 distintas** en las ~810 filas con datos.
+2. **`paso26_quitarFormulasDerivadas_enSeco()`**. **Predicción:** "quitaría la fórmula de 11 columnas", 0
+   distintas, nada cambia.
+3. **`paso26_quitarFormulasDerivadas()`**. **Predicción: quitadas 11**, con fórmula 0, 0 distintas después;
+   `DERIVADAS_RESPALDO` suma las 11 líneas del real; las once protegidas con advertencia. Se ve igual.
+4. **`upsertDestino()`** (o la corrida de cada hora). **Predicción: recálculo con 0 cambios** (los valores ya
+   son los mismos): "celdas que cambió: 0" y 0 en cada una de las once; ningún aviso de "todavía tiene
+   fórmula".
+5. **`paso16_verificarEscritura()`**. **Predicción: OK**: invariante 0, Barrio 0, 0 incompletas, y en el
+   bloque 2 **"distintas en las once: 0"**.
+
+Si algo sale mal: paso 27 (restaurar las fórmulas desde `DERIVADAS_RESPALDO`) y `DERIVADAS_POR_SCRIPT = false`.
 
 ### t) 04/10: migración al real — HECHA. Lo que falta: los activadores
 

@@ -17,7 +17,10 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  >>> 05/10: ANTES DE AGENDA — las derivadas por script (ESTADO 0.u). En la copia primero:
+ *  >>> 05/10: derivadas — COPIA HECHA; DERIVADAS_POR_SCRIPT = true; ahora el REAL (ESTADO 0.u):
+ *      paso25_compararDerivadas() → paso26_…_enSeco() → paso26_quitarFormulasDerivadas() → upsertDestino() →
+ *      paso16_verificarEscritura().
+ *  (05/10, antes) ANTES DE AGENDA — las derivadas por script. En la copia primero:
  *      paso25_compararDerivadas() (0 distintas) → paso26_…_enSeco() → paso26_quitarFormulasDerivadas() →
  *      DERIVADAS_POR_SCRIPT = true → paso26_recalcularDerivadas() → paso26_formulasDerivadas(). Volver: paso27.
  *  >>> 04/10: MIGRACIÓN AL REAL HECHA (ESTADO 0.t): paso 22 OK, paso 16 OK, paso 20 f = 0. Falta:
@@ -393,7 +396,7 @@ function paso22_completarHistorial_enSeco() {
 //  DERIVADAS POR SCRIPT (05/10, antes de Agenda; ESTADO 0.u). La solapa sobre la que trabajan los
 //  pasos 25 a 27: primero la copia; después el real (cambiar esta constante).
 // =============================================================================================
-const PASO_DERIVADAS_SOLAPA = 'AAA NOBORRAR';
+const PASO_DERIVADAS_SOLAPA = 'RVD JM-CM - ES';   // 05/10: la copia ya está hecha; ahora el real
 
 /** PASO 25 — SÓLO LECTURA: las once derivadas por script contra lo que muestran las fórmulas. Tiene que dar 0. */
 function paso25_compararDerivadas() {
