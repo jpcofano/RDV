@@ -523,6 +523,18 @@ const FICHAS_ANCHO_MAX = 400;
 /** Dónde escribe las fichas el paso 21 (vista previa, intermedia): el equipo no la mira. */
 const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
 /**
+ * **REVISAR_MATCH con el formato aprobado el 06/10** (ficha técnica: docs/revisar-match-ficha-tecnica.md;
+ * dibujo: 27_RevisarFormato.js; datos y auxiliares: `armarFichasFormato_` / `escribirFichasFormato_`,
+ * 26_Fichas.js). Columnas A..M fijas del diseño; la identidad (id de la reunión, form_clave de cada opción),
+ * en columnas auxiliares ocultas desde la N. Mismas fichas, mismas frases, mismos colores por coincidencia y
+ * misma lectura de ELEGIR (por clave, nunca por posición). **Apagado** hasta verificar la demo (paso 33) y
+ * la vista previa con datos reales (paso 34). "elegido" se lee de los dos formatos.
+ */
+const REVISAR_FORMATO_NUEVO = false;
+/** Dónde dibuja la demo del formato (paso 33) y la vista previa con datos reales (paso 34): la intermedia. */
+const RDV_HOJA_REVISAR_DEMO = 'REVISAR_MATCH_DEMO';
+const RDV_HOJA_REVISAR_FORMATO_PRUEBA = 'REVISAR_FORMATO_PRUEBA';
+/**
  * **Los oradores** (06/10, antes de Agenda): las dos columnas que siguen a Asistentes en RDV CONJUNTO, que
  * el sistema copia al destino con el mismo cruce y las mismas reglas que Asistentes (sólo celda vacía, un 0
  * del destino es un valor, #CFE2F3; cruce no seguro → no se escribe y se lista). Se buscan por encabezado;

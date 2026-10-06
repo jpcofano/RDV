@@ -2245,7 +2245,15 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    negrita sobre gris suave, "¿por qué?" en itálica, anchos ajustados (máximo `FICHAS_ANCHO_MAX`) con ajuste
    de texto en el nombre del formulario, RESUELTAS en gris. "elegido" y "comentario" se leen **de esa
    solapa**, por su nombre; la REVISAR_MATCH de la intermedia queda con un aviso y no se lee.
-   `ELECCIONES_MATCH`, `HISTORICO_SIN_RESOLVER` y `EMPAREJAR_MANUAL` siguen en la intermedia. La regla de la
+   `ELECCIONES_MATCH`, `HISTORICO_SIN_RESOLVER` y `EMPAREJAR_MANUAL` siguen en la intermedia.
+
+   **Formato aprobado el 06/10** (docs/revisar-match-ficha-tecnica.md; `27_RevisarFormato.js`), **integrado y apagado**
+   (`REVISAR_FORMATO_NUEVO = false`) hasta verificar la demo (paso 33) y la vista previa con datos reales (paso 34):
+   las mismas fichas en columnas A..M fijas (ELEGIR, COMENTARIO, resultado, tipo de línea, fila, figura, fecha,
+   barrio / comuna, formulario / tema, inscriptos, días, confianza, ya usado por), y la identidad en **auxiliares
+   ocultas desde la N** (`AUX_FICHAS_`: el id de la reunión y la `form_clave` de cada opción). ELEGIR y COMENTARIO se
+   releen justo antes de redibujar y "Opción k" se traduce por la clave, nunca por la posición. Las líneas "¿por
+   qué?" y "coincide" quedan vacías de F en adelante (el texto de E desborda). Sin columna de asistentes. La regla de la
    sección 0 es sobre la solapa `RVD JM-CM - ES`: esta otra solapa del mismo archivo es un reporte que el
    sistema reescribe entero (como los de la intermedia), y ninguna lectura del destino la toca.
 
@@ -2541,6 +2549,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 25_Elecciones.js   "elegido" de REVISAR_MATCH / EMPAREJAR_MANUAL → ELECCIONES_MATCH (regla 4)  ← 03/10
 26_Fichas.js       REVISAR_MATCH como fichas (armado, frases, colores, desplegable, lector) y
                    HISTORICO_SIN_RESOLVER                                          ← 03/10
+27_RevisarFormato.js  el dibujo de REVISAR_MATCH con el formato aprobado (renderRevisarMatch); los datos y
+                   las auxiliares, en 26_Fichas.js. Apagado: REVISAR_FORMATO_NUEVO      ← 06/10
 30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

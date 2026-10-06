@@ -32,6 +32,11 @@
  * Dónde (06/10): con SOLAPA_FICHAS_EN_DESTINO, en la solapa REVISAR_MATCH del ARCHIVO del destino (no en la
  * solapa RVD JM-CM - ES), con ELEGIR y COMENTARIO adelante, marcados y como única zona editable; la de la
  * intermedia queda con un aviso. Si no, en la intermedia.
+ *
+ * Formato (06/10): con REVISAR_FORMATO_NUEVO, el diseño aprobado (docs/revisar-match-ficha-tecnica.md): las
+ * mismas fichas, armadas por `armarFichasFormato_` y dibujadas por `renderRevisarMatch` (27_RevisarFormato.js)
+ * en columnas A..M fijas, con la identidad en auxiliares ocultas desde la N (`escribirFichasFormato_`). Sin
+ * él, el formato de una ficha por bloque (`armarFichas_` / `escribirFichas_`). El lector entiende los dos.
  */
 
 /** Las columnas de una ficha. Las cuatro últimas, ocultas: la identidad. */
@@ -57,10 +62,10 @@ const FICHA_ETIQUETA_ = { reunion: 'REUNIÓN', porQue: '¿por qué?', opcion: 'O
                           pendientes: 'PENDIENTES' };
 const DIAS_SEMANA_ = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 
-/** ¿Es una hoja de fichas? Por el encabezado. */
+/** ¿Es una hoja de fichas? Por el encabezado: el formato de una ficha por bloque, o el aprobado el 06/10 (aux_linea). */
 function esHojaDeFichas_(hdr) {
   const tiene = function (n) { return !!hdr && hdr.some(function (h) { return normalizeHeader_(h) === n; }); };
-  return tiene('ficha') && tiene('id_figura');
+  return (tiene('ficha') || tiene('aux_linea')) && tiene('id_figura');
 }
 
 // ===================== Armado =====================
@@ -87,19 +92,7 @@ function armarFichas_(plan, asis, opts) {
   };
   linea(COLS_FICHA_ARMADO_, { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.titulo; }) });
 
-  let lista;
-  if (opts.filas) {
-    lista = opts.filas.map(function (n) { return ctx.porNum[n]; }).filter(Boolean);
-  } else {
-    lista = dest.filas.filter(function (f) {
-      const pf = porFila[f.fila];
-      return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && esFilaActiva_(f.fecha);
-    });
-    lista.sort(function (a, b) {
-      const ta = a.fecha ? a.fecha.getTime() : 0, tb = b.fecha ? b.fecha.getTime() : 0;
-      return (tb - ta) || (a.fila - b.fila);
-    });
-  }
+  const lista = _listaFichas_(plan, ctx, opts);
   linea([FICHA_ETIQUETA_.pendientes + ' (' + lista.length + ')', 'reuniones de ' + descActivas_() +
          ' que el sistema no pudo emparejar solo. Elegí en "elegido" (la línea REUNIÓN); "No sé" la deja pendiente.'],
         { negrita: true });
@@ -118,22 +111,11 @@ function armarFichas_(plan, asis, opts) {
     const ins = _insDestino_(dest, f);
     const a = asis && asis.porFila ? asis.porFila.get(f.fila) : null;
     const asD = dest.D['Asistentes'] != null ? f.valores[dest.D['Asistentes']] : '';
-    let elegidoTxt = '';
-    if (elec.e) {
-      if (elec.e.elegido === 'ninguno') elegidoTxt = 'Ninguno';
-      else if (elec.e.elegido === 'no_se') elegidoTxt = 'No sé';
-      else if (elec.e.elegido === 'formulario') {
-        ops.forEach(function (sc, k) { if (sc.c.clave === elec.e.formClave) elegidoTxt = 'Opción ' + (k + 1); });
-      }
-    }
-    let resultado = elec.e && elec.e.estado !== 'nota' && elec.e.estado !== 'no_se' ? (elec.e.resultado || '') : '';
-    if (elec.e && elec.e.elegido === 'formulario' && !elegidoTxt) {
-      resultado = 'elegido «' + elec.e.formNombre + '» (no está entre las opciones): ' + resultado;
-    }
+    const er = _elegidoYResultado_(elec, ops);
     const nOps = ops.length;
     linea([FICHA_ETIQUETA_.reunion, f.fila, f.figura, _fechaLarga_(f.fecha), _ubicFila_(f, comunas), f.evento,
-           ins == null ? '' : ins, a ? a.asis : (esVacio_(asD) ? '' : asD), '', '', '', elegidoTxt, elec.comentario,
-           resultado, f.figura, _fechaId_(f.fecha), f.barrio, ''],
+           ins == null ? '' : ins, a ? a.asis : (esVacio_(asD) ? '' : asD), '', '', '', er.elegido, elec.comentario,
+           er.resultado, f.figura, _fechaId_(f.fecha), f.barrio, ''],
           { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.reunion; }),
             desplegable: _opcionesDesplegable_(nOps) });
     // --- ¿por qué? ---
@@ -197,6 +179,44 @@ function _reordenarFichas_(salida, formato) {
   salida.forEach(function (r, i) { salida[i] = mover(r); });
   salida[0] = COLS_FICHA_.slice();
   formato.forEach(function (f) { f.bg = mover(f.bg); f.fc = mover(f.fc); });
+}
+
+/**
+ * Qué reuniones tienen ficha y en qué orden: `opts.filas` (la vista previa del paso 21), o las pendientes
+ * (REVISAR_MATCH o SIN_MATCH) activas, de la más reciente a la más vieja. Los dos formatos usan ésta.
+ */
+function _listaFichas_(plan, ctx, opts) {
+  if (opts.filas) return opts.filas.map(function (n) { return ctx.porNum[n]; }).filter(Boolean);
+  const lista = plan.dest.filas.filter(function (f) {
+    const pf = plan.porFila[f.fila];
+    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && esFilaActiva_(f.fecha);
+  });
+  lista.sort(function (a, b) {
+    const ta = a.fecha ? a.fecha.getTime() : 0, tb = b.fecha ? b.fecha.getTime() : 0;
+    return (tb - ta) || (a.fila - b.fila);
+  });
+  return lista;
+}
+
+/**
+ * Lo que muestran "elegido" y "resultado" de una ficha, a partir de su elección (`_eleccionDeFicha_`):
+ * "Opción k" por la clave del formulario entre las opciones de hoy (nunca por la posición de antes),
+ * "Ninguno", "No sé". Si lo elegido ya no está entre las opciones, lo dice el resultado.
+ */
+function _elegidoYResultado_(elec, ops) {
+  let elegido = '';
+  if (elec.e) {
+    if (elec.e.elegido === 'ninguno') elegido = 'Ninguno';
+    else if (elec.e.elegido === 'no_se') elegido = 'No sé';
+    else if (elec.e.elegido === 'formulario') {
+      ops.forEach(function (sc, k) { if (sc.c.clave === elec.e.formClave) elegido = 'Opción ' + (k + 1); });
+    }
+  }
+  let resultado = elec.e && elec.e.estado !== 'nota' && elec.e.estado !== 'no_se' ? (elec.e.resultado || '') : '';
+  if (elec.e && elec.e.elegido === 'formulario' && !elegido) {
+    resultado = 'elegido «' + elec.e.formNombre + '» (no está entre las opciones): ' + resultado;
+  }
+  return { elegido: elegido, resultado: resultado };
 }
 
 /** Lo que las fichas necesitan del plan, armado una vez. */
@@ -534,8 +554,11 @@ function _cierre_(c) {
 
 /** Días entre la fecha del formulario (la del nombre, o el cierre) y la reunión, con signo. */
 function _diasTxt_(f, c) {
-  const d = c.det && c.det.mejor && f.fecha ? diasEntre_(c.det.mejor, f.fecha) : null;
+  const d = _diasNum_(f, c);
   return d === null ? '' : _signo_(d);
+}
+function _diasNum_(f, c) {
+  return c.det && c.det.mejor && f.fecha ? diasEntre_(c.det.mejor, f.fecha) : null;
 }
 
 /** "645 · 16/06 · Almagro". */
@@ -579,6 +602,258 @@ function _opcionesDesplegable_(nOps) {
   const l = [];
   for (let k = 1; k <= nOps; k++) l.push('Opción ' + k);
   return l.concat(['Ninguno', 'No sé']);
+}
+
+// ===================== Formato aprobado el 06/10 (REVISAR_FORMATO_NUEVO) =====================
+/*
+ * El dibujo es de 27_RevisarFormato.js (`renderRevisarMatch`, el diseño aprobado: columnas A..M fijas). Acá
+ * se arman sus datos —con las MISMAS piezas que el formato de arriba: qué fichas, en qué orden, las opciones
+ * por puntaje, "¿por qué?", la línea "coincide", los colores, el contexto, RESUELTAS— y se escriben las
+ * columnas auxiliares ocultas, desde la N. Ficha técnica: docs/revisar-match-ficha-tecnica.md.
+ */
+
+/**
+ * Las auxiliares, ocultas, desde la N. Sólo en las líneas que las necesitan: REUNIÓN (la identidad de la
+ * reunión: figura + fecha + barrio, como siempre), Opción (la clave del formulario y su nombre entero),
+ * resuelta y contexto (sólo el tipo). Las de "¿por qué?" y "coincide" quedan VACÍAS: el texto de E desborda
+ * hacia la derecha y cualquier celda con algo lo cortaría (ficha técnica §7).
+ */
+const AUX_FICHAS_ = ['aux_linea', 'id_figura', 'id_fecha', 'id_barrio', 'aux_opcion', 'form_clave', 'form_nombre',
+                     'puntaje'];
+
+/**
+ * Los datos de `renderRevisarMatch`: `{ pendientes, resueltas, porMotivo }`, con la forma de
+ * `demoRevisarMatch`. Cada ficha y cada opción llevan además `aux` (lo que va a las columnas ocultas), que el
+ * dibujo no mira. `opts.filas`, como en `armarFichas_`.
+ */
+function armarFichasFormato_(plan, asis, opts) {
+  opts = opts || {};
+  const comunas = plan.comunas, vivos = plan.cands.vivos;
+  const ctx = _contextoFichas_(plan, asis);
+  const porMotivo = {};
+  const pendientes = _listaFichas_(plan, ctx, opts).map(function (f) {
+    const pf = plan.porFila[f.fila] || {};
+    const ops = listaOpcionesFila_(f, vivos, comunas, pf.cand || null, OPCIONES_REVISION);
+    const motivo = pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH' ? (pf.motivo || pf.veredicto)
+                 : (pf.veredicto || 'sin_veredicto');
+    porMotivo[motivo] = (porMotivo[motivo] || 0) + 1;
+    const elec = _eleccionDeFicha_(ctx, f);
+    const er = _elegidoYResultado_(elec, ops);
+    const ins = _insDestino_(plan.dest, f);
+    return {
+      reunion: { fila: f.fila, figura: f.figura, fecha: _fechaLarga_(f.fecha),
+                 barrio: f.barrio ? _ubicFila_(f, comunas) : '', tema: f.evento, inscriptos: ins == null ? null : ins },
+      elegido: er.elegido, comentario: elec.comentario, resultado: er.resultado,
+      porque: _fraseMotivo_(f, pf, ops, ctx),
+      opciones: ops.map(function (sc) { return _opcionFormato_(f, sc, ctx); }),
+      contexto: _contextoFormato_(ctx, f, ops),
+      aux: { id_figura: f.figura, id_fecha: _fechaId_(f.fecha), id_barrio: f.barrio },
+      f: f, motivo: motivo, veredicto: pf.veredicto || ''
+    };
+  });
+  const resueltas = _resueltas_(ctx).map(function (e) { return _resueltaFormato_(ctx, e); });
+  return { pendientes: pendientes, resueltas: resueltas, porMotivo: porMotivo };
+}
+
+/** Una opción, como la pide el dibujo. Los colores (`match`) son los mismos que los del formato de arriba. */
+function _opcionFormato_(f, sc, ctx) {
+  const c = sc.c, duenio = _duenio_(ctx, c, f), ubic = _ubicForm_(c);
+  return {
+    figura: c.figurasNorm.length ? _figurasDe_(c) : '',
+    cierra: c.det && c.det.fechaFin ? _ddmm_(c.det.fechaFin) : '—',
+    barrio: ubic === '—' ? '' : ubic,
+    formulario: _nombreCorto_(c.nombre),
+    inscriptos: esVacio_(c.inscriptos) ? null : c.inscriptos,
+    dias: _diasNum_(f, c),
+    confianza: _confianza_(sc.score),
+    yaUsadoPor: duenio ? 'fila ' + _descFila_(duenio) : '',
+    match: { figura: _matchFigura_(sc), fecha: _matchDeColor_(_colorFecha_(sc)), barrio: _matchDeColor_(_colorUbic_(sc, f)) },
+    coincide: _lineaCoincide_(f, sc, ctx),
+    aux: { form_clave: c.clave, form_nombre: c.nombre, puntaje: sc.score }
+  };
+}
+
+/** Figura: verde si nombra sólo a la de la reunión, amarillo si a varias entre ellas ésa, gris si a nadie, rojo si a otra. */
+function _matchFigura_(sc) {
+  if (sc.nombraFigura) return sc.multiFigura ? 'av' : 'ok';
+  return sc.sinFigura ? 'na' : 'no';
+}
+
+/** El color del formato de arriba (FICHA_COLOR_) en la clave del dibujo: ok / no / av / na. */
+function _matchDeColor_(color) {
+  return color === FICHA_COLOR_.si ? 'ok' : color === FICHA_COLOR_.no ? 'no' : color === FICHA_COLOR_.amarillo ? 'av' : 'na';
+}
+
+/**
+ * El contexto: las otras reuniones de la figura a ±DIAS_CONTEXTO_FICHA ("tiene la opción N" si ya se quedó
+ * con una de las opciones de esta ficha; si no, su estado en pocas palabras) y los formularios de la figura
+ * descartados por la regla 3.
+ */
+function _contextoFormato_(ctx, f, ops) {
+  const comunas = ctx.plan.comunas;
+  const otras = _otrasReuniones_(ctx, f).map(function (o) {
+    const pf = ctx.plan.porFila[o.f.fila] || {};
+    const tiene = (pf.veredicto === 'escribiria' || pf.veredicto === 'rdv_uid') && pf.cand;
+    const k = tiene ? ops.findIndex(function (sc) { return sc.c.grupo === pf.cand.grupo; }) : -1;
+    return { fila: o.f.fila, figura: o.f.figura, fecha: _fechaLarga_(o.f.fecha),
+             barrio: o.f.barrio ? _ubicFila_(o.f, comunas) : '', tema: o.f.evento, dias: o.d,
+             nota: k >= 0 ? 'tiene la opción ' + (k + 1) : _estadoCorto_(pf) };
+  });
+  const descartados = _descartadosCercanos_(ctx, f).map(function (x) {
+    const c = x.c, ubic = _ubicForm_(c);
+    return { fila: '', figura: c.figurasNorm.length ? _figurasDe_(c) : '(sin figura)',
+             fecha: 'cierra ' + _ddmm_(c.det && c.det.fechaFin), barrio: ubic === '—' ? '' : ubic,
+             tema: _nombreCorto_(c.nombre), dias: _diasNum_(f, c), nota: 'descartado (' + (c.inscriptos || 0) + ' inscr.)' };
+  });
+  return otras.concat(descartados);
+}
+
+/** El estado de otra reunión, corto para la columna M (112 px). */
+function _estadoCorto_(pf) {
+  switch (pf.veredicto) {
+    case 'escribiria': case 'rdv_uid': return 'con formulario';
+    case 'REVISAR_MATCH': case 'SIN_MATCH': return 'también pendiente';
+    case 'futura': return 'futura';
+    case 'cerrada': return 'cerrada, sin form.';
+    case 'pendiente_barrio': return 'esperando barrio';
+    case 'ninguno_por_persona': return '"ninguno"';
+    default: return pf.veredicto || '';
+  }
+}
+
+/** Una resuelta (de `_resueltas_`), como la pide el dibujo: lo elegido y su resultado, en tono apagado. */
+function _resueltaFormato_(ctx, e) {
+  const f = e.f || null, comunas = ctx.plan.comunas;
+  const c = e.formClave ? ctx.plan.cands.vivos.filter(function (x) { return x.clave === e.formClave; })[0] || null : null;
+  const sc = c && f ? puntuar_(f, c, comunas) : null;
+  return {
+    elegido: e.elegido === 'ninguno' ? 'Ninguno' : (e.elegidoCrudo || 'sí'),
+    comentario: e.comentario || '',
+    resultado: _resultadoCorto_(e),
+    fila: f ? f.fila : '', figura: e.figura, fecha: _fechaLarga_(e.fecha),
+    barrio: f ? (f.barrio ? _ubicFila_(f, comunas) : '') : (e.barrio || ''),
+    formulario: e.elegido === 'ninguno' ? '(ninguno)' : _nombreCorto_(e.formNombre),
+    inscriptos: c && !esVacio_(c.inscriptos) ? c.inscriptos : null,
+    dias: c && f ? _diasNum_(f, c) : null,
+    confianza: sc ? _confianza_(sc.score) : '',
+    aux: { id_figura: e.figura, id_fecha: _fechaId_(e.fecha), id_barrio: e.barrio, form_clave: e.formClave || '',
+           form_nombre: e.formNombre || '' }
+  };
+}
+
+/** El resultado de una resuelta, corto para la columna C (90 px): "aplicado 05/10", "por aplicar", "ninguno". */
+function _resultadoCorto_(e) {
+  if (e.estado === 'aplicado') {
+    const m = /(\d{2}\/\d{2})\/\d{4}/.exec(String(e.resultado || ''));
+    return 'aplicado' + (e.fechaResultado instanceof Date ? ' ' + _ddmm_(e.fechaResultado) : m ? ' ' + m[1] : '');
+  }
+  if (e.resultadoPlan === 'valida') return 'por aplicar';
+  if (e.estado === 'ninguno') return 'ninguno';
+  return e.resultado || e.estado || '';
+}
+
+/**
+ * El nombre del formulario para "formulario / tema": sin los prefijos genéricos (PREFIJOS_EVENTO, como
+ * "VÍNCULO CIUDADANO - ") ni un "Encuentro con <algo> - " suelto, y con «…» al inicio si se recortó
+ * (ficha técnica §7). El nombre entero queda en la auxiliar form_nombre y en "¿por qué?".
+ */
+function _nombreCorto_(nombre) {
+  const n = str(nombre);
+  let t = limpiarPrefijos_(n);
+  const m = /^\s*encuentro con \S+\s*[-–:]\s*/i.exec(t);
+  if (m && t.substring(m[0].length).trim()) t = t.substring(m[0].length).trim();
+  return t && t !== n ? '…' + t : n;
+}
+
+/**
+ * **Escribe REVISAR_MATCH con el formato aprobado.** En este orden:
+ *   1. lee ELEGIR y COMENTARIO de lo que hay hoy en la solapa (cualquiera de los dos formatos) y los conserva
+ *      en las fichas que siguen pendientes: lo que una persona escribió mientras corría el upsert no se pierde.
+ *      "Opción k" se traduce por la clave del formulario (la auxiliar), nunca por la posición: si las
+ *      opciones cambiaron de orden, la elección sigue al formulario; si ya no está entre las opciones, queda
+ *      lo que diga ELECCIONES_MATCH;
+ *   2. borra las auxiliares de antes (renderRevisarMatch limpia sólo A..M);
+ *   3. dibuja (renderRevisarMatch) y, con el mapa fila → {tipo, ficha, opcion} que devuelve, escribe las
+ *      auxiliares y las oculta;
+ *   4. con `opts.proteger`, protege la solapa salvo ELEGIR y COMENTARIO de cada línea REUNIÓN.
+ * Devuelve `{ sh, mapa, conservadas, pendientes, resueltas, proteccion }`.
+ */
+function escribirFichasFormato_(nombre, fv, opts) {
+  opts = opts || {};
+  const ss = opts.ss || ssIntermedia_();
+  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
+  // 1) ELEGIR y COMENTARIO de hoy, antes de redibujar.
+  const conservadas = _conservarAB_(fv.pendientes, _abDeLaSolapa_(sh));
+  // 2) Las auxiliares de antes, fuera; todas las columnas visibles (el formato de arriba ocultaba otras).
+  const nAux = AUX_FICHAS_.length, primeraAux = RM.NCOLS + 1;
+  if (sh.getMaxColumns() < RM.NCOLS + nAux) sh.insertColumnsAfter(sh.getMaxColumns(), RM.NCOLS + nAux - sh.getMaxColumns());
+  sh.showColumns(1, sh.getMaxColumns());
+  const viejas = sh.getRange(1, primeraAux, sh.getMaxRows(), sh.getMaxColumns() - RM.NCOLS);
+  viejas.clear();
+  viejas.clearDataValidations();
+  // 3) El dibujo, y las auxiliares por el mapa que devuelve.
+  const mapa = renderRevisarMatch(fv.pendientes, fv.resueltas, sh);
+  const filas = Object.keys(mapa).map(Number).sort(function (a, b) { return a - b; });
+  const n = filas.length ? filas[filas.length - 1] : 1;
+  const aux = [];
+  for (let i = 0; i < n; i++) aux.push(AUX_FICHAS_.map(function () { return ''; }));
+  aux[0] = AUX_FICHAS_.slice();
+  const reuniones = [];
+  filas.forEach(function (r) {
+    const m = mapa[r], fila = aux[r - 1];
+    const pon = function (o) {
+      Object.keys(o || {}).forEach(function (k) { const j = AUX_FICHAS_.indexOf(k); if (j >= 0) fila[j] = o[k]; });
+    };
+    if (m.tipo === 'porque' || m.tipo === 'coincide') return;   // vacías: el texto de E desborda sobre ellas
+    fila[AUX_FICHAS_.indexOf('aux_linea')] = m.tipo;
+    if (m.tipo === 'reunion') { pon(fv.pendientes[m.ficha].aux); reuniones.push(r); }
+    else if (m.tipo === 'opcion') {
+      fila[AUX_FICHAS_.indexOf('aux_opcion')] = m.opcion;
+      pon(fv.pendientes[m.ficha].opciones[m.opcion - 1].aux);
+    } else if (m.tipo === 'resuelta') pon(fv.resueltas[m.ficha].aux);
+  });
+  sh.getRange(1, primeraAux, n, nAux).setValues(aux);
+  sh.hideColumns(primeraAux, nAux);
+  // 4) La protección: toda la solapa salvo ELEGIR y COMENTARIO de cada línea REUNIÓN.
+  const proteccion = opts.proteger ? _protegerFichas_(sh, reuniones) : null;
+  SpreadsheetApp.flush();
+  return { sh: sh, mapa: mapa, conservadas: conservadas, pendientes: fv.pendientes.length,
+           resueltas: fv.resueltas.length, proteccion: proteccion };
+}
+
+/** ELEGIR y COMENTARIO de cada ficha de la solapa de hoy (cualquiera de los dos formatos), por fila (figura | fecha | barrio). */
+function _abDeLaSolapa_(sh) {
+  if (sh.getLastRow() < 2) return {};
+  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  if (!esHojaDeFichas_(vals[0])) return {};
+  const out = {};
+  leerFichas_(vals, null, sh.getName()).forEach(function (e) { out[_filaEleccion_(e)] = e; });
+  return out;
+}
+
+/**
+ * Pone en las fichas pendientes lo que la solapa de hoy tiene en ELEGIR y COMENTARIO (sólo lo que no está
+ * vacío: una celda vacía no borra lo que diga ELECCIONES_MATCH, que puede venir de EMPAREJAR_MANUAL).
+ * Devuelve cuántas fichas cambiaron.
+ */
+function _conservarAB_(pendientes, previas) {
+  let n = 0;
+  pendientes.forEach(function (p) {
+    const e = previas[_filaEleccion_({ figura: p.aux.id_figura, fecha: p.f.fecha, barrio: p.aux.id_barrio })];
+    if (!e) return;
+    let el = null;
+    if (e.elegido === 'ninguno') el = 'Ninguno';
+    else if (e.elegido === 'no_se') el = 'No sé';
+    else if (e.elegido === 'formulario') {
+      const k = p.opciones.findIndex(function (o) { return o.aux.form_clave === e.formClave; });
+      if (k >= 0) el = 'Opción ' + (k + 1);
+    }
+    let cambio = false;
+    if (el && el !== p.elegido) { p.elegido = el; cambio = true; }
+    if (e.comentario && e.comentario !== p.comentario) { p.comentario = e.comentario; cambio = true; }
+    if (cambio) n++;
+  });
+  return n;
 }
 
 // ===================== HISTORICO_SIN_RESOLVER (paso 22) =====================
@@ -770,14 +1045,21 @@ function avisoFichasEnDestino_() {
  * REUNIÓN y sus opciones): figura + fecha + barrio de las columnas ocultas; "Opción k" → la form_clave de
  * la línea "Opción k" de esa ficha; "Ninguno"; "No sé" y un comentario sin elección son notas (no se
  * aplican ni bloquean nada). Se corta en RESUELTAS: esa sección no se lee.
+ *
+ * Los dos formatos, por el encabezado: el de una ficha por bloque (la línea, por la etiqueta de "ficha") y
+ * el aprobado el 06/10 (la línea, por la auxiliar oculta aux_linea; "Opción k" → la línea con aux_opcion = k
+ * de esa ficha; el nombre entero, de form_nombre). En los dos, ELEGIR sólo cuenta en la línea REUNIÓN.
  */
 function leerFichas_(vals, cands, nombreHoja) {
   const hdr = vals[0];
   const i = function (n) { return findIdxOr_(hdr, [n], true); };
-  // ELEGIR y COMENTARIO (06/10; antes "elegido" y "comentario"), y la etiqueta de la línea, por encabezado.
-  const iEl = i('elegir') != null ? i('elegir') : i('elegido');
+  // ELEGIR ("ELEGIR ▾" en el formato del 06/10; antes "elegido") y COMENTARIO, por encabezado.
+  const nh = hdr.map(normalizeHeader_);
+  let iEl = nh.findIndex(function (h) { return h.indexOf('elegir') === 0; });
+  if (iEl < 0) iEl = i('elegido');
   const iT = i('ficha'), iCo = i('comentario'), iFig = i('id_figura'), iFec = i('id_fecha'),
-        iBar = i('id_barrio'), iCla = i('form_clave'), iNom = i('evento / formulario');
+        iBar = i('id_barrio'), iCla = i('form_clave'), iLin = i('aux_linea'), iOp = i('aux_opcion');
+  const iNom = i('form_nombre') != null ? i('form_nombre') : i('evento / formulario');
   const out = [];
   let ficha = null;
   const cerrar = function () {
@@ -803,11 +1085,20 @@ function leerFichas_(vals, cands, nombreHoja) {
     ficha = null;
   };
   for (let k = 1; k < vals.length; k++) {
-    const r = vals[k], t = str(r[iT]);
-    if (t.indexOf(FICHA_ETIQUETA_.resueltas) === 0) break;
-    if (t === FICHA_ETIQUETA_.reunion) { cerrar(); ficha = { r: r, ops: {} }; continue; }
-    const m = /^Opción (\d+)$/.exec(t);
-    if (m && ficha) ficha.ops[Number(m[1])] = { clave: str(r[iCla]), nombre: iNom != null ? str(r[iNom]) : '' };
+    const r = vals[k];
+    let tipo = '', nOp = null;
+    if (iLin != null) {                       // formato del 06/10: por la auxiliar
+      tipo = str(r[iLin]);
+      if (tipo === 'opcion') nOp = Number(r[iOp]);
+    } else {                                  // una ficha por bloque: por la etiqueta
+      const t = str(r[iT]), m = /^Opción (\d+)$/.exec(t);
+      if (t.indexOf(FICHA_ETIQUETA_.resueltas) === 0) tipo = 'resuelta';
+      else if (t === FICHA_ETIQUETA_.reunion) tipo = 'reunion';
+      else if (m) { tipo = 'opcion'; nOp = Number(m[1]); }
+    }
+    if (tipo === 'resuelta') break;
+    if (tipo === 'reunion') { cerrar(); ficha = { r: r, ops: {} }; continue; }
+    if (tipo === 'opcion' && ficha) ficha.ops[nOp] = { clave: str(r[iCla]), nombre: iNom != null ? str(r[iNom]) : '' };
   }
   cerrar();
   return out;

@@ -3340,7 +3340,19 @@ function _barra_(n, total) {
 function escribirReportes_(plan, fallaron, soloEstos) {
   const quiere = function (n) { return !soloEstos || soloEstos.indexOf(n) !== -1; };
 
-  if (quiere(RDV_HOJA_REVISAR) && REVISAR_COMO_FICHAS) {
+  if (quiere(RDV_HOJA_REVISAR) && REVISAR_COMO_FICHAS && REVISAR_FORMATO_NUEVO) {
+    // El formato aprobado el 06/10 (27_RevisarFormato.js): las mismas fichas, columnas A..M fijas y la
+    // identidad en auxiliares ocultas. ELEGIR y COMENTARIO se releen justo antes de redibujar.
+    _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
+      const fv = armarFichasFormato_(plan, plan.asistentes || cruzarAsistentes_(plan.dest, plan.comunas));
+      const w = escribirFichasFormato_(RDV_HOJA_REVISAR, fv,
+                                       SOLAPA_FICHAS_EN_DESTINO ? { ss: ssDestino_(), proteger: true } : {});
+      if (SOLAPA_FICHAS_EN_DESTINO) avisoFichasEnDestino_();
+      Logger.log('[upsert] %s (%s, formato del 06/10): %s fichas pendientes | %s resueltas | ELEGIR/COMENTARIO ' +
+                 'conservados de la solapa al redibujar: %s', RDV_HOJA_REVISAR,
+                 SOLAPA_FICHAS_EN_DESTINO ? 'archivo del destino' : 'intermedia', w.pendientes, w.resueltas, w.conservadas);
+    });
+  } else if (quiere(RDV_HOJA_REVISAR) && REVISAR_COMO_FICHAS) {
     // Las fichas (26_Fichas.js, 03/10): una por reunión pendiente activa, con las elecciones guardadas.
     _intentar_(fallaron, RDV_HOJA_REVISAR, function () {
       const fx = armarFichas_(plan, plan.asistentes || cruzarAsistentes_(plan.dest, plan.comunas));

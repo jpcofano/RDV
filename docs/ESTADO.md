@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, apagado: 0.y)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,35 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado, APAGADO hasta verificar la demo
+
+Diseño aprobado el 06/10: [revisar-match-ficha-tecnica.md](revisar-match-ficha-tecnica.md) (columnas A..M fijas,
+anchos, colores, bordes; §9: qué mirar en la primera prueba). Código:
+
+- `27_RevisarFormato.js`: el `revisar_match_formato.gs` que vino con la ficha, sin cambios de diseño. Único
+  cambio: `renderRevisarMatch(pendientes, resueltas, sh)` y `demoRevisarMatch(sh)` reciben la solapa (las fichas
+  viven en el archivo del destino, no en `getActive()`).
+- `26_Fichas.js`: `armarFichasFormato_` arma `pendientes` / `resueltas` con las **mismas piezas** de las fichas de
+  hoy (qué reuniones, orden, opciones por puntaje, "¿por qué?", "coincide", colores, contexto, RESUELTAS);
+  `escribirFichasFormato_` relee ELEGIR y COMENTARIO **justo antes de redibujar** (lo escrito mientras corría el
+  upsert no se pierde; "Opción k" se traduce por la `form_clave` de la auxiliar, nunca por posición), dibuja, y
+  con el mapa que devuelve el dibujo escribe las auxiliares ocultas desde la N (`AUX_FICHAS_`: `aux_linea`,
+  `id_figura`, `id_fecha`, `id_barrio`, `aux_opcion`, `form_clave`, `form_nombre`, `puntaje`); las líneas
+  "¿por qué?" y "coincide" quedan vacías de F en adelante. El lector (`leerFichas_`) entiende los dos formatos.
+  Protección real, como en 0.w.
+- `REVISAR_FORMATO_NUEVO = false` (00_Config.js). El upsert sigue escribiendo el formato de 0.w.
+
+Secuencia:
+1. `paso33_demoFormatoRevisar()` → solapa `REVISAR_MATCH_DEMO` de la intermedia (los 3 casos de la ficha). Mirar
+   §9: el "¿por qué?" de 2 líneas en dos renglones (la 778), comentario largo en B, el chip del desplegable.
+2. `paso34_fichasFormatoDePrueba()` → solapa `REVISAR_FORMATO_PRUEBA` (datos reales, plan en seco). El log cuenta
+   los "¿por qué?" de más de 300 caracteres (el diseño corta en dos renglones de 150) y las "coincide" de más de 160.
+3. Recién ahí `REVISAR_FORMATO_NUEVO = true`. La primera corrida pasa la solapa del formato de 0.w al nuevo
+   conservando ELEGIR y COMENTARIO (test [22]).
+
+Lo que el diseño deja afuera respecto de 0.w: la columna **asistentes** de la línea REUNIÓN (no está entre A..M), y
+el "su gemelo tiene N" de los formularios descartados del contexto (la nota de M es corta).
 
 ### x) 06/10: AGENDA, ETAPA 1 — medir antes de construir (todo sólo lectura sobre el destino)
 

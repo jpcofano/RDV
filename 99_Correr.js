@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), APAGADO
+ *      (REVISAR_FORMATO_NUEVO = false): paso33_demoFormatoRevisar() → mirar la solapa REVISAR_MATCH_DEMO (§9 de
+ *      la ficha) → paso34_fichasFormatoDePrueba() (datos reales, solapa de prueba) → recién ahí prenderlo.
  *  >>> 06/10: AGENDA, ETAPA 1 — MEDIR (ESTADO 0.x; todo sólo lectura sobre el destino; predicciones en ESTADO):
  *      rehacer_diagMuestrasMail() si DIAG_MAILS tiene más de una semana → paso29_parsearAgendaMails() →
  *      paso30_cruzarAgendaConDestino() → paso31_barrioDesdeDireccion() (repetir hasta 0 pendientes) →
@@ -509,6 +512,28 @@ function paso32_seguridadContraConjunto() {
              'NO toca el destino; escribe AGENDA_SEGURIDAD en la intermedia',
              'el log: resuelve 1 / ambiguas / sin fila, y la figura contra la del destino');
   return seguridadContraConjunto();
+}
+
+/**
+ * PASO 33 — la demo del formato aprobado de REVISAR_MATCH (06/10; docs/revisar-match-ficha-tecnica.md): los 3
+ * casos de la ficha técnica, en una solapa aparte de la intermedia. Para mirar la sección 9 en Sheets.
+ */
+function paso33_demoFormatoRevisar() {
+  _anunciar_('paso 33 — demo del formato de REVISAR_MATCH', 'demoFormatoRevisar()  [diagnostico/13_fichas_prueba.js]',
+             'NO toca el destino ni REVISAR_MATCH; escribe sólo la solapa "' + RDV_HOJA_REVISAR_DEMO + '" (intermedia)',
+             'la solapa, con los 3 casos de ejemplo; el log dice qué mirar');
+  return demoFormatoRevisar();
+}
+
+/**
+ * PASO 34 — las fichas de hoy con el formato aprobado, en una solapa de prueba de la intermedia (después de
+ * aprobar la demo del paso 33, y antes de prender REVISAR_FORMATO_NUEVO).
+ */
+function paso34_fichasFormatoDePrueba() {
+  _anunciar_('paso 34 — fichas de hoy con el formato aprobado, de prueba', 'fichasFormatoDePrueba()  [diagnostico/13_fichas_prueba.js]',
+             'NO escribe el destino ni REVISAR_MATCH; escribe sólo la solapa "' + RDV_HOJA_REVISAR_FORMATO_PRUEBA + '" (intermedia)',
+             'la solapa; el log: fichas por motivo y los textos que el diseño no cubre (por qué / coincide largos)');
+  return fichasFormatoDePrueba();
 }
 
 /**

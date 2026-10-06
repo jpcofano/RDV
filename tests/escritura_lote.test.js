@@ -31,7 +31,8 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
-                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js'];
+                  'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
+                  '27_RevisarFormato.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -148,7 +149,11 @@ function crearEntorno(opts) {
     hideColumns(c, n) { this.ocultas = this.ocultas || []; for (let k = 0; k < (n || 1); k++) this.ocultas.push(c + k); }
     appendRow(fila) { escribir(fila.length); this.v.push(fila.slice()); this.bg.push(fila.map(function () { return '#ffffff'; })); }
     clearContents() { escribir(1); this.v = this.v.map(function (r) { return r.map(function () { return ''; }); }); }
-    setFrozenRows() {}
+    setFrozenRows(n) { this.filasCongeladas = n; }
+    // Formato del 06/10 (27_RevisarFormato.js): alturas, cuadrícula, color de pestaña.
+    setRowHeights(desde, n, alto) { this.altos = this.altos || {}; for (let k = 0; k < n; k++) this.altos[desde + k] = alto; }
+    setHiddenGridlines(b) { this.sinCuadricula = b; }
+    setTabColor(c) { this.colorPestana = c; }
   }
 
   class Rango {
@@ -225,6 +230,25 @@ function crearEntorno(opts) {
     setDataValidations(m) { this._matriz('dv', m); }
     clearDataValidations() { this.h.dv = []; }
     setBackground(c) { escribir(this._celdas()); this._pintar(c); }
+    // Formato del 06/10 (27_RevisarFormato.js).
+    clear() {
+      this._poner(''); this._pintar('#ffffff');
+      const h = this.h, r0 = this.r, c0 = this.c, nr = this.nr, nc = this.nc;
+      ['fc', 'fw', 'fs', 'fz', 'ha', 'ws', 'wr'].forEach(function (k) {
+        (h[k] || []).forEach(function (fila, i) {
+          if (fila && i >= r0 - 1 && i < r0 - 1 + nr) for (let j = c0 - 1; j < c0 - 1 + nc; j++) fila[j] = undefined;
+        });
+      });
+    }
+    setNumberFormat(f) { this.h.formatoNumero = f; }
+    setFontSizes(m) { this._matriz('fz', m); }
+    setHorizontalAlignments(m) { this._matriz('ha', m); }
+    setWrapStrategies(m) { this._matriz('ws', m); }
+    setVerticalAlignment(v) { this.h.alineacionVertical = v; }
+    setFontFamily(f) { this.h.fuente = f; }
+    setDataValidation(regla) { this._matriz('dv', [[regla]]); }
+    setBorder() { const a = [].slice.call(arguments); escribir(1); this.h.bordes = this.h.bordes || [];
+      this.h.bordes.push({ r: this.r, c: this.c, nr: this.nr, nc: this.nc, args: a }); }
     _borrarFormulas_() {
       if (!this.h.f) return;
       for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) delete this.h.f[(this.r + i) + ',' + (this.c + j)];
@@ -282,12 +306,13 @@ function crearEntorno(opts) {
       newDataValidation: function () {
         const r = { lista: null };
         const b = { requireValueInList: function (l) { r.lista = l; return b; }, setAllowInvalid: function () { return b; },
-                    build: function () { return r; } };
+                    setHelpText: function (t) { r.ayuda = t; return b; }, build: function () { return r; } };
         return b;
       },
       flush: function () { vigilar(); vaciar(); },
       ProtectionType: { RANGE: 'RANGE', SHEET: 'SHEET' },
-      BorderStyle: { SOLID_MEDIUM: 'SOLID_MEDIUM', SOLID_THICK: 'SOLID_THICK' }
+      BorderStyle: { SOLID: 'SOLID', SOLID_MEDIUM: 'SOLID_MEDIUM', SOLID_THICK: 'SOLID_THICK' },
+      WrapStrategy: { WRAP: 'WRAP', CLIP: 'CLIP', OVERFLOW: 'OVERFLOW' }
     },
     // Activadores (04/10): E.activadores es la lista de nombres de función con activador.
     ScriptApp: {
@@ -1744,6 +1769,128 @@ function escenarioFichasEnDestino() {
   ok(!r4.error && pr4.warning && /quedó como ADVERTENCIA/.test(r4.logs.join('\n')), 'sin permisos: advertencia y aviso en el log');
 }
 
+function escenarioFormatoRevisar() {
+  console.log('\n[22] REVISAR_MATCH con el formato aprobado el 06/10 (27_RevisarFormato.js; docs/revisar-match-ficha-tecnica.md)');
+  // --- a) la demo (paso 33), sola: estructura y reglas de la ficha técnica ---
+  const E0 = crearEntorno();
+  const d = E0.ejecutar('demoFormatoRevisar');
+  ok(!d.error, 'paso 33: la demo corre' + (d.error ? ': ' + d.error.stack : ''));
+  const sh = E0.planilla(E0.cfg('RDV_SS_INTERMEDIA')).hojas['REVISAR_MATCH_DEMO'];
+  const RM = E0.cfg('RM'), mapa = d.resultado.mapa;
+  const filasDe = function (t) { return Object.keys(mapa).map(Number).filter(function (r) { return mapa[r].tipo === t; }); };
+  ok(JSON.stringify(sh.v[0].slice(0, 13)) === JSON.stringify(RM.HEADERS), 'encabezado A..M del diseño');
+  const anchos = RM.WIDTHS.map(function (w, i) { return sh.anchos[i + 1]; });
+  ok(JSON.stringify(anchos) === JSON.stringify(RM.WIDTHS) && anchos.reduce(function (a, b) { return a + b; }, 0) === 1294,
+     'anchos del diseño, 1294 px');
+  ok(filasDe('reunion').length === 3 && filasDe('opcion').length === 4 && filasDe('coincide').length === 4 &&
+     filasDe('porque').length === 3 && filasDe('contexto').length === 3, 'mapa: 3 reuniones, 4 opciones, 3 contextos');
+  ok(filasDe('porque').every(function (r) {
+    const t = sh.v[r - 1][4], dos = t.indexOf('\n') >= 0;
+    return sh.altos[r] === (dos ? 36 : 22) && t.split('\n').every(function (l) { return l.length <= RM.POR_QUE_MAX; });
+  }), '"¿por qué?": cortado en dos con \\n (máximo 150 por renglón) y alto 36; uno solo, 22');
+  console.log('       ¿por qué? (778), 2 renglones:\n         ' + sh.v[filasDe('porque')[0] - 1][4].replace('\n', '\n         '));
+  ok(filasDe('porque').concat(filasDe('coincide')).every(function (r) {
+    return sh.v[r - 1].slice(5).every(function (x) { return x === ''; }) && sh.ws[r - 1][4] === 'OVERFLOW';
+  }), '"¿por qué?" y "coincide": el texto en E, con OVERFLOW, y F en adelante vacías');
+  const dvs = filasDe('reunion').map(function (r) { return sh.dv[r - 1] && sh.dv[r - 1][0] ? sh.dv[r - 1][0].lista.join('/') : '-'; });
+  ok(dvs[0] === 'Opción 1/Ninguno/No sé' && dvs[1] === 'Opción 1/Opción 2/Ninguno/No sé',
+     'desplegable por ficha, sólo con sus opciones: ' + dvs.join(' | '));
+  ok(Object.keys(mapa).every(function (r) { return mapa[r].tipo === 'reunion' || !(sh.dv[r - 1] && sh.dv[r - 1][0]); }),
+     'el desplegable, sólo en la línea REUNIÓN');
+  const op1 = filasDe('opcion')[0] - 1;
+  ok(sh.bg[op1][5] === '#CDEBD3' && sh.bg[op1][7] === '#ECEEF0' && sh.bg[op1][12] === '#FFEFA8' && sh.bg[op1][10] === sh.bg[op1][6],
+     'colores de la opción: figura verde, ubicación gris, "ya usado por" amarillo, días = fecha');
+  ok(sh.filasCongeladas === 2 && sh.congeladas === 2 && sh.sinCuadricula === true, 'congeladas filas 1-2 y A-B; sin cuadrícula');
+
+  // --- b) con el plan: de la solapa de antes a la nueva, ELEGIR/COMENTARIO conservados, auxiliares, lectura ---
+  const E = crearEntorno({ config: { DIAS_ACTIVOS: '30', REVISAR_COMO_FICHAS: 'true', SOLAPA_FICHAS_EN_DESTINO: 'true',
+                                     REVISAR_FORMATO_NUEVO: 'true' } });
+  const m = montar(E, 300, true, casosFichas);
+  m.ssI.hojas['REVISAR_MATCH'] = new E.Hoja('REVISAR_MATCH', [['ELEGIR', 'ficha']]);   // la de la intermedia, como hoy
+  vm.runInContext(
+    'var __e = null, __p = null;' +
+    'function __entradas() { return { dest: leerDestino_(), cands: leerCandidatos_(), comunas: leerComunasMap_() }; }' +
+    'function __fichasViejas() { __e = __entradas(); const p = calcularPlan_(true, __e);' +
+    '  escribirFichas_(RDV_HOJA_REVISAR, armarFichas_(p, cruzarAsistentes_(__e.dest, __e.comunas)), { ss: ssDestino_(), proteger: true }); }' +
+    'function __plan() { __e = __entradas(); __p = calcularPlan_(true, __e); }' +
+    'function __dibujar() { return escribirFichasFormato_(RDV_HOJA_REVISAR, armarFichasFormato_(__p, cruzarAsistentes_(__e.dest, __e.comunas)),' +
+    '  { ss: ssDestino_(), proteger: true }); }', E.ctx);
+  ok(!E.ejecutar('__fichasViejas').error, 'la solapa en el formato de antes (una ficha por bloque)');
+  const vieja = m.ssD.hojas['REVISAR_MATCH'], hv = vieja.v[0];
+  const kv = function (fig) { return vieja.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[hv.indexOf('figura')] === fig; }); };
+  vieja.v[kv('Lía Ferrante')][0] = 'Opción 2';
+  vieja.v[kv('Rita Gómez')][0] = 'No sé';
+  vieja.v[kv('Rita Gómez')][1] = 'preguntar al equipo';
+  const opcion2Lia = vieja.v.find(function (x, i) { return i > kv('Lía Ferrante') && x[3] === 'Opción 2'; })[hv.indexOf('evento / formulario')];
+
+  const s = E.ejecutar('correrEnSeco');
+  ok(!s.error && /formato del 06\/10/.test(s.logs.join('\n')), 'en seco, con REVISAR_FORMATO_NUEVO' + (s.error ? ': ' + s.error.stack : ''));
+  const rev = m.ssD.hojas['REVISAR_MATCH'], AUX = E.cfg('AUX_FICHAS_');
+  const ia = function (n) { return 13 + AUX.indexOf(n); };
+  ok(JSON.stringify(rev.v[0].slice(0, 13)) === JSON.stringify(RM.HEADERS) && JSON.stringify(rev.v[0].slice(13, 13 + AUX.length)) === JSON.stringify(AUX),
+     'encabezado: A..M del diseño y las auxiliares desde la N');
+  ok(JSON.stringify(rev.ocultas) === JSON.stringify([14, 15, 16, 17, 18, 19, 20, 21]), 'las auxiliares, ocultas (N..U): ' + JSON.stringify(rev.ocultas));
+  const linea = function (hj, tipo, fig) { return hj.v.findIndex(function (x) { return x[ia('aux_linea')] === tipo && x[5] === fig; }); };
+  const kR = linea(rev, 'reunion', 'Rita Gómez');
+  ok(kR > 0 && rev.v[kR][3] === 'REUNIÓN' && rev.v[kR][0] === 'No sé' && rev.v[kR][1] === 'preguntar al equipo',
+     'Rita: ELEGIR "No sé" y COMENTARIO, de la solapa de antes');
+  ok(rev.v[kR][ia('id_figura')] === 'Rita Gómez' && rev.v[kR][ia('id_barrio')] === 'Flores' && /^\d{4}-\d\d-\d\d$/.test(rev.v[kR][ia('id_fecha')]),
+     'REUNIÓN: la identidad en las auxiliares (figura, fecha, barrio)');
+  const kO = kR + 2;
+  ok(rev.v[kO][3] === 'Opción 1' && rev.v[kO][ia('aux_linea')] === 'opcion' && rev.v[kO][ia('aux_opcion')] === 1 &&
+     !!rev.v[kO][ia('form_clave')] && rev.v[kO][ia('form_nombre')] === rev.v[kO][8],
+     'Opción 1: form_clave y el nombre entero en las auxiliares (sin prefijo genérico, el visible no se recorta)');
+  const corto = function (x) { return E.ctx._nombreCorto_(x); };
+  const cortos = ['VINCULO CIUDADANO - Encuentro con Vecinos - Clara Muzzio 11/9 Recoleta - Temática',
+                  'VÍNCULO CIUDADANO - Encuentro con vecinos sobre Seguridad - Comuna 10 - 17/9',
+                  'VÍNCULO CIUDADANO - Encuentro con comerciantes - Lombardi-Tapia-Piragine - Eje Norte - 22/9'].map(corto);
+  ok(JSON.stringify(cortos) === JSON.stringify(['…Clara Muzzio 11/9 Recoleta - Temática',
+     '…Encuentro con vecinos sobre Seguridad - Comuna 10 - 17/9', '…Lombardi-Tapia-Piragine - Eje Norte - 22/9']),
+     'el nombre recortado, como en los ejemplos de la ficha técnica: ' + cortos.join(' | '));
+  ok(rev.bg[kO][5] === '#CDEBD3' && rev.bg[kO][7] === '#F6CFCB', 'Rita, opción 1: figura verde, comuna roja (posible reubicación)');
+  const vacias = Object.keys(rev.v).filter(function (i) { const t = rev.v[i][3]; return t === '¿por qué?' || t === 'coincide'; });
+  ok(vacias.length >= 2 && vacias.every(function (i) { return rev.v[i].slice(5).every(function (x) { return x === '' || x === undefined; }); }),
+     '"¿por qué?" y "coincide": de F en adelante vacías, auxiliares incluidas');
+  ok(/cambió de lugar/.test(rev.v[kR + 1][4]), '¿por qué? de Rita, el de siempre');
+  const kL = linea(rev, 'resuelta', 'Lía Ferrante');
+  ok(kL > 0 && rev.v[kL][2] === 'por aplicar' && rev.v[kL][0] === 'Opción 2', 'Lía (elegida en la solapa de antes) pasa a RESUELTAS: ' + (kL > 0 ? rev.v[kL][2] : '-'));
+  const pr = (rev.protecciones || []).filter(function (x) { return x.tipo === 'SHEET'; })[0];
+  const reuniones = rev.v.map(function (x, i) { return x[ia('aux_linea')] === 'reunion' ? i + 1 : 0; }).filter(Boolean);
+  ok(pr && !pr.warning && JSON.stringify(pr.libres) === JSON.stringify(reuniones.map(function (r) { return [r, 1, 1, 2]; })),
+     'protección: sólo ELEGIR y COMENTARIO de cada línea REUNIÓN');
+  ok(/están en el archivo del destino/.test(m.ssI.hojas['REVISAR_MATCH'].v[0][0]), 'la de la intermedia, con el aviso');
+
+  // --- c) alguien escribe MIENTRAS corre el upsert (después de la lectura del plan, antes de redibujar) ---
+  ok(!E.ejecutar('__plan').error, 'el plan (lee las elecciones)');
+  rev.v[kR][0] = 'Opción 1'; rev.v[kR][1] = 'es ésta';
+  const w = E.ejecutar('__dibujar');
+  const rev2 = m.ssD.hojas['REVISAR_MATCH'], kR2 = linea(rev2, 'reunion', 'Rita Gómez');
+  ok(!w.error && w.resultado.conservadas === 1 && rev2.v[kR2][0] === 'Opción 1' && rev2.v[kR2][1] === 'es ésta',
+     'lo escrito durante la corrida se relee y se conserva al redibujar' + (w.error ? ': ' + w.error.stack : ''));
+  // "Opción 1" sigue al formulario por su clave, no por la posición: con otra clave en la auxiliar, no se toma.
+  rev2.v[kR2 + 2][ia('form_clave')] = 'zzz|19000101';
+  const w2 = E.ejecutar('__dibujar');
+  const rev3 = m.ssD.hojas['REVISAR_MATCH'], kR3 = linea(rev3, 'reunion', 'Rita Gómez');
+  ok(!w2.error && rev3.v[kR3][0] === 'No sé' && rev3.v[kR3][1] === 'es ésta' && rev3.v[kR3 + 2][ia('form_clave')] !== 'zzz|19000101',
+     '"Opción 1" con una clave que ya no está entre las opciones: no se toma (queda lo de ELECCIONES_MATCH); las auxiliares, rehechas');
+
+  // --- d) la elección se lee del formato nuevo y se aplica en la corrida real ---
+  rev3.v[kR3][0] = 'Opción 1';
+  const opcion1Rita = rev3.v[kR3 + 2][ia('form_nombre')];
+  const r = E.ejecutar('upsertDestino');
+  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const n = function (fig) { return hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === fig; }); };
+  ok(!r.error && hoja.v[n('Rita Gómez')][colD('form_origen')] === opcion1Rita &&
+     /\+elegido_por_persona/.test(hoja.v[n('Rita Gómez')][colD('form_nivel')]),
+     'Rita se escribe con la opción 1, leída de ELEGIR del formato nuevo (+elegido_por_persona)' + (r.error ? ': ' + r.error.stack : ''));
+  ok(hoja.v[n('Lía Ferrante')][colD('form_origen')] === opcion2Lia, 'Lía, con la opción 2 elegida en la solapa de antes');
+  const rev4 = m.ssD.hojas['REVISAR_MATCH'], kR4 = linea(rev4, 'resuelta', 'Rita Gómez');
+  ok(linea(rev4, 'reunion', 'Rita Gómez') < 0 && kR4 > 0 && /^aplicado \d\d\/\d\d$/.test(rev4.v[kR4][2]) && rev4.v[kR4][1] === 'es ésta',
+     'Rita pasa a RESUELTAS: "' + (kR4 > 0 ? rev4.v[kR4][2] : '-') + '", con su comentario');
+  ok(/PENDIENTES \(0\)/.test(rev4.v[1][3]) && /RESUELTAS \(2\)/.test(rev4.v.map(function (x) { return x[3]; }).join('|')),
+     'aviso y encabezado: PENDIENTES (0), RESUELTAS (2)');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -1779,7 +1926,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
     process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
     process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
-    process.argv.indexOf('--fichasdestino') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -1789,6 +1936,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--derivadas') >= 0) escenarioDerivadas();
   else if (process.argv.indexOf('--oradores') >= 0) escenarioOradores();
   else if (process.argv.indexOf('--fichasdestino') >= 0) escenarioFichasEnDestino();
+  else if (process.argv.indexOf('--formato') >= 0) escenarioFormatoRevisar();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1825,6 +1973,7 @@ escenarioActivadores();
 escenarioDerivadas();
 escenarioOradores();
 escenarioFichasEnDestino();
+escenarioFormatoRevisar();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
