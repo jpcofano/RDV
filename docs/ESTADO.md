@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,96 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### x) 06/10: AGENDA, ETAPA 1 — medir antes de construir (todo sólo lectura sobre el destino)
+
+Prompt: [prompts/PROMPT-05-AGENDA-ETAPA1-MEDICION.md](prompts/PROMPT-05-AGENDA-ETAPA1-MEDICION.md). **Nada de esta
+etapa escribe en el destino**: los cuatro pasos escriben sólo solapas `AGENDA_*` en la intermedia. Código:
+`diagnostico/16_agenda_medicion.js` (+ `diagnostico/17_barrios_caba_geo.js`, los polígonos). Test en Node con mails
+sintéticos: `node tests/agenda_parser.test.js` (en verde; la suite de siempre, también).
+
+**Reglas de negocio nuevas (usuario, 05/10)** — se miden acá, no se implementan todavía: (1) cada reunión de la
+última versión es una fila; (2) **"NO PARTICIPA" no es "no se hace"**: la reunión se hace y tiene fila a nombre de
+esa figura (el legado las descartaba: bug); los nombres van a una columna nueva "No participa"; (3) conjunta = UNA
+fila, a nombre de la primera figura nombrada; (4) "Seguridad en tu Barrio" viene sin figura: sale de RDV CONJUNTO
+por fecha + barrio; (5) el barrio sale de la dirección; (6) una reunión que desaparece se avisa, no se borra; (7)
+hora y dirección se actualizan mientras la fila está "en agenda".
+
+**Punto 0 — el código viejo del barrio: BLOQUEADO.** `clasp clone 1Q3g6srk…` da *"The caller does not have
+permission"*: clasp está logueado como `jpcofanogcba1@gmail.com` y el proyecto (atado a "CODIGOS Ajuste RDV") es
+de `jpcofano2@gmail.com`. Lo que sí se ve de la planilla (por Drive): las solapas `Ajuste Formularios RDV` (ID,
+Nombre, Persona, Barrio, Fecha), `Agenda` y `Agenda ya incorporada` (las columnas `(auto)`/`(manual)` del flujo
+Agenda del legado), `Ajustes Aplicados`, y copias del destino (`Hoja 7`, `Copia de Hoja 7`). En `Agenda ya
+incorporada`, `Barrio (auto)` dice `Comuna 10`, `Montserrat`: o sea que ese código **copiaba el lugar del evento,
+no lo sacaba de la dirección**. Hipótesis, sin leer el código. **Para destrabarlo**: compartir la planilla como
+editor con `jpcofanogcba1@gmail.com` (o `clasp login` con la otra cuenta) y volver a pedirlo; `_externo/` ya está
+en `.claspignore`. El paso 31 compara sólo el geocodificador mientras tanto.
+
+**Lo hecho:**
+
+- **Paso 29 — `paso29_parsearAgendaMails()`** (parser nuevo). Lee `DIAG_MAILS` (o Gmail con
+  `AGENDA_FUENTE_MAILS = 'GMAIL'`), agrupa por **semana + grupo** del asunto, ordena las versiones por fecha del
+  mail y **se queda con la última**. Por reunión: fecha (el año, el más cercano a la fecha del mail: cubre dic→ene),
+  hora, tipo (`Encuentro con Vecinos`, `Encuentro "1 a 1"`, `Encuentro Temático`, `Primera Persona`, `Seguridad en tu
+  Barrio`), figuras **en el orden en que se nombran** (`figura_fila` = la primera), las que **no participan** (el
+  "(NO PARTICIPA)" se asigna a la figura nombrada justo antes), conjunta (2+ figuras), lugar del evento (comuna con
+  subzona de la Comuna 1 / eje / barrio), dirección ("calle número" y nombre del lugar; "A CONFIRMAR" no es
+  dirección), marcas, mail y versión de origen, y **qué cambió contra la versión anterior** (hora / dirección /
+  lugar / nueva). Aparte, **las que desaparecen** en la última versión (estaban en alguna anterior), con dónde está
+  la figura en la última (posible reprogramación). La misma reunión en los mails de dos grupos cuenta una vez.
+  - **Nombres**: la lista y las variantes de siempre (columna Figura, `FIGURAS_VARIANTES`, apellidos únicos) y,
+    **sólo en este parser**, una tolerancia de tipeo por distancia de edición ("Maxiliano Piñeiro", "Baistocchi").
+    No toca `figurasEnTexto_` ni el matcher del upsert. El log lista cada nombre reconocido así.
+  - **Controles que no necesitan otra fuente** (§6, validación interna): reuniones **fuera de la semana de su
+    propio asunto** (si hay, el día está mal parseado); **versiones parciales** (la última con menos del 60% de la
+    anterior: un "Actualizo:" con sólo los cambios haría pasar por "desaparecidas" reuniones que no lo son — el log
+    lo avisa antes del número); cuerpos **truncados** a 8000 caracteres en `DIAG_MAILS` (pueden haber perdido las
+    reuniones del final: correr con `'GMAIL'` para confirmar); líneas "Algo:" no reconocidas, contadas por forma.
+- **Paso 30 — `paso30_cruzarAgendaConDestino()`**. Las reuniones únicas de la **ventana de análisis** ya pasadas
+  contra el destino: `con_fila` (figura de la fila + fecha; separa conjuntas y "no participa"),
+  `conjunta_fila_de_otra`, `fila_a_otra_fecha` (±3 días: reprogramada), `fila_de_otra_figura_mismo_lugar`, las sin
+  figura (una fila por fecha + lugar / varias / ninguna; sólo filas que no son de otra reunión del mail) y
+  `sin_fila`; las **desaparecidas** con su fila y status; y **las filas del destino sin reunión en el mail** (por
+  día, mes, EVENTO, si la semana tuvo mail, si hay una "Seguridad en tu Barrio" ese día en ese lugar). Al final, la
+  **columna "No participa"** y las reglas 2 y 3.
+- **Paso 31 — `paso31_barrioDesdeDireccion()`**. Filas del destino con Dirección y Barrio: `Maps.newGeocoder()`
+  (región `ar`, sesgado a la Ciudad) con "calle número, Ciudad Autónoma de Buenos Aires, Argentina" → lat/lng →
+  **punto en polígono** con los límites oficiales de los 48 barrios (Buenos Aires Data, CC BY 2.5 AR; simplificados
+  a ~1 m: 73 KB, 9 diferencias en 12.903 puntos al azar contra el original). Compara además el barrio que devuelve
+  Google (`neighborhood`/`sublocality`). **Cache** en `AGENDA_GEOCODE`: una dirección se pide una sola vez entre
+  corridas; tope de 450 llamadas y corte a los 4,5 minutos por corrida — si el log dice PENDIENTES, se vuelve a
+  correr y sigue. **Puede pedir autorizar de nuevo** (servicio Maps).
+- **Paso 32 — `paso32_seguridadContraConjunto()`**. Las reuniones sin figura contra RDV CONJUNTO por fecha + barrio
+  (o comuna: "C5", o la del barrio por `Comunas`): resuelve 1 / ambiguas / sin fila, y la figura contra la del
+  destino ese día en ese lugar.
+- **Arreglo de paso**: `diagMuestrasMail()` terminaba con `ReferenceError` (`claves` no existía) después de escribir
+  `DIAG_MAILS`. Ahora devuelve bien.
+
+**La secuencia, con la predicción anotada ANTES de correr:**
+
+0. Si `DIAG_MAILS` tiene más de una semana (el paso 29 lo avisa): `rehacer_diagMuestrasMail()`.
+1. **`paso29_parsearAgendaMails()`**. **Predicción** (del análisis de DIAG_MAILS): ~376 mails o más; versiones por
+   semana de 1 a 10; **2538 eventos** sumando todas las versiones, muchos menos en las últimas; tipo mayoritario
+   `Encuentro con Vecinos`; lugar del evento ~2/3 comuna (1723 de 2538), ~1/4 barrio (647, sobre todo JM), eje ~5%
+   (139); **fuera de la semana del asunto: 0**; "sin ninguna figura" ≈ las "Seguridad en tu Barrio" (desde 09/2026)
+   más pocas por grafía (listadas). Si las desaparecidas son muchas, mirar primero la línea de versiones parciales.
+2. **`paso30_cruzarAgendaConDestino()`**. **Predicción** (del prompt): ~307 reuniones del mail en 6 meses; ~268 con
+   fila (87%); 39 sin fila = **16 conjuntas** (la fila de otra figura) + **16 reprogramadas** (fila a ±2 días) +
+   **5 desaparecidas** + **2 sin explicar**; **~23 filas del destino sin reunión en el mail**, casi todas jueves de
+   09/2026 ("Seguridad en tu Barrio" sin figura). "No participa": **~66 reuniones, 63 con fila y Realizada**.
+   Regla 3: las conjuntas, con la fila a nombre de la 1ª. Ojo: si la predicción contaba "reuniones" de otra forma
+   (una conjunta por figura, o todas las versiones), los totales no se comparan uno a uno; las categorías sí.
+3. **`paso31_barrioDesdeDireccion()`** (repetir hasta 0 pendientes). **Predicción** (sin medición previa, a ojo):
+   geocodifica bien ≥ 90% de las direcciones con altura; **exacto ≥ 85%** de las ubicadas; los errores, en su
+   mayoría "distinto, misma comuna" (direcciones sobre un límite, o el barrio cargado por el equipo con otro
+   criterio); "A CONFIRMAR" y vacías, una parte grande del total. Si el exacto da < 80%, **el barrio desde la
+   dirección no se escribe solo**.
+4. **`paso32_seguridadContraConjunto()`**. **Predicción**: las ~20 de 09/2026; la mayoría **resuelve 1** y coincide
+   con la figura del destino; las que no, por RDV CONJUNTO todavía sin cargar (las más recientes).
+
+**Columna "No participa" (punto 5), propuesta:** **al final del destino, después de la traza (`form_clave`)**, con
+los nombres separados por " / ". Nunca insertada en el medio (correría los fondos, CLAUDE.md §6). Cuántas filas de
+los últimos 6 meses la tendrían: lo dice el paso 30.
 
 ### w) 06/10: las fichas, en el ARCHIVO del destino (donde trabaja el equipo)
 

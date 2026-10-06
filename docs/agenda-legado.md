@@ -168,6 +168,11 @@ de que hay que buscarlas fuera del origen de inscriptos.**
 
 #### c) Hasta 10 mensajes por hilo, y el legado se queda con el último
 
+> **Actualización (05/10, análisis de DIAG_MAILS): no son respuestas en un hilo, son mails separados.** Por semana
+> y grupo llegan de 1 a 10 **versiones**, muchas con "Actualizo:", y **vale la última**. O sea que el "último del
+> hilo" del legado no alcanza: hay que agrupar por **semana + grupo del asunto** y quedarse con el mail más nuevo.
+> Es lo que hace el parser nuevo (paso 29), que además avisa si la última versión parece parcial.
+
 ```js
 const msg = msgs[msgs.length - 1]; // último del hilo (más actualizado)
 ```
@@ -203,6 +208,14 @@ una agenda y sus correcciones, y que la última versión manda.
 
 Descarta los eventos que contengan `NO PARTICIPA`, y exige **persona + fecha + hora** para
 aceptar un evento. Sin hora no entra.
+
+> **🔴 Corrección (06/10, regla del usuario): descartar `NO PARTICIPA` es un BUG.** "NO PARTICIPA" no quiere decir
+> que la reunión no se hace: **la reunión se hace igual, y tiene fila a nombre de esa figura** (63 de 66 con fila y
+> `Realizada` en los últimos 6 meses, según el análisis previo; lo vuelve a medir el paso 30). Lo que dice es que
+> esa figura no va. El legado tiraba la reunión entera, y además `isNoParticipa_(personaRaw + ' ' + barrioRaw)`
+> mira el evento completo: en una conjunta, un solo "(NO PARTICIPA)" descartaba a todas las figuras. El parser
+> nuevo (`diagnostico/16_agenda_medicion.js`) conserva la reunión, asigna el "(NO PARTICIPA)" a la figura nombrada
+> justo antes, y los nombres van a una columna nueva "No participa" (ESTADO 0.x).
 
 **El año no viene en el mail:** `currentDate = new Date(thisYear, mo-1, d, 12, 0, 0)`. Toma el
 año actual. Una agenda de fin de diciembre que menciona el 3 de enero queda **un año en el

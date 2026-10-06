@@ -3431,6 +3431,13 @@ Lo que falta contestar:
   se queda siempre con el último: si la corrección vino en uno del medio y después alguien
   respondió algo trivial, está tomando el equivocado.
 
+> **06/10 — Agenda, etapa 1 (medir), en curso: docs/ESTADO.md, 0.x.** Ya contestado del análisis de `DIAG_MAILS`:
+> el cuerpo es muy estable (día + `Evento:` / `Hora:` / `Lugar:`) y **no son hilos sino versiones**: por semana +
+> grupo llegan de 1 a 10 mails y vale el último. **"NO PARTICIPA" no es "no se hace"**: la reunión se hace, con fila a
+> nombre de esa figura (el legado las descartaba). Los pasos 29-32 (`diagnostico/16_agenda_medicion.js`) miden el
+> parser nuevo, el cruce contra el destino, el barrio desde la dirección y "Seguridad en tu Barrio" contra RDV
+> CONJUNTO, sin escribir en el destino.
+
 **8b. Rediseño de la ingesta.** Con el análisis hecho. Mínimo: un activador (hoy no tiene) y una
 alerta cuando la query devuelve cero mensajes habiendo mails que matchean el asunto — hoy eso
 termina con un `toast` de cuatro segundos y un `return` limpio.

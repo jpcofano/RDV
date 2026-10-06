@@ -169,7 +169,7 @@ function diagMuestrasMail() {
              'existe únicamente acá.', GMAIL_LOOKBACK_DAYS_LEGADO_DIAG3);
   Logger.log('%s ms', new Date() - t0);
 
-  return { hilos: hilos.length, mensajes: mensajes, variantesAsunto: claves.length };
+  return { hilos: hilos.length, mensajes: mensajes, variantesAsunto: plClaves.length };
 }
 
 // ===================== Internas =====================

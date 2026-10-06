@@ -12,6 +12,9 @@ _archivo/**
 
 # Clones o copias anidadas del repo (ej. RDV/): duplicarían cada función del proyecto.
 RDV/**
+# Código de OTROS proyectos de Apps Script, bajado para leerlo (Agenda etapa 1: "CODIGOS Ajuste RDV").
+# Subirlo lo metería en nuestro scope global.
+_externo/**
 **/.git/**
 
 # Documentación y fixtures: no son código.

@@ -17,6 +17,10 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 06/10: AGENDA, ETAPA 1 — MEDIR (ESTADO 0.x; todo sólo lectura sobre el destino; predicciones en ESTADO):
+ *      rehacer_diagMuestrasMail() si DIAG_MAILS tiene más de una semana → paso29_parsearAgendaMails() →
+ *      paso30_cruzarAgendaConDestino() → paso31_barrioDesdeDireccion() (repetir hasta 0 pendientes) →
+ *      paso32_seguridadContraConjunto().
  *  >>> 06/10: las FICHAS se mueven al ARCHIVO del destino (ESTADO 0.w): upsertDestino() a mano (pide autorizar
  *      de nuevo: Session) → solapa REVISAR_MATCH en el destino, ELEGIR y COMENTARIO adelante y únicos editables.
  *  >>> 06/10: oradores desde RDV CONJUNTO (ESTADO 0.v): paso28_medirOradores() (sólo lectura) →
@@ -467,6 +471,44 @@ function paso28_medirOradores() {
   _anunciar_('paso 28 — medir los oradores', 'medirOradores()  [diagnostico/15_oradores.js]', 'NO escribe nada',
              'el log: columnas y tipos (10 ejemplos), y por columna: se completaría [activas | cerradas], igual, distinto');
   return medirOradores();
+}
+
+// =============================================================================================
+//  AGENDA, ETAPA 1 (06/10; ESTADO 0.x; prompt: docs/prompts/PROMPT-05-AGENDA-ETAPA1-MEDICION.md).
+//  Todo SÓLO LECTURA sobre el destino: escriben solapas AGENDA_* en la intermedia. Los mails salen de
+//  DIAG_MAILS (AGENDA_FUENTE_MAILS en diagnostico/16_agenda_medicion.js; 'GMAIL' para leerlos directo).
+// =============================================================================================
+
+/** PASO 29 — el parser nuevo de los mails de agenda: la última versión de cada semana + grupo, y las desaparecidas. */
+function paso29_parsearAgendaMails() {
+  _anunciar_('paso 29 — parsear los mails de agenda', 'parsearAgendaMails()  [diagnostico/16_agenda_medicion.js]',
+             'NO toca el destino; escribe AGENDA_MAIL y AGENDA_MAIL_DESAPARECIDAS en la intermedia',
+             'el log: versiones, tipos, lugar, NO PARTICIPA, conjuntas, cambios entre versiones, desaparecidas, tolerancia de nombres');
+  return parsearAgendaMails();
+}
+
+/** PASO 30 — las reuniones del mail contra el destino (ventana de análisis), las filas sin reunión, y "No participa". */
+function paso30_cruzarAgendaConDestino() {
+  _anunciar_('paso 30 — cruzar la agenda con el destino', 'cruzarAgendaConDestino()  [diagnostico/16_agenda_medicion.js]',
+             'NO toca el destino; escribe AGENDA_CRUCE y AGENDA_DESTINO_SIN_MAIL en la intermedia',
+             'el log: con fila / conjuntas / reprogramadas / desaparecidas / sin explicar contra la predicción; filas sin reunión; columna "No participa"');
+  return cruzarAgendaConDestino();
+}
+
+/** PASO 31 — barrio desde la dirección (geocodificador + polígonos oficiales) contra el Barrio del destino. */
+function paso31_barrioDesdeDireccion() {
+  _anunciar_('paso 31 — barrio desde la dirección', 'medirBarrioDesdeDireccion()  [diagnostico/16_agenda_medicion.js]',
+             'NO toca el destino; escribe AGENDA_BARRIO_DIRECCION y agrega a la cache AGENDA_GEOCODE (intermedia). Usa Maps (cuota)',
+             'el log: % exacto, fallas de geocodificación, A CONFIRMAR / vacías, llamadas usadas. Si dice PENDIENTES, volver a correr');
+  return medirBarrioDesdeDireccion();
+}
+
+/** PASO 32 — las reuniones sin figura ("Seguridad en tu Barrio") contra RDV CONJUNTO por fecha + barrio o comuna. */
+function paso32_seguridadContraConjunto() {
+  _anunciar_('paso 32 — Seguridad en tu Barrio contra RDV CONJUNTO', 'seguridadContraConjunto()  [diagnostico/16_agenda_medicion.js]',
+             'NO toca el destino; escribe AGENDA_SEGURIDAD en la intermedia',
+             'el log: resuelve 1 / ambiguas / sin fila, y la figura contra la del destino');
+  return seguridadContraConjunto();
 }
 
 /**
