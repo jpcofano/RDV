@@ -411,6 +411,68 @@ Belgrano está en Monserrat y Balvanera). **El paso 31 mide el método viejo por
 los nombres separados por " / ". Nunca insertada en el medio (correría los fondos, CLAUDE.md §6). Cuántas filas de
 los últimos 6 meses la tendrían: lo dice el paso 30.
 
+**Resultados de la primera corrida (06/10, pasos 29–32, `DIAG_MAILS` del 23/09), contra la predicción:**
+
+| | predicción | resultado |
+|---|---|---|
+| reuniones del mail en la ventana, con fila | ~268 de ~307 (87%) | **275 de 301 (91,4%)** |
+| "NO PARTICIPA" | ~66, 63 con fila y Realizada | **74, todas Realizada** — confirma la regla 2 |
+| conjuntas a nombre de la 1ª figura (regla 3) | todas | **8 de 9** |
+| desaparecidas en la última versión | 5 | **27** (con fila: 9 Suspendida, 2 Realizada) |
+| barrio desde la dirección, polígono | exacto ≥ 85% | **92,9%** |
+| método viejo (Barrios Estimados.js) | por debajo del polígono | **85,9%**; el barrio de Google (neighborhood), peor que los dos |
+| Seguridad en tu Barrio contra RDV CONJUNTO | la mayoría resuelve 1 | **13 de 16 resuelven (las 13 iguales al destino), 3 ambiguas** |
+
+Lo que mostró, además: **28 reuniones con la fecha mal escrita en el mail** (casi todas "1 a 1" de JM: "Lunes 13/06" en
+la semana del 13/07 al 18/07), **12 mails afuera** por asuntos con otra forma ("Semana del 02/002 al 07/02",
+"Semana 15.12.2025", reenvíos), los tipos "Encuentro con Vecino" (singular) y "Café con Vecinos", la grafía
+"Montserrat", líneas "[image:" en el cuerpo, "Armenia 1322" con *Service error* del geocodificador, valores que no
+son direcciones (links, sólo el nombre del lugar) y un timeout al escribir AGENDA_BARRIO_DIRECCION.
+
+**Ajustes antes de la etapa 2 (06/10, usuario) — hechos:**
+
+1. **Fecha fuera de la semana del asunto**: se corrige al día de esa semana con **el mismo día de la semana y el
+   mismo número de día**, si hay exactamente uno ("Lunes 13/06" en la semana del 13/07 → 13/07). Se registra
+   (`fecha_corregida` en AGENDA_MAIL y la lista en el log). Lo que no tiene corrección posible sigue contado como
+   "fuera de la semana".
+2. **Asuntos con otra forma** (`_semanaAgenda_`): mes de tres dígitos ("02/002"), fechas con puntos, una sola fecha
+   ("Semana 15.12.2025" = esa fecha + 6 días), y el reenvío sin semana en el asunto: se toma de la línea "Asunto:" /
+   "Subject:" del cuerpo. El log lista los que entran con otra forma y los que todavía queden afuera.
+3. **Tipos**: "Encuentro con Vecino" (singular) cuenta como Encuentro con Vecinos; "Café con Vecinos" es un tipo
+   propio. **Barrio**: "Montserrat" = "Monserrat" (alias sólo de la agenda: se prueba la grafía del texto y, si
+   `Comunas` no la reconoce, la otra; no toca `BARRIOS_VARIANTES`). Las líneas **"[image:"** se ignoran (antes podían
+   pegarse al campo anterior).
+4. **Regla de confianza del barrio, medida en el paso 31** (`_reglaBarrio_`): se escribiría SÓLO si (a) la
+   geocodificación es "ok" (no ok_parcial, aproximada ni borde), (b) el barrio del polígono cae en la misma comuna
+   que trae el mail, o coincide con el barrio que trae el mail, y (c) la celda está vacía. El paso 31 toma la reunión
+   del mail de cada fila del cruce del paso 30 y reporta: cuántas cumplen, el % exacto entre ésas, por qué no cumplen
+   las otras, el % exacto **por estado** de la geocodificación, y cuántas filas **sin** barrio recibirían uno. Lo que no
+   cumple queda vacío para el equipo. Geocodificador: **no se pide lo que no es una dirección** (links, texto sin
+   altura); un *Service error* o "sin resultado" se **reintenta** sin el rectángulo de la Ciudad y, si sigue, con la
+   pista del mail ("Armenia 1322, &lt;barrio o Comuna N del mail&gt;, Ciudad…"). La pista sale **sólo del mail**, nunca
+   del Barrio del destino (sería darle la respuesta).
+5. **Producción lee de Gmail**: en la etapa 2, `AGENDA_FUENTE_MAILS = 'GMAIL'` (`DIAG_MAILS` es del 23/09). La segunda
+   corrida de medición sigue con `DIAG_MAILS`, para comparar con la primera sobre la misma población de mails.
+6. **Escritura en tandas con reintento** (`_escribirHojaAgenda_`, 300 filas por tanda, 3 intentos) en todas las
+   solapas AGENDA_*; el paso 31 loguea los números **antes** de escribir.
+
+Test en Node: `node tests/agenda_parser.test.js` (bloques [7] y [8] nuevos), en verde.
+
+**La segunda corrida, con la predicción anotada ANTES de correr** (mismo `DIAG_MAILS`):
+
+1. **`paso29_parsearAgendaMails()`** → **mails sin semana: 12 → 0** (o los que queden, listados); **fechas corregidas
+   ≈ 28**, casi todas "1 a 1" de JM; fuera de la semana sin corrección: ~0; aparecen "Café con Vecinos" y el singular,
+   y bajan las "sin tipo".
+2. **`paso30_cruzarAgendaConDestino()`** → **desaparecen de "filas sin reunión" la 689, la 690 y la 773**; **bajan
+   las reprogramadas** (las corregidas pasan a fecha exacta); con fila **sube** desde 275 (más reuniones por los 12
+   mails que entran, y las corregidas que ahora encuentran su fila), y el % no baja de 91,4%.
+3. **`paso31_barrioDesdeDireccion()`** (la medición del punto 4) → **~99% exacto entre las que cumplen la regla**
+   (predicción del usuario); por estado, ok por encima de ok_parcial y de aproximada; "Armenia 1322" se resuelve con el
+   reintento; algunos valores pasan a "no es dirección" y salen del denominador (por eso el 92,9% general puede
+   moverse un poco).
+
+**La etapa 2 (crear y actualizar filas en el destino) se define con esos números.**
+
 ### w) 06/10: las fichas, en el ARCHIVO del destino (donde trabaja el equipo)
 
 **Lo hecho:**

@@ -84,8 +84,24 @@ const AGENDA_TIPOS = [
   { tipo: 'Encuentro "1 a 1"', re: /\bencuentro\s*["“”'«»]*\s*1\s*a\s*1\b\s*["“”'«»]*/ },
   { tipo: 'Encuentro Temático', re: /\bencuentro tematico\b/ },
   { tipo: 'Primera Persona', re: /\bprimera persona\b/ },
-  { tipo: 'Encuentro con Vecinos', re: /\bencuentros? con (?:los )?vecinos\b/ }
+  { tipo: 'Café con Vecinos', re: /\bcafe con (?:los )?vecinos?\b/ },
+  { tipo: 'Encuentro con Vecinos', re: /\bencuentros? con (?:los )?vecinos?\b/ }   // también el singular (06/10)
 ];
+
+/**
+ * Alias de barrio SÓLO para la agenda (06/10, usuario): "Montserrat" = "Monserrat". Se prueba la grafía que trae el
+ * texto y, si Comunas no la reconoce, la otra: así funciona tenga Comunas la que tenga. No toca BARRIOS_VARIANTES.
+ */
+function _otraGrafiaBarrio_(s) {
+  const t = String(s == null ? '' : s);
+  if (/montserrat/i.test(t)) return t.replace(/montserrat/gi, 'Monserrat');
+  if (/monserrat/i.test(t)) return t.replace(/monserrat/gi, 'Montserrat');
+  return '';
+}
+function _canonBarrioAg_(s) { return canonizarBarrio_(s) || (_otraGrafiaBarrio_(s) ? canonizarBarrio_(_otraGrafiaBarrio_(s)) : ''); }
+function _detectBarrioAg_(s) { return detectBarrio_(s) || (_otraGrafiaBarrio_(s) ? detectBarrio_(_otraGrafiaBarrio_(s)) : ''); }
+function _comunaBarrioAg_(s) { return comunaDeBarrio_(_canonBarrioAg_(s) || s); }
+function _subzonaBarrioAg_(s) { return subzonaDeBarrio_(_canonBarrioAg_(s) || s) || (_otraGrafiaBarrio_(s) ? subzonaDeBarrio_(_otraGrafiaBarrio_(s)) : ''); }
 
 // ===================== PASO 29 — el parser =====================
 
@@ -100,8 +116,8 @@ function parsearAgendaMails() {
   leerDestino_();   // carga las figuras del destino (la lista con la que se reconocen los nombres)
   const r = agendaDesdeMails_();
   _logParser_(r);
-  escribirHoja_(AGENDA_SOLAPA_MAIL, _filasAgendaMail_(r));
-  escribirHoja_(AGENDA_SOLAPA_DESAPARECIDAS, _filasDesaparecidas_(r));
+  _escribirHojaAgenda_(AGENDA_SOLAPA_MAIL, _filasAgendaMail_(r));
+  _escribirHojaAgenda_(AGENDA_SOLAPA_DESAPARECIDAS, _filasDesaparecidas_(r));
   Logger.log('%s ms', Date.now() - t0);
   return { reuniones: r.ultimas.length, unicas: r.unicas.length, desaparecidas: r.desaparecidas.length,
            semanas: r.semanas.length };
@@ -120,18 +136,20 @@ function agendaDesdeMails_() {
 function agendaDesdeListaDeMails_(lista, meta) {
   const r = { fuente: (meta && meta.fuente) || '', mails: lista.length, truncados: 0, sinSemana: [], semanas: [],
               ultimas: [], unicas: [], desaparecidas: [], parciales: [], tipos: {}, lineasRaras: {},
-              eventosIncompletos: [], fueraDeSemana: [], sinFecha: 0, masNuevo: null };
+              eventosIncompletos: [], fueraDeSemana: [], fechasCorregidas: [], semanaOtraForma: [], imagenes: 0,
+              sinFecha: 0, masNuevo: null };
   _agendaTolerancia_ = [];
   const grupos = new Map();
   lista.forEach(function (m) {
     if (m.truncado) r.truncados++;
     if (!r.masNuevo || m.fecha > r.masNuevo) r.masNuevo = m.fecha;
-    const grupo = _grupoAsunto_diag3(m.asunto);
-    const sem = _semanaAsunto_diag3(m.asunto);
-    if (!sem.desde) { r.sinSemana.push(m.asunto); return; }
-    const desde = _fechaDiaMes_(sem.desde, m.fecha), hasta = _fechaDiaMes_(sem.hasta, m.fecha);
-    const k = normalizeText_(grupo) + '|' + (desde ? ymd_(desde) : sem.desde);
-    if (!grupos.has(k)) grupos.set(k, { grupo: grupo, desde: desde, hasta: hasta, semanaTexto: sem.desde + ' al ' + sem.hasta, versiones: [] });
+    const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
+    if (!sem) { r.sinSemana.push(m.asunto); return; }
+    if (sem.forma !== 'del … al …') r.semanaOtraForma.push(sem.forma + ': ' + m.asunto);
+    const grupo = sem.grupo;
+    const desde = sem.desde, hasta = sem.hasta;
+    const k = normalizeText_(grupo) + '|' + ymd_(desde);
+    if (!grupos.has(k)) grupos.set(k, { grupo: grupo, desde: desde, hasta: hasta, semanaTexto: sem.texto, versiones: [] });
     grupos.get(k).versiones.push(m);
   });
 
@@ -185,6 +203,47 @@ function agendaDesdeListaDeMails_(lista, meta) {
 }
 
 /**
+ * La semana y el grupo de un mail (06/10). Del asunto, y si el asunto no los trae, de la línea "Asunto:" /
+ * "Subject:" del cuerpo (un reenvío). Formas: "Semana del 13/07 al 18/07" (también con un mes de tres dígitos,
+ * "02/002", y con puntos, "02.02"), y "Semana 15.12.2025" / "Semana del 15/12" (una sola fecha: la semana es esa
+ * fecha + 6 días). El año, el más cercano a la fecha del mail. `null` si no hay semana.
+ */
+function _semanaAgenda_(asunto, cuerpo, fechaMail) {
+  const F = '(\\d{1,2}\\s*\\/\\s*\\d{1,3}(?:\\s*\\/\\s*\\d{2,4})?)';
+  const probar = function (texto) {
+    const t = _sinPrefijos_diag3(texto).replace(/(\d)\s*\.\s*(\d)/g, '$1/$2');
+    const g = /\bcon\s+(.+?)\s*[-–]?\s*semana\b/i.exec(t);
+    const grupo = g ? g[1].replace(/[-–]\s*$/, '').trim() : '';
+    let m = new RegExp('semana\\s+del\\s+' + F + '\\s+al\\s+' + F, 'i').exec(t);
+    if (m) {
+      const d = _fechaDiaMes_(m[1], fechaMail), h = _fechaDiaMes_(m[2], fechaMail);
+      if (d && h) return { desde: d, hasta: h, texto: m[1].replace(/\s+/g, '') + ' al ' + m[2].replace(/\s+/g, ''), grupo: grupo,
+                           forma: /\/\d{3}\b/.test(m[0]) ? 'mes de tres dígitos' : (/\d\.\d/.test(texto) ? 'con puntos' : 'del … al …') };
+    }
+    m = new RegExp('semana\\s+(?:del\\s+)?' + F, 'i').exec(t);
+    if (m) {
+      const d = _fechaDiaMes_(m[1], fechaMail);
+      if (d) return { desde: d, hasta: alMediodia_(new Date(d.getTime() + 6 * 86400000).getFullYear(), new Date(d.getTime() + 6 * 86400000).getMonth() + 1,
+                                                    new Date(d.getTime() + 6 * 86400000).getDate()),
+                      texto: m[1].replace(/\s+/g, '') + ' (+6 días)', grupo: grupo, forma: 'una sola fecha' };
+    }
+    return null;
+  };
+  let sem = probar(asunto);
+  if (sem && !sem.grupo) {
+    const lin = /^\s*(?:asunto|subject)\s*:\s*(.+)$/im.exec(String(cuerpo || ''));
+    const otra = lin ? probar(lin[1]) : null;
+    if (otra && otra.grupo) sem.grupo = otra.grupo;
+  }
+  if (!sem) {
+    const lin = /^\s*(?:asunto|subject)\s*:\s*(.+)$/im.exec(String(cuerpo || ''));
+    if (lin) { sem = probar(lin[1]); if (sem) sem.forma = 'del asunto reenviado (' + sem.forma + ')'; }
+  }
+  if (sem && !sem.grupo) sem.grupo = '(sin grupo)';
+  return sem;
+}
+
+/**
  * Las reuniones de UN cuerpo de mail. Línea por línea: el encabezado del día fija la fecha; "Evento:", "Hora:"
  * y "Lugar:" llenan la reunión en curso; una línea que no es ninguna de esas, inmediatamente después de un
  * campo, se toma como continuación de ese campo (el texto plano a veces corta líneas largas).
@@ -192,18 +251,20 @@ function agendaDesdeListaDeMails_(lista, meta) {
 function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
   const lineas = String(cuerpo || '').split(/\r?\n/);
   const out = [];
-  let fecha = null, diaTexto = '', ev = null, campo = null;
+  let fecha = null, diaTexto = '', diaSemanaNum = null, diaNum = null, ev = null, campo = null;
   const cerrar = function () {
     if (!ev) return;
     _completarReunion_(ev);
     if (!ev.fecha) r.sinFecha++;
     if (!ev.hora) r.eventosIncompletos.push('sin hora: ' + ev.eventoTexto);
     if (ev.fecha && ev.fueraDeSemana) r.fueraDeSemana.push(ev);
+    if (ev.fechaCorregida) r.fechasCorregidas.push(ev);
     out.push(ev);
     ev = null; campo = null;
   };
   for (let i = 0; i < lineas.length; i++) {
     const limpia = _limpiarLineaAgenda_(lineas[i]);
+    if (/^\[image:/i.test(limpia)) { r.imagenes++; continue; }   // una imagen no es parte de ningún campo (06/10)
     if (!limpia) { campo = null; continue; }
     const dia = /^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\s*[.:]?$/
       .exec(normalizeText_(limpia));
@@ -211,6 +272,8 @@ function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
       cerrar();
       fecha = _fechaDiaMes_(dia[2] + '/' + dia[3], fechaMail);
       diaTexto = limpia;
+      diaSemanaNum = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'].indexOf(dia[1]);
+      diaNum = +dia[2];
       continue;
     }
     const etiqueta = /^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*(.*)$/i.exec(limpia);
@@ -218,7 +281,8 @@ function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
       const e = normalizeText_(etiqueta[1]), valor = etiqueta[2].trim();
       if (e === 'evento') {
         cerrar();
-        ev = Object.assign({ fecha: fecha, diaTexto: diaTexto, eventoTexto: valor, horaTexto: '', lugarTexto: '' }, meta);
+        ev = Object.assign({ fecha: fecha, diaTexto: diaTexto, diaSemanaNum: diaSemanaNum, diaNum: diaNum,
+                             eventoTexto: valor, horaTexto: '', lugarTexto: '' }, meta);
         campo = 'eventoTexto';
       } else if (ev) {
         const k = e === 'hora' ? 'horaTexto' : 'lugarTexto';
@@ -302,7 +366,7 @@ function _completarReunion_(ev) {
   ev.eje = eje ? (eje.eje || eje.forma) : '';
   const segmentos = tramo.split(/[,;]/).map(function (s) { return s.trim(); }).filter(Boolean);
   ev.barrio = '';
-  for (let i = segmentos.length - 1; i >= 0 && !ev.barrio; i--) ev.barrio = detectBarrio_(segmentos[i]);
+  for (let i = segmentos.length - 1; i >= 0 && !ev.barrio; i--) ev.barrio = _detectBarrioAg_(segmentos[i]);
   if (ev.comuna != null) { ev.lugarTipo = 'comuna'; ev.lugar = 'Comuna ' + ev.comuna + (ev.subzona ? ' ' + ev.subzona : ''); }
   else if (ev.eje) { ev.lugarTipo = 'eje'; ev.lugar = 'Eje ' + ev.eje; }
   else if (ev.barrio) { ev.lugarTipo = 'barrio'; ev.lugar = ev.barrio; }
@@ -319,8 +383,24 @@ function _completarReunion_(ev) {
     else { ev.direccion = ''; ev.nombreLugar = lugar; }
   }
   ev.marcas = marcas;
-  // Fuera de la semana del asunto
-  ev.fueraDeSemana = !!(ev.fecha && ev.desde && ev.hasta && (ev.fecha < ev.desde || ev.fecha > ev.hasta));
+  // Fuera de la semana del asunto. Si el encabezado del día dice una fecha que cae fuera ("Lunes 13/06" en la semana
+  // del 13/07 al 18/07: casi siempre el mes mal tipeado), se corrige al día de ESA semana con el mismo día de la
+  // semana y el mismo número de día, si hay exactamente uno. Se registra (06/10, usuario).
+  const fuera = function (f) { return !!(f && ev.desde && ev.hasta && (f < ev.desde || f > ev.hasta)); };
+  ev.fechaCorregida = '';
+  if (fuera(ev.fecha) && ev.diaSemanaNum != null && ev.diaSemanaNum >= 0) {
+    const cands = [];
+    for (let t = ev.desde.getTime(); t <= ev.hasta.getTime() + 3600000; t += 86400000) {
+      const d = new Date(t);
+      if (d.getDay() === ev.diaSemanaNum && d.getDate() === ev.diaNum) cands.push(alMediodia_(d.getFullYear(), d.getMonth() + 1, d.getDate()));
+    }
+    if (cands.length === 1) {
+      ev.fechaCorregida = ev.diaTexto + ' → ' + fmtFecha_(cands[0]) + ' (semana del ' + ev.semana + ')';
+      ev.fechaOriginal = ev.fecha;
+      ev.fecha = cands[0];
+    }
+  }
+  ev.fueraDeSemana = fuera(ev.fecha);
   // Clave: figura de la fila + fecha; sin figura, tipo + fecha + lugar
   const f = ev.fecha ? ymd_(ev.fecha) : 'sin_fecha';
   ev.claveBase = ev.figuraFila ? normalizeText_(ev.figuraFila) + '|' + f
@@ -435,7 +515,7 @@ function _horaAgenda_(texto) {
  * enero (el legado tomaba el año en curso y la mandaba un año atrás).
  */
 function _fechaDiaMes_(texto, fechaMail) {
-  const m = /(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?/.exec(str(texto));
+  const m = /(\d{1,2})\s*\/\s*(\d{1,3})(?:\s*\/\s*(\d{2,4}))?/.exec(str(texto));
   if (!m) return null;
   const d = +m[1], mo = +m[2];
   if (m[3]) { let y = +m[3]; if (y < 100) y += 2000; return alMediodia_(y, mo, d); }
@@ -506,10 +586,8 @@ function _logParser_(r) {
              r.truncados ? '  <<< un cuerpo truncado puede haber perdido reuniones del final: correr con AGENDA_FUENTE_MAILS = "GMAIL" para confirmar' : '');
   Logger.log('  mail más nuevo: %s%s', r.masNuevo ? Utilities.formatDate(r.masNuevo, RDV_TZ, 'dd/MM/yyyy HH:mm') : '—',
              r.masNuevo && (Date.now() - r.masNuevo) > 8 * 86400000 ? '  <<< DIAG_MAILS tiene más de una semana: rehacer_diagMuestrasMail()' : '');
-  if (r.sinSemana.length) {
-    Logger.log('  mails sin "Semana del … al …" en el asunto (no se usan): %s', r.sinSemana.length);
-    r.sinSemana.slice(0, 5).forEach(function (a) { Logger.log('    %s', a); });
-  }
+  Logger.log('  mails sin semana reconocible (ni en el asunto ni en un "Asunto:" reenviado; no se usan): %s', r.sinSemana.length);
+  r.sinSemana.slice(0, 20).forEach(function (a) { Logger.log('    %s', a); });
   const versiones = {};
   r.semanas.forEach(function (g) { versiones[g.versiones.length] = (versiones[g.versiones.length] || 0) + 1; });
   Logger.log('  semanas + grupo: %s | versiones por semana: %s', r.semanas.length,
@@ -551,7 +629,16 @@ function _logParser_(r) {
                r.parciales.length, Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100));
     r.parciales.slice(0, 10).forEach(function (p) { Logger.log('    %s, semana del %s: reuniones por versión %s', p.g.grupo, p.g.semanaTexto, p.cantidades.join(' → ')); });
   }
-  Logger.log('  fuera de la semana de su propio asunto: %s (restricción interna del mail: si hay, el día está mal parseado)',
+  Logger.log('  asuntos con otra forma de semana (entran igual): %s', r.semanaOtraForma.length);
+  r.semanaOtraForma.slice(0, 15).forEach(function (x) { Logger.log('    %s', x); });
+  Logger.log('  líneas "[image:" ignoradas: %s', r.imagenes);
+  Logger.log('  FECHAS CORREGIDAS (el día del encabezado caía fuera de la semana del asunto; mismo día de la semana y mismo ' +
+             'número, dentro de la semana): %s (en las últimas versiones: %s)', r.fechasCorregidas.length,
+             r.ultimas.filter(function (x) { return x.fechaCorregida; }).length);
+  r.fechasCorregidas.filter(function (x) { return r.ultimas.indexOf(x) >= 0; }).slice(0, 30).forEach(function (x) {
+    Logger.log('    %s | %s | %s', x.grupo, x.figuraFila || x.tipo, x.fechaCorregida);
+  });
+  Logger.log('  fuera de la semana de su propio asunto, SIN corrección posible: %s (restricción interna del mail)',
              r.fueraDeSemana.length);
   r.fueraDeSemana.slice(0, 10).forEach(function (x) { Logger.log('    %s | semana %s | %s | %s', x.asunto, x.semana, x.diaTexto, x.eventoTexto); });
   const sinFig = r.unicas.filter(function (x) { return !x.figuras.length; });
@@ -588,14 +675,14 @@ function _filasAgendaMail_(r) {
   const out = [['grupo', 'semana', 'version', 'de_versiones', 'fecha_mail', 'fecha', 'dia_semana', 'hora', 'tipo',
                 'figura_fila', 'participan', 'no_participa', 'conjunta', 'lugar_tipo', 'lugar', 'comuna', 'barrio', 'eje',
                 'direccion', 'nombre_lugar', 'direccion_a_confirmar', 'marcas', 'cambios_vs_anterior',
-                'repetida_en_mail_de', 'fuera_de_semana', 'evento_texto', 'lugar_texto', 'clave']];
+                'repetida_en_mail_de', 'fuera_de_semana', 'fecha_corregida', 'evento_texto', 'lugar_texto', 'clave']];
   r.ultimas.forEach(function (x) {
     out.push([x.grupo, x.semana, x.version, x.versiones, Utilities.formatDate(x.mailFecha, RDV_TZ, 'yyyy-MM-dd HH:mm'),
               x.fecha ? fmtFecha_(x.fecha) : '', x.fecha ? _diaSemanaAgenda_(x.fecha) : '', x.hora, x.tipo, x.figuraFila,
               x.participan.join(' / '), x.noParticipa.join(' / '), x.conjunta ? 'sí' : '', x.lugarTipo, x.lugar,
               x.comuna == null ? '' : x.comuna, x.barrio, x.eje, x.direccion, x.nombreLugar, x.direccionAConfirmar ? 'sí' : '',
               x.marcas.join(' + '), x.cambios || '', x.repetidaDe || (x.otrosGrupos && x.otrosGrupos.length ? 'también en: ' + x.otrosGrupos.join(', ') : ''),
-              x.fueraDeSemana ? 'sí' : '', x.eventoTexto, x.lugarTexto, x.clave]);
+              x.fueraDeSemana ? 'sí' : '', x.fechaCorregida || '', x.eventoTexto, x.lugarTexto, x.clave]);
   });
   return out;
 }
@@ -615,6 +702,42 @@ function _diaSemanaAgenda_(f) {
   return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][f.getDay()];
 }
 
+/**
+ * Escribe una solapa de la intermedia EN TANDAS, cada una con reintento (06/10: AGENDA_BARRIO_DIRECCION se cortó con
+ * "Service Spreadsheets timed out" escribiéndose de una vez). `clearContents`, nunca `clear`. Una tanda que falla dos
+ * veces corta con error: la solapa queda a medias, pero el log ya tiene los números (se loguea antes de escribir).
+ */
+const AGENDA_FILAS_POR_TANDA = 300;
+function _escribirHojaAgenda_(nombre, matriz) {
+  const intentar = function (que, fn) {
+    for (let intento = 1; ; intento++) {
+      try { return fn(); } catch (err) {
+        Logger.log('[agenda] %s: %s falló (intento %s): %s', nombre, que, intento, err);
+        if (intento >= 3) throw err;
+        Utilities.sleep(4000 * intento);
+        _ssIntermedia_ = null;
+      }
+    }
+  };
+  const sh = intentar('abrir', function () {
+    const ss = ssIntermedia_();
+    const h = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
+    h.clearContents();
+    return h;
+  });
+  const ancho = matriz[0].length;
+  for (let i = 0; i < matriz.length; i += AGENDA_FILAS_POR_TANDA) {
+    const tanda = matriz.slice(i, i + AGENDA_FILAS_POR_TANDA);
+    intentar('tanda ' + (i / AGENDA_FILAS_POR_TANDA + 1), function () {
+      sh.getRange(i + 1, 1, tanda.length, ancho).setValues(tanda);
+      SpreadsheetApp.flush();
+    });
+  }
+  try { sh.setFrozenRows(1); } catch (e) { /* no importa */ }
+  Logger.log('[agenda] %s: %s filas', nombre, matriz.length - 1);
+  return sh;
+}
+
 // ===================== PASO 30 — el cruce contra el destino =====================
 
 /**
@@ -631,8 +754,8 @@ function cruzarAgendaConDestino() {
   const r = agendaDesdeMails_();
   const c = agendaCruce_(dest, r);
   _logCruce_(c, r);
-  escribirHoja_(AGENDA_SOLAPA_CRUCE, c.filasCruce);
-  escribirHoja_(AGENDA_SOLAPA_SIN_MAIL, c.filasSinMail);
+  _escribirHojaAgenda_(AGENDA_SOLAPA_CRUCE, c.filasCruce);
+  _escribirHojaAgenda_(AGENDA_SOLAPA_SIN_MAIL, c.filasSinMail);
   Logger.log('%s ms', Date.now() - t0);
   return c.resumen;
 }
@@ -654,13 +777,13 @@ function agendaCruce_(dest, r) {
   });
   const filasDe = function (fig, fecha) { return porFigFecha.get(normalizeText_(fig) + '|' + ymd_(fecha)) || []; };
   const status = function (f) { return iSt != null ? str(f.valores[iSt]) : ''; };
-  const comunaFila = function (f) { return f.barrio ? comunaDeBarrio_(f.barrio) : null; };
+  const comunaFila = function (f) { return f.barrio ? _comunaBarrioAg_(f.barrio) : null; };
   const ubicaCoincide = function (ev, f) {
     if (!f.barrio) return false;
-    if (ev.barrio) return canonizarBarrio_(ev.barrio) === (canonizarBarrio_(f.barrio) || f.barrio);
+    if (ev.barrio) return _canonBarrioAg_(ev.barrio) === (_canonBarrioAg_(f.barrio) || f.barrio);
     if (ev.comuna != null) {
       if (comunaFila(f) !== ev.comuna) return false;
-      if (ev.comuna === 1 && ev.subzona) { const sz = subzonaDeBarrio_(f.barrio); return !sz || sz === ev.subzona; }
+      if (ev.comuna === 1 && ev.subzona) { const sz = _subzonaBarrioAg_(f.barrio); return !sz || sz === ev.subzona; }
       return true;
     }
     if (ev.eje) return barrioEnEje_(f.barrio, ev.eje);
@@ -903,11 +1026,19 @@ function _repartoAgenda_(lista, fn) {
 // ===================== PASO 31 — barrio desde la dirección =====================
 
 /**
- * Para las filas del destino con Dirección y Barrio cargados: geocodifica la dirección (Maps.newGeocoder, con
- * cache en AGENDA_GEOCODE), ubica el punto en el polígono de su barrio y compara con el Barrio del destino.
- * Compara además el barrio que devuelve Google (neighborhood / sublocality). Escribe AGENDA_BARRIO_DIRECCION y
- * agrega a AGENDA_GEOCODE lo geocodificado en esta corrida. Si se corta por tope o por tiempo, la próxima
- * corrida sigue (la cache no se vuelve a pedir).
+ * Para las filas del destino con Dirección: geocodifica la dirección (Maps.newGeocoder, con cache en AGENDA_GEOCODE),
+ * ubica el punto en el polígono de su barrio y lo compara con el Barrio que cargó el equipo; compara también el
+ * barrio de Google y el método viejo. Y mide la REGLA DE CONFIANZA (06/10, punto 4): el barrio desde la dirección se
+ * escribiría SÓLO si (a) la geocodificación es "ok" (no ok_parcial, aproximada ni borde), (b) el barrio del polígono
+ * cae en la misma comuna que trae el mail, o coincide con el barrio que trae el mail, y (c) la celda está vacía. La
+ * reunión del mail de cada fila sale del cruce del paso 30 (ventana de análisis). (c) no se puede medir sobre las
+ * filas que el equipo ya cargó: ahí se mide si la regla ACIERTA; aparte se cuentan las filas sin barrio a las que
+ * la regla les escribiría uno. Escribe AGENDA_BARRIO_DIRECCION y agrega a la cache lo geocodificado.
+ *
+ * Geocodificación (06/10): no se pide lo que no es una dirección (un link, un nombre de lugar sin altura); un error
+ * de servicio o un "sin resultado" se reintenta una vez sin el rectángulo de la Ciudad y, si sigue fallando y la
+ * fila tiene reunión en el mail, con la pista del mail ("calle número, <barrio o Comuna N>, Ciudad…"). La pista sale
+ * SÓLO del mail, nunca del Barrio del destino (sería darle la respuesta).
  */
 function medirBarrioDesdeDireccion() {
   const t0 = Date.now();
@@ -916,34 +1047,96 @@ function medirBarrioDesdeDireccion() {
   const dest = leerDestino_();
   const iDir = findIdxOr_(dest.hdr, ['direccion', 'dirección'], true);
   if (iDir == null) { Logger.log('>>> el destino no tiene columna Dirección'); return { error: 'sin Dirección' }; }
+  // La reunión del mail de cada fila (el cruce del paso 30).
+  const cruce = agendaCruce_(dest, agendaDesdeMails_());
+  const delMail = new Map();
+  cruce.ev.forEach(function (x) { if (x.cruce.fila) delMail.set(x.cruce.fila.fila, x); });
   const poligonos = _poligonosBarrios_();
   const cache = _leerCacheGeocode_();
   const nuevas = [];
-  const c = { filas: 0, vacia: 0, aConfirmar: 0, sinBarrio: 0, sinAltura: 0, consultas: 0, llamadas: 0, cacheHits: 0,
+  const c = { filas: 0, vacia: 0, aConfirmar: 0, noEsDireccion: 0, noEsDireccionEj: [], sinBarrio: 0, consultas: 0, llamadas: 0,
+              cacheHits: 0, reintentos: 0, reintentosOk: 0, reintentosPista: 0,
               pendientes: 0, cortePor: '', geo: {}, exacto: 0, mismaComuna: 0, otraComuna: 0, google: { exacto: 0, distinto: 0, sinDato: 0 },
-              errores: [], distintos: [], fallas: [],
+              distintos: [], fallas: [], porEstado: {},
+              regla: { universo: 0, sinMail: 0, cumple: 0, exacto: 0, distintos: [], falla: {}, sinBarrio: 0, seEscribirian: 0, ejemplos: [] },
               // el método viejo (Barrios Estimados.js): la heurística de texto sola, y el método completo (texto, y si no, Google)
               viejoTexto: { resp: 0, exacto: 0, mismaComuna: 0, otraComuna: 0, via: {} }, viejoCompleto: { evaluadas: 0, resp: 0, exacto: 0 },
               viejoDistintos: [] };
   const comparar = function (barrio, canonDest) {
-    const b = canonizarBarrio_(barrio) || barrio;
+    const b = _canonBarrioAg_(barrio) || barrio;
     if (normalizeText_(b) === normalizeText_(canonDest)) return 'exacto';
-    const cb = comunaDeBarrio_(b);
-    return cb != null && cb === comunaDeBarrio_(canonDest) ? 'distinto, misma comuna' : 'distinto, otra comuna';
+    const cb = _comunaBarrioAg_(b);
+    return cb != null && cb === _comunaBarrioAg_(canonDest) ? 'distinto, misma comuna' : 'distinto, otra comuna';
+  };
+  const reintentable = function (x) { return x && (x.estado === 'ZERO_RESULTS' || x.estado === 'ERROR') && !/reintento/.test(x.detalle || ''); };
+  const cuota = function (x) { return x.estado === 'ERROR' && /too many|cuota|quota|limit/i.test(x.detalle); };
+  /** La geocodificación de una dirección: de la cache, o pedida (con el reintento). null si se cortó (tope, tiempo, cuota). */
+  const obtener = function (consulta, dir, ev) {
+    let g = cache.get(consulta);
+    if (g && !reintentable(g)) { c.cacheHits++; return g; }
+    if (c.cortePor) return null;
+    if (c.llamadas >= GEOCODE_MAX_POR_CORRIDA) { c.cortePor = 'tope de ' + GEOCODE_MAX_POR_CORRIDA + ' llamadas'; return null; }
+    if (Date.now() - t0 > GEOCODE_CORTE_MS) { c.cortePor = 'tiempo'; return null; }
+    if (!g) {
+      g = _geocodificar_(consulta, true);
+      c.llamadas++;
+      if (cuota(g)) { c.cortePor = 'cuota: ' + g.detalle; return null; }
+    }
+    if (reintentable(g)) {
+      c.reintentos++;
+      let g2 = _geocodificar_(consulta, false), via = 'sin el rectángulo de la Ciudad';
+      c.llamadas++;
+      if (g2.estado !== 'OK' && ev && (ev.barrio || ev.comuna != null)) {
+        const pista = ev.barrio || ('Comuna ' + ev.comuna);
+        g2 = _geocodificar_(_calleNumero_(dir) + ', ' + pista + GEOCODE_SUFIJO, true);
+        c.llamadas++;
+        via = 'con la pista del mail (' + pista + ')';
+        if (g2.estado === 'OK') c.reintentosPista++;
+      }
+      if (cuota(g2)) { c.cortePor = 'cuota: ' + g2.detalle; return null; }
+      g2.detalle = 'reintento ' + via + (g2.detalle ? ': ' + g2.detalle : '') + ' | antes: ' + g.estado + (g.detalle ? ' ' + g.detalle : '');
+      g2.consulta = consulta;
+      if (g2.estado === 'OK') c.reintentosOk++;
+      g = g2;
+    }
+    cache.set(consulta, g);
+    nuevas.push(g);
+    return g;
   };
   const filas = [['fila', 'figura', 'fecha', 'barrio_destino', 'direccion', 'consulta', 'estado_geo', 'tipo_ubicacion', 'lat', 'lng',
                   'barrio_poligono', 'comuna_poligono', 'resultado', 'barrio_google', 'resultado_google', 'direccion_google',
-                  'viejo_texto', 'viejo_texto_via', 'resultado_viejo_texto', 'viejo_completo', 'resultado_viejo_completo']];
+                  'viejo_texto', 'viejo_texto_via', 'resultado_viejo_texto', 'viejo_completo', 'resultado_viejo_completo',
+                  'lugar_del_mail', 'regla_confianza', 'detalle_geo']];
   dest.filas.forEach(function (f) {
     const dir = str(f.valores[iDir]);
     c.filas++;
     if (!dir) { c.vacia++; return; }
     if (/\ba confirmar\b|\bno se comunica\b/.test(normalizeText_(dir))) { c.aConfirmar++; return; }
-    if (!f.barrio) { c.sinBarrio++; return; }
+    if (_noEsDireccion_(dir)) { c.noEsDireccion++; if (c.noEsDireccionEj.length < 10) c.noEsDireccionEj.push(f.fila + ' | ' + dir); return; }
+    const ev = delMail.get(f.fila) || null;
+    const lugarMail = ev ? (ev.lugar || '(sin lugar)') : '';
     const consulta = _consultaGeocode_(dir);
-    if (!/\d/.test(consulta)) c.sinAltura++;
+
+    // Fila SIN barrio: sólo interesa si tiene reunión del mail (¿la regla le escribiría uno?).
+    if (!f.barrio) {
+      c.sinBarrio++;
+      if (!ev) return;
+      c.regla.sinBarrio++;
+      const g0 = obtener(consulta, dir, ev);
+      if (!g0) return;
+      const res0 = _barrioDeGeo_(g0, poligonos), r0 = _reglaBarrio_(res0, ev);
+      if (r0.cumple) {
+        c.regla.seEscribirian++;
+        if (c.regla.ejemplos.length < 15) c.regla.ejemplos.push(f.fila + ' | ' + f.figura + ' | ' + fmtFecha_(f.fecha) + ' | ' + dir + ' → ' + res0.barrio + ' (mail: ' + lugarMail + ')');
+      }
+      filas.push([f.fila, f.figura, fmtFecha_(f.fecha), '', dir, consulta, res0.estado, g0.tipo || '', g0.lat || '', g0.lng || '',
+                  res0.barrio, res0.comuna == null ? '' : res0.comuna, '(sin barrio en el destino)', '', '', g0.formateada || '',
+                  '', '', '', '', '', lugarMail, r0.cumple ? 'se escribiría' : r0.motivo, g0.detalle || '']);
+      return;
+    }
+
     c.consultas++;
-    const canonDest = canonizarBarrio_(f.barrio) || f.barrio;
+    const canonDest = _canonBarrioAg_(f.barrio) || f.barrio;
     // El viejo, primero la heurística de texto: no usa el geocodificador, se mide en todas.
     const vt = _viejoPorTexto_(dir);
     let resVT = '';
@@ -955,28 +1148,35 @@ function medirBarrioDesdeDireccion() {
       v.n++; if (resVT === 'exacto') v.ok++;
       if (resVT !== 'exacto' && c.viejoDistintos.length < 20) c.viejoDistintos.push(f.fila + ' | ' + canonDest + ' ← ' + vt.barrio + ' (' + vt.via + ') | ' + dir);
     }
-    let g = cache.get(consulta);
-    if (g) c.cacheHits++;
-    else if (c.cortePor) { c.pendientes++; return; }
-    else if (c.llamadas >= GEOCODE_MAX_POR_CORRIDA) { c.cortePor = 'tope de ' + GEOCODE_MAX_POR_CORRIDA + ' llamadas'; c.pendientes++; return; }
-    else if (Date.now() - t0 > GEOCODE_CORTE_MS) { c.cortePor = 'tiempo'; c.pendientes++; return; }
-    else {
-      g = _geocodificar_(consulta);
-      c.llamadas++;
-      if (g.estado === 'ERROR' && /too many|cuota|quota|limit/i.test(g.detalle)) { c.cortePor = 'cuota: ' + g.detalle; c.pendientes++; return; }
-      cache.set(consulta, g);
-      nuevas.push(g);
-    }
+    const g = obtener(consulta, dir, ev);
+    if (!g) { c.pendientes++; return; }
     const res = _barrioDeGeo_(g, poligonos);
     c.geo[res.estado] = (c.geo[res.estado] || 0) + 1;
     let resultado = '', resG = '';
     if (res.barrio) {
       if (normalizeText_(res.barrio) === normalizeText_(canonDest)) { resultado = 'exacto'; c.exacto++; }
-      else if (res.comuna != null && res.comuna === comunaDeBarrio_(canonDest)) { resultado = 'distinto, misma comuna'; c.mismaComuna++; }
+      else if (res.comuna != null && res.comuna === _comunaBarrioAg_(canonDest)) { resultado = 'distinto, misma comuna'; c.mismaComuna++; }
       else { resultado = 'distinto, otra comuna'; c.otraComuna++; }
       if (resultado !== 'exacto' && c.distintos.length < 25) c.distintos.push(f.fila + ' | ' + canonDest + ' ← ' + res.barrio + ' | ' + dir + ' | ' + res.estado);
+      const pe = c.porEstado[res.estado] = c.porEstado[res.estado] || { n: 0, exacto: 0 };
+      pe.n++; if (resultado === 'exacto') pe.exacto++;
     } else if (c.fallas.length < 15) c.fallas.push(f.fila + ' | ' + dir + ' | ' + res.estado + (g.detalle ? ' ' + g.detalle : ''));
-    const bg = g.barrioGoogle ? (canonizarBarrio_(g.barrioGoogle) || detectBarrio_(g.barrioGoogle)) : '';
+    // La regla de confianza (punto 4)
+    let reglaTxt = '';
+    if (ev) {
+      c.regla.universo++;
+      const rg = _reglaBarrio_(res, ev);
+      if (rg.cumple) {
+        c.regla.cumple++;
+        reglaTxt = 'cumple (' + rg.por + ')';
+        if (resultado === 'exacto') c.regla.exacto++;
+        else c.regla.distintos.push(f.fila + ' | ' + canonDest + ' ← ' + res.barrio + ' | ' + dir + ' | mail: ' + lugarMail + ' | ' + resultado);
+      } else {
+        reglaTxt = rg.motivo;
+        c.regla.falla[rg.motivo] = (c.regla.falla[rg.motivo] || 0) + 1;
+      }
+    } else c.regla.sinMail++;
+    const bg = g.barrioGoogle ? (_canonBarrioAg_(g.barrioGoogle) || _detectBarrioAg_(g.barrioGoogle)) : '';
     if (!bg) { c.google.sinDato++; resG = g.barrioGoogle ? 'no reconocido: ' + g.barrioGoogle : 'sin dato'; }
     else if (normalizeText_(bg) === normalizeText_(canonDest)) { c.google.exacto++; resG = 'exacto'; }
     else { c.google.distinto++; resG = 'distinto'; }
@@ -987,24 +1187,41 @@ function medirBarrioDesdeDireccion() {
     if (vc) { c.viejoCompleto.resp++; if (resVC === 'exacto') c.viejoCompleto.exacto++; }
     filas.push([f.fila, f.figura, fmtFecha_(f.fecha), canonDest, dir, consulta, res.estado, g.tipo || '', g.lat || '', g.lng || '',
                 res.barrio, res.comuna == null ? '' : res.comuna, resultado, bg || g.barrioGoogle || '', resG, g.formateada || '',
-                vt ? vt.barrio : '', vt ? vt.via : '', resVT, vc, resVC]);
+                vt ? vt.barrio : '', vt ? vt.via : '', resVT, vc, resVC, lugarMail, reglaTxt, g.detalle || '']);
   });
   _agregarCacheGeocode_(nuevas);
-  escribirHoja_(AGENDA_SOLAPA_BARRIO, filas);
 
+  // El log, ANTES de escribir la solapa (si la escritura se cae, los números ya están).
   const ubicadas = c.exacto + c.mismaComuna + c.otraComuna;
   const evaluadas = c.consultas - c.pendientes;
-  Logger.log('  filas del destino: %s | sin Dirección %s | "A CONFIRMAR" %s | con dirección y sin Barrio (no se comparan) %s',
-             c.filas, c.vacia, c.aConfirmar, c.sinBarrio);
-  Logger.log('  con dirección y barrio: %s (sin altura, sólo nombre o calle: %s) | evaluadas en esta corrida %s | PENDIENTES %s%s',
-             c.consultas, c.sinAltura, evaluadas, c.pendientes, c.cortePor ? '  <<< cortó por ' + c.cortePor + ': volver a correr, sigue de la cache' : '');
-  Logger.log('  CUOTA: llamadas al geocodificador en esta corrida %s (cache: %s aciertos). El límite diario del servicio Maps de ' +
-             'Apps Script depende del tipo de cuenta; si se agota, el log lo dice y la corrida siguiente sigue.', c.llamadas, c.cacheHits);
+  Logger.log('  filas del destino: %s | sin Dirección %s | "A CONFIRMAR" %s | NO son una dirección (link o sin altura; no se geocodifican) %s | ' +
+             'sin Barrio %s', c.filas, c.vacia, c.aConfirmar, c.noEsDireccion, c.sinBarrio);
+  c.noEsDireccionEj.forEach(function (s) { Logger.log('    no es dirección: %s', s); });
+  Logger.log('  con dirección y barrio: %s | evaluadas en esta corrida %s | PENDIENTES %s%s',
+             c.consultas, evaluadas, c.pendientes, c.cortePor ? '  <<< cortó por ' + c.cortePor + ': volver a correr, sigue de la cache' : '');
+  Logger.log('  CUOTA: llamadas al geocodificador en esta corrida %s (cache: %s aciertos) | reintentos %s → ok %s (con la pista del mail %s). ' +
+             'El límite diario depende del tipo de cuenta; si se agota, el log lo dice y la corrida siguiente sigue.',
+             c.llamadas, c.cacheHits, c.reintentos, c.reintentosOk, c.reintentosPista);
   Logger.log('  geocodificación: %s', Object.keys(c.geo).map(function (k) { return k + ' ' + c.geo[k]; }).join(' · '));
   Logger.log('  POLÍGONO contra Barrio del destino (sobre %s ubicadas): exacto %s (%s%%) | distinto, misma comuna %s | distinto, otra comuna %s',
              ubicadas, c.exacto, _pctAgenda_(c.exacto, ubicadas), c.mismaComuna, c.otraComuna);
   Logger.log('    sobre todas las evaluadas (%s, incluye las que no se pudieron ubicar): exacto %s%% | fallas de geocodificación %s%%',
              evaluadas, _pctAgenda_(c.exacto, evaluadas), _pctAgenda_(evaluadas - ubicadas, evaluadas));
+  Logger.log('    %% exacto POR ESTADO de la geocodificación: %s', ['ok', 'ok_parcial', 'aproximada', 'borde'].map(function (k) {
+    const pe = c.porEstado[k] || { n: 0, exacto: 0 };
+    return k + ' ' + pe.exacto + '/' + pe.n + ' (' + _pctAgenda_(pe.exacto, pe.n) + '%)';
+  }).join(' · '));
+  Logger.log('--- 4. REGLA DE CONFIANZA: (a) geocodificación "ok" + (b) misma comuna que el mail o el mismo barrio + (c) celda vacía ---');
+  Logger.log('  filas con barrio del equipo y reunión del mail (ventana): %s | sin reunión del mail (fuera de la ventana o sin cruce): %s',
+             c.regla.universo, c.regla.sinMail);
+  Logger.log('  CUMPLEN (a) y (b): %s (%s%% de las que tienen reunión) → EXACTO %s (%s%%)   [predicción: ~99%%]',
+             c.regla.cumple, _pctAgenda_(c.regla.cumple, c.regla.universo), c.regla.exacto, _pctAgenda_(c.regla.exacto, c.regla.cumple));
+  c.regla.distintos.forEach(function (s) { Logger.log('    cumple y NO coincide: %s', s); });
+  Logger.log('  no cumplen (quedarían vacías para el equipo): %s',
+             Object.keys(c.regla.falla).sort(function (a, b) { return c.regla.falla[b] - c.regla.falla[a]; })
+               .map(function (k) { return k + ' ' + c.regla.falla[k]; }).join(' · ') || '—');
+  Logger.log('  filas SIN barrio, con dirección y reunión del mail: %s → la regla les escribiría uno a %s', c.regla.sinBarrio, c.regla.seEscribirian);
+  c.regla.ejemplos.forEach(function (s) { Logger.log('    se escribiría: %s', s); });
   Logger.log('  GOOGLE (neighborhood / sublocality) contra el destino: exacto %s | distinto %s | sin dato o no reconocido %s',
              c.google.exacto, c.google.distinto, c.google.sinDato);
   c.distintos.forEach(function (s) { Logger.log('    distinto: %s', s); });
@@ -1021,24 +1238,59 @@ function medirBarrioDesdeDireccion() {
              _pctAgenda_(c.viejoCompleto.exacto, c.viejoCompleto.evaluadas), c.exacto, _pctAgenda_(c.exacto, evaluadas));
   Logger.log('    (la parte Google del viejo se aplica sobre la misma respuesta del nuevo; su consulta original era la dirección ' +
              'completa + ", CABA, Argentina", sin región)');
+  _escribirHojaAgenda_(AGENDA_SOLAPA_BARRIO, filas);
   Logger.log('%s ms', Date.now() - t0);
-  return { evaluadas: evaluadas, exacto: c.exacto, ubicadas: ubicadas, pendientes: c.pendientes, llamadas: c.llamadas };
+  return { evaluadas: evaluadas, exacto: c.exacto, ubicadas: ubicadas, pendientes: c.pendientes, llamadas: c.llamadas,
+           regla: { universo: c.regla.universo, cumple: c.regla.cumple, exacto: c.regla.exacto, seEscribirian: c.regla.seEscribirian } };
+}
+
+/**
+ * La regla de confianza del barrio desde la dirección (punto 4): (a) geocodificación "ok" y (b) el barrio del
+ * polígono en la misma comuna que trae el mail, o el mismo barrio que trae el mail. (c), la celda vacía, se mira
+ * al escribir. Devuelve `{ cumple, por }` o `{ cumple: false, motivo }`.
+ */
+function _reglaBarrio_(res, ev) {
+  if (!ev) return { cumple: false, motivo: 'sin reunión del mail' };
+  if (res.estado !== 'ok') return { cumple: false, motivo: '(a) geocodificación ' + res.estado };
+  const mismoBarrio = !!ev.barrio && normalizeText_(_canonBarrioAg_(ev.barrio) || ev.barrio) === normalizeText_(res.barrio);
+  if (mismoBarrio) return { cumple: true, por: 'mismo barrio que el mail' };
+  if (ev.comuna != null) {
+    return res.comuna === ev.comuna ? { cumple: true, por: 'misma comuna que el mail' }
+                                     : { cumple: false, motivo: '(b) otra comuna que la del mail' };
+  }
+  if (ev.barrio) return { cumple: false, motivo: '(b) otro barrio que el del mail' };
+  return { cumple: false, motivo: '(b) el mail no trae comuna ni barrio' + (ev.eje ? ' (trae eje)' : '') };
+}
+
+/** ¿No es una dirección? Un link, o un texto sin ningún número en "calle número" (sólo el nombre del lugar). */
+function _noEsDireccion_(dir) {
+  const t = str(dir);
+  if (/https?:\/\/|www\.|goo\.gl|maps\.app/i.test(t)) return true;
+  return !/\d/.test(_calleNumero_(t));
+}
+
+/** "calle número": lo anterior a la primera coma si tiene un número; si no, el texto entero. */
+function _calleNumero_(dir) {
+  const partes = str(dir).split(',');
+  return (/\d/.test(partes[0]) ? partes[0].trim() : str(dir)).replace(/\s+/g, ' ');
 }
 
 /** La consulta al geocodificador: "calle número" (lo anterior a la primera coma si tiene un número) + el sufijo. */
 function _consultaGeocode_(dir) {
-  const partes = str(dir).split(',');
-  const base = /\d/.test(partes[0]) ? partes[0].trim() : str(dir);
-  return base.replace(/\s+/g, ' ') + GEOCODE_SUFIJO;
+  return _calleNumero_(dir) + GEOCODE_SUFIJO;
 }
 
-/** Una llamada a Maps.newGeocoder(). Nunca tira: los errores vuelven como estado 'ERROR'. */
-function _geocodificar_(consulta) {
+/**
+ * Una llamada a Maps.newGeocoder(), región "ar" y en castellano; con `conLimites` (lo normal), sesgada al rectángulo
+ * de la Ciudad. Nunca tira: los errores vuelven como estado 'ERROR'.
+ */
+function _geocodificar_(consulta, conLimites) {
   const g = { consulta: consulta, estado: '', lat: '', lng: '', tipo: '', parcial: false, barrioGoogle: '', formateada: '', detalle: '',
               fecha: Utilities.formatDate(new Date(), RDV_TZ, 'yyyy-MM-dd HH:mm') };
   try {
-    const resp = Maps.newGeocoder().setRegion('ar').setLanguage('es')
-      .setBounds(-34.71, -58.54, -34.52, -58.33).geocode(consulta);
+    let geo = Maps.newGeocoder().setRegion('ar').setLanguage('es');
+    if (conLimites !== false) geo = geo.setBounds(-34.71, -58.54, -34.52, -58.33);
+    const resp = geo.geocode(consulta);
     g.estado = resp.status || '';
     const res = resp.results && resp.results[0];
     if (res) {
@@ -1080,7 +1332,7 @@ function _barrioDeGeo_(g, poligonos) {
 function _poligonosBarrios_() {
   const noReconocidos = [];
   const out = BARRIOS_CABA_GEO.map(function (b) {
-    const canon = canonizarBarrio_(b.nombre) || detectBarrio_(b.nombre);
+    const canon = _canonBarrioAg_(b.nombre) || _detectBarrioAg_(b.nombre);
     if (!canon) noReconocidos.push(b.nombre);
     let minX = 999, minY = 999, maxX = -999, maxY = -999;
     b.anillos.forEach(function (a) {
@@ -1266,15 +1518,15 @@ function seguridadContraConjunto() {
   }
   const comunaDe = function (texto) {
     if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(texto)) return detectComuna_(texto);
-    return comunaDeBarrio_(texto);
+    return _comunaBarrioAg_(texto);
   };
   const coincide = function (ev, ubic) {
     if (!ubic) return false;
     if (ev.barrio) {
-      const b = canonizarBarrio_(ubic);
+      const b = _canonBarrioAg_(ubic);
       if (b) return normalizeText_(b) === normalizeText_(ev.barrio);
     }
-    const c = ev.comuna != null ? ev.comuna : (ev.barrio ? comunaDeBarrio_(ev.barrio) : null);
+    const c = ev.comuna != null ? ev.comuna : (ev.barrio ? _comunaBarrioAg_(ev.barrio) : null);
     return c != null && comunaDe(ubic) === c;
   };
   const destPorFecha = new Map();
@@ -1302,8 +1554,8 @@ function seguridadContraConjunto() {
     // El destino ese día y en ese lugar
     const fd = (destPorFecha.get(ymd_(ev.fecha)) || []).filter(function (f) {
       if (!f.barrio) return false;
-      if (ev.barrio) return normalizeText_(canonizarBarrio_(f.barrio) || f.barrio) === normalizeText_(ev.barrio);
-      return ev.comuna != null && comunaDeBarrio_(f.barrio) === ev.comuna;
+      if (ev.barrio) return normalizeText_(_canonBarrioAg_(f.barrio) || f.barrio) === normalizeText_(ev.barrio);
+      return ev.comuna != null && _comunaBarrioAg_(f.barrio) === ev.comuna;
     });
     let comp = '';
     if (!fd.length) { comp = 'sin fila en el destino'; c.sinDestino++; }
@@ -1313,7 +1565,7 @@ function seguridadContraConjunto() {
                 fd.map(function (f) { return f.figura; }).join(' / '), fd.map(function (f) { return f.fila; }).join(' / '), comp, ev.eventoTexto]);
   });
   if (filas.length === 1) filas.push(['(ninguna)', '', '', '', '', '', '', '', '', '', '', '', '']);
-  escribirHoja_(AGENDA_SOLAPA_SEGURIDAD, filas);
+  _escribirHojaAgenda_(AGENDA_SOLAPA_SEGURIDAD, filas);
   Logger.log('  reuniones del mail sin figura: %s (en la ventana: %s) — por tipo: %s', c.total, c.ventana,
              _repartoAgenda_(sinFig, function (x) { return x.tipo || '(sin tipo)'; }));
   Logger.log('  contra RDV CONJUNTO por fecha + barrio/comuna: RESUELVE 1 %s | ambiguas o figura no reconocida %s | sin fila %s | ' +

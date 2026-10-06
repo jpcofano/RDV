@@ -20,6 +20,8 @@
  *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
  *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
  *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
+ *  >>> 06/10 tarde: AGENDA, ETAPA 1 — SEGUNDA CORRIDA, con los ajustes (fecha fuera de semana, asuntos, tipos,
+ *      regla de confianza del barrio; ESTADO 0.x, predicción escrita): paso29 → paso30 → paso31 (mide la regla).
  *  >>> 06/10: AGENDA, ETAPA 1 — MEDIR (ESTADO 0.x; todo sólo lectura sobre el destino; predicciones en ESTADO):
  *      rehacer_diagMuestrasMail() si DIAG_MAILS tiene más de una semana → paso29_parsearAgendaMails() →
  *      paso30_cruzarAgendaConDestino() → paso31_barrioDesdeDireccion() (repetir hasta 0 pendientes) →
@@ -502,7 +504,7 @@ function paso30_cruzarAgendaConDestino() {
 function paso31_barrioDesdeDireccion() {
   _anunciar_('paso 31 — barrio desde la dirección', 'medirBarrioDesdeDireccion()  [diagnostico/16_agenda_medicion.js]',
              'NO toca el destino; escribe AGENDA_BARRIO_DIRECCION y agrega a la cache AGENDA_GEOCODE (intermedia). Usa Maps (cuota)',
-             'el log: % exacto, fallas de geocodificación, A CONFIRMAR / vacías, llamadas usadas. Si dice PENDIENTES, volver a correr');
+             'el log: % exacto (y por estado), la REGLA DE CONFIANZA (cumplen / exacto / se escribirían), el viejo, llamadas. Si dice PENDIENTES, volver a correr');
   return medirBarrioDesdeDireccion();
 }
 

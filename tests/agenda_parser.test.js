@@ -195,5 +195,51 @@ const vg = vm.runInContext(`_viejoPorGeo_({ estado: 'OK', formateada: 'x', compo
   ['Palermo', ['neighborhood', 'political']], ['Comuna 14', ['sublocality', 'political']]]) })`, ctx);
 ok(vg === 'Palermo', 'Google: el primer componente neighborhood que es barrio → Palermo');
 
-console.log(fallas ?'\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
+console.log('[7] ajustes del 06/10: fecha fuera de la semana, asuntos con otra forma, tipos, [image:, Montserrat');
+vm.runInContext(`_cacheParsing_.barrios.push({ canon: 'Monserrat', norm: 'monserrat', comuna: 1, zona: '', ejeRaw: '' });
+  _cacheParsing_.barrios.sort(function (a, b) { return b.norm.length - a.norm.length; });`, ctx);
+ctx.__mails2 = [
+  { fecha: new Date(2026, 6, 10, 9, 0), asunto: 'Agenda Encuentros de vecinos con JM - Semana del 13/07 al 18/07', truncado: false,
+    cuerpo: ['*Lunes 13/06*', 'Evento: Encuentro "1 a 1" Jorge Macri, Flores', 'Hora: 11:00h', 'Lugar: Rivadavia 7000',
+             '*Miércoles 15/07*', 'Evento: Encuentro con Vecino Clara Muzzio, Montserrat', '[image: logo.png]', 'Hora: 18:00h',
+             'Lugar: Chile 1769, Casa', 'Evento: Café con Vecinos Laura Alonso, Comuna 7', 'Hora: 10:00h', 'Lugar: Plaza Flores'].join('\n') },
+  { fecha: new Date(2026, 0, 30, 9, 0), asunto: 'Agenda Encuentros de vecinos con JM - Semana del 02/002 al 07/02', truncado: false,
+    cuerpo: ['*Martes 03/02*', 'Evento: Encuentro con Vecinos Jorge Macri, Palermo', 'Hora: 10:00h', 'Lugar: Serrano 1500'].join('\n') },
+  { fecha: new Date(2025, 11, 12, 9, 0), asunto: 'Agenda Encuentros de vecinos con CM y Ministros Semana 15.12.2025', truncado: false,
+    cuerpo: ['*Martes 16/12*', 'Evento: Encuentro con Vecinos Ezequiel Sabor, Comuna 5', 'Hora: 18:00h', 'Lugar: Bulnes 1000'].join('\n') },
+  { fecha: new Date(2026, 3, 18, 9, 0), asunto: 'Fwd: agenda', truncado: false,
+    cuerpo: ['---------- Forwarded message ---------', 'Asunto: Agenda Encuentros de vecinos con JM - Semana del 20/04 al 25/04', '',
+             '*Martes 21/04*', 'Evento: Encuentro con Vecinos Jorge Macri, Belgrano', 'Hora: 11:00h', 'Lugar: Cabildo 2000'].join('\n') }
+];
+const r2 = vm.runInContext('agendaDesdeListaDeMails_(__mails2, { fuente: "test" })', ctx);
+ok(r2.sinSemana.length === 0 && r2.semanas.length === 4, 'los cuatro mails entran (semanas: ' + r2.semanas.length + ', afuera: ' + r2.sinSemana.length + ')');
+const corr = buscar(r2.unicas, function (x) { return x.figuraFila === 'Jorge Macri' && x.barrio === 'Flores'; });
+ok(corr && corr.fecha.getDate() === 13 && corr.fecha.getMonth() === 6 && /13\/07\/2026/.test(corr.fechaCorregida),
+   '"Lunes 13/06" en la semana del 13/07 → 13/07/2026: ' + (corr && corr.fechaCorregida));
+ok(r2.fueraDeSemana.length === 0 && r2.fechasCorregidas.length === 1, 'una corregida, ninguna fuera de semana sin corregir');
+const feb = buscar(r2.unicas, function (x) { return x.barrio === 'Palermo'; });
+ok(feb && feb.desde.getMonth() === 1 && feb.desde.getDate() === 2 && feb.hasta.getDate() === 7, '"02/002 al 07/02" → 02/02 a 07/02');
+const dic = buscar(r2.unicas, function (x) { return x.figuraFila === 'Ezequiel Sabor'; });
+ok(dic && dic.desde.getFullYear() === 2025 && dic.hasta.getDate() === 21 && dic.grupo === 'CM y Ministros',
+   '"Semana 15.12.2025" → 15 al 21/12/2025, grupo CM y Ministros (grupo: ' + (dic && dic.grupo) + ')');
+const fwd = buscar(r2.unicas, function (x) { return x.barrio === 'Belgrano'; });
+ok(fwd && fwd.grupo === 'JM' && fwd.fecha.getDate() === 21, 'reenvío sin semana en el asunto: la toma del "Asunto:" del cuerpo');
+const sing = buscar(r2.unicas, function (x) { return x.figuraFila === 'Clara Muzzio'; });
+ok(sing && sing.tipo === 'Encuentro con Vecinos' && sing.barrio === 'Monserrat', '"Encuentro con Vecino" (singular) y "Montserrat" → Monserrat');
+ok(sing && sing.hora === '18:00' && !/image/.test(sing.eventoTexto), 'la línea "[image:" no se pega al evento ni corta la reunión');
+const cafe = buscar(r2.unicas, function (x) { return x.figuraFila === 'Laura Alonso'; });
+ok(cafe && cafe.tipo === 'Café con Vecinos' && cafe.comuna === 7, '"Café con Vecinos", Comuna 7');
+
+console.log('[8] la regla de confianza del barrio y qué no es una dirección');
+const regla = function (res, ev) { ctx.__a = res; ctx.__b = ev; return vm.runInContext('_reglaBarrio_(__a, __b)', ctx); };
+ok(regla({ estado: 'ok', barrio: 'Almagro', comuna: 5 }, { comuna: 5, barrio: '' }).cumple, 'ok + misma comuna que el mail → cumple');
+ok(!regla({ estado: 'ok_parcial', barrio: 'Almagro', comuna: 5 }, { comuna: 5 }).cumple, 'ok_parcial → no cumple (a)');
+ok(/otra comuna/.test(regla({ estado: 'ok', barrio: 'Flores', comuna: 7 }, { comuna: 5 }).motivo), 'otra comuna que la del mail → no cumple (b)');
+ok(regla({ estado: 'ok', barrio: 'Belgrano', comuna: 13 }, { comuna: null, barrio: 'Belgrano' }).cumple, 'mismo barrio que el mail → cumple');
+ok(/no trae/.test(regla({ estado: 'ok', barrio: 'Flores', comuna: 7 }, { comuna: null, barrio: '', eje: 'Sur' }).motivo), 'el mail sólo trae eje → no cumple');
+const noDir = function (d) { return vm.runInContext('_noEsDireccion_(' + JSON.stringify(d) + ')', ctx); };
+ok(noDir('https://maps.app.goo.gl/abc123') && noDir('Plaza Sin Número') && !noDir('Armenia 1322') && !noDir('Chile 1769, Casa'),
+   'links y nombres sin altura no son direcciones; "Armenia 1322" sí');
+
+console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
