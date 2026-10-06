@@ -460,3 +460,12 @@ Lo que sí hay que hacer antes de darlo de baja definitivo: **averiguar quién m
 `Ajuste Formularios RDV`.** Si hay gente que usa esa hoja para corregir datos, el barrio
 prellenado les ahorraba trabajo y hay que reemplazarlo por otra cosa. Eso no se contesta leyendo
 código.
+
+### El código de "CODIGOS Ajuste RDV" (leído el 06/10)
+
+Es una **versión hermana** del flujo Agenda de este repo, en otro proyecto de Apps Script (bajado a
+`_externo/codigos-ajuste-rdv/`, fuera de git y de clasp). Agrega una columna `Barrio Estimado` en `Agenda`, que sale
+de la dirección por una heurística de texto (nombres de barrio y "calles emblemáticas") y, si no, del geocodificador
+de Google, con un tope de 20 por corrida. **El push nunca la lee.** Detalle, y qué sirve y qué no: docs/ESTADO.md, 0.x
+(punto 0). El paso 31 lo mide contra el barrio cargado por el equipo, al lado del método nuevo (punto en polígono).
+

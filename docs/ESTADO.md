@@ -306,15 +306,43 @@ fila, a nombre de la primera figura nombrada; (4) "Seguridad en tu Barrio" viene
 por fecha + barrio; (5) el barrio sale de la dirección; (6) una reunión que desaparece se avisa, no se borra; (7)
 hora y dirección se actualizan mientras la fila está "en agenda".
 
-**Punto 0 — el código viejo del barrio: BLOQUEADO.** `clasp clone 1Q3g6srk…` da *"The caller does not have
-permission"*: clasp está logueado como `jpcofanogcba1@gmail.com` y el proyecto (atado a "CODIGOS Ajuste RDV") es
-de `jpcofano2@gmail.com`. Lo que sí se ve de la planilla (por Drive): las solapas `Ajuste Formularios RDV` (ID,
-Nombre, Persona, Barrio, Fecha), `Agenda` y `Agenda ya incorporada` (las columnas `(auto)`/`(manual)` del flujo
-Agenda del legado), `Ajustes Aplicados`, y copias del destino (`Hoja 7`, `Copia de Hoja 7`). En `Agenda ya
-incorporada`, `Barrio (auto)` dice `Comuna 10`, `Montserrat`: o sea que ese código **copiaba el lugar del evento,
-no lo sacaba de la dirección**. Hipótesis, sin leer el código. **Para destrabarlo**: compartir la planilla como
-editor con `jpcofanogcba1@gmail.com` (o `clasp login` con la otra cuenta) y volver a pedirlo; `_externo/` ya está
-en `.claspignore`. El paso 31 compara sólo el geocodificador mientras tanto.
+**Punto 0 — el código viejo del barrio: leído (06/10).** El usuario compartió "CODIGOS Ajuste RDV"; bajado con
+`clasp clone` a `_externo/codigos-ajuste-rdv/` (en `.claspignore` y `.gitignore`: es otro proyecto y no tiene que
+entrar a nuestro scope global ni al repo público). **No se tocó ese proyecto.** Seis archivos:
+
+| archivo | qué hace |
+|---|---|
+| `Mail a agenda.js` | copia del parser del legado (`Agenda traer datos del mail.js`), mirando 10 días; **descarta igual "NO PARTICIPA"**; al final llama a `agenda_estimarBarrio_()` |
+| `Barrios Estimados.js` | **el estimador de barrio** (abajo) |
+| `A base.js` | el push de `Agenda` a `Para Revisar` por persona + fecha. En un UPDATE **pisa Figura, Fecha, Hora, Dirección e ID, y pone Barrio en vacío si no hay uno válido** (lo que el invariante prohíbe). Pinta de amarillo `Barrio (manual)` en `Agenda` cuando falta |
+| `Hepers.js` | helpers **repetidos dentro del mismo archivo** (`normalizeHeader_` ×4, `findIdxOr_` ×3, `toDate_` ×2, `mapBarrioCanon_` ×2): el patrón de 3.1.c |
+| `NOse usa desde aca Ajuste Formularios RDV.js` | export/import de faltantes de B2 ↔ "Ajuste Formularios RDV". Lo reemplazaron las fichas y `EMPAREJAR_MANUAL` |
+
+**Cómo saca el barrio de la dirección** (`agenda_estimarBarrio_`, columna `Barrio Estimado` de `Agenda`; sólo si no hay
+un barrio válido en auto ni en manual):
+
+1. **heurística de texto, primero**: un "villa X" en la dirección; el nombre de un barrio en el texto (incluye formas
+   cortas que también son calles: "Belgrano", "Chacabuco", "Avellaneda", "Boca", "Patricios"); y cinco reglas de
+   **"calles emblemáticas"**: Cabildo / Juramento / Congreso / Libertador → Belgrano, Defensa / Balcarce / Paseo Colón →
+   San Telmo, Azcuénaga / Santa Fe / Callao / Las Heras → Recoleta, Corrientes / Pueyrredón / Medrano → Almagro (la de
+   San Nicolás nunca se alcanza: Corrientes ya cayó en Almagro);
+2. si eso no da nada, **`Maps.newGeocoder()`** con "&lt;dirección&gt;, CABA, Argentina" (sin región): el primer
+   componente `neighborhood` / `sublocality` / `political` que sea un barrio, después cualquiera, después la heurística
+   sobre la dirección formateada. **Tope: 20 geocodificaciones por corrida**, cache sólo en memoria, errores en silencio.
+
+No hay tabla de calles ni polígonos. **Lo que quedó a medio hacer: `Barrio Estimado` se calcula, pero el push no lo lee**
+—usa `Barrio (manual)` y, si no, `Barrio (auto)`, que es el lugar del evento ("Comuna 10", "Montserrat"); como desde
+11/2025 casi siempre es "Comuna N", que no es un barrio válido, el barrio sale vacío—. Y los dos canonizadores del
+mismo proyecto no coinciden: `canonBarrio_` da "Villa General Mitre" y `mapBarrioCanon_` "Villa Gral. Mitre" (3.1.h,
+otra vez). La hipótesis anterior ("copiaba el lugar del evento") era cierta para `Barrio (auto)`; la estimación por
+dirección existía aparte y no se usaba.
+
+**Qué sirve**: la idea de geocodificar (el paso 31 la mide con polígonos oficiales en vez de confiar en el componente
+de Google); los alias de tipeo de `mapBarrioCanon_` ("Savedra", "Balbanera", "Palemo", "Monserratt", "Barrio Norte" →
+Recoleta) como **candidatos** a `BARRIOS_VARIANTES`, sin medir. **Qué no**: las "calles emblemáticas" (Santa Fe,
+Corrientes y Libertador cruzan cinco o seis barrios cada una) y los nombres de barrio que también son calles (Av.
+Belgrano está en Monserrat y Balvanera). **El paso 31 mide el método viejo portado tal cual** (`_viejoPorTexto_`,
+`_viejoPorGeo_`): la heurística sola por vía (villa / nombre / calle) y el método completo, contra el nuevo.
 
 **Lo hecho:**
 
@@ -374,7 +402,8 @@ en `.claspignore`. El paso 31 compara sólo el geocodificador mientras tanto.
    geocodifica bien ≥ 90% de las direcciones con altura; **exacto ≥ 85%** de las ubicadas; los errores, en su
    mayoría "distinto, misma comuna" (direcciones sobre un límite, o el barrio cargado por el equipo con otro
    criterio); "A CONFIRMAR" y vacías, una parte grande del total. Si el exacto da < 80%, **el barrio desde la
-   dirección no se escribe solo**.
+   dirección no se escribe solo**. **El viejo** (predicción): la heurística responde en una parte chica
+   de las direcciones; por la vía "calle", acierto bajo (< 50%); el método completo, por debajo del polígono.
 4. **`paso32_seguridadContraConjunto()`**. **Predicción**: las ~20 de 09/2026; la mayoría **resuelve 1** y coincide
    con la figura del destino; las que no, por RDV CONJUNTO todavía sin cargar (las más recientes).
 

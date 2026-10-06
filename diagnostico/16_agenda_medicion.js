@@ -248,7 +248,7 @@ function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
 
 /** Saca viñetas, asteriscos y guiones bajos de negrita/itálica, y espacios raros. */
 function _limpiarLineaAgenda_(s) {
-  return String(s || '').replace(/[ ​﻿]/g, ' ').replace(/[*_]/g, '')
+  return String(s || '').replace(/[\u00A0\u200B\uFEFF]/g, ' ').replace(/[*_]/g, '')
     .replace(/^\s*(?:[-•·>]\s*)+/, '').replace(/\s+/g, ' ').trim();
 }
 
@@ -921,9 +921,19 @@ function medirBarrioDesdeDireccion() {
   const nuevas = [];
   const c = { filas: 0, vacia: 0, aConfirmar: 0, sinBarrio: 0, sinAltura: 0, consultas: 0, llamadas: 0, cacheHits: 0,
               pendientes: 0, cortePor: '', geo: {}, exacto: 0, mismaComuna: 0, otraComuna: 0, google: { exacto: 0, distinto: 0, sinDato: 0 },
-              errores: [], distintos: [], fallas: [] };
+              errores: [], distintos: [], fallas: [],
+              // el método viejo (Barrios Estimados.js): la heurística de texto sola, y el método completo (texto, y si no, Google)
+              viejoTexto: { resp: 0, exacto: 0, mismaComuna: 0, otraComuna: 0, via: {} }, viejoCompleto: { evaluadas: 0, resp: 0, exacto: 0 },
+              viejoDistintos: [] };
+  const comparar = function (barrio, canonDest) {
+    const b = canonizarBarrio_(barrio) || barrio;
+    if (normalizeText_(b) === normalizeText_(canonDest)) return 'exacto';
+    const cb = comunaDeBarrio_(b);
+    return cb != null && cb === comunaDeBarrio_(canonDest) ? 'distinto, misma comuna' : 'distinto, otra comuna';
+  };
   const filas = [['fila', 'figura', 'fecha', 'barrio_destino', 'direccion', 'consulta', 'estado_geo', 'tipo_ubicacion', 'lat', 'lng',
-                  'barrio_poligono', 'comuna_poligono', 'resultado', 'barrio_google', 'resultado_google', 'direccion_google']];
+                  'barrio_poligono', 'comuna_poligono', 'resultado', 'barrio_google', 'resultado_google', 'direccion_google',
+                  'viejo_texto', 'viejo_texto_via', 'resultado_viejo_texto', 'viejo_completo', 'resultado_viejo_completo']];
   dest.filas.forEach(function (f) {
     const dir = str(f.valores[iDir]);
     c.filas++;
@@ -933,6 +943,18 @@ function medirBarrioDesdeDireccion() {
     const consulta = _consultaGeocode_(dir);
     if (!/\d/.test(consulta)) c.sinAltura++;
     c.consultas++;
+    const canonDest = canonizarBarrio_(f.barrio) || f.barrio;
+    // El viejo, primero la heurística de texto: no usa el geocodificador, se mide en todas.
+    const vt = _viejoPorTexto_(dir);
+    let resVT = '';
+    if (vt) {
+      resVT = comparar(vt.barrio, canonDest);
+      c.viejoTexto.resp++;
+      if (resVT === 'exacto') c.viejoTexto.exacto++; else if (resVT === 'distinto, misma comuna') c.viejoTexto.mismaComuna++; else c.viejoTexto.otraComuna++;
+      const v = c.viejoTexto.via[vt.via] = c.viejoTexto.via[vt.via] || { n: 0, ok: 0 };
+      v.n++; if (resVT === 'exacto') v.ok++;
+      if (resVT !== 'exacto' && c.viejoDistintos.length < 20) c.viejoDistintos.push(f.fila + ' | ' + canonDest + ' ← ' + vt.barrio + ' (' + vt.via + ') | ' + dir);
+    }
     let g = cache.get(consulta);
     if (g) c.cacheHits++;
     else if (c.cortePor) { c.pendientes++; return; }
@@ -947,7 +969,6 @@ function medirBarrioDesdeDireccion() {
     }
     const res = _barrioDeGeo_(g, poligonos);
     c.geo[res.estado] = (c.geo[res.estado] || 0) + 1;
-    const canonDest = canonizarBarrio_(f.barrio) || f.barrio;
     let resultado = '', resG = '';
     if (res.barrio) {
       if (normalizeText_(res.barrio) === normalizeText_(canonDest)) { resultado = 'exacto'; c.exacto++; }
@@ -959,8 +980,14 @@ function medirBarrioDesdeDireccion() {
     if (!bg) { c.google.sinDato++; resG = g.barrioGoogle ? 'no reconocido: ' + g.barrioGoogle : 'sin dato'; }
     else if (normalizeText_(bg) === normalizeText_(canonDest)) { c.google.exacto++; resG = 'exacto'; }
     else { c.google.distinto++; resG = 'distinto'; }
+    // El viejo completo: la heurística si dio algo; si no, lo que saca de la respuesta de Google.
+    const vc = vt ? vt.barrio : _viejoPorGeo_(g);
+    const resVC = vc ? comparar(vc, canonDest) : '';
+    c.viejoCompleto.evaluadas++;
+    if (vc) { c.viejoCompleto.resp++; if (resVC === 'exacto') c.viejoCompleto.exacto++; }
     filas.push([f.fila, f.figura, fmtFecha_(f.fecha), canonDest, dir, consulta, res.estado, g.tipo || '', g.lat || '', g.lng || '',
-                res.barrio, res.comuna == null ? '' : res.comuna, resultado, bg || g.barrioGoogle || '', resG, g.formateada || '']);
+                res.barrio, res.comuna == null ? '' : res.comuna, resultado, bg || g.barrioGoogle || '', resG, g.formateada || '',
+                vt ? vt.barrio : '', vt ? vt.via : '', resVT, vc, resVC]);
   });
   _agregarCacheGeocode_(nuevas);
   escribirHoja_(AGENDA_SOLAPA_BARRIO, filas);
@@ -982,7 +1009,18 @@ function medirBarrioDesdeDireccion() {
              c.google.exacto, c.google.distinto, c.google.sinDato);
   c.distintos.forEach(function (s) { Logger.log('    distinto: %s', s); });
   c.fallas.forEach(function (s) { Logger.log('    sin ubicar: %s', s); });
-  Logger.log('  (el código viejo de "CODIGOS Ajuste RDV" no se pudo comparar: clasp no tiene acceso a ese proyecto; ESTADO 0.x)');
+  Logger.log('  VIEJO ("CODIGOS Ajuste RDV", Barrios Estimados.js), heurística de texto sola, sobre las %s con dirección y barrio: ' +
+             'responde %s | exacto %s (%s%% de las que responde) | distinto, misma comuna %s | distinto, otra comuna %s',
+             c.consultas, c.viejoTexto.resp, c.viejoTexto.exacto, _pctAgenda_(c.viejoTexto.exacto, c.viejoTexto.resp),
+             c.viejoTexto.mismaComuna, c.viejoTexto.otraComuna);
+  Logger.log('    por vía: %s   ("calle" = las calles emblemáticas: Santa Fe → Recoleta, Corrientes → Almagro, Libertador → Belgrano…)',
+             Object.keys(c.viejoTexto.via).map(function (k) { const v = c.viejoTexto.via[k]; return k + ' ' + v.ok + '/' + v.n; }).join(' · ') || '—');
+  c.viejoDistintos.forEach(function (s) { Logger.log('    viejo distinto: %s', s); });
+  Logger.log('  VIEJO completo (heurística; si no, Google) sobre las %s geocodificadas: responde %s | exacto %s (%s%% de las evaluadas)  ' +
+             'contra el NUEVO (polígono): exacto %s (%s%%)', c.viejoCompleto.evaluadas, c.viejoCompleto.resp, c.viejoCompleto.exacto,
+             _pctAgenda_(c.viejoCompleto.exacto, c.viejoCompleto.evaluadas), c.exacto, _pctAgenda_(c.exacto, evaluadas));
+  Logger.log('    (la parte Google del viejo se aplica sobre la misma respuesta del nuevo; su consulta original era la dirección ' +
+             'completa + ", CABA, Argentina", sin región)');
   Logger.log('%s ms', Date.now() - t0);
   return { evaluadas: evaluadas, exacto: c.exacto, ubicadas: ubicadas, pendientes: c.pendientes, llamadas: c.llamadas };
 }
@@ -1008,6 +1046,7 @@ function _geocodificar_(consulta) {
       g.tipo = res.geometry.location_type || '';
       g.parcial = !!res.partial_match;
       g.formateada = res.formatted_address || '';
+      g.componentes = JSON.stringify((res.address_components || []).map(function (a) { return [a.long_name, a.types || []]; }));
       (res.address_components || []).forEach(function (a) {
         if (g.barrioGoogle) return;
         if ((a.types || []).some(function (t) { return t === 'neighborhood' || t === 'sublocality_level_1' || t === 'sublocality'; })) g.barrioGoogle = a.long_name;
@@ -1090,7 +1129,83 @@ function _barrioMasCercano_(x, y, poligonos) {
   return mejor;
 }
 
-const GEOCODE_ENCABEZADO = ['consulta', 'estado', 'lat', 'lng', 'tipo_ubicacion', 'parcial', 'barrio_google', 'direccion_google', 'detalle', 'fecha'];
+const GEOCODE_ENCABEZADO = ['consulta', 'estado', 'lat', 'lng', 'tipo_ubicacion', 'parcial', 'barrio_google', 'direccion_google', 'detalle', 'fecha',
+                            'componentes'];
+
+// ===================== El método VIEJO ("CODIGOS Ajuste RDV", Barrios Estimados.js), portado para medirlo =====================
+//
+// Copia fiel de `guessBarrioFromText_` y de la extracción de `geocodeAddressToBarrio_` (_externo/codigos-ajuste-rdv/,
+// bajado el 06/10). El orden del viejo: PRIMERO la heurística de texto sobre la dirección (nombres de barrio en el
+// texto y "calles emblemáticas"); si no da nada, el geocodificador ("<dirección>, CABA, Argentina"), del que toma el
+// primer componente neighborhood / sublocality / political que sea un barrio, después cualquier componente, después
+// la heurística sobre la dirección formateada. Acá la parte del geocodificador se aplica sobre la MISMA respuesta que
+// usa el método nuevo (la consulta del viejo era la dirección completa, sin región: no se pide dos veces). Sólo mide.
+
+const VIEJO_BARRIOS_CANON_ = [
+  'Agronomía','Almagro','Balvanera','Barracas','Belgrano','Boedo','Caballito','Chacarita','Coghlan','Colegiales',
+  'Constitución','Flores','Floresta','La Boca','La Paternal','Liniers','Mataderos','Monte Castro','Monserrat',
+  'Nueva Pompeya','Núñez','Palermo','Parque Avellaneda','Parque Chacabuco','Parque Chas','Parque Patricios',
+  'Puerto Madero','Recoleta','Retiro','Saavedra','San Cristóbal','San Nicolás','San Telmo','Vélez Sarsfield',
+  'Versalles','Villa Crespo','Villa del Parque','Villa Devoto','Villa General Mitre','Villa Lugano','Villa Luro',
+  'Villa Ortúzar','Villa Pueyrredón','Villa Real','Villa Riachuelo','Villa Santa Rita','Villa Soldati',
+  'Villa Urquiza','Pompeya'
+];
+const VIEJO_ALIAS_ = { 'boca': 'La Boca', 'paternal': 'La Paternal', 'pompeya': 'Nueva Pompeya', 'villa gral mitre': 'Villa General Mitre',
+                       'villa sta rita': 'Villa Santa Rita' };
+
+function _viejoNorm_(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** `canonBarrio_` del viejo: alias o igualdad exacta con su lista; '' si no. */
+function _viejoCanon_(s) {
+  const ns = _viejoNorm_(s);
+  if (!ns) return '';
+  if (VIEJO_ALIAS_[ns]) return VIEJO_ALIAS_[ns];
+  const m = VIEJO_BARRIOS_CANON_.filter(function (b) { return _viejoNorm_(b) === ns; })[0];
+  return m ? (VIEJO_ALIAS_[ns] || m) : '';
+}
+
+/** `guessBarrioFromText_` del viejo. Devuelve { barrio, via: 'villa' | 'nombre' | 'calle' } o null. */
+function _viejoPorTexto_(direccion) {
+  if (!direccion) return null;
+  const d = ' ' + _viejoNorm_(direccion).replace(/[.,;:()]/g, ' ') + ' ';
+  const mV = d.match(/\bvilla\s+(crespo|del\s+parque|devoto|general\s+mitre|gral\s+mitre|lugano|luro|ortuzar|pueyrredon|real|riachuelo|santa\s+rita|soldati|urquiza)\b/);
+  if (mV) { const c = _viejoCanon_('villa ' + mV[1].replace(/\s+/g, ' ')); if (c) return { barrio: c, via: 'villa' }; }
+  const cands = VIEJO_BARRIOS_CANON_.concat(['Paternal', 'Chas', 'Chacabuco', 'Avellaneda', 'Patricios', 'Boca', 'Constitucion',
+                                             'Constitución', 'Nunez', 'Núñez', 'Velez Sarsfield', 'Vélez Sarsfield']);
+  for (let i = 0; i < cands.length; i++) {
+    const n = _viejoNorm_(cands[i]);
+    if (new RegExp('\\b' + n.replace(/\s+/g, '\\s+') + '\\b', 'i').test(d)) {
+      const c = _viejoCanon_(cands[i]);
+      if (c) return { barrio: c, via: 'nombre' };
+    }
+  }
+  const pistas = [
+    { re: /\b(cabildo|juramento|congreso|libertador)\b/, barrio: 'Belgrano' },
+    { re: /\b(defensa|balcarce|paseo colon)\b/, barrio: 'San Telmo' },
+    { re: /\b(azcuenaga|santa fe|callao|las heras)\b/, barrio: 'Recoleta' },
+    { re: /\b(corrientes|pueyrredon|medrano)\b/, barrio: 'Almagro' },
+    { re: /\b(av corrientes 2\d{3,4}|obelisco|9 de julio)\b/, barrio: 'San Nicolás' }
+  ];
+  for (let i = 0; i < pistas.length; i++) if (pistas[i].re.test(d)) return { barrio: pistas[i].barrio, via: 'calle' };
+  return null;
+}
+
+/** La extracción del geocodificador del viejo, sobre los componentes guardados en la cache. */
+function _viejoPorGeo_(g) {
+  if (!g || g.estado !== 'OK') return '';
+  let comps = [];
+  try { comps = JSON.parse(g.componentes || '[]'); } catch (e) { comps = []; }
+  const tipos = ['neighborhood', 'sublocality', 'political'];
+  for (let t = 0; t < tipos.length; t++) {
+    const c = comps.filter(function (x) { return (x[1] || []).indexOf(tipos[t]) !== -1; })[0];
+    if (c && _viejoCanon_(c[0])) return _viejoCanon_(c[0]);
+  }
+  for (let i = 0; i < comps.length; i++) if (_viejoCanon_(comps[i][0])) return _viejoCanon_(comps[i][0]);
+  const p = _viejoPorTexto_(g.formateada);
+  return p ? p.barrio : '';
+}
 
 function _leerCacheGeocode_() {
   const m = new Map();
@@ -1100,7 +1215,7 @@ function _leerCacheGeocode_() {
     if (!str(v[0]) || v[1] === 'ERROR') return;   // un error no se cachea: se vuelve a intentar
     m.set(str(v[0]), { consulta: str(v[0]), estado: str(v[1]), lat: v[2], lng: v[3], tipo: str(v[4]),
                        parcial: String(v[5]).toUpperCase() === 'TRUE', barrioGoogle: str(v[6]), formateada: str(v[7]),
-                       detalle: str(v[8]) });
+                       detalle: str(v[8]), componentes: str(v[10]) });
   });
   return m;
 }
@@ -1112,7 +1227,8 @@ function _agregarCacheGeocode_(nuevas) {
   let sh = ss.getSheetByName(AGENDA_SOLAPA_GEOCODE);
   if (!sh) { sh = ss.insertSheet(AGENDA_SOLAPA_GEOCODE); sh.getRange(1, 1, 1, GEOCODE_ENCABEZADO.length).setValues([GEOCODE_ENCABEZADO]); sh.setFrozenRows(1); }
   const filas = nuevas.map(function (g) {
-    return [g.consulta, g.estado, g.lat, g.lng, g.tipo, g.parcial ? 'TRUE' : 'FALSE', g.barrioGoogle, g.formateada, g.detalle, g.fecha];
+    return [g.consulta, g.estado, g.lat, g.lng, g.tipo, g.parcial ? 'TRUE' : 'FALSE', g.barrioGoogle, g.formateada, g.detalle, g.fecha,
+            g.componentes || ''];
   });
   sh.getRange(sh.getLastRow() + 1, 1, filas.length, GEOCODE_ENCABEZADO.length).setValues(filas);
   Logger.log('[agenda] %s: %s geocodificaciones nuevas en la cache', AGENDA_SOLAPA_GEOCODE, filas.length);

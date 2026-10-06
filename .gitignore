@@ -12,3 +12,6 @@ node_modules/
 # Ruido del sistema
 .DS_Store
 Thumbs.db
+
+# Código de OTROS proyectos de Apps Script, bajado para leerlo (Agenda etapa 1). No es nuestro: no va al repo público.
+_externo/

@@ -185,5 +185,15 @@ ok(g.estado === 'ok' && g.barrio === 'San Nicolás' && g.comuna === 1, '_barrioD
 ok(vm.runInContext(`_consultaGeocode_('Chile 1769, Asociación Civil')`, ctx) === 'Chile 1769, Ciudad Autónoma de Buenos Aires, Argentina',
    'la consulta usa "calle número" (lo anterior a la coma)');
 
-console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
+console.log('[6] el método viejo (Barrios Estimados.js), portado');
+const vt = function (d) { return vm.runInContext('_viejoPorTexto_(' + JSON.stringify(d) + ')', ctx); };
+ok(JSON.stringify(vt('Av. Santa Fe 1234')) === '{"barrio":"Recoleta","via":"calle"}', 'Santa Fe 1234 → Recoleta por "calle emblemática"');
+ok(vt('Triunvirato 4444, Centro Cultural Villa Urquiza').via === 'villa', '"Villa Urquiza" en el texto → vía villa');
+ok(vt('Av. Belgrano 1200').barrio === 'Belgrano', 'la falla típica: Av. Belgrano 1200 (Monserrat) → "Belgrano"');
+ok(vt('Moreno 3281') === null, 'sin nombre ni calle conocida → nada');
+const vg = vm.runInContext(`_viejoPorGeo_({ estado: 'OK', formateada: 'x', componentes: JSON.stringify([['1234', ['street_number']],
+  ['Palermo', ['neighborhood', 'political']], ['Comuna 14', ['sublocality', 'political']]]) })`, ctx);
+ok(vg === 'Palermo', 'Google: el primer componente neighborhood que es barrio → Palermo');
+
+console.log(fallas ?'\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
