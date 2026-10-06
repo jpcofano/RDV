@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, apagado: 0.y)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -259,7 +259,11 @@ difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entrada
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
 
-### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado, APAGADO hasta verificar la demo
+### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
+
+> **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista
+> previa con datos reales (paso 34). El próximo `upsertDestino()` pasa la
+> REVISAR_MATCH del destino al formato nuevo, conservando ELEGIR y COMENTARIO (test [22]).
 
 Diseño aprobado el 06/10: [revisar-match-ficha-tecnica.md](revisar-match-ficha-tecnica.md) (columnas A..M fijas,
 anchos, colores, bordes; §9: qué mirar en la primera prueba). Código:
@@ -275,7 +279,7 @@ anchos, colores, bordes; §9: qué mirar en la primera prueba). Código:
   `id_figura`, `id_fecha`, `id_barrio`, `aux_opcion`, `form_clave`, `form_nombre`, `puntaje`); las líneas
   "¿por qué?" y "coincide" quedan vacías de F en adelante. El lector (`leerFichas_`) entiende los dos formatos.
   Protección real, como en 0.w.
-- `REVISAR_FORMATO_NUEVO = false` (00_Config.js). El upsert sigue escribiendo el formato de 0.w.
+- `REVISAR_FORMATO_NUEVO` (00_Config.js): `true` desde el 06/10; en `false` vuelve el formato de 0.w.
 
 Secuencia:
 1. `paso33_demoFormatoRevisar()` → solapa `REVISAR_MATCH_DEMO` de la intermedia (los 3 casos de la ficha). Mirar

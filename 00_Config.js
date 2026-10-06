@@ -527,10 +527,11 @@ const RDV_HOJA_FICHAS_PRUEBA = 'REVISAR_FICHAS_PRUEBA';
  * dibujo: 27_RevisarFormato.js; datos y auxiliares: `armarFichasFormato_` / `escribirFichasFormato_`,
  * 26_Fichas.js). Columnas A..M fijas del diseño; la identidad (id de la reunión, form_clave de cada opción),
  * en columnas auxiliares ocultas desde la N. Mismas fichas, mismas frases, mismos colores por coincidencia y
- * misma lectura de ELEGIR (por clave, nunca por posición). **Apagado** hasta verificar la demo (paso 33) y
- * la vista previa con datos reales (paso 34). "elegido" se lee de los dos formatos.
+ * misma lectura de ELEGIR (por clave, nunca por posición). **Prendido el 06/10** (decisión del usuario, después
+ * de correr la demo (paso 33) y la vista previa (paso 34)). En `false`, vuelve el formato de una ficha por bloque. "elegido" se lee de los
+ * dos formatos.
  */
-const REVISAR_FORMATO_NUEVO = false;
+const REVISAR_FORMATO_NUEVO = true;
 /** Dónde dibuja la demo del formato (paso 33) y la vista previa con datos reales (paso 34): la intermedia. */
 const RDV_HOJA_REVISAR_DEMO = 'REVISAR_MATCH_DEMO';
 const RDV_HOJA_REVISAR_FORMATO_PRUEBA = 'REVISAR_FORMATO_PRUEBA';

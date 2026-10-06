@@ -2247,8 +2247,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    solapa**, por su nombre; la REVISAR_MATCH de la intermedia queda con un aviso y no se lee.
    `ELECCIONES_MATCH`, `HISTORICO_SIN_RESOLVER` y `EMPAREJAR_MANUAL` siguen en la intermedia.
 
-   **Formato aprobado el 06/10** (docs/revisar-match-ficha-tecnica.md; `27_RevisarFormato.js`), **integrado y apagado**
-   (`REVISAR_FORMATO_NUEVO = false`) hasta verificar la demo (paso 33) y la vista previa con datos reales (paso 34):
+   **Formato aprobado el 06/10** (docs/revisar-match-ficha-tecnica.md; `27_RevisarFormato.js`), **prendido el 06/10**
+   (`REVISAR_FORMATO_NUEVO = true`, decisión del usuario después de correr los pasos 33 y 34):
    las mismas fichas en columnas A..M fijas (ELEGIR, COMENTARIO, resultado, tipo de línea, fila, figura, fecha,
    barrio / comuna, formulario / tema, inscriptos, días, confianza, ya usado por), y la identidad en **auxiliares
    ocultas desde la N** (`AUX_FICHAS_`: el id de la reunión y la `form_clave` de cada opción). ELEGIR y COMENTARIO se
@@ -2550,7 +2550,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 26_Fichas.js       REVISAR_MATCH como fichas (armado, frases, colores, desplegable, lector) y
                    HISTORICO_SIN_RESOLVER                                          ← 03/10
 27_RevisarFormato.js  el dibujo de REVISAR_MATCH con el formato aprobado (renderRevisarMatch); los datos y
-                   las auxiliares, en 26_Fichas.js. Apagado: REVISAR_FORMATO_NUEVO      ← 06/10
+                   las auxiliares, en 26_Fichas.js. REVISAR_FORMATO_NUEVO = true        ← 06/10
 30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
 40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

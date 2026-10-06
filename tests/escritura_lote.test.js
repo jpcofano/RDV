@@ -347,7 +347,9 @@ function crearEntorno(opts) {
   // RDV_HOJA_DESTINO: los escenarios escriben en la copia simulada y verifican que la real no se toque (desde el
   // 03/10 la constante apunta al real).
   // DERIVADAS_POR_SCRIPT: los datos sintéticos traen derivadas de mentira ("derivada-i"); sólo [19] lo prende.
-  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'", DERIVADAS_POR_SCRIPT: 'false' },
+  // REVISAR_FORMATO_NUEVO: los escenarios de fichas de antes del 06/10 prueban el formato de una ficha por bloque; [22], el nuevo.
+  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'", DERIVADAS_POR_SCRIPT: 'false',
+                                 REVISAR_FORMATO_NUEVO: 'false' },
                                opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;

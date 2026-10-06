@@ -33,7 +33,7 @@
  * solapa RVD JM-CM - ES), con ELEGIR y COMENTARIO adelante, marcados y como única zona editable; la de la
  * intermedia queda con un aviso. Si no, en la intermedia.
  *
- * Formato (06/10): con REVISAR_FORMATO_NUEVO, el diseño aprobado (docs/revisar-match-ficha-tecnica.md): las
+ * Formato (06/10, prendido): con REVISAR_FORMATO_NUEVO, el diseño aprobado (docs/revisar-match-ficha-tecnica.md): las
  * mismas fichas, armadas por `armarFichasFormato_` y dibujadas por `renderRevisarMatch` (27_RevisarFormato.js)
  * en columnas A..M fijas, con la identidad en auxiliares ocultas desde la N (`escribirFichasFormato_`). Sin
  * él, el formato de una ficha por bloque (`armarFichas_` / `escribirFichas_`). El lector entiende los dos.

@@ -17,9 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), APAGADO
- *      (REVISAR_FORMATO_NUEVO = false): paso33_demoFormatoRevisar() → mirar la solapa REVISAR_MATCH_DEMO (§9 de
- *      la ficha) → paso34_fichasFormatoDePrueba() (datos reales, solapa de prueba) → recién ahí prenderlo.
+ *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
+ *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
+ *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
  *  >>> 06/10: AGENDA, ETAPA 1 — MEDIR (ESTADO 0.x; todo sólo lectura sobre el destino; predicciones en ESTADO):
  *      rehacer_diagMuestrasMail() si DIAG_MAILS tiene más de una semana → paso29_parsearAgendaMails() →
  *      paso30_cruzarAgendaConDestino() → paso31_barrioDesdeDireccion() (repetir hasta 0 pendientes) →
