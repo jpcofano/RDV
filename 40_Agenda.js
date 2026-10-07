@@ -21,8 +21,10 @@
  *   6. reprogramación dentro de la semana: se MUEVE la fecha de la fila (si está "en agenda" y la FECHA es del
  *      sistema). Entre semanas: la vieja se suspende (7), la nueva se crea y el par se lista;
  *   7. cancelación: desaparecida de la última versión, si todavía era FUTURA cuando se mandó la versión que la dejó
- *      afuera, y la fila está "en agenda" → "Suspendida". Con la protección del 60% (versión parcial) no se suspende
- *      nada. Si vuelve a aparecer, y el "Suspendida" lo puso el sistema, vuelve a "en agenda";
+ *      afuera, y la fila está "en agenda": si la fila la CREÓ la agenda y nadie la tocó (`filaIntocadaAgenda_`), se
+ *      BORRA (06/10, decisión del usuario; se guarda entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura); si no,
+ *      → "Suspendida". Con la protección del 60% (versión parcial) no se suspende ni se borra nada. Si vuelve a
+ *      aparecer: una borrada se crea de nuevo; una "Suspendida" puesta por el sistema vuelve a "en agenda";
  *   8. Seguridad en tu Barrio: la fila nace sin figura; la Figura sale de RDV CONJUNTO por fecha + barrio (o comuna)
  *      cuando aparece. Ambigua o sin fila todavía → AGENDA_FIGURA_A_COMPLETAR (la carga el equipo en la fila);
  *   9. corre dentro del activador de cada hora si AGENDA_ACTIVA, antes del cruce con los formularios;
@@ -84,6 +86,7 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     return { error: msg };
   }
   Logger.log('  mails: %s (%s) | alcance: %s', mails.lista.length, mails.fuente, alcance.desc);
+  _logMailsAgenda_(mails);
   if (!mails.lista.length) {
     const msg = 'la búsqueda no trajo ningún mail: no se escribe nada (si hay mails con la etiqueta, revisar la cuenta)';
     Logger.log('>>> %s', msg);
@@ -91,12 +94,23 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     return { error: msg };
   }
   const r = agendaDesdeListaDeMails_(mails.lista, mails);
+  _logCoberturaAgenda_(r, alcance);
   const plan = planAgenda_(dest, r, A, alcance, opciones);
   plan.hdrNombres = dest.hdr;
   logPlanAgenda_(plan, dest);
   if (!enSeco) {
-    plan.escrito = aplicarPlanAgenda_(sh, dest, plan);
-    if (DERIVADAS_POR_SCRIPT && plan.escrito.creadas) {
+    // REGISTRO_AGENDA es obligatorio: sin él no se puede deshacer. Si no se puede escribir, no se escribe el destino.
+    const corrida = _idCorridaAgenda_();
+    try {
+      plan.escrito = aplicarPlanAgenda_(sh, dest, plan, corrida);
+    } catch (err) {
+      const msg = String(err && err.message || err);
+      Logger.log('>>> %s', msg);
+      if (/REGISTRO_AGENDA/.test(msg)) return { error: msg };
+      throw err;
+    }
+    plan.corrida = corrida;
+    if (DERIVADAS_POR_SCRIPT && (plan.escrito.creadas || plan.escrito.borradas)) {
       try { recalcDerivadas_(RDV_HOJA_DESTINO, true); }
       catch (err) { Logger.log('>>> las derivadas NO se recalcularon: %s (la corrida sigue)', err); }
     }
@@ -110,7 +124,8 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     try { escribirCopiaAgenda_(copia, plan); }
     catch (err) { Logger.log('>>> la copia en el archivo "Agenda" NO se escribió: %s (el destino ya quedó escrito).', err); }
   }
-  plan.corrida = _registrarAgenda_(plan, enSeco, t0, '');
+  if (enSeco) plan.corrida = _registrarAgenda_(plan, enSeco, t0, '');
+  else _completarRegistroAgenda_(plan, t0);
   Logger.log('agenda: %s ms', Date.now() - t0);
   return plan.resumen;
 }
@@ -163,7 +178,7 @@ function indicesAgenda_(hdr) {
  */
 function planAgenda_(dest, r, A, alcance, opciones) {
   opciones = opciones || {};
-  const P = { filaDe: new Map(), acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
+  const P = { A: A, filaDe: new Map(), acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
               saltadas60: [], noFuturas: [], viejasSinFila: [], figuraACompletar: [], eventoPorTipo: {}, barrio: {},
               alcance: alcance, r: r, A: A, resumen: {} };
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
@@ -203,7 +218,6 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
     return false;
   };
-  const esSeguridad = function (f) { return normalizeText_(val(f, 'EVENTO')) === normalizeText_(AGENDA_EVENTO_POR_TIPO['Seguridad en tu Barrio']); };
   /** Las filas candidatas de una reunión (regla 4). */
   const candidatas = function (ev) {
     let c = [];
@@ -215,7 +229,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       const dir = normalizeText_(ev.lugarTexto);
       c = delDia.filter(function (f) {
         if (!esVacio_(val(f, 'agenda_uid')) && normalizeText_(val(f, 'agenda_direccion_escrita')) === dir && dir) return true;
-        if (!f.figura && esSeguridad(f) && (ubica(ev, f) || (dir && normalizeText_(val(f, 'Dirección')) === dir))) return true;
+        if (!f.figura && (ubica(ev, f) || (dir && normalizeText_(val(f, 'Dirección')) === dir))) return true;
         return ubica(ev, f) && !nombradas.has(normalizeText_(f.figura) + '|' + ymd_(f.fecha));
       });
     }
@@ -288,9 +302,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const b = barrioDe(ev);
     const lugar = _direccionAgenda_(ev);
     const valores = {
-      'Figura': ev.figuraFila || '', 'EVENTO': AGENDA_EVENTO_POR_TIPO[ev.tipo] || ev.tipo || '', 'FECHA': ev.fecha,
+      'Figura': ev.figuraFila || '', 'EVENTO': eventoAgenda_(ev), 'FECHA': ev.fecha,
       'HORA': ev.hora, 'Dirección': lugar, 'STATUS REUNIÓN': 'en agenda', 'Barrio': b.barrio,
-      'No participa': ev.noParticipa.join(' / '), 'agenda_uid': Utilities.getUuid(), 'agenda_mail': _origenAgenda_(ev),
+      'No participa': ev.noParticipa.join(' / '), 'agenda_uid': uidAgenda_('creada'), 'agenda_mail': _origenAgenda_(ev),
       'agenda_version': ev.version + ' de ' + ev.versiones, 'agenda_hora_escrita': ev.hora, 'agenda_direccion_escrita': lugar,
       'agenda_barrio_escrito': b.barrio, 'agenda_fecha_escrita': ev.fecha, 'agenda_status_escrito': 'en agenda'
     };
@@ -321,19 +335,29 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const f = c[0];
     if (normStatus_(val(f, 'STATUS REUNIÓN')) !== 'en agenda') return;
     usadas.add(f.fila);
+    const salida = 'desapareció en la versión ' + (d.ultimaVersionVista + 1) + ' (' + fmtFecha_(d.mailQueLaSaco) + ')';
+    // 06/10, decisión del usuario: la fila que CREÓ la agenda y nadie tocó se BORRA (se guarda entera para deshacer).
+    const intocada = filaIntocadaAgenda_(f.valores, dest.hdr, d);
+    if (intocada.ok) {
+      P.filaDe.set(d.clave, { fila: null, status: '', borrada: true });
+      P.acciones.push({ tipo: 'borrar', f: f, ev: d, escrituras: [], uid: str(val(f, 'agenda_uid')),
+                        detalle: salida + '; la creó la agenda y nadie la tocó' });
+      return;
+    }
     const esc = [
       { fila: f.fila, col: col('STATUS REUNIÓN'), valor: 'Suspendida', esperado: val(f, 'STATUS REUNIÓN') },
       { fila: f.fila, col: col('agenda_status_escrito'), valor: 'Suspendida', esperado: val(f, 'agenda_status_escrito') }
     ];
-    if (esVacio_(val(f, 'agenda_uid'))) esc.push({ fila: f.fila, col: col('agenda_uid'), valor: Utilities.getUuid(), esperado: '' });
+    if (esVacio_(val(f, 'agenda_uid'))) esc.push({ fila: f.fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
     P.filaDe.set(d.clave, { fila: f.fila, status: 'Suspendida', f: f });
     P.acciones.push({ tipo: 'suspender', f: f, ev: d, escrituras: esc,
-                      detalle: 'desapareció en la versión ' + (d.ultimaVersionVista + 1) + ' (' + fmtFecha_(d.mailQueLaSaco) + ')' });
+                      detalle: salida + (/no la creó/.test(intocada.motivo) ? '' : ' (no se borra: ' + intocada.motivo + ')') });
   });
 
   // --- 8. Seguridad en tu Barrio: la Figura desde RDV CONJUNTO, en las filas de la agenda que todavía no la tienen ---
   const sinFigura = dest.filas.filter(function (f) {
-    return !f.figura && !esVacio_(val(f, 'agenda_uid')) && esSeguridad(f) && f.fecha && f.fecha <= hoyMediodia_();
+    // Seguridad en tu Barrio: el EVENTO es "Encuentro con Vecinos" (como lo escribe el equipo): se reconoce por la Figura vacía.
+    return !f.figura && !esVacio_(val(f, 'agenda_uid')) && f.fecha && f.fecha <= hoyMediodia_();
   });
   if (sinFigura.length) {
     const conj = opciones.conjunto || leerConjuntoPorFecha_();
@@ -376,13 +400,15 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   });
   r.desaparecidas.forEach(function (d) {
     if (!enCopia(d) || presentes.has(d.clave) || atendidas.has(d.clave)) return;
-    P.copia.push({ ev: d, x: filaDeCopia(d), estado: 'desaparecida', fechaOriginal: d.fechaOriginal || null });
+    const x = P.filaDe.get(d.clave);
+    if (x && x.borrada) P.copia.push({ ev: d, x: null, estado: 'desaparecida (fila borrada)', fechaOriginal: d.fechaOriginal || null });
+    else P.copia.push({ ev: d, x: filaDeCopia(d), estado: 'desaparecida', fechaOriginal: d.fechaOriginal || null });
   });
   P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev); });
 
   const n = function (t) { return P.acciones.filter(function (a) { return a.tipo === t; }).length; };
   P.resumen = { mails: r.mails, reunionesEnAlcance: enAlcance.length, crear: n('crear'), vincular: n('vincular'),
-                actualizar: n('actualizar'), mover: n('mover'), suspender: n('suspender'), reactivar: n('reactivar'),
+                actualizar: n('actualizar'), mover: n('mover'), suspender: n('suspender'), borrar: n('borrar'), reactivar: n('reactivar'),
                 figura: n('figura'), ambiguas: P.ambiguas.length, editadas: P.editadas.length,
                 saltadas60: P.saltadas60.length, noFuturas: P.noFuturas.length, entreSemanas: P.entreSemanas.length,
                 reprogramadasNoMovibles: P.reprogramadasNoMovibles.length, viejasSinFila: P.viejasSinFila.length,
@@ -419,7 +445,7 @@ function _accionVincular_(P, f, ev, A, barrioDe) {
     }
   };
   llenar('Figura', ev.figuraFila, null);
-  llenar('EVENTO', AGENDA_EVENTO_POR_TIPO[ev.tipo] || ev.tipo, null);
+  llenar('EVENTO', eventoAgenda_(ev), null);
   llenar('HORA', ev.hora, 'agenda_hora_escrita');
   llenar('Dirección', lugar, 'agenda_direccion_escrita');
   llenar('FECHA', ev.fecha, 'agenda_fecha_escrita');
@@ -435,7 +461,7 @@ function _accionVincular_(P, f, ev, A, barrioDe) {
       esc.push({ fila: f.fila, col: col('agenda_barrio_escrito'), valor: b.barrio, esperado: val('agenda_barrio_escrito') });
     }
   }
-  esc.push({ fila: f.fila, col: col('agenda_uid'), valor: Utilities.getUuid(), esperado: '' });
+  esc.push({ fila: f.fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
   esc.push({ fila: f.fila, col: col('agenda_mail'), valor: _origenAgenda_(ev), esperado: val('agenda_mail') });
   esc.push({ fila: f.fila, col: col('agenda_version'), valor: ev.version + ' de ' + ev.versiones, esperado: val('agenda_version') });
   P.acciones.push({ tipo: 'vincular', f: f, ev: ev, escrituras: esc.filter(function (e) { return e.col != null; }) });
@@ -608,28 +634,105 @@ function figuraSeguridad_(fecha, barrio, comuna, porFecha) {
 // ===================== Escribir el plan =====================
 
 /**
- * Escribe todas las acciones del plan por la excepción `escribirAgendaLote_`, en una sola tanda (la lectura fresca
- * la hace el helper). Devuelve los cambios hechos (para REGISTRO_AGENDA_CAMBIOS) y las saltadas (la celda ya no
- * tenía lo esperado: alguien la cambió entre el cálculo y la escritura).
+ * Escribe el plan, en este orden (06/10):
+ *   1. **el registro primero, y es obligatorio**: la línea de la corrida en REGISTRO_AGENDA y cada cambio en
+ *      REGISTRO_AGENDA_CAMBIOS (antes = lo que se espera encontrar, que es lo único que se pisa; el fondo; el
+ *      agenda_uid de la fila; y las filas a borrar ENTERAS, valores y fondos). Si no se puede escribir, TIRA y no se
+ *      toca el destino: sin registro no hay deshacer;
+ *   2. las celdas, por la excepción `escribirAgendaLote_` (lectura fresca: sólo donde todavía está lo esperado);
+ *   3. los borrados, de abajo hacia arriba, **volviendo a verificar cada fila justo antes** (`filaIntocadaAgenda_`;
+ *      corremos con el bloqueo tomado). Una que alguien tocó en el medio no se borra: se suspende.
+ * Las filas se identifican por `agenda_uid` en el registro: borrar corre los números de las filas de abajo.
  */
-function aplicarPlanAgenda_(sh, dest, plan) {
+function aplicarPlanAgenda_(sh, dest, plan, corrida) {
+  const A = plan.A, hdr = dest.hdr;
+  const colUid = A.agenda_uid != null ? A.agenda_uid + 1 : null;
   const todas = [];
   plan.acciones.forEach(function (a, i) { a.escrituras.forEach(function (e) { todas.push(Object.assign({ accion: i }, e)); }); });
-  const w = escribirAgendaLote_(sh, dest.hdr, todas);
+  // el agenda_uid de cada fila: el de la fila, o el que le estampa esta corrida
+  const uidDe = {};
+  plan.acciones.forEach(function (a) {
+    const fila = a.fila || (a.f && a.f.fila);
+    const e = a.escrituras.filter(function (x) { return x.col === colUid; })[0];
+    uidDe[fila] = e ? e.valor : (a.f && A.agenda_uid != null ? str(a.f.valores[A.agenda_uid]) : '');
+  });
+  // 1a. los fondos de lo que se va a pisar (una lectura)
+  const ultima = sh.getLastRow();
+  const existentes = todas.filter(function (e) { return e.fila <= ultima; });
+  let fondos = null, f1 = 0, c1 = 0;
+  if (existentes.length) {
+    f1 = Math.min.apply(null, existentes.map(function (e) { return e.fila; }));
+    c1 = Math.min.apply(null, existentes.map(function (e) { return e.col; }));
+    const f2 = Math.max.apply(null, existentes.map(function (e) { return e.fila; }));
+    const c2 = Math.max.apply(null, existentes.map(function (e) { return e.col; }));
+    fondos = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1).getBackgrounds();
+  }
+  const fondoDe = function (e) { return fondos && e.fila <= ultima ? (fondos[e.fila - f1] || [])[e.col - c1] || '' : ''; };
+  // 1b. las filas a borrar, verificadas ahora (lectura fresca de cada una)
+  const nCols = sh.getLastColumn();
+  const borrar = [];
+  plan.acciones.forEach(function (a, i) {
+    if (a.tipo !== 'borrar') return;
+    const rg = sh.getRange(a.f.fila, 1, 1, nCols);
+    const v = rg.getValues()[0], bg = rg.getBackgrounds()[0];
+    const ok = filaIntocadaAgenda_(v, hdr, a.ev);
+    if (ok.ok && str(v[A.agenda_uid]) === a.uid) borrar.push({ accion: i, fila: a.f.fila, uid: a.uid, valores: v, fondos: bg });
+    else {
+      Logger.log('    NO SE BORRA la fila %s (%s): alguien la tocó (%s) → se suspende', a.f.fila, a.f.figura, ok.motivo || 'otra fila');
+      a.tipo = 'suspender';
+      a.escrituras = [{ fila: a.f.fila, col: A['STATUS REUNIÓN'] + 1, valor: 'Suspendida', esperado: 'en agenda' },
+                      { fila: a.f.fila, col: A.agenda_status_escrito + 1, valor: 'Suspendida', esperado: a.f.valores[A.agenda_status_escrito] }];
+      a.escrituras.forEach(function (e) { todas.push(Object.assign({ accion: i }, e)); });
+    }
+  });
+  // 1c. el registro (obligatorio)
+  const cambios = todas.map(function (e) {
+    return [corrida, plan.acciones[e.accion].tipo, e.fila, e.col, hdr[e.col - 1], _celdaRegistro_(e.esperado), _celdaRegistro_(e.valor),
+            fondoDe(e), uidDe[e.fila] || ''];
+  }).concat(borrar.map(function (b) {
+    return [corrida, 'borrar', b.fila, '', '', JSON.stringify(b.valores.map(_celdaRegistro_)), '', JSON.stringify(b.fondos), b.uid];
+  }));
+  try {
+    _registrarCorridaAntesDeEscribir_(corrida, plan, cambios, todas.length, borrar.length);
+  } catch (err) {
+    throw new Error('no se pudo escribir REGISTRO_AGENDA (' + err + '): NO se escribió nada en el destino.');
+  }
+  // 2. las celdas
+  const w = escribirAgendaLote_(sh, hdr, todas);
+  SpreadsheetApp.flush();
+  // 3. los borrados, de abajo hacia arriba, verificando otra vez
+  let borradas = 0;
+  const filasBorradas = [];
+  borrar.sort(function (x, y) { return y.fila - x.fila; }).forEach(function (b) {
+    const v = sh.getRange(b.fila, 1, 1, nCols).getValues()[0];
+    const ok = filaIntocadaAgenda_(v, hdr, plan.acciones[b.accion].ev);
+    if (!ok.ok || str(v[A.agenda_uid]) !== b.uid) {
+      Logger.log('    NO SE BORRA la fila %s: cambió entre la verificación y el borrado (%s). Queda; la próxima corrida la suspende.',
+                 b.fila, ok.motivo || 'otra fila');
+      try { _anotarCambiosAgenda_([[corrida, 'borrar_cancelado', b.fila, '', '', '', '', '', b.uid]]); } catch (e) { /* el log lo dice */ }
+      return;
+    }
+    borrarFilaAgenda_(sh, hdr, b.fila, b.uid);
+    borradas++;
+    filasBorradas.push(b.fila);
+  });
+  SpreadsheetApp.flush();
   const porTipo = {}, porColumna = {};
   w.hechas.forEach(function (e) {
     const a = plan.acciones[e.accion];
     porTipo[a.tipo] = (porTipo[a.tipo] || 0) + 1;
-    const n = dest.hdr[e.col - 1];
+    const n = hdr[e.col - 1];
     porColumna[n] = (porColumna[n] || 0) + 1;
   });
-  SpreadsheetApp.flush();
   const creadas = plan.acciones.filter(function (a) { return a.tipo === 'crear'; }).length;
-  Logger.log('>>> ESCRITURA de la agenda en "%s": %s celdas (%s) | saltadas porque la celda ya no tenía lo esperado: %s',
-             RDV_HOJA_DESTINO, w.hechas.length, Object.keys(porTipo).map(function (k) { return k + ' ' + porTipo[k]; }).join(', ') || 'nada',
-             w.saltadas.length);
+  Logger.log('>>> ESCRITURA de la agenda en "%s" (corrida %s): %s celdas (%s) | filas BORRADAS %s | saltadas porque la celda ' +
+             'ya no tenía lo esperado: %s', RDV_HOJA_DESTINO, corrida, w.hechas.length,
+             Object.keys(porTipo).map(function (k) { return k + ' ' + porTipo[k]; }).join(', ') || 'nada', borradas, w.saltadas.length);
   Logger.log('    por columna: %s', Object.keys(porColumna).map(function (k) { return k + ' ' + porColumna[k]; }).join(' | ') || 'nada');
-  return { hechas: w.hechas, saltadas: w.saltadas, creadas: creadas, porColumna: porColumna, porTipo: porTipo };
+  // Borrar corre los números de las filas de abajo: lo que se escribe después en esta corrida (las solapas
+  // informativas, la copia en "Agenda") usa el número de ahora.
+  plan.ajustarFila = function (n) { return typeof n === 'number' ? n - filasBorradas.filter(function (b) { return b < n; }).length : n; };
+  return { hechas: w.hechas, saltadas: w.saltadas, creadas: creadas, borradas: borradas, porColumna: porColumna, porTipo: porTipo };
 }
 
 // ===================== El log, las solapas y el registro =====================
@@ -638,8 +741,8 @@ function logPlanAgenda_(P, dest) {
   const s = P.resumen;
   Logger.log('--- la agenda: qué haría ---');
   Logger.log('  reuniones del mail en el alcance: %s | CREAR %s | VINCULAR %s | ACTUALIZAR %s | MOVER (reprogramada) %s | ' +
-             'SUSPENDER %s | REACTIVAR %s | FIGURA de Seguridad %s', s.reunionesEnAlcance, s.crear, s.vincular, s.actualizar,
-             s.mover, s.suspender, s.reactivar, s.figura);
+             'SUSPENDER %s | BORRAR (creada por la agenda y sin tocar) %s | REACTIVAR %s | FIGURA de Seguridad %s',
+             s.reunionesEnAlcance, s.crear, s.vincular, s.actualizar, s.mover, s.suspender, s.borrar, s.reactivar, s.figura);
   Logger.log('  ambiguas (no se hace nada) %s | celdas editadas por el equipo (no se tocan) %s | filas que no están "en agenda" ' +
              '(no se actualizan) %s', s.ambiguas, s.editadas, P.noEnAgenda.length);
   Logger.log('  desaparecidas: ya pasadas al desaparecer (NO son cancelación) %s | saltadas por la protección del %s%% %s | ' +
@@ -675,7 +778,8 @@ function logPlanAgenda_(P, dest) {
   });
   const tipos = Object.keys(P.eventoPorTipo);
   if (tipos.length) {
-    Logger.log('  EVENTO que escribe hoy el equipo, por tipo del mail (para ajustar AGENDA_EVENTO_POR_TIPO):');
+    Logger.log('  EVENTO que escribe hoy el equipo, por tipo del mail (para ajustar AGENDA_EVENTO_POR_TIPO; "{tema}" e ' +
+               '"{invitado}" se completan con lo que dice el evento del mail):');
     tipos.forEach(function (t) {
       const c = P.eventoPorTipo[t];
       Logger.log('    %s → %s   (hoy se escribiría "%s")', t, Object.keys(c).sort(function (a, b) { return c[b] - c[a]; })
@@ -696,7 +800,7 @@ function _escribirSolapasAgenda_(P) {
     _escribirHojaAgenda_(AGENDA_SOLAPA_VIEJAS, viejas);
     const fig = [['fila', 'fecha', 'barrio', 'evento', 'por qué falta la figura', 'filas de RDV CONJUNTO']];
     P.figuraACompletar.forEach(function (x) {
-      fig.push([x.f.fila, fmtFecha_(x.f.fecha), x.f.barrio, x.f.evento, x.motivo, (x.filas || []).join(', ')]);
+      fig.push([P.ajustarFila ? P.ajustarFila(x.f.fila) : x.f.fila, fmtFecha_(x.f.fecha), x.f.barrio, x.f.evento, x.motivo, (x.filas || []).join(', ')]);
     });
     if (fig.length === 1) fig.push(['(ninguna)', '', '', '', '', '']);
     _escribirHojaAgenda_(AGENDA_SOLAPA_FIGURA, fig);
@@ -711,28 +815,16 @@ function _escribirSolapasAgenda_(P) {
  * que había antes y su fondo: es lo que usa deshacer). Devuelve el id de la corrida.
  */
 function _registrarAgenda_(P, enSeco, t0, error) {
-  const id = Utilities.formatDate(new Date(), RDV_TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 4);
+  const id = _idCorridaAgenda_();
   try {
-    const ss = ssIntermedia_();
-    const enc = ['corrida', 'hora', 'modo', 'solo_semana', 'mails', 'reuniones', 'creadas', 'vinculadas', 'actualizadas',
-                 'movidas', 'suspendidas', 'reactivadas', 'figuras', 'ambiguas', 'editadas_equipo', 'saltadas_60',
-                 'celdas_escritas', 'por_columna', 'saltadas_al_escribir', 'ms', 'error'];
-    let sh = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
-    if (!sh) { sh = ss.insertSheet(RDV_HOJA_REGISTRO_AGENDA); sh.appendRow(enc); }
+    const ss = intermediaAgenda_();
+    const sh = _hojaRegistroAgenda_(ss);
     const s = P ? P.resumen : {}, w = P && P.escrito ? P.escrito : null;
     sh.appendRow([id, new Date(), enSeco ? 'en seco' : 'ESCRITURA', AGENDA_SOLO_SEMANA || '', s.mails || '',
                   s.reunionesEnAlcance || 0, s.crear || 0, s.vincular || 0, s.actualizar || 0, s.mover || 0, s.suspender || 0,
                   s.reactivar || 0, s.figura || 0, s.ambiguas || 0, s.editadas || 0, s.saltadas60 || 0,
-                  w ? w.hechas.length : 0, w ? JSON.stringify(w.porColumna) : '', w ? w.saltadas.length : 0, Date.now() - t0, error || '']);
-    if (w && w.hechas.length) {
-      let c = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS);
-      if (!c) { c = ss.insertSheet(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS); c.appendRow(['corrida', 'tipo', 'fila', 'col', 'columna', 'antes', 'despues', 'fondo_antes']); }
-      const filas = w.hechas.map(function (e) {
-        return [id, P.acciones[e.accion].tipo, e.fila, e.col, P.hdrNombres ? P.hdrNombres[e.col - 1] : '', _celdaRegistro_(e.antes),
-                _celdaRegistro_(e.valor), e.fondoAntes || ''];
-      });
-      c.getRange(c.getLastRow() + 1, 1, filas.length, filas[0].length).setValues(filas);
-    }
+                  w ? w.hechas.length : 0, w ? JSON.stringify(w.porColumna) : '', w ? w.saltadas.length : 0, Date.now() - t0, error || '',
+                  s.borrar || 0]);
   } catch (err) {
     Logger.log('[agenda] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO_AGENDA, err);
   }
@@ -750,8 +842,9 @@ function _celdaRegistro_(v) {
 /**
  * **Deshace una corrida de la agenda** (la última que escribió, o `corrida`): borra las filas que CREÓ —sólo si
  * todavía replican lo que dice el mail: todas las celdas que escribió siguen igual y nadie cargó nada más en la
- * fila (fuera de las derivadas)— y vuelve las demás celdas a lo que había, sólo si todavía tienen lo que escribió la
- * agenda. En seco, sólo dice qué haría. Deja una línea "DESHACER" en REGISTRO_AGENDA.
+ * fila (fuera de las derivadas)—, vuelve las demás celdas a lo que había, sólo si todavía tienen lo que escribió la
+ * agenda, y RESTAURA las filas que borró (al final, con lo que tenían). Las filas se ubican por `agenda_uid`, no por
+ * número: borrar filas corre los números. En seco, sólo dice qué haría. Deja una línea "DESHACER" en REGISTRO_AGENDA.
  */
 function deshacerAgenda(enSeco, corrida) {
   const lock = LockService.getScriptLock();
@@ -766,7 +859,7 @@ function deshacerAgenda(enSeco, corrida) {
 function _deshacerAgenda_(enSeco, corrida) {
   const t0 = Date.now();
   Logger.log('=== deshacer la agenda (%s) ===', enSeco ? 'EN SECO' : 'REAL');
-  const ss = ssIntermedia_();
+  const ss = intermediaAgenda_();
   const reg = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA), cam = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS);
   if (!reg || !cam || cam.getLastRow() < 2) { Logger.log('>>> No hay ninguna corrida de la agenda que haya escrito.'); return { deshecho: 0 }; }
   const regV = reg.getRange(1, 1, reg.getLastRow(), reg.getLastColumn()).getValues();
@@ -775,70 +868,104 @@ function _deshacerAgenda_(enSeco, corrida) {
   let id = corrida;
   if (!id) {
     for (let i = regV.length - 1; i >= 1; i--) {
-      if (str(regV[i][2]) === 'ESCRITURA' && num(regV[i][16]) > 0 && !deshechas[str(regV[i][0])]) { id = str(regV[i][0]); break; }
+      if (str(regV[i][2]) === 'ESCRITURA' && (num(regV[i][16]) > 0 || num(regV[i][21]) > 0) && !deshechas[str(regV[i][0])]) { id = str(regV[i][0]); break; }
     }
   }
   if (!id) { Logger.log('>>> No hay ninguna corrida de ESCRITURA sin deshacer.'); return { deshecho: 0 }; }
   if (deshechas[id]) { Logger.log('>>> La corrida %s ya fue deshecha.', id); return { deshecho: 0 }; }
-  const camV = cam.getRange(2, 1, cam.getLastRow() - 1, 8).getValues().filter(function (r) { return str(r[0]) === id; });
-  Logger.log('  corrida %s: %s celdas cambiadas', id, camV.length);
+  const anchoCam = Math.max(9, cam.getLastColumn());
+  const camV = cam.getRange(2, 1, cam.getLastRow() - 1, anchoCam).getValues().filter(function (r) { return str(r[0]) === id; });
+  Logger.log('  corrida %s: %s líneas de cambios', id, camV.length);
 
   const sh = verificarHojaDestino_(ssDestino_());
   const nCols = sh.getLastColumn();
   const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0];
+  const A = indicesAgenda_(hdr);
   const valor = function (v, n) {
     const nn = normalizeHeader_(n);
     if ((nn === 'fecha' || nn === 'agenda_fecha_escrita') && /^\d{4}-\d{2}-\d{2}$/.test(str(v))) return toDate_(v);
     return v;
   };
+  // Las filas, por agenda_uid (borrar filas corre los números).
+  const ultimaHoja = sh.getLastRow();
+  const uids = A.agenda_uid != null && ultimaHoja > 1 ? sh.getRange(2, A.agenda_uid + 1, ultimaHoja - 1, 1).getValues() : [];
+  const filaDeUid = {};
+  uids.forEach(function (r, i) { if (str(r[0])) filaDeUid[str(r[0])] = i + 2; });
+  const filaActual = function (c) { return c.uid ? (filaDeUid[c.uid] || null) : c.fila; };
   const cambios = camV.map(function (r) {
-    return { tipo: str(r[1]), fila: num(r[2]), col: num(r[3]), antes: valor(r[5], hdr[num(r[3]) - 1]),
-             despues: valor(r[6], hdr[num(r[3]) - 1]), fondoAntes: str(r[7]) || null };
+    const col = num(r[3]);
+    return { tipo: str(r[1]), fila: num(r[2]), col: col, antes: col ? valor(r[5], hdr[col - 1]) : r[5],
+             despues: col ? valor(r[6], hdr[col - 1]) : r[6], fondoAntes: str(r[7]) || null, uid: str(r[8]) };
   });
+  const cancelados = {};
+  cambios.forEach(function (c) { if (c.tipo === 'borrar_cancelado') cancelados[c.uid] = true; });
   // Las filas creadas: ¿todavía replican el mail?
   const creadas = {};
-  cambios.forEach(function (c) { if (c.tipo === 'crear') (creadas[c.fila] = creadas[c.fila] || []).push(c); });
+  cambios.forEach(function (c) { if (c.tipo === 'crear') { const k = c.uid || ('fila ' + c.fila); (creadas[k] = creadas[k] || []).push(c); } });
   const derivadas = hdr.map(function (h) { return esColumnaDerivada_(h); });
+  const deAgenda = COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_);
   const aSacar = [], noSeSacan = [];
-  Object.keys(creadas).forEach(function (fila) {
-    const fi = Number(fila);
+  Object.keys(creadas).forEach(function (k) {
+    const fi = filaActual(creadas[k][0]);
+    if (!fi) { noSeSacan.push({ fila: '—', motivo: 'ya no está en el destino' }); return; }
     const fv = sh.getRange(fi, 1, 1, nCols).getValues()[0];
     const escritas = {};
-    creadas[fila].forEach(function (c) { escritas[c.col] = c; });
+    creadas[k].forEach(function (c) { escritas[c.col] = c; });
     let replica = true, motivo = '';
-    for (let k = 0; k < nCols && replica; k++) {
-      if (derivadas[k]) continue;
-      const c = escritas[k + 1];
+    for (let j = 0; j < nCols && replica; j++) {
+      if (derivadas[j]) continue;
+      const c = escritas[j + 1];
       if (c) {
-        if (valorAgendaComparable_(fv[k], hdr[k]) !== valorAgendaComparable_(c.despues, hdr[k])) { replica = false; motivo = hdr[k] + ' cambió'; }
-      } else if (!esVacio_(fv[k])) {
-        // otras columnas de la agenda (las escribió otra corrida) cuentan como de la agenda
-        if (COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_).indexOf(normalizeHeader_(hdr[k])) < 0) { replica = false; motivo = 'tiene "' + hdr[k] + '" cargado'; }
-      }
+        if (valorAgendaComparable_(fv[j], hdr[j]) !== valorAgendaComparable_(c.despues, hdr[j])) { replica = false; motivo = hdr[j] + ' cambió'; }
+      } else if (!esVacio_(fv[j]) && deAgenda.indexOf(normalizeHeader_(hdr[j])) < 0) { replica = false; motivo = 'tiene "' + hdr[j] + '" cargado'; }
     }
     (replica ? aSacar : noSeSacan).push({ fila: fi, motivo: motivo });
   });
-  const otros = cambios.filter(function (c) { return c.tipo !== 'crear'; });
+  const otros = cambios.filter(function (c) { return c.col && c.tipo !== 'crear'; })
+    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
+  const restaurar = cambios.filter(function (c) { return c.tipo === 'borrar' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
   Logger.log('  filas creadas: %s → se sacan %s | NO se sacan (alguien cargó algo) %s', Object.keys(creadas).length,
              aSacar.length, noSeSacan.length);
   noSeSacan.forEach(function (x) { Logger.log('    fila %s: %s', x.fila, x.motivo); });
   Logger.log('  celdas a volver a lo que había (vinculadas, actualizadas, movidas, suspendidas, reactivadas, figuras): %s', otros.length);
-  if (enSeco) { Logger.log('>>> EN SECO: no se deshizo nada.'); return { corrida: id, sacarian: aSacar.length, noSeSacan: noSeSacan.length, celdas: otros.length }; }
+  Logger.log('  filas BORRADAS por la agenda que se restauran (al final): %s', restaurar.length);
+  if (enSeco) {
+    Logger.log('>>> EN SECO: no se deshizo nada.');
+    return { corrida: id, sacarian: aSacar.length, noSeSacan: noSeSacan.length, celdas: otros.length, restaurarian: restaurar.length };
+  }
 
-  // Primero las celdas (de abajo hacia arriba no hace falta: no se mueven filas), después las filas.
+  // 1. las celdas; 2. las filas creadas; 3. las borradas, de vuelta al final.
   const d = deshacerAgendaLote_(sh, hdr, otros);
   d.saltadas.forEach(function (c) { Logger.log('    no se deshace (alguien la cambió): fila %s, %s', c.fila, hdr[c.col - 1]); });
-  let ultimaConDatos = sh.getLastRow();
-  const vals = sh.getRange(1, 1, ultimaConDatos, nCols).getValues();
-  while (ultimaConDatos > 1 && vals[ultimaConDatos - 1].every(function (v, k) { return derivadas[k] || esVacio_(v); })) ultimaConDatos--;
-  const s = sacarFilasCreadasAgenda_(sh, aSacar.map(function (x) { return x.fila; }), ultimaConDatos);
+  const ultimaConDatos = function () {
+    let u = sh.getLastRow();
+    const vals = u > 0 ? sh.getRange(1, 1, u, nCols).getValues() : [];
+    while (u > 1 && vals[u - 1].every(function (v, k) { return derivadas[k] || esVacio_(v); })) u--;
+    return u;
+  };
+  const s = sacarFilasCreadasAgenda_(sh, aSacar.map(function (x) { return x.fila; }), ultimaConDatos());
+  let restauradas = 0;
+  restaurar.forEach(function (c) {
+    let valores = [];
+    try { valores = JSON.parse(c.antes || '[]'); } catch (e) { valores = []; }
+    const fila = ultimaConDatos() + 1;
+    const esc = [];
+    valores.forEach(function (v, k) {
+      if (k >= nCols || esVacio_(v) || deAgenda.indexOf(normalizeHeader_(hdr[k])) < 0) return;
+      esc.push({ fila: fila, col: k + 1, valor: valor(v, hdr[k]), esperado: '' });
+    });
+    if (esc.length) { escribirAgendaLote_(sh, hdr, esc); restauradas++; }
+  });
+  if (restauradas && DERIVADAS_POR_SCRIPT) {
+    try { recalcDerivadas_(RDV_HOJA_DESTINO, true); } catch (err) { Logger.log('    las derivadas no se recalcularon: %s', err); }
+  }
   SpreadsheetApp.flush();
   reg.appendRow([id + '-deshacer', new Date(), 'DESHACER ' + id, '', '', '', '', '', '', '', '', '', '', '', '', '',
-                 d.hechas.length, JSON.stringify({ filas_borradas: s.borradas, filas_vaciadas: s.vaciadas }), d.saltadas.length,
-                 Date.now() - t0, '']);
-  Logger.log('>>> deshecho: filas borradas %s, vaciadas %s | celdas vueltas atrás %s | no se deshicieron (alguien las cambió) %s',
-             s.borradas, s.vaciadas, d.hechas.length, d.saltadas.length);
-  return { corrida: id, borradas: s.borradas, vaciadas: s.vaciadas, celdas: d.hechas.length, saltadas: d.saltadas.length };
+                 d.hechas.length, JSON.stringify({ filas_borradas: s.borradas, filas_vaciadas: s.vaciadas, filas_restauradas: restauradas }),
+                 d.saltadas.length, Date.now() - t0, '', '']);
+  Logger.log('>>> deshecho: filas creadas borradas %s, vaciadas %s | celdas vueltas atrás %s | no se deshicieron (alguien las ' +
+             'cambió) %s | filas borradas por la agenda RESTAURADAS %s', s.borradas, s.vaciadas, d.hechas.length, d.saltadas.length, restauradas);
+  return { corrida: id, borradas: s.borradas, vaciadas: s.vaciadas, celdas: d.hechas.length, saltadas: d.saltadas.length, restauradas: restauradas };
 }
 
 // ===================== 17. La copia en el archivo "Agenda" =====================
@@ -878,10 +1005,11 @@ function armarCopiaAgenda_(P, cuando) {
     out.push([
       ev.semana, ev.grupo, _diaSemanaAgenda_(ev.fecha), ev.fecha, ev.hora, figura, ev.noParticipa.join(' / '),
       ev.figuras.filter(function (f) { return f !== ev.figuraFila; }).join(' / '),
-      AGENDA_EVENTO_POR_TIPO[ev.tipo] || ev.tipo || '', ev.lugar, _direccionAgenda_(ev), b.barrio || '',
+      eventoAgenda_(ev), ev.lugar, _direccionAgenda_(ev), b.barrio || '',
       comuna == null ? '' : 'Comuna ' + comuna, _sinBarrioPorque_(b),
       ev.marcas.map(function (m) { return m.replace(' (lugar)', ''); }).filter(function (m, i, a) { return a.indexOf(m) === i; }).join(' / '),
-      c.estado, ev.cambios || '', c.fechaOriginal || '', x ? x.fila + (x.nueva ? ' (nueva)' : '') : '', x ? x.status || '' : '',
+      c.estado, ev.cambios || '', c.fechaOriginal || '', x ? (P.ajustarFila ? P.ajustarFila(x.fila) : x.fila) + (x.nueva ? ' (nueva)' : '') : '',
+      x ? x.status || '' : '',
       ev.asunto, ev.version + ' de ' + ev.versiones, cuando
     ]);
   });
@@ -933,3 +1061,152 @@ function escribirCopiaAgenda_(matriz, P) {
              AGENDA_COPIA_SS.slice(0, 8) + '…', n - 1, AGENDA_COPIA_SOLAPA);
 }
 
+// ===================== EVENTO, agenda_uid, "intocada" (06/10) =====================
+
+/**
+ * El EVENTO de una reunión, **como lo escribe el equipo** (06/10): `AGENDA_EVENTO_POR_TIPO`, con "{tema}" (Temático) e
+ * "{invitado}" (Primera Persona) completados con lo que dice el evento del mail. Sin tema o invitado, la forma corta.
+ */
+function eventoAgenda_(ev) {
+  const t = AGENDA_EVENTO_POR_TIPO[ev.tipo] || ev.tipo || '';
+  return t.replace(/\s*"?\{tema\}"?/, ev.tema ? ' "' + ev.tema + '"' : '')
+          .replace(/\s*con \{invitado\}/, ev.invitado ? ' con ' + ev.invitado : '')
+          .replace(/\s+/g, ' ').trim();
+}
+
+/** El agenda_uid nuevo: "c-…" si la fila la CREA la agenda, "v-…" si es una fila del equipo que vincula o suspende. */
+function uidAgenda_(como) {
+  return (como === 'creada' ? 'c-' : 'v-') + Utilities.getUuid();
+}
+
+/**
+ * **¿La fila la creó la agenda y nadie la tocó?** (regla 7, 06/10: si sí, se BORRA en vez de suspenderse). Todo:
+ *   - la creó la agenda (agenda_uid "c-…"), STATUS "en agenda" (y lo anotado, también);
+ *   - HORA, Dirección, FECHA y Barrio siguen con lo que escribió (agenda_*_escrita); Figura, EVENTO y "No participa"
+ *     con lo que dice el mail de la reunión (`ev`) — la Figura puede estar vacía (Seguridad sin figura todavía);
+ *   - ninguna otra celda cargada (fuera de las derivadas): ni RDV_UID / form_*, ni Asistentes, Oradores, Observaciones,
+ *     One Page, Inscriptos…
+ * Devuelve `{ ok, motivo }`.
+ */
+function filaIntocadaAgenda_(valores, hdr, ev) {
+  const A = indicesAgenda_(hdr);
+  const v = function (n) { return A[n] == null ? '' : valores[A[n]]; };
+  const c = valorAgendaComparable_;
+  if (!/^c-/.test(str(v('agenda_uid')))) return { ok: false, motivo: 'no la creó la agenda' };
+  if (c(v('STATUS REUNIÓN'), 'STATUS REUNIÓN') !== 'en agenda') return { ok: false, motivo: 'STATUS ' + str(v('STATUS REUNIÓN')) };
+  const pares = [['HORA', 'agenda_hora_escrita'], ['Dirección', 'agenda_direccion_escrita'], ['FECHA', 'agenda_fecha_escrita'],
+                 ['Barrio', 'agenda_barrio_escrito'], ['STATUS REUNIÓN', 'agenda_status_escrito']];
+  for (let i = 0; i < pares.length; i++) {
+    if (c(v(pares[i][0]), pares[i][0]) !== c(v(pares[i][1]), pares[i][0])) return { ok: false, motivo: pares[i][0] + ' cambió' };
+  }
+  if (!esVacio_(v('Figura')) && c(v('Figura'), 'Figura') !== c(ev.figuraFila || '', 'Figura')) return { ok: false, motivo: 'Figura cambió' };
+  if (c(v('EVENTO'), 'EVENTO') !== c(eventoAgenda_(ev), 'EVENTO')) return { ok: false, motivo: 'EVENTO cambió' };
+  if (c(v('No participa'), 'No participa') !== c((ev.noParticipa || []).join(' / '), 'No participa')) return { ok: false, motivo: '"No participa" cambió' };
+  const deAgenda = COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_);
+  for (let k = 0; k < hdr.length; k++) {
+    if (!hdr[k] || esColumnaDerivada_(hdr[k]) || deAgenda.indexOf(normalizeHeader_(hdr[k])) >= 0) continue;
+    if (!esVacio_(valores[k])) return { ok: false, motivo: 'tiene "' + hdr[k] + '" cargado' };
+  }
+  return { ok: true, motivo: '' };
+}
+
+// ===================== El registro (obligatorio antes de escribir) =====================
+
+function _idCorridaAgenda_() {
+  return Utilities.formatDate(new Date(), RDV_TZ, 'yyyyMMdd-HHmmss') + '-' + Utilities.getUuid().slice(0, 4);
+}
+
+const ENC_REGISTRO_AGENDA_ = ['corrida', 'hora', 'modo', 'solo_semana', 'mails', 'reuniones', 'creadas', 'vinculadas', 'actualizadas',
+  'movidas', 'suspendidas', 'reactivadas', 'figuras', 'ambiguas', 'editadas_equipo', 'saltadas_60', 'celdas_escritas', 'por_columna',
+  'saltadas_al_escribir', 'ms', 'error', 'borradas'];
+const ENC_CAMBIOS_AGENDA_ = ['corrida', 'tipo', 'fila', 'col', 'columna', 'antes', 'despues', 'fondo_antes', 'agenda_uid'];
+
+/** REGISTRO_AGENDA (la crea y completa el encabezado si le faltan columnas nuevas). */
+function _hojaRegistroAgenda_(ss) {
+  let sh = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
+  if (!sh) { sh = ss.insertSheet(RDV_HOJA_REGISTRO_AGENDA); sh.appendRow(ENC_REGISTRO_AGENDA_); }
+  else if (sh.getLastColumn() < ENC_REGISTRO_AGENDA_.length) sh.getRange(1, 1, 1, ENC_REGISTRO_AGENDA_.length).setValues([ENC_REGISTRO_AGENDA_]);
+  return sh;
+}
+
+/** Agrega líneas a REGISTRO_AGENDA_CAMBIOS (con reintentos). Tira si no puede. */
+function _anotarCambiosAgenda_(filas) {
+  if (!filas.length) return;
+  _conReintentosAgenda_('REGISTRO_AGENDA_CAMBIOS', function () {
+    const ss = intermediaAgenda_();
+    let c = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS);
+    if (!c) { c = ss.insertSheet(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS); c.appendRow(ENC_CAMBIOS_AGENDA_); }
+    else if (c.getLastColumn() < ENC_CAMBIOS_AGENDA_.length) c.getRange(1, 1, 1, ENC_CAMBIOS_AGENDA_.length).setValues([ENC_CAMBIOS_AGENDA_]);
+    for (let i = 0; i < filas.length; i += AGENDA_FILAS_POR_TANDA) {
+      const t = filas.slice(i, i + AGENDA_FILAS_POR_TANDA);
+      c.getRange(c.getLastRow() + 1, 1, t.length, ENC_CAMBIOS_AGENDA_.length).setValues(t);
+    }
+    SpreadsheetApp.flush();
+  });
+}
+
+/**
+ * **El registro de una corrida real, ANTES de escribir el destino** (obligatorio): la línea en REGISTRO_AGENDA (con lo
+ * planeado) y los cambios en REGISTRO_AGENDA_CAMBIOS. Si algo falla (con los reintentos), TIRA: quien llama no escribe.
+ */
+function _registrarCorridaAntesDeEscribir_(corrida, P, cambios, nCeldas, nBorrar) {
+  const s = P.resumen;
+  _anotarCambiosAgenda_(cambios);
+  _conReintentosAgenda_('REGISTRO_AGENDA', function () {
+    const sh = _hojaRegistroAgenda_(intermediaAgenda_());
+    sh.appendRow([corrida, new Date(), 'ESCRITURA', AGENDA_SOLO_SEMANA || '', s.mails || '', s.reunionesEnAlcance || 0, s.crear || 0,
+                  s.vincular || 0, s.actualizar || 0, s.mover || 0, s.suspender || 0, s.reactivar || 0, s.figura || 0, s.ambiguas || 0,
+                  s.editadas || 0, s.saltadas60 || 0, nCeldas, '', '', '', '', nBorrar]);
+    SpreadsheetApp.flush();
+    P.filaRegistro = sh.getLastRow();
+  });
+}
+
+/** Después de escribir: completa la línea de la corrida con lo que efectivamente pasó. No es obligatorio. */
+function _completarRegistroAgenda_(P, t0) {
+  try {
+    if (!P.filaRegistro || !P.escrito) return;
+    const sh = intermediaAgenda_().getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
+    const w = P.escrito;
+    sh.getRange(P.filaRegistro, 17, 1, 6).setValues([[w.hechas.length, JSON.stringify(w.porColumna), w.saltadas.length,
+                                                       Date.now() - t0, '', w.borradas || 0]]);
+  } catch (err) {
+    Logger.log('[agenda] no se pudo completar la línea de REGISTRO_AGENDA: %s (lo planeado ya estaba registrado)', err);
+  }
+}
+
+// ===================== El log de los mails y de las semanas =====================
+
+/** Cada mail leído: fecha, asunto y si su hilo tenía la etiqueta. */
+function _logMailsAgenda_(mails) {
+  Logger.log('--- mails leídos: %s ---', mails.lista.length);
+  mails.lista.forEach(function (m) {
+    Logger.log('    %s | %s | etiqueta: %s', Utilities.formatDate(m.fecha, RDV_TZ, 'dd/MM HH:mm'), m.asunto,
+               m.etiqueta === undefined ? '—' : (m.etiqueta ? 'sí' : 'NO'));
+  });
+  (mails.errores || []).forEach(function (e) { Logger.log('    AVISO de Gmail: %s', e); });
+}
+
+/** Las semanas + grupo del alcance, y las semanas del alcance SIN ningún mail (aviso). */
+function _logCoberturaAgenda_(r, alcance) {
+  const fin = alcance.hasta || hoyMediodia_();
+  const enAl = r.semanas.filter(function (g) {
+    return g.desde && g.hasta && ymd_(g.hasta) >= ymd_(alcance.desde) && ymd_(g.desde) <= ymd_(fin);
+  });
+  Logger.log('--- semanas + grupo en el alcance: %s ---', enAl.length);
+  enAl.forEach(function (g) {
+    const ult = g.versiones[g.versiones.length - 1];
+    Logger.log('    semana del %s | %s | %s versión(es), la última del %s', g.semanaTexto, g.grupo, g.versiones.length,
+               Utilities.formatDate(ult.fecha, RDV_TZ, 'dd/MM HH:mm'));
+  });
+  const d0 = alcance.desde;
+  const lunes = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() - ((d0.getDay() + 6) % 7), 12, 0, 0);
+  const sinMail = [];
+  for (let d = lunes; ymd_(d) <= ymd_(fin); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7, 12, 0, 0)) {
+    const dom = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6, 12, 0, 0);
+    const cubre = r.semanas.some(function (g) { return g.desde && g.hasta && ymd_(g.desde) <= ymd_(dom) && ymd_(g.hasta) >= ymd_(d); });
+    if (!cubre) sinMail.push(fmtFecha_(d));
+  }
+  Logger.log('  semanas del alcance SIN ningún mail: %s', sinMail.length ? sinMail.join(', ') + '   <<< revisar Gmail (etiqueta, asunto, cuenta)' : 'ninguna');
+  return sinMail;
+}

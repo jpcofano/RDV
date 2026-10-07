@@ -70,8 +70,8 @@ function parsearAgendaMails() {
   leerDestino_();   // carga las figuras del destino (la lista con la que se reconocen los nombres)
   const r = agendaDesdeMails_();
   _logParser_(r);
-  _escribirHojaAgenda_(AGENDA_SOLAPA_MAIL, _filasAgendaMail_(r));
-  _escribirHojaAgenda_(AGENDA_SOLAPA_DESAPARECIDAS, _filasDesaparecidas_(r));
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_MAIL, _filasAgendaMail_(r));
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_DESAPARECIDAS, _filasDesaparecidas_(r));
   Logger.log('%s ms', Date.now() - t0);
   return { reuniones: r.ultimas.length, unicas: r.unicas.length, desaparecidas: r.desaparecidas.length,
            semanas: r.semanas.length };
@@ -252,8 +252,8 @@ function cruzarAgendaConDestino() {
   const r = agendaDesdeMails_();
   const c = agendaCruce_(dest, r);
   _logCruce_(c, r);
-  _escribirHojaAgenda_(AGENDA_SOLAPA_CRUCE, c.filasCruce);
-  _escribirHojaAgenda_(AGENDA_SOLAPA_SIN_MAIL, c.filasSinMail);
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_CRUCE, c.filasCruce);
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_SIN_MAIL, c.filasSinMail);
   Logger.log('%s ms', Date.now() - t0);
   return c.resumen;
 }
@@ -684,7 +684,7 @@ function medirBarrioDesdeDireccion() {
                 res.barrio, res.comuna == null ? '' : res.comuna, resultado, bg || g.barrioGoogle || '', resG, g.formateada || '',
                 vt ? vt.barrio : '', vt ? vt.via : '', resVT, vc, resVC, lugarMail, reglaTxt, g.detalle || '']);
   });
-  _agregarCacheGeocode_(nuevas);
+  try { _agregarCacheGeocode_(nuevas); } catch (err) { Logger.log('[agenda] la cache %s no se actualizó: %s (lo geocodificado se vuelve a pedir la próxima vez)', AGENDA_SOLAPA_GEOCODE, err); }
 
   // El log, ANTES de escribir la solapa (si la escritura se cae, los números ya están).
   const ubicadas = c.exacto + c.mismaComuna + c.otraComuna;
@@ -740,7 +740,7 @@ function medirBarrioDesdeDireccion() {
              _pctAgenda_(c.viejoCompleto.exacto, c.viejoCompleto.evaluadas), c.exacto, _pctAgenda_(c.exacto, evaluadas));
   Logger.log('    (la parte Google del viejo se aplica sobre la misma respuesta del nuevo; su consulta original era la dirección ' +
              'completa + ", CABA, Argentina", sin región)');
-  _escribirHojaAgenda_(AGENDA_SOLAPA_BARRIO, filas);
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_BARRIO, filas);
   Logger.log('%s ms', Date.now() - t0);
   return { evaluadas: evaluadas, exacto: c.exacto, ubicadas: ubicadas, pendientes: c.pendientes, llamadas: c.llamadas,
            regla: { universo: c.regla.universo, cumple: c.regla.cumple, exacto: c.regla.exacto, seEscribirian: c.regla.seEscribirian },
@@ -901,7 +901,7 @@ function seguridadContraConjunto() {
                 fd.map(function (f) { return f.figura; }).join(' / '), fd.map(function (f) { return f.fila; }).join(' / '), comp, ev.eventoTexto]);
   });
   if (filas.length === 1) filas.push(['(ninguna)', '', '', '', '', '', '', '', '', '', '', '', '']);
-  _escribirHojaAgenda_(AGENDA_SOLAPA_SEGURIDAD, filas);
+  _escribirMedicionAgenda_(AGENDA_SOLAPA_SEGURIDAD, filas);
   Logger.log('  reuniones del mail sin figura: %s (en la ventana: %s) — por tipo: %s', c.total, c.ventana,
              _repartoAgenda_(sinFig, function (x) { return x.tipo || '(sin tipo)'; }));
   Logger.log('  contra RDV CONJUNTO por fecha + barrio/comuna: RESUELVE 1 %s | ambiguas o figura no reconocida %s | sin fila %s | ' +
@@ -968,3 +968,12 @@ function medirDesaparecidasAgenda() {
   return { desaparecidas: c.desap.length, categorias: cat, entreSemanas: pares.length };
 }
 
+
+/**
+ * Las solapas de MEDICIÓN de este archivo (06/10): si la intermedia no responde ni con los reintentos, la medición
+ * no falla — los números ya están en el log, que se escribe antes.
+ */
+function _escribirMedicionAgenda_(nombre, matriz) {
+  try { _escribirHojaAgenda_(nombre, matriz); }
+  catch (err) { Logger.log('[agenda] la solapa de medición %s NO se escribió: %s (los números de arriba valen igual)', nombre, err); }
+}

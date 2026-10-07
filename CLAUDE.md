@@ -183,6 +183,12 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   siendo futura), Suspendida → en agenda (volvió, y el "Suspendida" lo había puesto el sistema). Ver 3.4;
 - las filas nuevas van **al final**; todo lo que escribe va en `COLOR_SISTEMA`; **deshacer** (paso 38) borra las
   filas creadas sólo si son las últimas (si no, las vacía) y vuelve atrás sólo lo que todavía tiene lo que escribió.
+- **borra una fila** sólo en un caso (regla 7, decisión del usuario del 06/10): la reunión desapareció del mail siendo
+  futura y la fila **la creó la agenda y nadie la tocó** (`filaIntocadaAgenda_`: agenda_uid "c-…", todo lo que escribió
+  igual, ninguna otra celda cargada, sin formulario ni asistentes, STATUS "en agenda"). Se verifica dos veces (la
+  segunda justo antes de borrar, con el bloqueo), se guarda entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura.
+  Es la excepción a "no borrar filas" de §6: nada del sistema depende del número de fila (fichas y elecciones van por
+  figura + fecha + barrio; el registro de la agenda, por `agenda_uid`).
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 

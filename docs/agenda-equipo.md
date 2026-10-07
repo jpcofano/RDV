@@ -8,13 +8,16 @@ les queda para cargar a ustedes.
 
 - **Crea la fila de cada reunión** de la semana cuando llega el mail, **al final** de la planilla: Figura, EVENTO,
   FECHA, HORA, Dirección (la línea "Lugar:" del mail, tal cual, también si dice "A CONFIRMAR"), STATUS "en agenda", y
-  el Barrio sólo cuando está seguro (abajo).
+  el Barrio sólo cuando está seguro (abajo). El EVENTO, como lo escriben ustedes ("Encuentro con Vecinos", "Uno a uno",
+  'Encuentro Temático "Salud"', 'Encuentro "Primera Persona" con …'; "Seguridad en tu Barrio" va como "Encuentro con
+  Vecinos", con la Figura vacía hasta que se sepa).
 - **No duplica.** Si ya hay una fila de esa figura ese día (porque la cargaron ustedes), la usa: completa sólo lo que
   esté vacío y no toca lo que ya cargaron.
 - **Sigue los cambios del mail** ("Actualizo:"): hora, dirección y, si cambió la dirección, el barrio. Sólo mientras la
   reunión está "en agenda".
 - **Si la reunión se pasa a otro día de la misma semana**, mueve la fecha de la fila (no crea otra).
-- **Si una reunión que todavía no pasó desaparece del mail**, la pone en **"Suspendida"**. Si vuelve a aparecer, la
+- **Si una reunión que todavía no pasó desaparece del mail**: si la fila la había creado el sistema y nadie le cargó ni
+  le cambió nada, **la borra** (si la reunión vuelve a aparecer, la crea de nuevo); si no, la pone en **"Suspendida"**. Si vuelve a aparecer, la
   vuelve a "en agenda". Si un "Actualizo:" trae mucho menos que el anterior (menos del 60%), no suspende nada: puede ser
   un mail con sólo los cambios.
 - **"NO PARTICIPA"**: la reunión se hace igual y tiene su fila a nombre de esa figura; los nombres que no participan

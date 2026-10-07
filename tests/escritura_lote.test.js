@@ -1623,7 +1623,7 @@ function escenarioDerivadas() {
  */
 function escenarioFilaSinFigura() {
   console.log('\n[23] una fila sin Figura (Seguridad en tu Barrio de la agenda): el upsert y el paso 16 andan igual');
-  const E = crearEntorno();
+  const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true' } });
   let n = 0;
   const m = montar(E, 200, true, function (E2, datos) {
     const D = E2.Date, col = function (x) { return HDR_DESTINO.indexOf(x); };
@@ -1642,7 +1642,15 @@ function escenarioFilaSinFigura() {
   const v = E.ejecutar('verificarEscritura');
   ok(!v.error && !v.resultado.problemas.some(function (x) { return /invariante|duplicad/.test(x); }), 'paso 16 sin problemas por esas filas' +
      (v.error ? ': ' + v.error.stack : ''));
+  ok(hoja.v[n - 2][colD('Día de la semana')] === 'jueves' && hoja.v[n - 1][colD('Día de la semana')] === 'viernes' &&
+     hoja.v[n - 2][colD('Comuna')] === 5, 'las derivadas se calculan igual (Día de la semana, Comuna)');
+  ok(esVacioTest(hoja.v[n - 2][colD('Asistentes')]), 'Asistentes: no cruza nada (RDV CONJUNTO cruza por figura), sin error');
+  const p20 = E.ejecutar('porQueVacia');
+  const lin = p20.logs.filter(function (l) { return /^  (\d+) \| /.test(l) && (l.indexOf('  ' + (n - 1) + ' |') === 0 || l.indexOf('  ' + n + ' |') === 0); });
+  ok(!p20.error && lin.length > 0 && lin.every(function (l) { return /pendiente de figura/.test(l); }),
+     'paso 20: sus celdas vacías dicen "pendiente de figura", no "DEBERÍA ESTAR ESCRITA"' + (p20.error ? ': ' + p20.error.stack : ' (' + lin.length + ')'));
 }
+function esVacioTest(x) { return x === '' || x === null || x === undefined; }
 
 function casosOradores(E, datos) {
   const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };

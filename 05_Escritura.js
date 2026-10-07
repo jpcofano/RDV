@@ -534,6 +534,22 @@ function deshacerAgendaLote_(sh, hdr, cambios) {
 }
 
 /**
+ * **Borra UNA fila que creó la agenda y nadie tocó** (regla 7, 06/10, decisión del usuario: una reunión cancelada cuya
+ * fila es toda de la agenda no queda "Suspendida": se borra). Quien llama ya verificó, justo antes y con el bloqueo
+ * tomado, que la fila está intocada (`filaIntocadaAgenda_`) y la guardó entera en REGISTRO_AGENDA_CAMBIOS; acá se
+ * verifica una vez más que la fila sea ésa (su `agenda_uid`). Borrar corre los números de las filas de abajo: nada de
+ * lo que lee el sistema depende del número (las fichas y ELECCIONES_MATCH van por figura + fecha + barrio; el registro
+ * de la agenda, por agenda_uid; los reportes se regeneran en cada corrida). CLAUDE.md §6: la excepción, anunciada.
+ */
+function borrarFilaAgenda_(sh, hdr, fila, uid) {
+  const iUid = findIdxOr_(hdr, ['agenda_uid'], true);
+  if (iUid == null || str(sh.getRange(fila, iUid + 1).getValue()) !== uid || !/^c-/.test(uid)) {
+    throw new Error('borrarFilaAgenda_: la fila ' + fila + ' no es la de agenda_uid ' + uid + '. No se borró nada.');
+  }
+  sh.deleteRow(fila);
+}
+
+/**
  * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
  * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
  * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila

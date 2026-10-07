@@ -69,6 +69,9 @@ function porQueVacia(desde, hasta) {
 
       let causa;
       if (futura) causa = 'reunión futura';
+      // 06/10 (Agenda etapa 2): una fila sin Figura es una "Seguridad en tu Barrio" que espera su figura (RDV CONJUNTO
+      // o el equipo). Es un estado, no un error ni una incompleta.
+      else if (!f.figura) causa = 'k) pendiente de figura (Seguridad en tu Barrio: la completa RDV CONJUNTO o el equipo)';
       else if (col === 'STATUS REUNIÓN') causa = _causaStatus_(f, v, d, ahora, dest);
       else if (col === 'Asistentes') causa = escribiria[k] ? null : _causaAsistentes_(f, asis, ambiguaDe, conflictoDe);
       else if (COLUMNAS_ORADORES.indexOf(col) >= 0) causa = escribiria[k] ? null : _causaOradores_(f, col, asis, ambiguaDe, conflictoDe);

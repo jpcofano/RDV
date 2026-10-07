@@ -20,6 +20,9 @@
  *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
  *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
  *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
+ *  >>> 07/10: AGENDA, ETAPA 2 — ajustes de la corrida de todas() del 06/10 22:33 (ESTADO 0.z, "Ajustes"): Gmail por
+ *      etiqueta O asunto, la intermedia con reintentos y REGISTRO obligatorio, EVENTO como el equipo, BORRAR la fila
+ *      creada y sin tocar (regla 7), paso39_medirIntermedia(). Lo próximo: todas() con AGENDA_SOLO_SEMANA = '2026-10-05'.
  *  >>> 06/10 noche: AGENDA, ETAPA 2 — crear y actualizar filas del destino (ESTADO 0.z; prompt 06). La copia de prueba
  *      ya no existe: todo va sobre el real, con estas protecciones. Predicción de cada paso en ESTADO 0.z:
  *        1. ponerle NOMBRE a la versión del archivo del destino (Archivo → Historial de versiones)
@@ -606,6 +609,45 @@ function paso38_deshacerAgenda() {
              'SÍ, en el destino: saca las filas creadas que siguen replicando el mail y vuelve atrás las celdas que todavía tienen ' +
              'lo que escribió la agenda. No toca el archivo "Agenda" (se regenera en la corrida siguiente)', 'el log');
   return deshacerAgenda(false);
+}
+
+/** PASO 39 — SÓLO LECTURA: cuánto pesa la intermedia, por solapa, y qué se puede sacar. */
+function paso39_medirIntermedia() {
+  _anunciar_('paso 39 — el peso de la intermedia', 'medirIntermedia()  [diagnostico/17_peso_intermedia.js]', 'NO escribe nada',
+             'el log: por solapa celdas, fórmulas y tiempo de lectura; la propuesta de qué sacar');
+  return medirIntermedia();
+}
+
+/**
+ * **todas()** — la escribió el usuario en el editor (06/10, al principio de 00_Config.js) y se movió acá tal cual el
+ * 07/10, para que un `clasp push` no la borre (el push reemplaza el proyecto entero con lo del repo). Corre en orden
+ * las mediciones y la agenda EN SECO, cada una en su try: si una falla, sigue con la próxima. No escribe el destino.
+ */
+function todas() {
+  var pasos = [
+    ['paso35_medirReglaBarrio',        paso35_medirReglaBarrio],
+    ['paso35b_medirDesaparecidas',     paso35b_medirDesaparecidas],
+    ['paso36_columnasAgenda_enSeco',   paso36_columnasAgenda_enSeco],
+    ['paso37_agenda_enSeco',           paso37_agenda_enSeco]
+  ];
+  var t0 = Date.now();
+  Logger.log('########## todas — inicio | AGENDA_SOLO_SEMANA = ' +
+             (typeof AGENDA_SOLO_SEMANA === 'undefined' ? '(no definida)' : AGENDA_SOLO_SEMANA) +
+             ' | AGENDA_ACTIVA = ' +
+             (typeof AGENDA_ACTIVA === 'undefined' ? '(no definida)' : AGENDA_ACTIVA));
+  pasos.forEach(function (p) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + p[0] + ' ##########');
+    try {
+      p[1]();
+      Logger.log('########## ' + p[0] + ' — OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ' + p[0] + ' — ERROR: ' + (e && e.stack ? e.stack : e));
+    }
+  });
+  Logger.log('');
+  Logger.log('########## todas — fin (' + Math.round((Date.now() - t0) / 1000) + ' s)');
 }
 
 /**

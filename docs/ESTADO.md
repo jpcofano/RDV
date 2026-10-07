@@ -364,6 +364,81 @@ propia; las fórmulas de las derivadas **ya se sacaron del real** (paso 26 hecho
 
 Si algo sale mal: **`paso38_deshacerAgenda_enSeco()`** → **`paso38_deshacerAgenda()`** (la última corrida que escribió).
 
+**Resultados de `todas()` del 06/10 22:33** (pasos 35, 35b, 36 en seco, 37 en seco, con `DIAG_MAILS` y Gmail):
+
+- **Regla 7 confirmada**: 24 desaparecidas, **todas futuras al desaparecer**; las 9 con fila, "Suspendida". Entre
+  semanas: 5; en las 3 con fila vieja el equipo hizo suspender + crear → **queda el comportamiento por defecto** (no
+  vincular).
+- **Margen de 100 m APROBADO**: 175 cumplen, **97,1% exacto** (5 distintos, todos a más de 200 m del borde: criterio del
+  equipo, no error). Contra la predicción (170-195, ~98-99%): cobertura dentro, exacto un poco por debajo.
+- **Dos problemas**: Gmail leyó **sólo 10 mails** (faltaban las semanas del 14/09, 21/09 y 28/09), y abrir la intermedia
+  falló tres veces (timeout) y la ejecución terminó en error.
+
+**Ajustes (07/10), hechos:**
+
+1. **Gmail por etiqueta O asunto** (`leerMailsAgendaGmail_`): la etiqueta, más `subject:("…") newer_than:Nd` con
+   `AGENDA_ASUNTOS_GMAIL` ("Agenda Encuentros de vecinos" y "Agenda de Encuentros con Vecinos"), sin duplicar (por id de
+   mensaje). El log lista cada mail (fecha, asunto, si su hilo tenía la etiqueta), las semanas + grupo del alcance y
+   **avisa las semanas del alcance sin ningún mail**. El grupo de "Agenda de Encuentros con Vecinos con JM - Semana…"
+   ahora sale bien (antes tomaba el primer "con").
+2. **La intermedia**: se abre **una vez por corrida** (`intermediaAgenda_`, el mismo objeto que `ssIntermedia_()`), con
+   reintentos de **2, 5 y 10 s**; las escrituras, en tandas con los mismos reintentos. Las solapas informativas y la
+   cache de geocodificación **no hacen fallar la corrida** (tampoco las de medición del paso 31). **REGISTRO_AGENDA es
+   obligatorio**: la corrida real escribe primero la línea de la corrida y TODOS los cambios planeados (con lo que se
+   espera encontrar, el fondo y el `agenda_uid` de la fila) y, si no puede, **no escribe el destino**. El peso:
+   **`paso39_medirIntermedia()`** (sólo lectura) mide por solapa celdas asignadas y con datos, fórmulas, la de A1 y el
+   tiempo de abrir y de leer, y propone qué sacar. **Propuesta, a confirmar con esa medición**: mover a un archivo de
+   diagnóstico aparte (o borrar) las solapas de medición de una vez —`DIAG_*` (DIAG_MAILS es la más grande: 376 cuerpos
+   de hasta 8000 caracteres), `AGENDA_MAIL`, `AGENDA_MAIL_DESAPARECIDAS`, `AGENDA_CRUCE`, `AGENDA_DESTINO_SIN_MAIL`,
+   `AGENDA_BARRIO_DIRECCION`, `AGENDA_SEGURIDAD` y las `*_PRUEBA` / `*_DEMO`—; quedan B, Asistentes, `AGENDA_GEOCODE`, los
+   registros y los reportes de cada corrida. **B**: un `QUERY(IMPORTRANGE)` se recalcula del lado de Google, no al abrir
+   con `openById`; lo que pesa al abrir son las celdas asignadas (el paso 39 dice cuántas).
+3. **EVENTO como lo escribe el equipo** (`AGENDA_EVENTO_POR_TIPO` + `eventoAgenda_`): Seguridad en tu Barrio →
+   "Encuentro con Vecinos"; Temático → `Encuentro Temático "<tema>"`; Primera Persona → `Encuentro "Primera Persona" con
+   <invitado>`; "1 a 1" → "Uno a uno"; Encuentro con Vecinos, igual. El tema y el invitado salen del evento del mail
+   (entre comillas, o el texto hasta la primera coma sin las figuras). **"Café con Vecinos": sin confirmar** (no apareció
+   en el destino; la tabla del paso 37 en seco lo va a mostrar cuando aparezca). Como el EVENTO de Seguridad ya no la
+   distingue, **una fila de Seguridad se reconoce por la Figura vacía** (con `agenda_uid`).
+4. **Filas de Seguridad sin figura: toleradas, verificado**. El cruce con los formularios: no se rompe y no les escribe
+   Figura (test [23]); un formulario sin figura de esa comuna y fecha sí puede escribirles los inscriptos (la regla de
+   siempre). Asistentes: RDV CONJUNTO cruza por figura → no cruza nada, sin error. Las derivadas: se calculan (toman
+   las filas con Figura **o** FECHA). Paso 16: sólo controla incompletas en filas con RDV_UID. **Paso 20: sus celdas
+   vacías dicen "k) pendiente de figura"**, no "DEBERÍA ESTAR ESCRITA" (test [23]).
+6. **Regla 7, decisión del usuario: BORRAR la fila creada por la agenda y sin tocar** (`filaIntocadaAgenda_`): la creó
+   la agenda (`agenda_uid` "c-…"; las vinculadas o suspendidas llevan "v-…"), HORA / Dirección / FECHA / Barrio / STATUS
+   siguen con lo anotado, Figura / EVENTO / "No participa" con lo del mail, STATUS "en agenda", y **ninguna otra celda**
+   cargada (ni RDV_UID / form_*, Asistentes, Oradores, Observaciones, One Page…). Si no cumple todo, "Suspendida" como
+   antes. **Se verifica dos veces**: al registrar (lectura fresca) y otra vez justo antes de borrar, con el bloqueo
+   tomado; si cambió en el medio, no se borra (y en el registro queda "borrar_cancelado"). La fila borrada **queda
+   entera** (valores y fondos) en REGISTRO_AGENDA_CAMBIOS y **deshacer la restaura** al final. Si la reunión vuelve a
+   aparecer, se crea de nuevo. En el archivo "Agenda": "desaparecida (fila borrada)", sin fila. En seco, el log lista
+   **BORRAR** aparte de **SUSPENDER**. `borrarFilaAgenda_` (05_Escritura.js) verifica el `agenda_uid` antes de borrar.
+   - **6e — qué depende del número de fila**: las fichas de REVISAR_MATCH y ELECCIONES_MATCH, **no** (figura + fecha +
+     barrio; se regeneran en cada corrida del upsert); **deshacer, no** (busca la fila por `agenda_uid`); lo que escribe
+     la misma corrida de la agenda después de borrar (`AGENDA_FIGURA_A_COMPLETAR`, la columna "Fila del destino" de la
+     copia) **se corrige** con el número de después (`ajustarFila`); SIN_MATCH, EMPAREJAR_MANUAL y HISTORICO_SIN_RESOLVER
+     muestran números informativos que el upsert regenera en la misma corrida de cada hora (la agenda corre antes). Los
+     números fijos del paso 21 (`PASO21_FILAS`) son de una vista previa manual.
+- **`todas()`**: la escribiste en el editor, al principio de `00_Config.js`. **Se movió tal cual a `99_Correr.js`**: un
+  `clasp push` reemplaza el proyecto entero con lo del repo y la habría borrado. Conviene no dejar código sólo en el
+  editor.
+- Tests: `tests/agenda_escritura.test.js` [11] borrar / suspender / deshacer / volver a crear, [12] EVENTO, el grupo y
+  Gmail por etiqueta o asunto, [13] reintentos y REGISTRO obligatorio; `escritura_lote` [23] ampliado (derivadas,
+  Asistentes, paso 20). Todo en verde.
+
+**La próxima corrida, con la predicción anotada ANTES**: `AGENDA_SOLO_SEMANA = '2026-10-05'`, clasp push, **`todas()`**:
+
+- **paso 35 / 35b**: lo mismo que el 06/10 (miden la ventana con `DIAG_MAILS`; la semana no los afecta): 175 cumplen,
+  97,1%; 24 desaparecidas futuras, 9 con fila Suspendida; entre semanas 5.
+- **paso 36 en seco**: faltan las 9 columnas desde **AV** (si todavía no corriste `paso36_columnasAgenda()`).
+- **paso 37 en seco, semana del 05/10 al 11/10**: Gmail lee desde el 28/09 (el lunes − 7 días): **más de 10 mails**,
+  con los de la semana del 28/09 y los de esta (por etiqueta o asunto); **"semanas del alcance SIN ningún mail: ninguna"**;
+  sin timeouts de la intermedia (y si aparece uno, los reintentos lo dicen en el log y la corrida termina igual).
+  Reuniones de la semana **~10-15**: casi todas **VINCULAR** (el equipo ya las cargó), **CREAR 0-5**, **BORRAR 0**
+  (todavía no hay ninguna fila creada por la agenda: "c-…"), SUSPENDER 0-2, ambiguas 0; la tabla de EVENTO muestra las
+  formas del equipo y lo que se escribiría ya coincide ("Encuentro con Vecinos", "Uno a uno", "Encuentro Temático
+  \"…\""). La copia en "Agenda": escribiría tantas filas como reuniones de la semana (+ las desaparecidas).
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

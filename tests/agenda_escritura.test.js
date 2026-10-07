@@ -66,6 +66,7 @@ function crearEntorno(config) {
     getMaxRows() { return Math.max(this.v.length, 1000); }
     insertRowsAfter() {}
     deleteRows(f, n) { this.v.splice(f - 1, n); this.bg.splice(f - 1, n); }
+    deleteRow(f) { this.deleteRows(f, 1); }
     appendRow(r) { const f = this.getLastRow() + 1; this.getRange(f, 1, 1, r.length).setValues([r]); }
     setFrozenRows() {}
     clear() { this.v = []; this.bg = []; }
@@ -86,9 +87,10 @@ function crearEntorno(config) {
     Logger: { log: function () { const a = Array.prototype.slice.call(arguments); let s = String(a.shift()); s = s.replace(/%s/g, function () { return String(a.shift()); }).replace(/%%/g, '%'); E.logs.push(s); } },
     Utilities: {
       formatDate: function (d, tz, f) { return f.replace('yyyy', d.getFullYear()).replace('MM', pad(d.getMonth() + 1)).replace('dd', pad(d.getDate())).replace('HH', pad(d.getHours())).replace('mm', pad(d.getMinutes())).replace('ss', pad(d.getSeconds())); },
-      getUuid: function () { E.uuid++; return 'uuid-' + E.uuid + '-xxxx'; }, sleep: function () {}
+      getUuid: function () { E.uuid++; return 'uuid-' + E.uuid + '-xxxx'; }, sleep: function (ms) { (E.esperas = E.esperas || []).push(ms); }
     },
-    SpreadsheetApp: { openById: function (id) { return E.planilla(id); }, flush: function () {}, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' } },
+    SpreadsheetApp: { openById: function (id) { if (E.fallarAbrir && E.fallarAbrir(id)) throw new Error('Service Spreadsheets timed out'); return E.planilla(id); },
+                      flush: function () {}, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' } },
     LockService: { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } },
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
@@ -231,7 +233,7 @@ r = correr(E, false, [V1, VIEJO]);
 ok(r && !r.error, 'sin error' + (r && r.error ? ': ' + r.error : ''));
 ok(E.D.v.length === nAntes + 5, 'cinco filas nuevas, AL FINAL (' + (E.D.v.length - nAntes) + ')');
 const iMu = fila(E, 'Clara Muzzio', 8), iMa = fila(E, 'Jorge Macri', 9), iLo = fila(E, 'Hernán Lombardi', 7), iAl = fila(E, 'Laura Alonso', 7);
-const iSe = E.D.v.findIndex(function (x, i) { return i > 0 && x[E.C('EVENTO')] === 'Seguridad en tu Barrio'; });
+const iSe = E.D.v.findIndex(function (x, i) { return i > 0 && x[E.C('Figura')] === '' && x[E.C('agenda_uid')] !== ''; });
 ok(iMu >= nAntes && iMa >= nAntes && iLo >= nAntes && iSe >= nAntes, 'las nuevas están después de las que había');
 ok(iAl === nAntes - 1 && E.D.v.filter(function (x) { return x[E.C('Figura')] === 'Laura Alonso'; }).length === 2,
    'Laura Alonso 07/10 NO se duplicó: se vinculó la fila del equipo');
@@ -242,7 +244,9 @@ ok(celda(E, iMu, 'Barrio') === 'Recoleta' && celda(E, iMu, 'agenda_barrio_escrit
 ok(celda(E, iMa, 'EVENTO') === 'Uno a uno' && celda(E, iMa, 'Barrio') === 'Palermo', 'Macri "1 a 1": EVENTO "Uno a uno", Barrio Palermo (Comuna 14 = la del mail)');
 ok(celda(E, iLo, 'No participa') === 'Gabino Tapia' && celda(E, iLo, 'Barrio') === '' &&
    /A CONFIRMAR/.test(celda(E, iLo, 'Dirección')), 'conjunta: a nombre de Lombardi, "No participa" Tapia, sin barrio, Dirección A CONFIRMAR tal cual');
-ok(celda(E, iSe, 'Figura') === '' && celda(E, iSe, 'Barrio') === 'Almagro', 'Seguridad en tu Barrio: SIN figura, Barrio Almagro (Comuna 5)');
+ok(celda(E, iSe, 'Figura') === '' && celda(E, iSe, 'Barrio') === 'Almagro' && celda(E, iSe, 'EVENTO') === 'Encuentro con Vecinos',
+   'Seguridad en tu Barrio: SIN figura, EVENTO "Encuentro con Vecinos" (como el equipo), Barrio Almagro (Comuna 5)');
+ok(/^c-/.test(celda(E, iMu, 'agenda_uid')) && /^v-/.test(celda(E, nAntes - 1, 'agenda_uid')), 'agenda_uid: "c-" la creada, "v-" la vinculada');
 ok([iMu, iMa, iLo, iSe].every(function (i) { return fondo(E, i, 'FECHA') === SIS && fondo(E, i, 'agenda_uid') === SIS; }), 'todo lo escrito en #CFE2F3');
 ok(celda(E, iAl, 'Dirección') === 'Rivadavia 7000, Plaza' && celda(E, iAl, 'agenda_uid') !== '' && celda(E, iAl, 'Barrio') === 'Flores' &&
    celda(E, iAl, 'agenda_hora_escrita') === '10:00', 'vinculada: Dirección vacía completada, agenda_uid, Barrio del equipo intacto, la hora del equipo replica el mail');
@@ -368,9 +372,9 @@ const cmu = filaCopia('Clara Muzzio');
 ok(cmu && cmu[K('Estado en la agenda')] === 'reprogramada' && cmu[K('FECHA')].getDate() === 10 && cmu[K('Fecha original')].getDate() === 8,
    'Muzzio: "reprogramada", FECHA 10/10, Fecha original 08/10');
 const clo = filaCopia('Hernán Lombardi');
-ok(clo && clo[K('Estado en la agenda')] === 'desaparecida' && clo[K('STATUS en el destino')] === 'Suspendida' && clo[K('No participa')] === 'Gabino Tapia' &&
-   clo[K('Conjunta con')] === 'Gabino Tapia', 'Lombardi: "desaparecida", STATUS Suspendida, No participa y Conjunta con');
-const cse = cp.v.filter(function (x, i) { return i > 0 && x[K('EVENTO')] === 'Seguridad en tu Barrio'; })[0];
+ok(clo && clo[K('Estado en la agenda')] === 'desaparecida (fila borrada)' && clo[K('Fila del destino')] === '' && clo[K('No participa')] === 'Gabino Tapia' &&
+   clo[K('Conjunta con')] === 'Gabino Tapia', 'Lombardi (creada y sin tocar): "desaparecida (fila borrada)", sin fila; No participa y Conjunta con');
+const cse = cp.v.filter(function (x, i) { return i > 0 && x[K('Figura')] === '' && x[K('Lugar del mail')] === 'Comuna 5'; })[0];
 ok(cse && cse[K('Figura')] === '' && cse[K('Barrio calculado')] === 'Almagro' && cse[K('Comuna')] === 'Comuna 5' && cse[K('Fila del destino')] !== '',
    'Seguridad: sin figura, Barrio calculado Almagro, Comuna 5, con su fila del destino');
 const cma = filaCopia('Jorge Macri');
@@ -379,6 +383,85 @@ ok(cma && cma[K('Barrio calculado')] === '' && cma[K('Sin barrio porque')] === '
 const fechas = cp.v.slice(1).map(function (x) { return x[K('FECHA')].getTime(); });
 ok(fechas.every(function (t, i) { return i === 0 || t >= fechas[i - 1]; }), 'ordenada por fecha');
 ok(cp.proteccion && cp.advertencia === true, 'protegida con advertencia');
+
+console.log('[11] regla 7: BORRAR la fila creada por la agenda y sin tocar; suspender la tocada; deshacer la restaura');
+const VB = mail(6, 8, [EV.sabor, EV.lombardi, EV.alonso, EV.muzzio('Jueves 08/10', '18:30')]);   // sin Macri ni Seguridad
+E = montar();
+correr(E, false, [V1]);
+const nFilas = E.D.v.length;
+const iSeg = E.D.v.findIndex(function (x, i) { return i > 0 && x[E.C('Figura')] === '' && x[E.C('agenda_uid')] !== ''; });
+E.D.v[iSeg][E.C('Observaciones')] = 'nota del equipo';            // la de Seguridad: alguien la tocó
+let seco = correr(E, true, [V1, VB]);
+ok(seco.borrar === 1 && seco.suspender === 1, 'en seco: BORRAR 1 (Macri) y SUSPENDER 1 (Seguridad, tocada), aparte');
+ok(E.logs.some(function (l) { return /^    BORRAR \|.*Jorge Macri/.test(l); }) && E.logs.some(function (l) { return /^    SUSPENDER \|.*no se borra: tiene "Observaciones"/.test(l); }),
+   'el log los lista por separado, con el motivo de la que no se borra');
+ok(E.D.v.length === nFilas, 'y en seco no borra nada');
+r = correr(E, false, [V1, VB]);
+ok(E.D.v.length === nFilas - 1 && fila(E, 'Jorge Macri', 9) === -1, 'real: la fila de Macri (creada y sin tocar) se BORRÓ');
+const iSeg2 = E.D.v.findIndex(function (x, i) { return i > 0 && x[E.C('Observaciones')] === 'nota del equipo'; });
+ok(celda(E, iSeg2, 'STATUS REUNIÓN') === 'Suspendida', 'la de Seguridad (tocada) quedó "Suspendida"');
+const camB = E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.filter(function (x) { return x[1] === 'borrar'; });
+ok(camB.length === 1 && /Jorge Macri/.test(camB[0][5]) && /^c-/.test(camB[0][8]), 'la fila borrada quedó ENTERA en REGISTRO_AGENDA_CAMBIOS (con su agenda_uid)');
+const cpB = E.planilla(idCopia).hojas['Agenda'];
+const macriCopia = cpB.v.filter(function (x) { return x[K('Figura')] === 'Jorge Macri'; })[0];
+ok(macriCopia && macriCopia[K('Estado en la agenda')] === 'desaparecida (fila borrada)' && macriCopia[K('Fila del destino')] === '',
+   'en el archivo "Agenda": "desaparecida (fila borrada)", sin fila del destino');
+d = E.run('deshacerAgenda(true)');
+ok(d && d.restaurarian === 1 && E.D.v.length === nFilas - 1, 'deshacer en seco: restauraría 1, no toca nada');
+d = E.run('deshacerAgenda(false)');
+const iMacR = fila(E, 'Jorge Macri', 9);
+ok(d && d.restauradas === 1 && iMacR > 0 && celda(E, iMacR, 'EVENTO') === 'Uno a uno' && celda(E, iMacR, 'STATUS REUNIÓN') === 'en agenda' &&
+   /^c-/.test(celda(E, iMacR, 'agenda_uid')), 'deshacer: la fila de Macri vuelve (al final), con lo que tenía');
+ok(celda(E, iSeg2, 'STATUS REUNIÓN') === 'en agenda', 'y la de Seguridad vuelve a "en agenda"');
+// Si vuelve a aparecer, se crea de nuevo
+E = montar();
+correr(E, false, [V1]);
+correr(E, false, [V1, VB]);
+ok(fila(E, 'Jorge Macri', 9) === -1, '(otra vez) borrada');
+const VC = mail(6, 11, [EV.sabor, EV.lombardi, EV.alonso, EV.muzzio('Jueves 08/10', '18:30'), EV.seguridad, EV.macri('Serrano 1500')]);
+r = correr(E, false, [V1, VB, VC]);
+ok(r.crear === 2 && fila(E, 'Jorge Macri', 9) > 0, 'vuelven a aparecer en una versión posterior (Macri y la de Seguridad, las dos borradas): se CREAN de nuevo (' + r.crear + ')');
+
+console.log('[12] EVENTO como lo escribe el equipo, el grupo de "Agenda de Encuentros con Vecinos", y Gmail por etiqueta O asunto');
+E = montar();
+E.ctx.__m = [mail(2, 9, [['*Martes 06/10*', 'Evento: Encuentro Temático "Salud" Clara Muzzio, Comuna 2', 'Hora: 18:00h', 'Lugar: A CONFIRMAR',
+                          'Evento: Primera Persona con Juan Pérez, Jorge Macri, Comuna 14', 'Hora: 19:00h', 'Lugar: A CONFIRMAR',
+                          'Evento: Seguridad en tu Barrio, Comuna 5', 'Hora: 18:00h', 'Lugar: A CONFIRMAR']],
+                     'Agenda de Encuentros con Vecinos con JM - Semana del 05/10 al 10/10')];
+const ev12 = E.run('(function () { leerDestino_(); return agendaDesdeListaDeMails_(__m, {}).unicas.map(function (x) { return [x.grupo, x.tipo, eventoAgenda_(x)]; }); })()');
+ok(ev12.every(function (x) { return x[0] === 'JM'; }), '"Agenda de Encuentros con Vecinos con JM - Semana…" → grupo JM');
+ok(ev12.some(function (x) { return x[2] === 'Encuentro Temático "Salud"'; }), 'Temático → \'Encuentro Temático "Salud"\'');
+ok(ev12.some(function (x) { return x[2] === 'Encuentro "Primera Persona" con Juan Pérez'; }), 'Primera Persona → \'Encuentro "Primera Persona" con Juan Pérez\'');
+ok(ev12.some(function (x) { return x[1] === 'Seguridad en tu Barrio' && x[2] === 'Encuentro con Vecinos'; }), 'Seguridad en tu Barrio → "Encuentro con Vecinos"');
+// Gmail simulado: un hilo con la etiqueta, otro sólo por asunto, uno en los dos (no se duplica)
+const msj = function (id, d, asunto) { return { getId: function () { return id; }, getDate: function () { return new D(2026, 9, d, 9); },
+                                                 getSubject: function () { return asunto; }, getPlainBody: function () { return V1.cuerpo; } }; };
+const hilo = function (id, ms) { return { getId: function () { return id; }, getLastMessageDate: function () { return ms[ms.length - 1].getDate(); },
+                                          getMessages: function () { return ms; } }; };
+const hA = hilo('A', [msj('a1', 2, ASUNTO)]), hB = hilo('B', [msj('b1', 3, 'Fwd: ' + ASUNTO)]), hC = hilo('C', [msj('c1', 4, 'Agenda de Encuentros con Vecinos con JM - Semana del 05/10 al 10/10')]);
+E.ctx.GmailApp = {
+  getUserLabelByName: function () { return { getThreads: function (i) { return i === 0 ? [hA, hB] : []; } }; },
+  search: function (q, i) { if (i) return []; return /Agenda Encuentros de vecinos/.test(q) ? [hA, hB] : [hC]; }
+};
+const gm = E.run('leerMailsAgendaGmail_(new Date(2026, 8, 1))');
+ok(gm.lista.length === 3 && gm.lista.filter(function (m) { return m.etiqueta; }).length === 2,
+   'Gmail: 3 mails sin duplicar (la etiqueta trae 2, el asunto 3), y se sabe cuáles tenían la etiqueta');
+correr(E, true, [V1]);
+ok(E.logs.some(function (l) { return /semanas del alcance SIN ningún mail: .*\d\d\/09\/2026/.test(l); }),
+   'el log avisa las semanas del alcance sin ningún mail');
+
+console.log('[13] la intermedia: reintentos (2, 5, 10 s) y el REGISTRO obligatorio');
+E = montar();
+let fallos = 0;
+E.fallarAbrir = function (id) { return id === E.run('RDV_SS_INTERMEDIA') && fallos++ < 2; };
+E.esperas = [];
+const ssI = E.run('intermediaAgenda_()');
+ok(ssI && fallos === 3 && E.esperas.join(',') === '2000,5000', 'abrir la intermedia falló 2 veces: esperó 2 y 5 s y la abrió');
+E.fallarAbrir = null;
+antes = foto(E.D);
+E.ctx._registrarCorridaAntesDeEscribir_ = function () { throw new Error('Service Spreadsheets timed out'); };
+r = correr(E, false, [V1]);
+ok(r && /REGISTRO_AGENDA/.test(r.error || '') && foto(E.D) === antes, 'sin REGISTRO_AGENDA la corrida real NO escribe el destino: ' + (r && r.error));
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

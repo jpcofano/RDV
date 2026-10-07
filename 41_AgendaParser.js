@@ -153,7 +153,7 @@ function _semanaAgenda_(asunto, cuerpo, fechaMail) {
   const F = '(\\d{1,2}\\s*\\/\\s*\\d{1,3}(?:\\s*\\/\\s*\\d{2,4})?)';
   const probar = function (texto) {
     const t = _sinPrefijosAsunto_(texto).replace(/(\d)\s*\.\s*(\d)/g, '$1/$2');
-    const g = /\bcon\s+(.+?)\s*[-–]?\s*semana\b/i.exec(t);
+    const g = /vecinos?\s+con\s+(.+?)\s*[-–]?\s*semana\b/i.exec(t) || /\bcon\s+(.+?)\s*[-–]?\s*semana\b/i.exec(t);
     const grupo = g ? g[1].replace(/[-–]\s*$/, '').trim() : '';
     let m = new RegExp('semana\\s+del\\s+' + F + '\\s+al\\s+' + F, 'i').exec(t);
     if (m) {
@@ -251,6 +251,30 @@ function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
   return out;
 }
 
+/**
+ * Lo que dice el evento después del tipo (el TEMA de un temático, el INVITADO de una Primera Persona): si viene entre
+ * comillas, eso; si no, el texto hasta la primera coma, sin las palabras de las figuras ni "con" / guiones del
+ * principio. '' si no queda nada. Ej.: 'Encuentro Temático "Salud" Jorge Macri, Eje Sur' → 'Salud';
+ * 'Primera Persona con Juan Pérez, Jorge Macri, Comuna 14' → 'Juan Pérez'.
+ */
+function _textoDespuesDelTipo_(texto, reTipo, figuras) {
+  const t = String(texto || '');
+  const m = reTipo.exec(t);
+  if (!m) return '';
+  let resto = t.slice(m.index + m[0].length).replace(/^\s*["“”'«»]+/, '');
+  const q = /^\s*[-–:]?\s*["“”«]([^"“”»]+)["“”»]/.exec(t.slice(m.index + m[0].length));
+  if (q) return q[1].trim();
+  resto = resto.split(',')[0];
+  const deFiguras = {};
+  (figuras || []).forEach(function (f) { normalizeText_(f).split(/\s+/).forEach(function (w) { deFiguras[w] = true; }); });
+  const palabras = resto.split(/\s+/).filter(function (w) {
+    const n = normalizeText_(w).replace(/[^a-z0-9]/g, '');
+    return n && !deFiguras[n] && !/^\(?no$|^participa\)?$/.test(n);
+  });
+  while (palabras.length && /^(con|de|-|–|:|"|“|”)$/i.test(palabras[0])) palabras.shift();
+  return palabras.join(' ').replace(/^["“”«»'\s]+|["“”«»'\s]+$/g, '').trim();
+}
+
 /** Saca viñetas, asteriscos y guiones bajos de negrita/itálica, y espacios raros. */
 function _limpiarLineaAgenda_(s) {
   return String(s || '').replace(/[\u00A0\u200B\uFEFF]/g, ' ').replace(/[*_]/g, '')
@@ -294,6 +318,8 @@ function _completarReunion_(ev) {
   ev.participan = ev.figuras.filter(function (f) { return noPart.indexOf(f) < 0; });
   ev.figuraFila = ev.figuras[0] || '';
   ev.conjunta = ev.figuras.length >= 2;
+  ev.tema = ev.tipo === 'Encuentro Temático' ? _textoDespuesDelTipo_(ev.eventoTexto, /tem[aá]tico/i, ev.figuras) : '';
+  ev.invitado = ev.tipo === 'Primera Persona' ? _textoDespuesDelTipo_(ev.eventoTexto, /primera\s+persona/i, ev.figuras) : '';
   // Ubicación: lo que queda después de la última figura (sin el tipo, las marcas ni los paréntesis)
   let resto = sinTipo;
   figs.forEach(function (f) { resto = resto.slice(0, f.pos) + ' '.repeat(f.fin - f.pos) + resto.slice(f.fin); });
@@ -499,19 +525,49 @@ function _diaSemanaAgenda_(f) {
  * veces corta con error: la solapa queda a medias, pero el log ya tiene los números (se loguea antes de escribir).
  */
 const AGENDA_FILAS_POR_TANDA = 300;
-function _escribirHojaAgenda_(nombre, matriz) {
-  const intentar = function (que, fn) {
-    for (let intento = 1; ; intento++) {
-      try { return fn(); } catch (err) {
-        Logger.log('[agenda] %s: %s falló (intento %s): %s', nombre, que, intento, err);
-        if (intento >= 3) throw err;
-        Utilities.sleep(4000 * intento);
-        _ssIntermedia_ = null;
-      }
+
+/**
+ * **La intermedia, abierta UNA vez por corrida** y reusada (06/10: abrirla falló tres veces seguidas y la ejecución
+ * terminó en error). Comparte el objeto con `ssIntermedia_()` (20_UpsertDestino.js). Si abrirla falla, reintenta con
+ * esperas crecientes (`AGENDA_ESPERAS_INTERMEDIA_MS`: 2, 5 y 10 s) y recién ahí tira.
+ */
+function intermediaAgenda_() {
+  if (_ssIntermedia_) return _ssIntermedia_;
+  let ultimo = null;
+  for (let i = 0; i <= AGENDA_ESPERAS_INTERMEDIA_MS.length; i++) {
+    try {
+      _ssIntermedia_ = SpreadsheetApp.openById(RDV_SS_INTERMEDIA);
+      return _ssIntermedia_;
+    } catch (err) {
+      ultimo = err;
+      Logger.log('[agenda] abrir la intermedia falló (intento %s): %s', i + 1, err);
+      if (i < AGENDA_ESPERAS_INTERMEDIA_MS.length) Utilities.sleep(AGENDA_ESPERAS_INTERMEDIA_MS[i]);
     }
-  };
-  const sh = intentar('abrir', function () {
-    const ss = ssIntermedia_();
+  }
+  throw ultimo;
+}
+
+/** Corre `fn` con los mismos reintentos (2, 5, 10 s); entre intentos vuelve a abrir la intermedia. Tira si no sale. */
+function _conReintentosAgenda_(que, fn) {
+  let ultimo = null;
+  for (let i = 0; i <= AGENDA_ESPERAS_INTERMEDIA_MS.length; i++) {
+    try { return fn(); } catch (err) {
+      ultimo = err;
+      Logger.log('[agenda] %s falló (intento %s): %s', que, i + 1, err);
+      if (i < AGENDA_ESPERAS_INTERMEDIA_MS.length) { Utilities.sleep(AGENDA_ESPERAS_INTERMEDIA_MS[i]); _ssIntermedia_ = null; }
+    }
+  }
+  throw ultimo;
+}
+
+/**
+ * Escribe una solapa de la intermedia EN TANDAS, con los reintentos (06/10: AGENDA_BARRIO_DIRECCION se cortó con
+ * "Service Spreadsheets timed out" escribiéndose de una vez). `clearContents`, nunca `clear`. Si igual falla, TIRA:
+ * quien llama decide (las solapas informativas no hacen fallar la corrida; ver `_escribirSolapasAgenda_`).
+ */
+function _escribirHojaAgenda_(nombre, matriz) {
+  const sh = _conReintentosAgenda_(nombre + ': abrir', function () {
+    const ss = intermediaAgenda_();
     const h = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
     h.clearContents();
     return h;
@@ -519,7 +575,7 @@ function _escribirHojaAgenda_(nombre, matriz) {
   const ancho = matriz[0].length;
   for (let i = 0; i < matriz.length; i += AGENDA_FILAS_POR_TANDA) {
     const tanda = matriz.slice(i, i + AGENDA_FILAS_POR_TANDA);
-    intentar('tanda ' + (i / AGENDA_FILAS_POR_TANDA + 1), function () {
+    _conReintentosAgenda_(nombre + ': tanda ' + (i / AGENDA_FILAS_POR_TANDA + 1), function () {
       sh.getRange(i + 1, 1, tanda.length, ancho).setValues(tanda);
       SpreadsheetApp.flush();
     });
@@ -601,31 +657,58 @@ function _distanciaAOtroBarrioM_(lng, lat, poligonos, barrio) {
 }
 
 /**
- * Los mails de agenda **desde Gmail, por la etiqueta** (`AGENDA_ETIQUETA_GMAIL`, etapa 2): cada mensaje de los hilos
- * de la etiqueta con fecha desde `desde`, como `{ fecha, asunto, cuerpo, truncado: false }`. Los hilos vienen del más
- * nuevo al más viejo; se corta cuando un hilo entero es anterior a `desde`. Si la etiqueta no existe o Gmail falla,
- * TIRA: quien llama no escribe nada y avisa.
+ * Los mails de agenda **desde Gmail** (etapa 2; 06/10: la etiqueta sola trajo 10 mails y faltaban tres semanas): los
+ * hilos de la etiqueta `AGENDA_ETIQUETA_GMAIL` **o** los que traen en el asunto alguna de `AGENDA_ASUNTOS_GMAIL`, en
+ * los días desde `desde`, **sin duplicar** (por id de mensaje). Cada uno: `{ fecha, asunto, cuerpo, id, hilo,
+ * etiqueta }` (`etiqueta`: si su hilo tenía la etiqueta). Si no trae nada y Gmail falló, TIRA: no se escribe nada.
  */
 function leerMailsAgendaGmail_(desde) {
-  const etiqueta = GmailApp.getUserLabelByName(AGENDA_ETIQUETA_GMAIL);
-  if (!etiqueta) throw new Error('No existe la etiqueta de Gmail "' + AGENDA_ETIQUETA_GMAIL + '" en la cuenta que corre el script.');
-  const lista = [];
-  const paso = 100;
-  for (let inicio = 0; inicio < 2000; inicio += paso) {
-    const hilos = etiqueta.getThreads(inicio, paso);
-    if (!hilos.length) break;
-    let todosViejos = true;
+  const vistos = {}, lista = [], enEtiqueta = {};
+  const dias = Math.max(1, Math.ceil((Date.now() - desde.getTime()) / 86400000) + 1);
+  const agregar = function (hilos, origen) {
     hilos.forEach(function (h) {
-      if (h.getLastMessageDate() >= desde) todosViejos = false;
+      if (h.getLastMessageDate() < desde) return;
+      const idHilo = h.getId();
+      if (origen === 'etiqueta') enEtiqueta[idHilo] = true;
       h.getMessages().forEach(function (msg) {
-        if (msg.getDate() < desde) return;
+        const id = msg.getId();
+        if (vistos[id] || msg.getDate() < desde) return;
+        vistos[id] = true;
         lista.push({ fecha: msg.getDate(), asunto: msg.getSubject() || '', cuerpo: String(msg.getPlainBody() || ''), truncado: false,
-                    id: msg.getId() });
+                     id: id, hilo: idHilo });
       });
     });
-    if (todosViejos || hilos.length < paso) break;
-  }
-  return { fuente: 'Gmail, etiqueta "' + AGENDA_ETIQUETA_GMAIL + '"', lista: lista };
+  };
+  const errores = [];
+  // 1. la etiqueta (si existe)
+  try {
+    const etiqueta = GmailApp.getUserLabelByName(AGENDA_ETIQUETA_GMAIL);
+    if (etiqueta) {
+      for (let inicio = 0; inicio < 2000; inicio += 100) {
+        const hilos = etiqueta.getThreads(inicio, 100);
+        if (!hilos.length) break;
+        agregar(hilos, 'etiqueta');
+        if (hilos.length < 100 || hilos[hilos.length - 1].getLastMessageDate() < desde) break;
+      }
+    } else errores.push('no existe la etiqueta "' + AGENDA_ETIQUETA_GMAIL + '"');
+  } catch (e) { errores.push('etiqueta: ' + e); }
+  // 2. el asunto (las dos formas), en los últimos `dias` días
+  AGENDA_ASUNTOS_GMAIL.forEach(function (asunto) {
+    try {
+      const q = 'subject:("' + asunto + '") newer_than:' + dias + 'd';
+      for (let inicio = 0; inicio < 2000; inicio += 500) {
+        const hilos = GmailApp.search(q, inicio, 500);
+        if (!hilos.length) break;
+        agregar(hilos, 'asunto');
+        if (hilos.length < 500) break;
+      }
+    } catch (e) { errores.push('asunto "' + asunto + '": ' + e); }
+  });
+  if (!lista.length && errores.length) throw new Error('Gmail: ' + errores.join(' | '));
+  lista.forEach(function (m) { m.etiqueta = !!enEtiqueta[m.hilo]; });
+  lista.sort(function (x, y) { return x.fecha - y.fecha; });
+  return { fuente: 'Gmail: etiqueta "' + AGENDA_ETIQUETA_GMAIL + '" o asunto (' + AGENDA_ASUNTOS_GMAIL.join(' / ') + '), ' + dias + ' días',
+           lista: lista, errores: errores };
 }
 
 /** ¿No es una dirección? Un link, o un texto sin ningún número en "calle número" (sólo el nombre del lugar). */
@@ -752,7 +835,9 @@ const GEOCODE_ENCABEZADO = ['consulta', 'estado', 'lat', 'lng', 'tipo_ubicacion'
 
 function _leerCacheGeocode_() {
   const m = new Map();
-  const sh = ssIntermedia_().getSheetByName(AGENDA_SOLAPA_GEOCODE);
+  let sh;
+  try { sh = intermediaAgenda_().getSheetByName(AGENDA_SOLAPA_GEOCODE); }
+  catch (err) { Logger.log('[agenda] no se pudo leer la cache %s (%s): se sigue sin cache.', AGENDA_SOLAPA_GEOCODE, err); return m; }
   if (!sh || sh.getLastRow() < 2) return m;
   sh.getRange(2, 1, sh.getLastRow() - 1, GEOCODE_ENCABEZADO.length).getValues().forEach(function (v) {
     if (!str(v[0]) || v[1] === 'ERROR') return;   // un error no se cachea: se vuelve a intentar
@@ -766,7 +851,7 @@ function _leerCacheGeocode_() {
 /** Agrega al final de la cache lo geocodificado en esta corrida (la intermedia; la crea si no existe). */
 function _agregarCacheGeocode_(nuevas) {
   if (!nuevas.length) return;
-  const ss = ssIntermedia_();
+  const ss = intermediaAgenda_();
   let sh = ss.getSheetByName(AGENDA_SOLAPA_GEOCODE);
   if (!sh) { sh = ss.insertSheet(AGENDA_SOLAPA_GEOCODE); sh.getRange(1, 1, 1, GEOCODE_ENCABEZADO.length).setValues([GEOCODE_ENCABEZADO]); sh.setFrozenRows(1); }
   const filas = nuevas.map(function (g) {

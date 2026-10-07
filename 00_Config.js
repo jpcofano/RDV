@@ -1037,20 +1037,27 @@ const AGENDA_ACTIVA = false;
 const AGENDA_SOLO_SEMANA = null;
 /** La etiqueta de Gmail de donde se leen los mails de agenda (la cuenta que corre el script tiene que tenerla). */
 const AGENDA_ETIQUETA_GMAIL = 'GCBA/Encuentros Con Vecinos';
+/**
+ * Y además por ASUNTO (06/10: la etiqueta sola trajo 10 mails y faltaban tres semanas): los mails cuyo asunto trae
+ * alguna de éstas, en los días del alcance, sin duplicar con los de la etiqueta.
+ */
+const AGENDA_ASUNTOS_GMAIL = ['Agenda Encuentros de vecinos', 'Agenda de Encuentros con Vecinos'];
+/** Las esperas entre reintentos al abrir o escribir la intermedia (06/10: abrirla falló tres veces seguidas). */
+const AGENDA_ESPERAS_INTERMEDIA_MS = [2000, 5000, 10000];
 /** Regla de confianza del barrio, (c): el punto tiene que estar a MÁS de estos metros de cualquier otro barrio. */
 const BARRIO_MARGEN_M = 100;
 /**
- * El EVENTO de una fila nueva, según el tipo de la reunión del mail. **Valores iniciales: las formas del prompt.**
- * La corrida en seco (paso 37) lista cómo escribe hoy el equipo el EVENTO de las filas que ya existen, por tipo,
- * para ajustar esto.
+ * El EVENTO de una fila nueva, según el tipo de la reunión del mail, **como lo escribe el equipo** (06/10, de la tabla
+ * del paso 37 en seco): "{tema}" e "{invitado}" se completan con lo que dice el evento del mail (`eventoAgenda_`).
+ * "Café con Vecinos": sin confirmar (no apareció en el destino); la corrida en seco vuelve a listar la tabla.
  */
 const AGENDA_EVENTO_POR_TIPO = {
   'Encuentro con Vecinos': 'Encuentro con Vecinos',
   'Encuentro "1 a 1"': 'Uno a uno',
-  'Encuentro Temático': 'Encuentro Temático',
-  'Primera Persona': 'Primera Persona',
+  'Encuentro Temático': 'Encuentro Temático "{tema}"',
+  'Primera Persona': 'Encuentro "Primera Persona" con {invitado}',
   'Café con Vecinos': 'Café con Vecinos',
-  'Seguridad en tu Barrio': 'Seguridad en tu Barrio'
+  'Seguridad en tu Barrio': 'Encuentro con Vecinos'
 };
 /** La columna nueva con las figuras que NO participan (regla 2): los nombres, separados por " / ". */
 const COLUMNA_NO_PARTICIPA = 'No participa';
