@@ -1034,7 +1034,7 @@ const AGENDA_ACTIVA = false;
  * '2026-10-05'). La agenda sólo crea, vincula, actualiza, mueve y suspende reuniones de esa semana. `null` = todo el
  * alcance (desde hoy − DIAS_ACTIVOS en adelante).
  */
-const AGENDA_SOLO_SEMANA = null;
+const AGENDA_SOLO_SEMANA = '2026-10-05';
 /** La etiqueta de Gmail de donde se leen los mails de agenda (la cuenta que corre el script tiene que tenerla). */
 const AGENDA_ETIQUETA_GMAIL = 'GCBA/Encuentros Con Vecinos';
 /**
