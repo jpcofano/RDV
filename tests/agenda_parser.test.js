@@ -241,5 +241,44 @@ const noDir = function (d) { return vm.runInContext('_noEsDireccion_(' + JSON.st
 ok(noDir('https://maps.app.goo.gl/abc123') && noDir('Plaza Sin Número') && !noDir('Armenia 1322') && !noDir('Chile 1769, Casa'),
    'links y nombres sin altura no son direcciones; "Armenia 1322" sí');
 
+console.log('[9] "Re:" y "Fwd:": se lee sólo lo propio (07/10, el caso de Macri 08/10 Eje Norte)');
+const SEM_JM = 'Agenda Encuentros de vecinos con JM - Semana del 05/10 al 10/10';
+const macriEN = ['*Jueves 08/10*', 'Evento: Encuentro con Vecinos Jorge Macri, Eje Norte', 'Hora: 17:15h'];
+const macri14 = ['*Viernes 09/10*', 'Evento: Encuentro con Vecinos Jorge Macri, Comuna 14', 'Hora: 19:00h', 'Lugar: Serrano 1500'];
+const jm1 = macriEN.concat(['Lugar: Av. del Libertador 3500, Club Náutico', '']).concat(macri14).join('\n');
+const cita = function (txt) { return txt.split('\n').map(function (l) { return '> ' + l; }).join('\n'); };
+// v2: "Re:" con la agenda nueva arriba (sólo el 08/10, con la dirección más corta) y la v1 CITADA abajo (con el 09/10)
+const jm2 = macriEN.concat(['Lugar: Av. del Libertador 3500', '', 'El mar, 6 oct 2026 a las 9:00, Agenda <agenda@ejemplo.com>',
+            'escribió:', '', cita(jm1)]).join('\n');
+// v3: "Re:" que sólo agradece, con la v2 citada
+const jm3 = ['Gracias!', '', 'On Wed, Oct 7, 2026 at 10:00 AM Agenda <agenda@ejemplo.com> wrote:', cita(jm2)].join('\n');
+const fwd9 = ['Les reenvío la agenda.', '', '---------- Forwarded message ---------', 'De: Agenda <agenda@ejemplo.com>',
+             'Date: lun, 5 oct 2026 a las 9:00', 'Subject: Agenda Encuentros de vecinos con CM y Ministros - Semana del 05/10 al 10/10',
+             'To: <equipo@ejemplo.com>', '', '*Miércoles 07/10*', 'Evento: Café con Vecinos Laura Alonso, Comuna 7', 'Hora: 10:00h',
+             'Lugar: Rivadavia 7000', '', '-----Mensaje original-----', '*Martes 06/10*', 'Evento: Encuentro con Vecinos Ezequiel Sabor, Comuna 12',
+             'Hora: 18:00h'].join('\n');
+ctx.__mails2 = [
+  { fecha: new Date(2026, 9, 6, 9, 0), asunto: SEM_JM, cuerpo: jm1, truncado: false },
+  { fecha: new Date(2026, 9, 7, 10, 0), asunto: 'Re: ' + SEM_JM, cuerpo: jm2, truncado: false },
+  { fecha: new Date(2026, 9, 7, 11, 0), asunto: 'RE: Re: ' + SEM_JM, cuerpo: jm3, truncado: false },
+  { fecha: new Date(2026, 9, 5, 12, 0), asunto: 'Fwd: Agenda Encuentros de vecinos con CM y Ministros', cuerpo: fwd9, truncado: false }
+];
+const r9 = vm.runInContext('agendaDesdeListaDeMails_(__mails2, { fuente: "test" })', ctx);
+const mEN = r9.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 8; });
+ok(mEN.length === 1 && mEN[0].lugarTexto === 'Av. del Libertador 3500' && mEN[0].cambios !== 'nueva en la última versión',
+   'Macri 08/10 Eje Norte UNA vez, la de la versión nueva (no "nueva en la última versión"): ' + mEN.length + ' / ' + (mEN[0] && mEN[0].cambios));
+ok(r9.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 0 &&
+   r9.desaparecidas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 1,
+   'la del 09/10 (sólo citada en el Re:) es DESAPARECIDA: no "vuelve" por estar citada');
+ok(r9.respuestasSinAgenda.length === 1 && mEN[0] && mEN[0].versiones === 2,
+   'el "Re:" que sólo agradece no es una versión (quedan 2): ' + r9.respuestasSinAgenda.length);
+ok(r9.citasCortadas === 2 && r9.reenvios === 1, 'citas cortadas 2, reenvíos 1: ' + r9.citasCortadas + ' / ' + r9.reenvios);
+const alo = r9.unicas.filter(function (x) { return x.figuraFila === 'Laura Alonso'; });
+ok(alo.length === 1 && r9.unicas.filter(function (x) { return x.figuraFila === 'Ezequiel Sabor'; }).length === 0,
+   'el reenvío: la agenda reenviada una vez, sin su propia cita ("Mensaje original")');
+ctx.__cuerpoVineta = ['*Jueves 08/10*', '> Evento: viñeta'].join(String.fromCharCode(10));
+const corta = vm.runInContext('_cuerpoPropioAgenda_("Agenda", __cuerpoVineta)', ctx);
+ok(corta.corte === '' && /viñeta/.test(corta.texto), 'un ">" en un mail que no es respuesta no corta (podría ser una viñeta)');
+
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

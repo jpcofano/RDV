@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (4): después de semana() (11:52): versión como texto, formato de la traza, "Re:"/"Fwd:" sin el texto
+ *      citado, una línea por reunión en "Agenda", "Conjunta con" igual en los dos lados (ESTADO 0.z). Lo próximo:
+ *        1. paso37_agenda_enSeco()  (la semana) → CREAR 0, SUSPENDER 0, BORRAR 0 (si no, NO seguir)
+ *        2. semana()  → corrige las filas 812–820
+ *        3. AGENDA_SOLO_SEMANA = null, clasp push → paso37_agenda_enSeco()  (predicción en ESTADO 0.z)
  *  >>> 07/10 (3): AGENDA, AJUSTES DEL EQUIPO antes de la primera corrida real (prompt 07; ESTADO 0.z, "Ajustes del
  *      equipo"): "Origen fila", "Tocado por el equipo", las columnas "(mail)", AGENDA_DUPLICADOS, la fila borrada por el
  *      equipo no se recrea. Lo próximo, con la predicción escrita en ESTADO:

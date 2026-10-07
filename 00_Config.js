@@ -1119,6 +1119,11 @@ const AGENDA_DIRECCION_FORMA = 'completa';
 const AGENDA_EVENTO_CON_EJE = false;
 const AGENDA_HORA_AJUSTE_MIN = 0;
 const AGENDA_COPIAR_FORMATO = true;
+/**
+ * El formato de las columnas de traza de la agenda (07/10, después de semana()): se pone ANTES de escribir. Sin él,
+ * Sheets en español leyó "3 de 3" como el 3 de marzo (46084) y dejó la hora y la fecha como número (0,6979…, 46301,5).
+ */
+const AGENDA_FORMATO_COLUMNAS = { 'agenda_version': '@', 'agenda_hora_escrita': 'h:mm', 'agenda_fecha_escrita': 'd/MM/yyyy' };
 /** Las columnas del destino que la agenda puede escribir (la excepción `escribirAgendaLote_`, 05_Escritura.js). */
 const COLUMNAS_QUE_ESCRIBE_AGENDA = ['Figura', 'EVENTO', 'FECHA', 'HORA', 'Dirección', 'Barrio', 'STATUS REUNIÓN']
   .concat(COLUMNAS_AGENDA);

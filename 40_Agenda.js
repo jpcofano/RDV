@@ -137,6 +137,7 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   // 17. La copia en el archivo "Agenda": en seco sólo dice cuántas filas escribiría.
   const copia = armarCopiaAgenda_(plan, new Date());
   plan.resumen.copia = copia.length - 1;
+  if (plan.repetidasCopia) Logger.log('  copia en el archivo "Agenda": %s líneas repetidas no se escriben (una por reunión)', plan.repetidasCopia);
   if (enSeco) Logger.log('  copia en el archivo "Agenda": escribiría %s filas (en seco no se escribe).', copia.length - 1);
   else {
     try { escribirCopiaAgenda_(copia, plan); }
@@ -862,6 +863,11 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
   // 2. las celdas
   const w = escribirAgendaLote_(sh, hdr, todas);
   const nuevas = plan.acciones.filter(function (a) { return a.tipo === 'crear'; }).map(function (a) { return a.fila; });
+  try {
+    const deAgenda = dest.filas.filter(function (f) { return A.agenda_uid != null && !esVacio_(f.valores[A.agenda_uid]); })
+      .map(function (f) { return f.fila; }).concat(nuevas);
+    formatearColumnasAgenda_(sh, hdr, deAgenda);
+  } catch (err) { Logger.log('    el formato de las columnas de traza no se pudo poner: %s (los valores ya están)', err); }
   if (AGENDA_COPIAR_FORMATO && nuevas.length) {
     try { copiarFormatoNumericoAgenda_(sh, ultima, nuevas); }
     catch (err) { Logger.log('    el formato de las filas nuevas no se copió: %s (los valores ya están)', err); }
@@ -1189,7 +1195,17 @@ function _sinBarrioPorque_(b) {
  */
 function armarCopiaAgenda_(P, cuando) {
   const out = [AGENDA_COPIA_COLUMNAS.slice()];
-  const filas = (P.copia || []).slice().sort(function (a, b) {
+  // 07/10: una línea por reunión, con la misma identidad que el destino (la fila, si tiene; si no, figura + fecha +
+  // hora). Las vigentes van primero en P.copia, así que una reunión que vino dos veces queda con su versión vigente.
+  const vistas = new Set();
+  P.repetidasCopia = 0;
+  const unicas = (P.copia || []).filter(function (c) {
+    const claves = [idReunionAgenda_(c.ev)].concat(c.x && c.x.fila ? ['fila ' + c.x.fila] : []);
+    if (claves.some(function (k) { return vistas.has(k); })) { P.repetidasCopia++; return false; }
+    claves.forEach(function (k) { vistas.add(k); });
+    return true;
+  });
+  const filas = unicas.slice().sort(function (a, b) {
     return (a.ev.fecha - b.ev.fecha) || String(a.ev.hora).localeCompare(String(b.ev.hora));
   });
   filas.forEach(function (c) {
@@ -1199,7 +1215,7 @@ function armarCopiaAgenda_(P, cuando) {
     const comuna = b.barrio ? _comunaBarrioAg_(b.barrio) : ev.comuna;
     out.push([
       ev.semana, ev.grupo, _diaSemanaAgenda_(ev.fecha), ev.fecha, ev.hora, figura, ev.noParticipa.join(' / '),
-      ev.figuras.filter(function (f) { return f !== ev.figuraFila; }).join(' / '),
+      conjuntaAgenda_(ev),
       eventoAgenda_(ev), ev.lugar, _direccionAgenda_(ev), b.barrio || '',
       comuna == null ? '' : 'Comuna ' + comuna, _sinBarrioPorque_(b),
       ev.marcas.map(function (m) { return m.replace(' (lugar)', ''); }).filter(function (m, i, a) { return a.indexOf(m) === i; }).join(' / '),
@@ -1226,6 +1242,8 @@ function escribirCopiaAgenda_(matriz, P) {
   });
   sh.clear();
   const n = matriz.length, m = matriz[0].length;
+  // "Versión" como texto ANTES de escribir: si no, "3 de 3" se lee como el 3 de marzo (07/10)
+  if (n > 1) sh.getRange(2, AGENDA_COPIA_COLUMNAS.indexOf('Versión') + 1, n - 1, 1).setNumberFormat('@');
   sh.getRange(1, 1, n, m).setValues(matriz);
   sh.setFrozenRows(1);
   sh.getRange(1, 1, 1, m).setFontWeight('bold').setBackground('#D9D9D9');
@@ -1334,7 +1352,11 @@ function _anotarCambiosAgenda_(filas) {
     else if (c.getLastColumn() < ENC_CAMBIOS_AGENDA_.length) c.getRange(1, 1, 1, ENC_CAMBIOS_AGENDA_.length).setValues([ENC_CAMBIOS_AGENDA_]);
     for (let i = 0; i < filas.length; i += AGENDA_FILAS_POR_TANDA) {
       const t = filas.slice(i, i + AGENDA_FILAS_POR_TANDA);
-      c.getRange(c.getLastRow() + 1, 1, t.length, ENC_CAMBIOS_AGENDA_.length).setValues(t);
+      const desde = c.getLastRow() + 1;
+      // "antes" y "despues" como TEXTO antes de escribir: si no, Sheets lee "3 de 3" como el 3 de marzo y deshacer no
+      // reconoce la fila como intacta (07/10). Las fechas ya van como "yyyy-MM-dd" (_celdaRegistro_).
+      c.getRange(desde, 5, t.length, 3).setNumberFormat('@');
+      c.getRange(desde, 1, t.length, ENC_CAMBIOS_AGENDA_.length).setValues(t);
     }
     SpreadsheetApp.flush();
   });
@@ -1390,6 +1412,10 @@ function _logCoberturaAgenda_(r, alcance) {
   const enAl = r.semanas.filter(function (g) {
     return g.desde && g.hasta && ymd_(g.hasta) >= ymd_(alcance.desde) && ymd_(g.desde) <= ymd_(fin);
   });
+  Logger.log('  mails "Re:" con el mail anterior citado (se lee sólo lo propio): %s | reenvíos (se lee el reenviado): %s | ' +
+             'respuestas sin agenda propia (no cuentan como versión): %s', r.citasCortadas || 0, r.reenvios || 0,
+             (r.respuestasSinAgenda || []).length);
+  (r.respuestasSinAgenda || []).forEach(function (x) { Logger.log('    sin agenda propia: %s', x); });
   Logger.log('--- semanas + grupo en el alcance: %s ---', enAl.length);
   enAl.forEach(function (g) {
     const ult = g.versiones[g.versiones.length - 1];
@@ -1444,16 +1470,26 @@ function valoresMailAgenda_(ev, origen) {
   const v = {
     'Evento (mail)': str(ev.eventoTexto).replace(/\s+/g, ' '), 'Lugar (mail)': ev.lugar || '',
     'Dirección (mail)': str(ev.lugarTexto).replace(/\s+/g, ' '), 'Marcas (mail)': _marcasTextoAgenda_(ev),
-    'Conjunta con': (ev.participan || ev.figuras || []).filter(function (x) { return x !== ev.figuraFila; }).join(' / '),
+    'Conjunta con': conjuntaAgenda_(ev),
     'No participa': (ev.noParticipa || []).join(' / ')
   };
   if (origen) v['Origen fila'] = origen;
   return v;
 }
 
+/** "Conjunta con" (07/10): todas las otras figuras que nombra el evento, participen o no ("No participa" va aparte). */
+function conjuntaAgenda_(ev) {
+  return (ev.figuras || []).filter(function (x) { return x !== ev.figuraFila; }).join(' / ');
+}
+
 /** Las escrituras de esas columnas en una fila que ya existe: sólo las que cambian (esperado = lo que tiene hoy). */
 function _escriturasMailAgenda_(f, ev, A, origen) {
   const v = valoresMailAgenda_(ev, origen), out = [];
+  // 07/10: agenda_version que Sheets convirtió en fecha ("3 de 3" → 46084): se reescribe como texto.
+  const ver = A.agenda_version == null ? '' : f.valores[A.agenda_version];
+  if (typeof ver === 'number' || ver instanceof Date) {
+    out.push({ fila: f.fila, col: A.agenda_version + 1, valor: ev.version + ' de ' + ev.versiones, esperado: ver });
+  }
   Object.keys(v).forEach(function (n) {
     if (A[n] == null) return;
     const cur = f.valores[A[n]];

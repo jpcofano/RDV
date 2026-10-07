@@ -42,11 +42,17 @@ function crearEntorno(config) {
         getValue: function () { return leer(h.v)[0][0]; },
         getBackgrounds: function () { return leer(h.bg); },
         getFormula: function () { return ''; },
-        setValues: function (m) { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.v[f - 1 + i][c - 1 + j] = m[i][j]; return rango; },
+        setValues: function (m) { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) {
+          let x = m[i][j];
+          // como Sheets en español: "3 de 3" se lee como el 3 de marzo (46084), salvo en una celda con formato texto
+          const dm = typeof x === 'string' && /^(\d{1,2}) de (\d{1,2})$/.exec(x);
+          if (dm && ((h.nf || {})[(f + i) + ',' + (c + j)] !== '@')) x = 46022 + (+dm[2] === 3 ? 59 + (+dm[1]) : 0);
+          h.v[f - 1 + i][c - 1 + j] = x;
+        } return rango; },
         setValue: function (x) { h._asegurar(f, c); h.v[f - 1][c - 1] = x; return rango; },
         setBackground: function (col) { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.bg[f - 1 + i][c - 1 + j] = col; return rango; },
         clearContent: function () { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.v[f - 1 + i][c - 1 + j] = ''; return rango; },
-        setNumberFormat: function () { return rango; },
+        setNumberFormat: function (fmt) { h.nf = h.nf || {}; for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.nf[(f + i) + ',' + (c + j)] = fmt; return rango; },
         getNumberFormats: function () { const o = []; for (let i = 0; i < nf; i++) { const r = []; for (let j = 0; j < nc; j++) r.push((h.nf || {})[(f + i) + ',' + (c + j)] || 'General'); o.push(r); } return o; },
         setNumberFormats: function (m) { h.nf = h.nf || {}; for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.nf[(f + i) + ',' + (c + j)] = m[i][j]; return rango; },
         setDataValidation: function (v) { h.validaciones = (h.validaciones || 0) + 1; h.opciones = v; return rango; },
@@ -56,7 +62,12 @@ function crearEntorno(config) {
     }
     getRangeList(a1s) {
       const h = this;
-      return { setBackground: function (col) {
+      return { setNumberFormat: function (fmt) {
+        a1s.forEach(function (a1) {
+          const m = /^([A-Z]+)(\d+)$/.exec(a1); let n = 0; for (const ch of m[1]) n = n * 26 + ch.charCodeAt(0) - 64;
+          h.nf = h.nf || {}; h.nf[(+m[2]) + ',' + n] = fmt;
+        });
+      }, setBackground: function (col) {
         a1s.forEach(function (a1) {
           const p = a1.split(':').map(function (x) { const m = /^([A-Z]+)(\d+)$/.exec(x); let n = 0; for (const ch of m[1]) n = n * 26 + ch.charCodeAt(0) - 64; return [+m[2], n]; });
           const b = p[1] || p[0];
@@ -113,7 +124,7 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false' }, config || {});
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -541,7 +552,7 @@ ok(celda(E, iM, 'Origen fila') === 'sistema (agenda)' && celda(E, iA, 'Origen fi
 const iAgo = E.D.v.findIndex(function (x) { return x[E.C('FECHA')] instanceof Date && x[E.C('FECHA')].getMonth() === 7; });
 ok(celda(E, iAgo, 'Origen fila') === '' && celda(E, 1, 'Origen fila') === 'equipo',
    'la de agosto (fuera del alcance, hoy − 30) no se toca; las de septiembre del equipo: "equipo"');
-ok((celda(E, iL, 'Conjunta con') || '') === '', '"Conjunta con" sin la figura que NO PARTICIPA (' + celda(E, iL, 'Conjunta con') + ')');
+ok(celda(E, iL, 'Conjunta con') === 'Gabino Tapia', '"Conjunta con": todas las otras figuras nombradas, también la que NO PARTICIPA (' + celda(E, iL, 'Conjunta con') + ')');
 ok(/Clara Muzzio/.test(celda(E, iM, 'Evento (mail)')) && celda(E, iM, 'Dirección (mail)') === 'Av. Santa Fe 1234, Club Social' &&
    celda(E, iM, 'Lugar (mail)') !== '', 'columnas del mail: Evento (mail), Lugar (mail), Dirección (mail) — ' + celda(E, iM, 'Lugar (mail)'));
 ok(celda(E, iL, 'No participa') === 'Gabino Tapia' && /Lombardi/.test(celda(E, iL, 'Evento (mail)')), 'conjunta: "No participa" y el evento entero');
@@ -640,6 +651,42 @@ r = correr(E, false, [V1], { historial: { creadas: new Map(), olvidadas: new Set
 ok(!r.error && r.crear === 0 && r.noCreadasSinHistorial === 5 && r.vincular === 1, 'no crea ninguna de las 5 (las vincula igual): ' + r.noCreadasSinHistorial);
 r = correr(E, true, [V1], { historial: { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), error: 'x' } });
 ok(r.crear === 5, 'en seco sí las cuenta como CREAR (para ver el plan)');
+
+console.log('[22] semana() del 07/10: la versión como texto, el formato de la traza, FECHA por día, una línea por reunión en "Agenda"');
+E = montar();
+r = correr(E, false, [V1]);
+let iM2 = fila(E, 'Clara Muzzio', 8), iL2 = fila(E, 'Hernán Lombardi', 7);
+const cV = E.C('agenda_version') + 1, cH = E.C('agenda_hora_escrita') + 1, cF = E.C('agenda_fecha_escrita') + 1;
+ok(celda(E, iM2, 'agenda_version') === '1 de 1' && E.D.nf[(iM2 + 1) + ',' + cV] === '@',
+   'agenda_version "1 de 1" como TEXTO (sin "@", Sheets en español la lee como el 3 de marzo): ' + celda(E, iM2, 'agenda_version'));
+ok(E.D.nf[(iM2 + 1) + ',' + cH] === 'h:mm' && E.D.nf[(iM2 + 1) + ',' + cF] === 'd/MM/yyyy', 'agenda_hora_escrita "h:mm", agenda_fecha_escrita "d/MM/yyyy"');
+ok(celda(E, iL2, 'Conjunta con') === 'Gabino Tapia' && celda(E, iL2, 'No participa') === 'Gabino Tapia',
+   'Lombardi: "Conjunta con" Gabino Tapia (todas las otras nombradas) y "No participa" aparte');
+const copiaAg = E.planilla(E.run('AGENDA_COPIA_SS')).hojas[E.run('AGENDA_COPIA_SOLAPA')];
+const encC = copiaAg.v[0], lomC = copiaAg.v.filter(function (x) { return x[encC.indexOf('Figura')] === 'Hernán Lombardi'; })[0];
+ok(lomC && lomC[encC.indexOf('Conjunta con')] === celda(E, iL2, 'Conjunta con'), 'el mismo "Conjunta con" en el destino y en "Agenda"');
+ok(copiaAg.v.slice(1).every(function (x) { return typeof x[encC.indexOf('Versión')] === 'string'; }), '"Versión" en "Agenda" como texto');
+// Las 9 filas del 07/10: la versión quedó como número (46084) y la hora y la fecha de la traza como número de serie
+const serial = function (d) { return (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000; };
+[iM2, iL2].forEach(function (i) {
+  E.D.v[i][E.C('agenda_version')] = 46084;
+  E.D.v[i][E.C('agenda_fecha_escrita')] = serial(E.D.v[i][E.C('FECHA')]) + 0.5;          // 46301,5
+  E.D.v[i][E.C('agenda_hora_escrita')] = (+E.D.v[i][E.C('HORA')].slice(0, 2) * 60 + +E.D.v[i][E.C('HORA')].slice(3)) / 1440;
+  delete E.D.nf[(i + 1) + ',' + cV]; delete E.D.nf[(i + 1) + ',' + cH]; delete E.D.nf[(i + 1) + ',' + cF];
+});
+ok(E.run('valorAgendaComparable_(46301, "FECHA") === valorAgendaComparable_(46301.5, "agenda_fecha_escrita")') &&
+   E.run('valorAgendaComparable_(0.6979166, "agenda_hora_escrita")') === '16:45', 'FECHA por día (46301 = 46301,5) y la hora de un serial (0,6979… = 16:45)');
+r = correr(E, false, [V1]);
+ok(celda(E, iM2, 'agenda_version') === '1 de 1' && celda(E, iL2, 'agenda_version') === '1 de 1', 'la corrida siguiente CORRIGE la versión (texto)');
+ok(E.D.nf[(iM2 + 1) + ',' + cH] === 'h:mm' && E.D.nf[(iL2 + 1) + ',' + cF] === 'd/MM/yyyy', 'y pone el formato a la hora y la fecha de la traza');
+ok(celda(E, iM2, 'Tocado por el equipo') === '' && celda(E, iL2, 'Tocado por el equipo') === '' && r.editadas === 0 && r.crear === 0,
+   'sin "Tocado" ni "editadas" falsas por el número de serie, y no crea nada');
+// "Agenda": una línea por reunión aunque la reunión llegue dos veces
+E.ctx.__evs = E.run('agendaDesdeListaDeMails_([' + "{ fecha: new Date(2026, 9, 2, 9, 0), asunto: 'Agenda Encuentros de vecinos con CM y Ministros - Semana del 05/10 al 10/10', " +
+  "cuerpo: '*Jueves 08/10*' + String.fromCharCode(10) + 'Evento: Encuentro con Vecinos Clara Muzzio, Recoleta' + String.fromCharCode(10) + 'Hora: 18:30h', truncado: false }" + '], {}).unicas');
+const cop = E.run('(function () { const ev = __evs[0]; const P = { copia: [{ ev: ev, x: { fila: 9 }, estado: "vigente" }, { ev: ev, x: null, estado: "desaparecida" }] }; ' +
+                  'const m = armarCopiaAgenda_(P, new Date()); return { lineas: m.length - 1, repetidas: P.repetidasCopia }; })()');
+ok(cop.lineas === 1 && cop.repetidas === 1, '"Agenda": la misma reunión dos veces → UNA línea (la vigente)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

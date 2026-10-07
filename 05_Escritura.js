@@ -479,6 +479,7 @@ function escribirAgendaLote_(sh, hdr, escrituras) {
     hechas.push(x);
   });
   const bloques = _bloquesDeEscritura_(conValor);
+  _formatoAntesDeEscribirAgenda_(sh, hdr, hechas);
   bloques.forEach(function (b) { sh.getRange(b.fila, b.col, b.valores.length, b.valores[0].length).setValues(b.valores); });
   _pintarBloques_(sh, bloques);
   Object.keys(vaciar).forEach(function (fila) {
@@ -498,9 +499,11 @@ function valorAgendaComparable_(v, nombreCol) {
   if (v === null || v === undefined) v = '';
   if (n === 'hora' || n === 'agenda_hora_escrita') {
     if (v instanceof Date) return Utilities.formatDate(v, RDV_TZ, 'HH:mm');
+    if (typeof v === 'number') return _horaDeSerial_(v);          // 0,6979… = 16:45 (una celda sin formato de hora)
     return _horaAgenda_(v) || str(v);
   }
   if (n === 'fecha' || n === 'agenda_fecha_escrita') {
+    if (typeof v === 'number') return _fechaDeSerial_(v);         // 46301,5 = 46301 = el mismo DÍA (07/10)
     const d = toDate_(v);
     return d ? ymd_(d) : str(v);
   }
@@ -714,4 +717,44 @@ function copiarFormatoNumericoAgenda_(sh, filaModelo, filas) {
     n++;
   });
   return n;
+}
+
+/**
+ * Un número de serie de Sheets (días desde el 30/12/1899) como "yyyyMMdd": **por día** (46301 y 46301,5 son el mismo).
+ * Sólo para comparar en la agenda (una celda de fecha que quedó con formato de número); toDate_ sigue sin aceptarlos.
+ */
+function _fechaDeSerial_(n) {
+  const d = new Date(1899, 11, 30 + Math.floor(n), 12, 0, 0);
+  return ymd_(alMediodia_(d.getFullYear(), d.getMonth() + 1, d.getDate()));
+}
+
+/** La parte de la hora de un número de serie de Sheets como "HH:mm" (0,6979… → "16:45"). */
+function _horaDeSerial_(n) {
+  const min = Math.round((n - Math.floor(n)) * 1440) % 1440;
+  return ('0' + Math.floor(min / 60)).slice(-2) + ':' + ('0' + (min % 60)).slice(-2);
+}
+
+/** Antes de escribir: el formato de AGENDA_FORMATO_COLUMNAS en las celdas que se van a escribir de esas columnas. */
+function _formatoAntesDeEscribirAgenda_(sh, hdr, celdas) {
+  const porCol = {};
+  celdas.forEach(function (e) {
+    const fmt = AGENDA_FORMATO_COLUMNAS[normalizeHeader_(hdr[e.col - 1])];
+    if (fmt) (porCol[fmt] = porCol[fmt] || []).push(_a1_(e.fila, e.col));
+  });
+  Object.keys(porCol).forEach(function (fmt) { sh.getRangeList(porCol[fmt]).setNumberFormat(fmt); });
+}
+
+/**
+ * El formato de AGENDA_FORMATO_COLUMNAS en las filas de la agenda (07/10): sólo el formato numérico de esas columnas
+ * del sistema, nunca valores ni fondos. Arregla las celdas escritas antes (la hora y la fecha que quedaron como número).
+ */
+function formatearColumnasAgenda_(sh, hdr, filas) {
+  if (!filas.length) return 0;
+  const idx = hdr.map(normalizeHeader_);
+  Object.keys(AGENDA_FORMATO_COLUMNAS).forEach(function (n) {
+    const c = idx.indexOf(normalizeHeader_(n));
+    if (c < 0) return;
+    sh.getRangeList(filas.map(function (f) { return _a1_(f, c + 1); })).setNumberFormat(AGENDA_FORMATO_COLUMNAS[n]);
+  });
+  return filas.length;
 }

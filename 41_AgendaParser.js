@@ -74,10 +74,19 @@ function agendaDesdeListaDeMails_(lista, meta) {
               sinFecha: 0, masNuevo: null };
   _agendaTolerancia_ = [];
   const grupos = new Map();
+  r.citasCortadas = 0; r.reenvios = 0; r.respuestasSinAgenda = [];
+  lista = lista.map(function (m) {
+    // 07/10: en un "Re:" el cuerpo trae el mail anterior CITADO (y _limpiarLineaAgenda_ le saca el ">"): se lee sólo lo
+    // propio. En un reenvío, la agenda del mensaje reenviado, una vez.
+    const propio = _cuerpoPropioAgenda_(m.asunto, m.cuerpo);
+    if (propio.corte === 'cita') r.citasCortadas++;
+    if (propio.corte === 'reenvio') r.reenvios++;
+    return propio.corte ? Object.assign({}, m, { cuerpo: propio.texto, cuerpoCompleto: m.cuerpo, corte: propio.corte }) : m;
+  });
   lista.forEach(function (m) {
     if (m.truncado) r.truncados++;
     if (!r.masNuevo || m.fecha > r.masNuevo) r.masNuevo = m.fecha;
-    const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
+    const sem = _semanaAgenda_(m.asunto, m.cuerpoCompleto || m.cuerpo, m.fecha);   // la semana, también del encabezado del reenviado
     if (!sem) { r.sinSemana.push(m.asunto); return; }
     if (sem.forma !== 'del … al …') r.semanaOtraForma.push(sem.forma + ': ' + m.asunto);
     const grupo = sem.grupo;
@@ -89,6 +98,16 @@ function agendaDesdeListaDeMails_(lista, meta) {
 
   grupos.forEach(function (g) {
     g.versiones.sort(function (a, b) { return a.fecha - b.fecha; });
+    // Una respuesta sin agenda propia (sólo "ok" arriba de la cita) no es una versión: si contara, todo "desaparecería".
+    g.versiones = g.versiones.filter(function (m) {
+      if (!m.corte) return true;
+      const propias = _parsearCuerpoAgenda_(m.cuerpo, m.fecha, _rVacio_(), { grupo: g.grupo, semana: g.semanaTexto, version: 0,
+        versiones: 0, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '', desde: g.desde, hasta: g.hasta });
+      if (propias.length) return true;
+      r.respuestasSinAgenda.push(m.asunto + ' | ' + fmtFecha_(m.fecha));
+      return false;
+    });
+    if (!g.versiones.length) return;
     const parseadas = g.versiones.map(function (m, i) {
       return _parsearCuerpoAgenda_(m.cuerpo, m.fecha, r, { grupo: g.grupo, semana: g.semanaTexto, version: i + 1,
                                     versiones: g.versiones.length, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '',
@@ -223,6 +242,49 @@ function _unificarEntreGrupos_(ultimas) {
  * y "Lugar:" llenan la reunión en curso; una línea que no es ninguna de esas, inmediatamente después de un
  * campo, se toma como continuación de ese campo (el texto plano a veces corta líneas largas).
  */
+/** Un "r" descartable, para parsear un cuerpo sin sumar a los contadores de la corrida. */
+function _rVacio_() {
+  return { sinFecha: 0, eventosIncompletos: [], fueraDeSemana: [], fechasCorregidas: [], imagenes: 0, tipos: {}, lineasRaras: {} };
+}
+
+const RE_CITA_AGENDA_ = [
+  /^\s*-{2,}\s*(mensaje original|original message)\s*-{2,}\s*$/i,
+  /^\s*_{8,}\s*$/                                                        // separador de Outlook
+];
+const RE_REENVIO_AGENDA_ = /^\s*-{2,}\s*(forwarded message|mensaje reenviado)\s*-{2,}\s*$/i;
+const RE_RESPUESTA_AGENDA_ = /^\s*((re|rv|fwd?|aw|wg)\s*:\s*)+/i;
+const RE_ESCRIBIO_AGENDA_ = /(escribi[oó]|wrote)\s*:\s*$/i;
+
+/**
+ * **Lo propio de un mail** (07/10): corta el cuerpo donde empieza la cita del mail anterior ("El … escribió:", "On …
+ * wrote:" —aunque Gmail la parta en dos líneas—, líneas con ">", "-----Mensaje original-----"). En un reenvío
+ * ("---------- Forwarded message ---------" o "Mensaje reenviado"), se queda con el mensaje reenviado, sin su
+ * encabezado (De/Date/Subject/To…) y sin lo que ése a su vez cita. Devuelve { texto, corte: '' | 'cita' | 'reenvio' }.
+ */
+function _cuerpoPropioAgenda_(asunto, cuerpo) {
+  let lineas = String(cuerpo || '').split(/\r?\n/);
+  let corte = '';
+  const iR = lineas.findIndex(function (l) { return RE_REENVIO_AGENDA_.test(l); });
+  if (iR >= 0) {
+    let j = iR + 1;
+    while (j < lineas.length && (/^\s*(de|from|date|fecha|subject|asunto|to|para|cc|cco)\s*:/i.test(lineas[j]) || !lineas[j].trim())) j++;
+    lineas = lineas.slice(j);
+    corte = 'reenvio';
+  }
+  for (let i = 0; i < lineas.length; i++) {
+    const l = lineas[i];
+    // ">" es cita sólo en una respuesta o un reenvío (en una agenda podría ser una viñeta)
+    let cita = RE_CITA_AGENDA_.some(function (re) { return re.test(l); }) || (/^\s*>/.test(l) && RE_RESPUESTA_AGENDA_.test(asunto || ''));
+    if (!cita && /^\s*(el|on)\s/i.test(l)) {
+      // "El mié, 7 oct 2026 a las 10:00, Fulano <x@y> escribió:" (Gmail lo parte a veces en dos o tres líneas)
+      const junto = [l, lineas[i + 1] || '', lineas[i + 2] || ''];
+      cita = junto.some(function (x, k) { return RE_ESCRIBIO_AGENDA_.test(junto.slice(0, k + 1).join(' ')); });
+    }
+    if (cita) { lineas = lineas.slice(0, i); if (!corte) corte = 'cita'; break; }
+  }
+  return { texto: lineas.join('\n'), corte: corte };
+}
+
 function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
   const lineas = String(cuerpo || '').split(/\r?\n/);
   const out = [];

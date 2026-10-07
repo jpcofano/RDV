@@ -509,7 +509,7 @@ que arrancan con lo que venía haciendo la agenda: `AGENDA_DIRECCION_FORMA = 'co
 `AGENDA_EVENTO_CON_EJE = false`, `AGENDA_HORA_AJUSTE_MIN = 0`. `AGENDA_COPIAR_FORMATO = true`: las filas nuevas toman
 el **formato numérico** de la última fila (sólo el formato numérico, nunca fondos: `copiarFormatoNumericoAgenda_`).
 **Nada del mail se pierde**: columnas nuevas **"Evento (mail)"**, **"Lugar (mail)"**, **"Dirección (mail)"**,
-**"Marcas (mail)"**, **"Conjunta con"** (sólo las que participan) y la que ya estaba, "No participa"; en las creadas y
+**"Marcas (mail)"**, **"Conjunta con"** (todas las otras figuras nombradas, participen o no; corregido el 07/10) y la que ya estaba, "No participa"; en las creadas y
 en las vinculadas, y se actualizan con cada versión del mail (sólo lo que cambia).
 
 **Las columnas.** `COLUMNAS_AGENDA` pasa de 9 a **16**; el paso 36 agrega las 7 que faltan, al final. Con form_clave en
@@ -553,6 +553,52 @@ y aplica lo elegido, duplicado posterior listado, fila borrada no recreada y rec
    > una de las 10 puede pasar a preguntar si hay una fila del equipo parecida. "Origen fila" = *equipo* en las filas
    > del equipo de esa semana que el mail no trae. "Tocado por el equipo" vacío. REGISTRO_AGENDA escrito, sin Error.
 3. Para volver atrás: `paso38_deshacerAgenda_enSeco()` → `paso38_deshacerAgenda()`.
+
+#### `semana()` (07/10 11:52) y los ajustes antes de abrir el alcance
+
+**Resultado**: las 9 filas **812–820** bien (formato del equipo, barrio en 6 de 9 con los motivos correctos, derivadas,
+Origen fila, No participa, la hora de la última versión; Clara Muzzio 07/10, desaparecida en la v3, no se creó). Seis
+ajustes:
+
+1. **`agenda_version` quedó como 46084**: Sheets en español leyó "3 de 3" como el 3 de marzo. Ahora las columnas de
+   traza llevan su formato **antes** de escribir (`AGENDA_FORMATO_COLUMNAS`: `agenda_version` texto `@`); lo mismo
+   "Versión" en el archivo "Agenda" y "antes"/"despues" de REGISTRO_AGENDA_CAMBIOS (si no, deshacer tampoco reconocía
+   la fila como intacta: lo encontró el test).
+2. **`agenda_hora_escrita` (0,6979…) y `agenda_fecha_escrita` (46301,5)**: formato `h:mm` y `d/MM/yyyy`. Y la
+   comparación (`valorAgendaComparable_`) entiende los números de serie: **la FECHA por día** (46301 = 46301,5) y la
+   hora por su parte fraccionaria, así "Tocado por el equipo" y "editada por el equipo" no dan falsos.
+3. **"Re:" / "Fwd:"**: el parser leía el **texto citado** del mail anterior (`_limpiarLineaAgenda_` le saca el ">"):
+   Macri 08/10 Eje Norte salía dos veces. `_cuerpoPropioAgenda_` (41_AgendaParser.js) corta en "El … escribió:" /
+   "On … wrote:" (también partido en dos líneas), "-----Mensaje original-----", el separador de Outlook y, **sólo en un
+   asunto Re:/RV:/Fwd:**, en las líneas con ">" (en una agenda podría ser una viñeta). En un reenvío se queda con el
+   mensaje reenviado, una vez, sin su encabezado (la semana se sigue buscando en el cuerpo completo). Un "Re:" sin
+   agenda propia (sólo "gracias" y la cita) **no cuenta como versión**. Una desaparecida ya no "vuelve" por estar
+   citada. El log de la agenda y de la medición (paso 29) cuentan citas cortadas, reenvíos y respuestas sin agenda.
+   > **Ojo**: si el último "Re:" de una semana trae arriba sólo los cambios, lo que estaba sólo en la parte citada
+   > ahora cuenta como **desaparecido**. La protección del 60% cubre los casos chicos, no todos: por eso la próxima
+   > corrida real va **después de una en seco que dé SUSPENDER 0 y BORRAR 0** (abajo).
+4. **"Agenda": una línea por reunión** (`armarCopiaAgenda_`), con la identidad del destino: la fila si tiene, si no
+   figura + fecha + hora; queda la vigente. El log dice cuántas repetidas no se escriben.
+5. **"Conjunta con"**: el mismo valor en el destino y en "Agenda", **todas las otras figuras nombradas** (participen o
+   no; `conjuntaAgenda_`). "No participa" va aparte. Lombardi 07/10: "Gabino Tapia / Gustavo Arengo Piragine".
+6. **Las filas 812–820 se corrigen solas en la próxima corrida real**: la versión que quedó como número/fecha se
+   reescribe como texto (con las columnas del mail), el formato de la hora y la fecha de la traza se pone en todas las
+   filas de la agenda (sólo formato, ni valores ni fondos), y "Conjunta con" se actualiza donde cambia.
+
+Tests: agenda_parser [9] (Re: con la cita, el "gracias" que no es versión, el reenvío, la viñeta con ">") y
+agenda_escritura [22] (versión como texto, formatos, FECHA por día, la corrección de las filas viejas, "Conjunta con"
+igual en los dos lados, una línea por reunión).
+
+**Las próximas corridas, con la predicción anotada ANTES** (sigue `AGENDA_SOLO_SEMANA = '2026-10-05'`):
+
+1. `paso37_agenda_enSeco()`: **CREAR 0, SUSPENDER 0, BORRAR 0**; las 9 filas con la versión a reescribir (acción
+   "mail") y Lombardi con "Conjunta con"; el log: citas cortadas ≥ 1 (el "Re:" de JM). Si da SUSPENDER o BORRAR > 0,
+   **no seguir**: es lo del "Ojo" de arriba, y se mira antes.
+2. `semana()` (real): corrige las 812–820 (versión como texto, formato de la traza, "Conjunta con"); "Agenda" sin
+   líneas repetidas.
+3. `AGENDA_SOLO_SEMANA = null`, clasp push, `paso37_agenda_enSeco()`: **CREAR 1** (Jorge Macri 01/10 Belgrano, o
+   pregunta en AGENDA_DUPLICADOS por la 804/805), **VINCULAR 35**, las 9 de esta semana sin cambios, "Agenda" sin
+   líneas repetidas.
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

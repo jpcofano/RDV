@@ -175,6 +175,8 @@ function _logParser_(r) {
   Logger.log('  asuntos con otra forma de semana (entran igual): %s', r.semanaOtraForma.length);
   r.semanaOtraForma.slice(0, 15).forEach(function (x) { Logger.log('    %s', x); });
   Logger.log('  líneas "[image:" ignoradas: %s', r.imagenes);
+  Logger.log('  "Re:" con cita cortada: %s | reenvíos: %s | respuestas sin agenda propia (no son versión): %s',
+             r.citasCortadas || 0, r.reenvios || 0, (r.respuestasSinAgenda || []).length);
   Logger.log('  FECHAS CORREGIDAS (el día del encabezado caía fuera de la semana del asunto; mismo día de la semana y mismo ' +
              'número, dentro de la semana): %s (en las últimas versiones: %s)', r.fechasCorregidas.length,
              r.ultimas.filter(function (x) { return x.fechaCorregida; }).length);
