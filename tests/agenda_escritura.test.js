@@ -152,7 +152,8 @@ const COLUMNAS_AGENDA = ['No participa', 'agenda_uid', 'agenda_mail', 'agenda_ve
   'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito',
   'Origen fila', 'Tocado por el equipo', 'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con'];
 const BARRIOS = [['Recoleta', 2], ['Palermo', 14], ['Almagro', 5], ['Boedo', 5], ['Belgrano', 13], ['Núñez', 13],
-  ['Colegiales', 13], ['Flores', 7], ['Parque Chacabuco', 7], ['San Nicolás', 1], ['Monserrat', 1], ['Villa Urquiza', 12]];
+  ['Colegiales', 13], ['Flores', 7], ['Parque Chacabuco', 7], ['San Nicolás', 1], ['Monserrat', 1], ['Villa Urquiza', 12],
+  ['Villa Santa Rita', 11]];
 const FIGURAS = ['Clara Muzzio', 'Jorge Macri', 'Hernán Lombardi', 'Gabino Tapia', 'Laura Alonso', 'Ezequiel Sabor'];
 
 function montar(conColumnas, filasExtra) {
@@ -577,7 +578,7 @@ ok(celda(E, iMa2, 'Dirección (mail)') === 'Serrano 1500 piso 2', 'cada versión
 
 console.log('[18] casi duplicado ANTES de crear: no se crea, se pregunta en AGENDA_DUPLICADOS; se aplica lo elegido');
 E = montar(true, [function (r, C) {     // el equipo cargó a Muzzio el 09/10 (el mail dice 08/10)
-  r[C('Figura')] = 'Clara Muzzio'; r[C('Barrio')] = 'Recoleta'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '18:30';
+  r[C('Figura')] = 'Clara Muzzio'; r[C('Barrio')] = 'Almagro'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '18:30';   // otro barrio: no es "ya cargada" (07/10)
   r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
 }, function (r, C) {                     // y otra figura en la misma fecha y comuna que la de Macri (09/10, Comuna 14)
   r[C('Figura')] = 'Ezequiel Sabor'; r[C('Barrio')] = 'Palermo'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '11:00';
@@ -604,7 +605,7 @@ dup.v[lSeg][0] = 'Son distintas: crear';
 const iEq = fila(E, 'Clara Muzzio', 9);
 r = correr(E, false, [V1]);
 ok(r.eleccionesAplicadas === 2 && r.crear === 1 && r.vincular === 1, 'elegido: vincula Muzzio y crea Macri (' + r.vincular + ' / ' + r.crear + ')');
-ok(/^v-/.test(celda(E, iEq, 'agenda_uid')) && celda(E, iEq, 'Origen fila') === 'equipo + agenda' && celda(E, iEq, 'Barrio') === 'Recoleta',
+ok(/^v-/.test(celda(E, iEq, 'agenda_uid')) && celda(E, iEq, 'Origen fila') === 'equipo + agenda' && celda(E, iEq, 'Barrio') === 'Almagro',
    'la fila del equipo quedó vinculada, con su barrio');
 const elec = E.ssI.hojas['ELECCIONES_AGENDA'];
 ok(elec && elec.v.length === 3, 'las elecciones se guardaron en ELECCIONES_AGENDA (sobreviven a que se regenere la solapa)');
@@ -763,6 +764,71 @@ ok(med.respuestas === 1 && med.antes === 1 && med.ahora === 0 && med.dejan === 1
    'Lombardi 07/10 (futura) la sacaba el "Re:": antes 1, con la regla 0 — ' + JSON.stringify(med));
 r = correr(E, true, [V1, reSinLombardi]);
 ok(r.suspender === 0 && r.borrar === 0 && r.cancelaciones === 0, 'y la agenda no la suspende, ni borra, ni pregunta');
+
+console.log('[26] Macri 01/10 Belgrano: "ya cargada en otra fila" (la 805, que se adelantó), no se crea ni se pregunta');
+const filasMacri = [function (r, C) {          // "804": 29/09 Villa Santa Rita, Suspendida
+  r[C('Figura')] = 'Jorge Macri'; r[C('Barrio')] = 'Villa Santa Rita'; r[C('FECHA')] = new D(2026, 8, 29, 12); r[C('HORA')] = '10:15';
+  r[C('EVENTO')] = 'Uno a uno'; r[C('STATUS REUNIÓN')] = 'Suspendida';
+}, function (r, C) {                           // "805": 29/09 Belgrano 09:55, Realizada (la del 01/10, que se adelantó)
+  r[C('Figura')] = 'Jorge Macri'; r[C('Barrio')] = 'Belgrano'; r[C('FECHA')] = new D(2026, 8, 29, 12); r[C('HORA')] = '09:55';
+  r[C('EVENTO')] = 'Uno a uno'; r[C('STATUS REUNIÓN')] = 'Realizada'; r[C('Inscriptos')] = 120;
+}];
+const ASUNTO_JM28 = 'Agenda Encuentros de vecinos con JM - Semana del 28/09 al 04/10';
+const cuerpoJM28 = ['*Martes 29/09*', 'Evento: Encuentro "1 a 1" Jorge Macri, Villa Santa Rita', 'Hora: 10:15h', 'Lugar: A CONFIRMAR', '',
+                    '*Jueves 01/10*', 'Evento: Encuentro "1 a 1" Jorge Macri, Belgrano', 'Hora: 15:00h', 'Lugar: A CONFIRMAR'].join(String.fromCharCode(10));
+const mailsJM = function (d1, d2) {
+  return [{ fecha: new D(2026, 8, d1, 9, 0), asunto: ASUNTO_JM28, cuerpo: cuerpoJM28, truncado: false },
+          { fecha: new D(2026, 8, d2, 9, 0), asunto: ASUNTO_JM28, cuerpo: cuerpoJM28, truncado: false }];
+};
+E = montar(true, filasMacri);
+const i805 = E.D.v.findIndex(function (x) { return x[E.C('Barrio')] === 'Belgrano' && x[E.C('Figura')] === 'Jorge Macri'; });
+const fila805Antes = JSON.stringify(E.D.v[i805]);
+r = correr(E, false, mailsJM(23, 25));                       // los mails son del 23/09 y 25/09: ANTERIORES al 29/09
+ok(r.crear === 0 && r.duplicadosAntes === 0 && r.yaCargadas === 1, 'no crea ni pregunta: ya cargada (crear ' + r.crear + ', pregunta ' + r.duplicadosAntes + ', ya cargadas ' + r.yaCargadas + ')');
+ok(E.ssD.hojas['AGENDA_DUPLICADOS'].v.length === 1, 'AGENDA_DUPLICADOS queda vacía');
+(function () {
+  const a = JSON.parse(fila805Antes), b = E.D.v[i805], cOr = E.C('Origen fila');
+  const otras = b.filter(function (x, k) { return k !== cOr && JSON.stringify(x) !== JSON.stringify(a[k] === undefined ? '' : a[k]); }).length;
+  ok(otras === 0 && b[cOr] === 'equipo' && !b[E.C('agenda_uid')],
+     'la 805 no se toca: ni se vincula ni recibe las columnas del mail (sólo "Origen fila" = equipo, como toda fila del equipo)');
+})();
+const copiaJM = E.planilla(E.run('AGENDA_COPIA_SS')).hojas[E.run('AGENDA_COPIA_SOLAPA')];
+const encJM = copiaJM.v[0], lin01 = copiaJM.v.filter(function (x) { return x[encJM.indexOf('FECHA')] instanceof Date && x[encJM.indexOf('FECHA')].getDate() === 1; })[0];
+ok(lin01 && lin01[encJM.indexOf('Estado en la agenda')] === 'ya cargada en la fila ' + (i805 + 1) + ' (fecha distinta)' &&
+   String(lin01[encJM.indexOf('Fila del destino')]) === String(i805 + 1), '"Agenda": "ya cargada en la fila ' + (i805 + 1) + ' (fecha distinta)", Fila del destino = ' + (i805 + 1));
+r = correr(E, false, mailsJM(23, 25));
+ok(E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.filter(function (x) { return x[1] === 'ya_cargada'; }).length === 1 &&
+   E.ssI.hojas['REGISTRO_AGENDA'].v.slice(1).every(function (x) { return x[E.run('ENC_REGISTRO_AGENDA_').indexOf('ya_cargadas')] === 1; }),
+   'REGISTRO_AGENDA cuenta "ya_cargadas" en cada corrida; REGISTRO_AGENDA_CAMBIOS la anota una sola vez');
+// el mail POSTERIOR a la fecha de la fila: son reuniones distintas → se pregunta, y la candidata es la del MISMO barrio
+E = montar(true, filasMacri);
+const i805b = E.D.v.findIndex(function (x) { return x[E.C('Barrio')] === 'Belgrano' && x[E.C('Figura')] === 'Jorge Macri'; });
+r = correr(E, false, [{ fecha: new D(2026, 8, 30, 9, 0), asunto: ASUNTO_JM28, cuerpo: cuerpoJM28, truncado: false }]);
+const dupJM = E.ssD.hojas['AGENDA_DUPLICADOS'];
+ok(r.yaCargadas === 0 && r.duplicadosAntes === 1 && dupJM.v.length === 2 && dupJM.v[1][5] === 'fila ' + (i805b + 1),
+   'mail del 30/09 (posterior a la fila): se pregunta, con UNA candidata, la del mismo barrio (fila ' + (i805b + 1) + '), no la de Villa Santa Rita');
+ok(dupJM.opciones && dupJM.opciones.indexOf('Ya está cargada en otra fila: no crear') >= 0, 'con la opción "Ya está cargada en otra fila: no crear"');
+dupJM.v[1][0] = 'Ya está cargada en otra fila: no crear';
+r = correr(E, false, [{ fecha: new D(2026, 8, 30, 9, 0), asunto: ASUNTO_JM28, cuerpo: cuerpoJM28, truncado: false }]);
+ok(r.crear === 0 && r.duplicadosAntes === 0 && r.yaCargadas === 1 && E.ssD.hojas['AGENDA_DUPLICADOS'].v.length === 1,
+   'elegido "Ya está cargada en otra fila": no crea, no pregunta más, queda como ya cargada');
+
+console.log('[27] paso 44: la regla "ya cargada" sobre el historial (resuelve / contradice al equipo / se preguntaría)');
+E = montar(true, filasMacri);
+E.ssI.hojas['DIAG_MAILS'] = new E.Hoja('DIAG_MAILS', [['fecha', 'asunto', 'cuerpo', 'truncado']].concat(mailsJM(23, 25).map(function (m) {
+  return [m.fecha, m.asunto, m.cuerpo, false];
+})));
+let m44 = E.run('medirYaCargadasAgenda()');
+ok(m44.resuelve === 1 && m44.contradice === 0 && m44.preguntaria === 0, 'Macri 01/10: la resuelve (la 805), sin contradecir al equipo — ' + JSON.stringify(m44));
+// si el mail TAMBIÉN trajera una reunión de Macri el 29/09 en Belgrano, la 805 sería de ésa: la regla contradiría al equipo
+const conOtra = cuerpoJM28.replace('Villa Santa Rita', 'Belgrano').replace('Hora: 10:15h', 'Hora: 09:55h');
+E.ssI.hojas['DIAG_MAILS'] = new E.Hoja('DIAG_MAILS', [['fecha', 'asunto', 'cuerpo', 'truncado'], [new D(2026, 8, 25, 9, 0), ASUNTO_JM28, conOtra, false]]);
+m44 = E.run('medirYaCargadasAgenda()');
+ok(m44.contradice === 1 && m44.resuelve === 0, 'si la fila ya es la de otra reunión del mail, la cuenta como CONTRADICE — ' + JSON.stringify(m44));
+
+E = montar(true, filasMacri);
+r = correr(E, true, [{ fecha: new D(2026, 8, 25, 9, 0), asunto: ASUNTO_JM28, cuerpo: conOtra, truncado: false }]);
+ok(r.yaCargadas === 0, 'y el plan no usa la 805 para el 01/10 si ya la tomó la reunión del 29/09 en Belgrano (ya cargadas ' + r.yaCargadas + ')');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

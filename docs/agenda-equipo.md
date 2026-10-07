@@ -24,6 +24,11 @@ les queda para cargar a ustedes.
   solapa **AGENDA_DUPLICADOS** (en este mismo archivo). Ahí, en **ELEGIR**: *"Es la misma: vincular"* (el sistema usa
   esa fila), *"Son distintas: crear"* (crea la suya) o *"No sé"* (sigue preguntando). **COMENTARIO** es libre. Se aplica
   en la corrida siguiente (cada hora). Sólo se puede escribir en esas dos columnas.
+- **Si la reunión ya está cargada con otra fecha** (la misma figura y el mismo barrio, uno o dos días antes o después,
+  y el mail es anterior a esa fecha: la reunión se adelantó o se atrasó), el sistema **no crea ni pregunta y no toca
+  esa fila**: la anota como "ya cargada en la fila N (fecha distinta)" (en el archivo "Agenda", con el número de fila).
+  Si duda, pregunta en AGENDA_DUPLICADOS, y ahí también está la opción **"Ya está cargada en otra fila: no crear"**.
+  Si hay varias filas posibles, aparece una línea por cada una: se elige en la de la fila que corresponde.
 - **Si aparece un duplicado después** (alguien cargó una fila para una reunión que el sistema ya había creado), también
   sale en AGENDA_DUPLICADOS, como *"después de crear"*. **El sistema no borra ni junta filas solo**: si es la misma
   reunión, borren la que sobra.

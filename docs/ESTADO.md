@@ -677,6 +677,38 @@ BORRAR. Si no está: `paso24_instalarActivadorCadaHora()`. Después, anotarlo en
 esas columnas (sólo celdas vacías) y las **lista una por una** en seco: `paso43_limpiarFondoAgenda_enSeco()` →
 mirarlas → `paso43_limpiarFondoAgenda()`.
 
+#### Macri 01/10 Belgrano: "ya cargada en otra fila" (07/10, decisión del usuario)
+
+**El caso**: el mail de JM de la semana del 28/09 (versiones del 23/09 y del 25/09, **anteriores** al 29) trae Macri
+29/09 10:15 Villa Santa Rita (= la fila 804, Suspendida) y 01/10 15:00 Belgrano. En el destino, la **805** es Macri
+29/09 09:55 Belgrano, Realizada: **la del 01/10 es la 805, que se adelantó**. El sistema la comparaba con la 804 (otro
+barrio) y preguntaba.
+
+1. **Candidatas** (casi duplicado, AGENDA_DUPLICADOS): si alguna fila tiene el **mismo barrio** que la reunión, ésas son
+   las candidatas; si no, las de la **misma comuna**; si no, todas, y **se muestran todas**, una por línea, para elegir en
+   la de la fila que corresponde.
+2. **La regla del usuario, automática** (`yaCargadaAgenda_`): misma figura + mismo barrio, a ±2 días, con otra fecha, y
+   el mail que trae la reunión es **anterior** a la fecha de esa fila → es la **misma reunión**, se adelantó o atrasó:
+   **no se crea, no se pregunta y la fila no se toca** (ni se vincula ni recibe las columnas del mail). Queda como "ya
+   cargada en la fila N (fecha distinta)": en el log, en REGISTRO_AGENDA (columna `ya_cargadas`), en
+   REGISTRO_AGENDA_CAMBIOS (una línea, la primera vez) y en el archivo "Agenda" (estado, y Fila del destino = N). Si el
+   mail es **posterior** a la fecha de la fila, son reuniones distintas: se pregunta como antes. Con dos o más filas
+   anteriores, también se pregunta. No usa una fila que en la misma corrida ya tomó otra reunión del mail.
+3. **AGENDA_DUPLICADOS**: opción nueva **"Ya está cargada en otra fila: no crear"** (en la línea de esa fila): no crea,
+   no vuelve a preguntar, queda como "ya cargada".
+4. **`paso44_medirYaCargadas()`** (sólo lectura): sobre el historial de los mails, cuántas reuniones sin fila de su
+   figura y fecha resuelve la regla, cuántas **contradicen** lo que hizo el equipo (la fila es, a su vez, la de otra
+   reunión del mail: tiene que dar 0), cuántas se preguntarían (mail posterior) y cuántas son ambiguas.
+
+Tests: agenda_escritura [26] (el caso Macri 01/10: no crea ni pregunta, la 805 intacta, "Agenda" con la fila; el mail
+posterior pregunta con UNA candidata —la del mismo barrio—; la opción nueva) y [27] (el paso 44, y que el plan no usa
+una fila que ya tomó otra reunión). El [18] cambió: una fila del equipo de la misma figura y barrio a ±2 días, con el
+mail anterior, ahora es "ya cargada" (antes preguntaba).
+
+**Predicción, anotada ANTES** (agenda en automático): `paso44_medirYaCargadas()` → resuelve ≥ 1 (Macri 01/10 → 805),
+**contradice 0**. **La próxima corrida no pregunta por Macri 01/10** (queda "ya cargada en la fila 805") **y
+AGENDA_DUPLICADOS queda vacía**.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

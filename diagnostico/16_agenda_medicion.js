@@ -1030,6 +1030,48 @@ function medirRespuestasAgenda() {
 }
 
 /**
+ * **Paso 44** (07/10, sólo lectura): la regla "ya cargada en otra fila" sobre el historial. Para cada reunión del mail
+ * con figura que NO tiene fila con su misma figura y fecha: ¿hay una fila de la misma figura y el mismo barrio a ±2 días?
+ * Si el mail es anterior a esa fila, la regla la da por cargada (resuelve); si es posterior, se preguntaría. Contradice
+ * lo que hizo el equipo si esa fila es, a su vez, la de OTRA reunión del mail (misma figura, fecha y barrio que la fila).
+ */
+function medirYaCargadasAgenda() {
+  Logger.log('=== medirYaCargadasAgenda (paso 44) — sólo lectura, no escribe nada ===');
+  const dest = leerDestino_();
+  const r = agendaDesdeMails_();
+  const kFF = function (fig, fecha) { return normalizeText_(fig) + '|' + ymd_(fecha); };
+  const conFila = new Set(dest.filas.filter(function (f) { return f.figura && f.fecha; }).map(function (f) { return kFF(f.figura, f.fecha); }));
+  const mismoB = function (a, b) { return a && b && normalizeText_(_canonBarrioAg_(a) || a) === normalizeText_(_canonBarrioAg_(b) || b); };
+  const resuelve = [], contradice = [], preguntaria = [], ambiguas = [];
+  r.unicas.forEach(function (ev) {
+    if (!ev.figuraFila || !ev.fecha || conFila.has(kFF(ev.figuraFila, ev.fecha))) return;
+    const ya = yaCargadaAgenda_(ev, dest.filas, ev.barrio);
+    if (ya.fila) {
+      const otra = r.unicas.filter(function (u) {
+        return u !== ev && u.figuraFila === ev.figuraFila && u.fecha && ymd_(u.fecha) === ymd_(ya.fila.fecha) && mismoB(u.barrio, ya.fila.barrio);
+      });
+      (otra.length ? contradice : resuelve).push({ ev: ev, f: ya.fila, otra: otra });
+    } else if (ya.anteriores.length > 1) ambiguas.push({ ev: ev, filas: ya.anteriores });
+    else if (ya.posteriores.length) preguntaria.push({ ev: ev, filas: ya.posteriores });
+  });
+  const linea = function (x, f) {
+    return fmtFecha_(x.ev.fecha) + ' ' + x.ev.hora + ' | ' + x.ev.figuraFila + ' | ' + (x.ev.barrio || x.ev.lugar) + ' | mail ' +
+           fmtFecha_(x.ev.mailFecha) + ' → fila ' + f.fila + ' (' + fmtFecha_(f.fecha) + ', ' + f.barrio + ', ' +
+           str(f.valores[dest.D['STATUS REUNIÓN']]) + ')';
+  };
+  Logger.log('--- reuniones del mail sin fila de su figura y fecha: la regla las resuelve %s | CONTRADICE al equipo %s | ' +
+             'mail posterior a la fila (se preguntaría) %s | dos o más filas anteriores (se preguntaría) %s ---',
+             resuelve.length, contradice.length, preguntaria.length, ambiguas.length);
+  resuelve.forEach(function (x) { Logger.log('    RESUELVE | %s', linea(x, x.f)); });
+  contradice.forEach(function (x) { Logger.log('    CONTRADICE | %s — esa fila es la de otra reunión del mail (%s %s)', linea(x, x.f),
+                                                fmtFecha_(x.otra[0].fecha), x.otra[0].hora); });
+  preguntaria.slice(0, 30).forEach(function (x) { Logger.log('    PREGUNTARÍA | %s', linea(x, x.filas[0])); });
+  ambiguas.slice(0, 30).forEach(function (x) { Logger.log('    AMBIGUA | %s (y %s más)', linea(x, x.filas[0]), x.filas.length - 1); });
+  Logger.log('  >>> "contradice" tiene que dar 0: si no, esa fila ya es de otra reunión y la regla la estaría usando dos veces.');
+  return { resuelve: resuelve.length, contradice: contradice.length, preguntaria: preguntaria.length, ambiguas: ambiguas.length };
+}
+
+/**
  * Las solapas de MEDICIÓN de este archivo (06/10): si la intermedia no responde ni con los reintentos, la medición
  * no falla — los números ya están en el log, que se escribe antes.
  */

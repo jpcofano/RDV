@@ -1104,7 +1104,7 @@ const ORIGEN_AMBOS = 'equipo + agenda';
 const AGENDA_SOLAPA_DUPLICADOS = 'AGENDA_DUPLICADOS';
 const RDV_HOJA_ELECCIONES_AGENDA = 'ELECCIONES_AGENDA';
 const AGENDA_DUP_DIAS = 2;
-const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Son distintas: crear', 'No sé'];
+const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Ya está cargada en otra fila: no crear', 'Son distintas: crear', 'No sé'];
 /**
  * **La cancelación se pregunta** (07/10, decisión del usuario): con `false`, una reunión futura que desaparece del mail
  * NO se suspende ni se borra sola: se pregunta en AGENDA_DUPLICADOS (AGENDA_OPCIONES_CANCELACION) con la fila, la

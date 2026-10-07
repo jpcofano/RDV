@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (7): "ya cargada en otra fila" (caso Macri 01/10 ↔ 805; ESTADO 0.z): no crea ni pregunta. Correr
+ *      paso44_medirYaCargadas() (sólo lectura): "contradice" tiene que dar 0.
  *  >>> 07/10 (6): LA AGENDA EN AUTOMÁTICO (AGENDA_ACTIVA = true): corre en upsertDiario, cada hora, ANTES del cruce con
  *      los formularios; si falla, queda en el log y en REGISTRO_AGENDA y el upsert sigue. Qué mirar los primeros días:
  *      ESTADO 0.z, "La agenda en automático". Confirmar que el activador está instalado: paso23_listarActivadores().
@@ -925,6 +927,13 @@ function paso43_limpiarFondoAgenda() {
   _anunciar_('paso 43 — el fondo heredado', 'limpiarFondoAgendaVacias(true)  [05_Escritura.js]',
              'SÍ, en el destino: sólo el FONDO de las celdas vacías de las columnas de la agenda (AV..BK) y de traza (RDV_UID..form_clave)', 'el log');
   return limpiarFondoAgendaVacias(true);
+}
+
+/** PASO 44 — SÓLO LECTURA: la regla "ya cargada en otra fila" (misma figura + barrio a ±2 días, mail anterior) en el historial. */
+function paso44_medirYaCargadas() {
+  _anunciar_('paso 44 — "ya cargada en otra fila"', 'medirYaCargadasAgenda()  [diagnostico/16_agenda_medicion.js]', 'NO escribe nada',
+             'el log: cuántas resuelve, cuántas contradicen al equipo (tiene que dar 0), cuántas se preguntarían');
+  return medirYaCargadasAgenda();
 }
 
 /**

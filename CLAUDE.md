@@ -197,6 +197,8 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 - **el fondo de las celdas vacías de sus columnas** (paso 43, 07/10: las 16 de la agenda, que lo heredaron de
   form_clave al agregarse, y las de traza): es la única limpieza de fondos del sistema, sólo en celdas sin valor de sus
   columnas, y el paso 16 avisa si vuelve a pasar;
+- **"ya cargada en otra fila"** (07/10, regla del usuario): misma figura + mismo barrio a ±2 días, con el mail anterior a
+  la fecha de esa fila → es la misma reunión, adelantada o atrasada: no se crea, no se pregunta y esa fila no se toca;
 - **la agenda nunca borra ni fusiona por un duplicado, y no recrea lo que borró el equipo** (07/10, prompt 07): si hay
   una fila del equipo parecida (misma figura a ±2 días, o misma fecha y comuna con otra figura), **no crea**: pregunta
   en **AGENDA_DUPLICADOS** (archivo del destino, como las fichas: ELEGIR y COMENTARIO, protección real; elecciones
