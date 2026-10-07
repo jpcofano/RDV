@@ -763,18 +763,21 @@ function formatearColumnasAgenda_(sh, hdr, filas) {
 }
 
 /**
- * **Paso 43** (07/10): saca el fondo de las celdas VACÍAS de las columnas de la agenda (`COLUMNAS_AGENDA`), en todo el
- * destino. Lo heredaron de form_clave al agregarse; no es la marca de procedencia (no hay nada escrito). Las celdas con
- * valor no se tocan. En seco, sólo cuenta. Es la única limpieza de fondos que hace el sistema, y sólo en sus columnas.
+ * **Paso 43** (07/10): saca el fondo de las celdas VACÍAS de las columnas del sistema —las de la agenda
+ * (`COLUMNAS_AGENDA`) y las de traza (`COLUMNAS_TRAZA`)—, en todo el destino. Las de la agenda lo heredaron de form_clave
+ * al agregarse; en una celda sin valor no hay nada de qué marcar la procedencia. Las celdas con valor no se tocan. En
+ * seco, sólo cuenta, y lista una por una las de traza (pocas). Es la única limpieza de fondos que hace el sistema, y
+ * sólo en sus columnas.
  */
 function limpiarFondoAgendaVacias(escribe) {
   const sh = verificarHojaDestino_(ssDestino_());
   const nCols = sh.getLastColumn(), nFilas = sh.getMaxRows();
   const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0].map(normalizeHeader_);
-  Logger.log('=== fondo de las celdas vacías de las columnas de la agenda (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
+  Logger.log('=== fondo de las celdas vacías de las columnas del sistema: agenda y traza (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
   let total = 0;
-  const porCol = {};
-  COLUMNAS_AGENDA.forEach(function (n) {
+  const porCol = {}, deTraza = [];
+  const esTraza = COLUMNAS_TRAZA.map(normalizeHeader_);
+  COLUMNAS_AGENDA.concat(COLUMNAS_TRAZA).forEach(function (n) {
     const k = hdr.indexOf(normalizeHeader_(n));
     if (k < 0 || nFilas < 2) return;
     const rg = sh.getRange(2, k + 1, nFilas - 1, 1);
@@ -782,7 +785,10 @@ function limpiarFondoAgendaVacias(escribe) {
     const a1 = [];
     for (let i = 0; i < v.length; i++) {
       const b = String(bg[i][0] || '').toLowerCase();
-      if (esVacio_(v[i][0]) && b && b !== '#ffffff') a1.push(_a1_(i + 2, k + 1));
+      if (esVacio_(v[i][0]) && b && b !== '#ffffff') {
+        a1.push(_a1_(i + 2, k + 1));
+        if (esTraza.indexOf(normalizeHeader_(n)) >= 0) deTraza.push({ fila: i + 2, columna: n, fondo: b });
+      }
     }
     if (!a1.length) return;
     porCol[n] = a1.length;
@@ -791,7 +797,9 @@ function limpiarFondoAgendaVacias(escribe) {
   });
   Logger.log('  celdas vacías con fondo: %s | por columna: %s', total,
              Object.keys(porCol).map(function (n) { return n + ' ' + porCol[n]; }).join(' | ') || '—');
+  Logger.log('  de ésas, en las columnas de TRAZA: %s', deTraza.length);
+  deTraza.slice(0, 100).forEach(function (x) { Logger.log('    fila %s | %s | fondo %s', x.fila, x.columna, x.fondo); });
   if (escribe) { SpreadsheetApp.flush(); Logger.log('>>> fondo quitado de %s celdas vacías (las que tienen valor, intactas).', total); }
   else Logger.log('>>> EN SECO: no se tocó nada.');
-  return { celdas: total, porColumna: porCol };
+  return { celdas: total, porColumna: porCol, deTraza: deTraza };
 }

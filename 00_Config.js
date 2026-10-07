@@ -1025,10 +1025,10 @@ const VENTANA_ALERTA_DIAS = 15;
 
 /**
  * **La agenda dentro del activador de cada hora** (upsertDiario → upsertDestino, antes del cruce con los formularios).
- * `false` hasta que el usuario la prenda (último paso de la secuencia de ESTADO 0.z). Con `false`, la agenda corre
- * sólo a mano (paso 37).
+ * **Prendida el 07/10** (decisión del usuario, después de semana() y los ajustes). Con `false`, la agenda corre sólo a
+ * mano (paso 37). Para apagarla: `false` + clasp push; para volver atrás una corrida: paso 38.
  */
-const AGENDA_ACTIVA = false;
+const AGENDA_ACTIVA = true;
 /**
  * **Sólo una semana** (protección de la primera corrida real): el LUNES de la semana, 'yyyy-MM-dd' (p. ej.
  * '2026-10-05'). La agenda sólo crea, vincula, actualiza, mueve y suspende reuniones de esa semana. `null` = todo el

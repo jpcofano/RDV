@@ -347,8 +347,9 @@ function crearEntorno(opts) {
   // 06/10: la copia de prueba ya no existe; los escenarios escriben en la solapa del destino, simulada.
   // DERIVADAS_POR_SCRIPT: los datos sintéticos traen derivadas de mentira ("derivada-i"); sólo [19] lo prende.
   // REVISAR_FORMATO_NUEVO: los escenarios de fichas de antes del 06/10 prueban el formato de una ficha por bloque; [22], el nuevo.
+  // AGENDA_ACTIVA: los escenarios del upsert no simulan Gmail; sólo [24] la prende (07/10).
   const config = Object.assign({ DIAS_ACTIVOS: 'null', DERIVADAS_POR_SCRIPT: 'false',
-                                 REVISAR_FORMATO_NUEVO: 'false' },
+                                 REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false' },
                                opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;
@@ -1621,6 +1622,31 @@ function escenarioDerivadas() {
  * [23] (06/10, Agenda etapa 2) Una fila SIN Figura: la "Seguridad en tu Barrio" que crea la agenda antes de que RDV
  * CONJUNTO tenga la figura. El cruce con los formularios y el paso 16 tienen que andar igual, sin escribirle nada raro.
  */
+function escenarioAgendaEnUpsert() {
+  console.log('\n[24] AGENDA_ACTIVA: en el upsert de cada hora la agenda corre ANTES del cruce, y si falla el upsert sigue');
+  let E = crearEntorno({ config: { AGENDA_ACTIVA: 'true' } });
+  let m = montar(E, 40, true);
+  const orden = [];
+  const planOrig = E.ctx.calcularPlan_;
+  E.ctx.calcularPlan_ = function () { orden.push('cruce'); return planOrig.apply(this, arguments); };
+  E.ctx.correrAgendaEnBloqueo_ = function (enSeco) { orden.push('agenda' + (enSeco ? ' (seco)' : '')); return { crear: 0 }; };
+  let r = E.ejecutar('upsertDiario');
+  ok(!r.error && orden.join(' → ') === 'agenda → cruce', 'upsertDiario: ' + orden.join(' → ') + (r.error ? ' — ' + r.error.message : ''));
+  E = crearEntorno({ config: { AGENDA_ACTIVA: 'true' } });
+  m = montar(E, 40, true);
+  E.ctx.correrAgendaEnBloqueo_ = function () { throw new Error('Gmail: Service invoked too many times'); };
+  const antes = contarUid(m.ssD.hojas['RVD JM-CM - ES']);
+  r = E.ejecutar('upsertDiario');
+  const w = r.resultado && r.resultado.escritura;
+  ok(!r.error && w && w.completa && contarUid(m.ssD.hojas['RVD JM-CM - ES']) > antes,
+     'la agenda tira un error: el upsert sigue y escribe igual (' + (w ? w.filasHechas : '?') + ' filas)');
+  const ssI = E.planilla ? E.planilla(E.cfg('RDV_SS_INTERMEDIA')) : m.ssI;
+  const reg = ssI && ssI.hojas['REGISTRO_AGENDA'];
+  ok(reg && reg.v.some(function (x) { return /la agenda falló dentro del upsert: Gmail/.test(x.join('|')); }),
+     'y el error queda en REGISTRO_AGENDA');
+  ok(E.logs.some(function (l) { return /La agenda falló: .*Gmail/.test(l); }), 'y en el log');
+}
+
 function escenarioFilaSinFigura() {
   console.log('\n[23] una fila sin Figura (Seguridad en tu Barrio de la agenda): el upsert y el paso 16 andan igual');
   const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true' } });
@@ -1974,6 +2000,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--fichasdestino') >= 0) escenarioFichasEnDestino();
   else if (process.argv.indexOf('--formato') >= 0) escenarioFormatoRevisar();
   else if (process.argv.indexOf('--sinfigura') >= 0) escenarioFilaSinFigura();
+  else if (process.argv.indexOf('--agendaupsert') >= 0) escenarioAgendaEnUpsert();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2012,6 +2039,7 @@ escenarioOradores();
 escenarioFichasEnDestino();
 escenarioFormatoRevisar();
 escenarioFilaSinFigura();
+escenarioAgendaEnUpsert();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

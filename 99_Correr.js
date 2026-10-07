@@ -17,6 +17,10 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (6): LA AGENDA EN AUTOMÁTICO (AGENDA_ACTIVA = true): corre en upsertDiario, cada hora, ANTES del cruce con
+ *      los formularios; si falla, queda en el log y en REGISTRO_AGENDA y el upsert sigue. Qué mirar los primeros días:
+ *      ESTADO 0.z, "La agenda en automático". Confirmar que el activador está instalado: paso23_listarActivadores().
+ *      Para apagarla: AGENDA_ACTIVA = false + clasp push. Para deshacer una corrida: paso38_deshacerAgenda_enSeco() → paso38.
  *  >>> 07/10 (5): semana() de las 13:35 OK. Ajustes (ESTADO 0.z): el color heredado de las 16 columnas, un "Re:" sólo
  *      agrega o actualiza, la cancelación se PREGUNTA (AGENDA_CANCELACION_AUTOMATICA = false). AGENDA_SOLO_SEMANA = null.
  *        1. paso43_limpiarFondoAgenda_enSeco() → paso43_limpiarFondoAgenda()   (el fondo de las celdas vacías)
@@ -909,16 +913,51 @@ function paso42_medirRespuestas() {
   return medirRespuestasAgenda();
 }
 
-/** PASO 43 — EN SECO: cuántas celdas vacías de las columnas de la agenda tienen fondo (heredado de form_clave). */
+/** PASO 43 — EN SECO: cuántas celdas vacías de las columnas del sistema (agenda y traza) tienen fondo; las de traza, una por una. */
 function paso43_limpiarFondoAgenda_enSeco() {
   _anunciar_('paso 43 — el fondo heredado (EN SECO)', 'limpiarFondoAgendaVacias(false)  [05_Escritura.js]', 'NO escribe nada',
-             'el log: cuántas celdas, por columna');
+             'el log: cuántas celdas, por columna, y la lista de las de traza (fila y columna)');
   return limpiarFondoAgendaVacias(false);
 }
 
-/** PASO 43 — saca el fondo de las celdas VACÍAS de las 16 columnas de la agenda (las que tienen valor no se tocan). */
+/** PASO 43 — saca el fondo de las celdas VACÍAS de las columnas del sistema: agenda y traza (las que tienen valor no se tocan). */
 function paso43_limpiarFondoAgenda() {
   _anunciar_('paso 43 — el fondo heredado', 'limpiarFondoAgendaVacias(true)  [05_Escritura.js]',
-             'SÍ, en el destino: sólo el FONDO de las celdas vacías de las columnas de la agenda (AV..BK)', 'el log');
+             'SÍ, en el destino: sólo el FONDO de las celdas vacías de las columnas de la agenda (AV..BK) y de traza (RDV_UID..form_clave)', 'el log');
   return limpiarFondoAgendaVacias(true);
+}
+
+/**
+ * **ronda()** — los pasos de esta ronda, en orden, en una sola ejecución. La escribió el usuario en el editor (07/10) y
+ * se movió acá tal cual, para que un `clasp push` no la borre. El único que escribe es paso43_limpiarFondoAgenda: SÓLO
+ * saca el fondo de celdas VACÍAS de las columnas del sistema (las 16 de la agenda y, desde el 07/10, las de traza); no
+ * toca valores. Los demás son de lectura o en seco. Antes: AGENDA_SOLO_SEMANA = null. Si un paso falla, se frena ahí.
+ */
+function ronda() {
+  if (typeof AGENDA_SOLO_SEMANA !== 'undefined' && AGENDA_SOLO_SEMANA !== null) {
+    Logger.log('NO CORRE: AGENDA_SOLO_SEMANA tiene que ser null (hoy: ' + AGENDA_SOLO_SEMANA + ').');
+    return;
+  }
+  var pasos = [
+    ['paso43_limpiarFondoAgenda_enSeco', paso43_limpiarFondoAgenda_enSeco],
+    ['paso43_limpiarFondoAgenda (sólo fondo de celdas vacías)', paso43_limpiarFondoAgenda],
+    ['paso42_medirRespuestas', paso42_medirRespuestas],
+    ['paso37_agenda_enSeco (todo el alcance)', paso37_agenda_enSeco],
+    ['paso16_verificarEscritura', paso16_verificarEscritura]
+  ];
+  var t0 = Date.now();
+  for (var i = 0; i < pasos.length; i++) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + pasos[i][0] + ' ##########');
+    try {
+      pasos[i][1]();
+      Logger.log('########## OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ERROR — se frena acá: ' + (e && e.stack ? e.stack : e));
+      return;
+    }
+  }
+  Logger.log('');
+  Logger.log('########## ronda — fin (' + Math.round((Date.now() - t0) / 1000) + ' s)');
 }

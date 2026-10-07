@@ -712,6 +712,14 @@ lim23 = E.run('limpiarFondoAgendaVacias(true)');
 const iMu3 = fila(E, 'Clara Muzzio', 8);
 ok(E.D.bg[1][cUid] === null && E.D.bg[1][E.C('Marcas (mail)')] === null && E.D.bg[1][cOri] === SIS && celda(E, 1, 'Origen fila') === 'equipo' && fondo(E, iMu3, 'agenda_uid') === SIS && celda(E, iMu3, 'agenda_uid') !== '',
    'real: sin fondo las vacías; las que tienen valor (la fila creada) conservan su color');
+// una celda de traza vacía con color (las 18 del real): también se limpia, y el paso 43 la lista
+const cFS = E.C('form_score');
+E.D.bg[2][cFS] = SIS; E.D.v[2][cFS] = '';
+const iMuT = fila(E, 'Clara Muzzio', 8);
+lim23 = E.run('limpiarFondoAgendaVacias(false)');
+ok(lim23.deTraza.length === 1 && lim23.deTraza[0].fila === 3 && lim23.deTraza[0].columna === 'form_score', 'paso 43 lista las de traza: fila 3, form_score');
+E.run('limpiarFondoAgendaVacias(true)');
+ok(E.D.bg[2][cFS] === null, 'y les saca el fondo');
 ok(E.D.v.filter(function (x, i) { return i > 0 && x[cUid] !== ''; }).length === conValorAntes && E.run('_azules_diag8(leerDestino_())').sistemaSinValorTotal === 0,
    'ningún valor cambió, y el paso 16 queda en 0');
 

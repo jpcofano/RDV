@@ -636,6 +636,47 @@ pregunta; "Se canceló" y "Sigue") y [25] (el paso 42).
    **VINCULAR 35, SUSPENDER 0, BORRAR 0** (con la cancelación preguntada, lo que antes se suspendía sale como "se
    pregunta"), **las 9 de esta semana sin cambios**.
 
+#### La agenda en automático, desde el 07/10
+
+**`AGENDA_ACTIVA = true`** (decisión del usuario), con `AGENDA_SOLO_SEMANA = null` y `AGENDA_CANCELACION_AUTOMATICA =
+false`. Verificado en el código (y con un test, escritura_lote [24]):
+
+- `upsertDiario` (el del activador de cada hora) → `upsertDestino()` → con el bloqueo tomado, **la agenda corre ANTES
+  del cruce con los formularios** (`_correrUpsertConBloqueo_`, 20_UpsertDestino.js), así el cruce ya ve las filas
+  nuevas;
+- **si la agenda falla** (Gmail, timeout, lo que sea): queda en el log y, desde hoy, **en REGISTRO_AGENDA** (columna
+  error: "la agenda falló dentro del upsert: …"), y **el resto del upsert corre igual**. Un error que la agenda maneja
+  sola (sin mails, REGISTRO_AGENDA obligatorio que no se pudo escribir) ya quedaba registrado y no escribe el destino.
+
+**El activador**: el repo (docs/triggers-legado.md) lo tiene como "NO INSTALADO" y desde acá no se puede consultar
+(`clasp run` no está habilitado en este proyecto). El upsert de las 13:29 hace pensar que sí está. **Confirmarlo con
+`paso23_listarActivadores()`** (sólo lectura): tiene que haber uno de `upsertDiario` cada 1 hora y ninguno del legado a
+BORRAR. Si no está: `paso24_instalarActivadorCadaHora()`. Después, anotarlo en docs/triggers-legado.md.
+
+**Qué mirar los primeros días:**
+
+1. **REGISTRO_AGENDA**: una línea por hora, con la columna `error` vacía y `ms` razonable. La agenda y el upsert
+   comparten los 6 minutos de la ejecución: si REGISTRO_UPSERT muestra corridas cortadas o la suma se acerca al
+   límite, mirar el tiempo de la agenda (Gmail y geocodificación).
+2. **El lunes, cuando llega el mail de la semana**: CREAR del orden de la semana entera (35-45 reuniones entre los
+   grupos, la mayoría VINCULAR si el equipo ya las cargó). Mirar las filas nuevas: Barrio en las que corresponde,
+   "Origen fila", columnas "(mail)".
+3. **AGENDA_DUPLICADOS** (archivo del destino): alguien tiene que contestar las preguntas — casi duplicados ("Es la
+   misma / Son distintas") y **cancelaciones** ("Se canceló / Sigue"). Mientras no se contesten, no pasa nada: ni se
+   crea ni se suspende.
+4. **Paso 16** una vez por día: 0 duplicados figura + fecha con fila de la agenda, 0 "color del sistema y SIN valor",
+   y "Tocado por el equipo" (qué está corrigiendo el equipo: si es siempre la misma columna, la forma del sistema no es
+   la del equipo → paso 41).
+5. **El archivo "Agenda"**: sin líneas repetidas; las "desaparecida: ¿se canceló?" coinciden con AGENDA_DUPLICADOS.
+6. **El log de la agenda**: "semanas del alcance SIN ningún mail" en ninguna; "respuestas sin agenda propia" y "citas
+   cortadas" con números chicos; ninguna "DUPLICADA EN LA CORRIDA".
+7. **Si algo sale mal**: `AGENDA_ACTIVA = false` + clasp push la saca del activador; `paso38_deshacerAgenda_enSeco()` →
+   `paso38_deshacerAgenda()` vuelve atrás la última corrida.
+
+**Pendiente, sin apuro**: las **18 celdas con color y sin valor en las columnas de traza**. El paso 43 ya cubre también
+esas columnas (sólo celdas vacías) y las **lista una por una** en seco: `paso43_limpiarFondoAgenda_enSeco()` →
+mirarlas → `paso43_limpiarFondoAgenda()`.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

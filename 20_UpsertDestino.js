@@ -1601,9 +1601,15 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
 
   // La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
   // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
+  // 07/10: el error queda también en REGISTRO_AGENDA (si la intermedia responde); el upsert sigue igual.
   if (AGENDA_ACTIVA && !historial) {
+    const tA = Date.now();
     try { correrAgendaEnBloqueo_(enSeco); }
-    catch (err) { Logger.log('>>> La agenda falló: %s (el cruce con los formularios sigue igual).', err); }
+    catch (err) {
+      Logger.log('>>> La agenda falló: %s (el cruce con los formularios sigue igual).', err);
+      try { _registrarAgenda_(null, enSeco, tA, 'la agenda falló dentro del upsert: ' + (err && err.message || err)); }
+      catch (e) { Logger.log('>>> y no se pudo registrar en REGISTRO_AGENDA: %s', e); }
+    }
   }
 
   // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas

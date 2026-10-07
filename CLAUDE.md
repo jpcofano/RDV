@@ -194,8 +194,9 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 - **la cancelación se pregunta** (07/10, `AGENDA_CANCELACION_AUTOMATICA = false`): la regla 7 de arriba (suspender o
   borrar) se aplica sólo cuando una persona eligió "Se canceló" en AGENDA_DUPLICADOS; con `true`, automática. Y sólo un
   mail **completo** hace desaparecer una reunión: un "Re:"/"RV:"/"Fwd:" sólo agrega o actualiza;
-- **el fondo de las celdas vacías de sus 16 columnas** (paso 43, 07/10): lo heredaron de form_clave al agregarse; es la
-  única limpieza de fondos del sistema, sólo en celdas sin valor de sus columnas, y el paso 16 avisa si vuelve a pasar;
+- **el fondo de las celdas vacías de sus columnas** (paso 43, 07/10: las 16 de la agenda, que lo heredaron de
+  form_clave al agregarse, y las de traza): es la única limpieza de fondos del sistema, sólo en celdas sin valor de sus
+  columnas, y el paso 16 avisa si vuelve a pasar;
 - **la agenda nunca borra ni fusiona por un duplicado, y no recrea lo que borró el equipo** (07/10, prompt 07): si hay
   una fila del equipo parecida (misma figura a ±2 días, o misma fecha y comuna con otra figura), **no crea**: pregunta
   en **AGENDA_DUPLICADOS** (archivo del destino, como las fichas: ELEGIR y COMENTARIO, protección real; elecciones
@@ -2596,7 +2597,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
 40_Agenda.js       la AGENDA (06/10): Gmail → crear / vincular / actualizar / mover / suspender filas del destino, la
                    copia en el archivo "Agenda", REGISTRO_AGENDA y deshacer; AGENDA_DUPLICADOS, "Origen fila",
-                   "Tocado por el equipo", las columnas "(mail)" (07/10). Apagada (AGENDA_ACTIVA)  ← 06/10
+                   "Tocado por el equipo", las columnas "(mail)" (07/10). EN AUTOMÁTICO desde el 07/10 (AGENDA_ACTIVA:
+                   dentro de upsertDiario, antes del cruce; si falla, el upsert sigue)  ← 06/10
 41_AgendaParser.js el parser de los mails de agenda y el barrio desde la dirección (regla de confianza)  ← 06/10
 42_BarriosCabaGeo.js los límites oficiales de los 48 barrios (sólo datos)                          ← 06/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
