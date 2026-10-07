@@ -1758,6 +1758,76 @@ function escenarioColumnasNuevasB() {
 
 function numJs(v) { return v === '' || v === null || v === undefined ? 0 : Number(v); }
 
+function escenarioPaso47() {
+  console.log('\n[26] paso 47 / 47b (07/10): Sin identificar mal escrito, con sus edades y su sexo; vaciar sólo lo del sistema y completar sólo esas filas');
+  const E = crearEntorno();
+  const m = montar(E, 200, true);
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
+  const backup = new E.Hoja('RVD JM-CM - ES', hoja.v);                  // el destino antes de la primera escritura
+  E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'] = backup;
+  E.ejecutar('upsertDestino');                                          // escribe bien sexo, edades y Sin identificar
+  const iSin = colD('Sin identificar'), iIns = colD('Inscriptos');
+  const E5 = ['18-24', '25-39', '40-55', '56-65', '66+'].map(colD), iM = colD('Masculinos'), iF = colD('Femeninos');
+  const escritas = [];
+  for (let i = 1; i < hoja.v.length && escritas.length < 5; i++) {
+    if ((i - 1) % 10 < 3 && hoja.v[i][colD('RDV_UID')] && hoja.v[i][iSin] !== '' && esColorSistemaTest(hoja.bg[i][iSin]) &&
+        E5.every(function (k) { return hoja.v[i][k] !== ''; })) escritas.push(i);
+  }
+  const [iA, iB, iC, iD, iE] = escritas;
+  const orig = {};
+  [iA, iB].forEach(function (i) { orig[i] = hoja.v[i].slice(); });
+  // A: el 04/10 B no traía edades → edades 0, Sin identificar = Inscriptos, y sexo 0 (todo del sistema)
+  E5.forEach(function (k) { hoja.v[iA][k] = 0; });
+  hoja.v[iA][iSin] = hoja.v[iA][iIns]; hoja.v[iA][iM] = 0; hoja.v[iA][iF] = 0;
+  // B: las edades ya coinciden; sólo Sin identificar = Inscriptos
+  hoja.v[iB][iSin] = hoja.v[iB][iIns];
+  // C: una edad en 0 que NO escribió el sistema (sin color): no se toca la fila
+  E5.forEach(function (k) { hoja.v[iC][k] = 0; });
+  hoja.bg[iC][E5[0]] = '#ffffff'; hoja.v[iC][iSin] = hoja.v[iC][iIns];
+  // D: el Inscriptos del destino ya no es el de B: la corrida no escribiría el desagregado → no se toca
+  const insD = hoja.v[iD][iIns];
+  hoja.v[iD][iSin] = insD; hoja.v[iD][iIns] = insD + 5;
+  // E: Sin identificar = Inscriptos que ya estaba en el backup (lo dejó el legado): ni el 18 ni el 47 lo tocan
+  hoja.v[iE][iSin] = hoja.v[iE][iIns]; backup.v[iE][iSin] = hoja.v[iE][iIns];
+  const antes = JSON.stringify(foto(hoja));
+  E.ctx.p47seco_ = function () { return E.ctx.revisarDesagregadoMalEscrito(false); };
+  E.ctx.p47real_ = function () { return E.ctx.revisarDesagregadoMalEscrito(true); };
+  E.ctx.p47bseco_ = function () { return E.ctx.completarFilasRevisadas(false); };
+  E.ctx.p47breal_ = function () { return E.ctx.completarFilasRevisadas(true); };
+  const s47 = E.ejecutar('p47seco_');
+  const x = s47.resultado;
+  ok(!s47.error && JSON.stringify(foto(hoja)) === antes, 'paso 47 en seco: no toca nada' + (s47.error ? ' — ' + s47.error.message : ''));
+  ok(x && x.filas === 4 && x.celdas === 9 && x.casos['edades + Sin identificar + sexo en 0'] === 1 && x.casos['sólo Sin identificar'] === 1 &&
+     x.casos['no se toca'] === 2, 'las 4 filas (la del legado no): edades + Sin identificar + sexo 1, sólo Sin identificar 1, no se toca 2; 9 celdas — ' + JSON.stringify(x));
+  const r47 = E.ejecutar('p47real_').resultado;
+  ok(r47 && r47.vaciadas === 9 && r47.filasVaciadas === 2, 'real: vacía 9 celdas en 2 filas — ' + JSON.stringify(r47));
+  ok(E5.concat([iSin, iM, iF]).every(function (k) { return hoja.v[iA][k] === '' && hoja.bg[iA][k] === null; }) &&
+     hoja.v[iB][iSin] === '' && E5.every(function (k) { return hoja.v[iB][k] === orig[iB][k]; }),
+     'A: edades, Sin identificar y sexo vacíos y sin color; B: sólo Sin identificar');
+  ok(hoja.v[iC][iSin] === hoja.v[iC][iIns] && hoja.v[iD][iSin] === insD && hoja.v[iE][iSin] === hoja.v[iE][iIns], 'C, D y la del legado: intactas');
+  const s47b = E.ejecutar('p47bseco_').resultado;
+  ok(s47b && s47b.filas === 2 && s47b.celdas >= 9, 'paso 47b en seco: 2 filas, ' + (s47b && s47b.celdas) + ' celdas');
+  const fotoOtras = JSON.stringify(hoja.v.filter(function (f, i) { return i !== iA && i !== iB; }));
+  E.ejecutar('p47breal_');
+  ok(E5.concat([iSin, iM, iF]).every(function (k) { return hoja.v[iA][k] === orig[iA][k]; }) && hoja.v[iB][iSin] === orig[iB][iSin],
+     'paso 47b: A y B vuelven a sus valores correctos (edades de B, Sin identificar = el resto de las edades, sexo)');
+  ok(JSON.stringify(hoja.v.filter(function (f, i) { return i !== iA && i !== iB; })) === fotoOtras, 'y no toca ninguna otra fila');
+  const l18 = E.ejecutar('listarMalEscritas').resultado['RVD JM-CM - ES'];
+  ok(l18.lista.length === 2 && l18.estabanAntes === 1, 'paso 18 después: quedan C y D (y la del legado, aparte)');
+  // sin el backup, ni el 18 ni el 47 vacían nada
+  delete E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'];
+  E.ctx.SpreadsheetApp.openById = (function (orig) {
+    return function (id) { if (id === E.cfg('RDV_SS_BACKUP_0210')) throw new Error('No tiene permiso para acceder'); return orig(id); };
+  })(E.ctx.SpreadsheetApp.openById);
+  const antes2 = JSON.stringify(foto(hoja));
+  const sinBk47 = E.ejecutar('p47real_');
+  E.ctx.vaciarReal_test47_ = function () { return E.ctx.vaciarMalEscritas('RVD JM-CM - ES'); };
+  const sinBk18 = E.ejecutar('vaciarReal_test47_');
+  ok(sinBk47.resultado && sinBk47.resultado.error === 'sin backup' && sinBk18.resultado && sinBk18.resultado.error === 'sin backup' &&
+     JSON.stringify(foto(hoja)) === antes2, 'sin el backup del 02/10: el 47 y el 18 no vacían nada');
+  ok(sinBk47.logs.some(function (l) { return /Compartir el backup con esa cuenta como LECTOR/.test(l); }), 'y el aviso dice qué hacer con el permiso');
+}
+
 function escenarioFilaSinFigura() {
   console.log('\n[23] una fila sin Figura (Seguridad en tu Barrio de la agenda): el upsert y el paso 16 andan igual');
   const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true' } });
@@ -2100,7 +2170,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
     process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
-    process.argv.indexOf('--columnasb') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2114,6 +2184,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--sinfigura') >= 0) escenarioFilaSinFigura();
   else if (process.argv.indexOf('--agendaupsert') >= 0) escenarioAgendaEnUpsert();
   else if (process.argv.indexOf('--columnasb') >= 0) escenarioColumnasNuevasB();
+  else if (process.argv.indexOf('--paso47') >= 0) escenarioPaso47();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2154,6 +2225,7 @@ escenarioFormatoRevisar();
 escenarioFilaSinFigura();
 escenarioAgendaEnUpsert();
 escenarioColumnasNuevasB();
+escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

@@ -17,6 +17,13 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (12): las 24 celdas de Sin identificar mal escritas (filas 372–403, cerradas; paso 18). EN ORDEN:
+ *        0. compartir el backup del 02/10 (RDV_SS_BACKUP_0210) como LECTOR con la cuenta que corre el script (el paso 18
+ *           dice cuál); sin él no se vacía nada → paso18_malEscritas_listar() (con el chequeo 4)
+ *        1. paso47_revisarDesagregado_enSeco() → mirar la lista → paso47_revisarDesagregado()
+ *        2. paso47b_completarFilasRevisadas_enSeco() → paso47b_completarFilasRevisadas()   (sólo esas filas; el paso 22
+ *           entero también sirve, pero completaría cualquier otra celda vacía del historial)
+ *        3. paso18_malEscritas_listar() → tiene que dar 0
  *  >>> 07/10 (11): CORRECCIÓN: Sin identificar NO cambió (sigue siendo el resto de las EDADES). Correr
  *      paso18_malEscritas_listar() (en seco): si lista celdas, alguna corrida escribió con la fórmula equivocada →
  *      paso18_malEscritas_vaciarReal(). Y paso46_chequearColumnasB() (sólo lectura).
@@ -961,6 +968,36 @@ function paso46_chequearColumnasB() {
              'el log: columnas reconocidas / faltantes / sin mapear; los formularios de los últimos 30 días que no cierran; ' +
              '5 ejemplos de B → destino; si la corrida de la hora va a escribir los datos de B');
   return chequearColumnasB();
+}
+
+/** PASO 47 — EN SECO: las filas con Sin identificar mal escrito (paso 18), con sus edades y su sexo contra B de hoy. */
+function paso47_revisarDesagregado_enSeco() {
+  _anunciar_('paso 47 — Sin identificar mal escrito: edades y sexo (EN SECO)', 'revisarDesagregadoMalEscrito(false)  [diagnostico/10_mal_escritas.js]',
+             'NO escribe nada', 'el log: cada fila con su caso (edades + Sin identificar / sólo Sin identificar / no se toca) y qué se vaciaría');
+  return revisarDesagregadoMalEscrito(false);
+}
+
+/** PASO 47 — vacía esas celdas (sólo las del sistema, con el backup del 02/10) y anota las filas para el paso 47b. */
+function paso47_revisarDesagregado() {
+  _anunciar_('paso 47 — Sin identificar mal escrito: VACIAR', 'revisarDesagregadoMalEscrito(true)  [diagnostico/10_mal_escritas.js]',
+             'SÍ, en "' + RDV_HOJA_DESTINO_REAL + '": vacía y saca el color de las celdas listadas (sólo las del sistema); sin el backup no vacía nada',
+             'el log: cuántas vació y en cuántas filas');
+  return revisarDesagregadoMalEscrito(true);
+}
+
+/** PASO 47b — EN SECO: qué escribiría el upsert del historial en las filas que vació el paso 47 (sólo ésas). */
+function paso47b_completarFilasRevisadas_enSeco() {
+  _anunciar_('paso 47b — completar las filas del paso 47 (EN SECO)', 'completarFilasRevisadas(false)  [diagnostico/10_mal_escritas.js]',
+             'NO escribe nada', 'el log: por fila, las celdas que escribiría');
+  return completarFilasRevisadas(false);
+}
+
+/** PASO 47b — el upsert del historial, escribiendo SÓLO en las filas que vació el paso 47 (sólo celdas vacías). */
+function paso47b_completarFilasRevisadas() {
+  _anunciar_('paso 47b — completar las filas del paso 47', 'completarFilasRevisadas(true)  [diagnostico/10_mal_escritas.js]',
+             DRY_RUN ? 'NO (DRY_RUN = true)' : 'SÍ, en "' + RDV_HOJA_DESTINO + '": sólo celdas vacías de esas filas, en ' + COLOR_SISTEMA,
+             'el log del upsert; REGISTRO_UPSERT con alcance "historial, sólo N filas (paso 47b)"');
+  return completarFilasRevisadas(true);
 }
 
 /**

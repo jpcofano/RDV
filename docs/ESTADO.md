@@ -792,6 +792,47 @@ son `inscriptos_canal_<Nombre>`; si el origen usa otra forma, aparecen acá con 
 formularios de los últimos 30 días cierran; los 5 ejemplos con RRSS y Difusión iguales a la suma de sus canales en B.
 Si da eso, la corrida de la hora escribe los datos de B (sólo en celdas vacías). Si no, el log dice qué y no los escribe.
 
+#### Paso 46 y paso 18 después de la corrección (07/10)
+
+**Paso 46: TODO CIERRA** (36 columnas, 0 faltan, 0 sin mapear, 41 formularios de los últimos 30 días cierran).
+
+**Paso 18: 24 celdas de Sin identificar mal escritas**, filas **372–403** (12/2025–01/2026, cerradas). No pueden ser de
+los 16 minutos de la fórmula equivocada (la corrida de la hora sólo toca 30 días). Hipótesis del usuario: se
+escribieron el **04/10 con el paso 22**, cuando B no traía las edades de esos formularios (Sin identificar = Inscriptos −
+0); hoy el origen nuevo sí las trae. **Ojo**: el paso 18 corrió **sin el backup del 02/10** ("no se pudo leer"), así que
+el chequeo 4 no se aplicó, y desde el paso 19 el color del legado es el mismo que el del sistema: alguna de esas 24
+podría ser del legado. Por eso:
+
+- **El backup** (`RDV_SS_BACKUP_0210`, 1QLDcmTb01LC_…): ni la cuenta conectada a Claude ni la que corre el script lo ven
+  (Drive: "not found"; el destino sí se ve). Es la copia del 02/10 que se hizo a mano ("no compartir"). Hay que
+  **compartirla como LECTOR con la cuenta que corre el script** (el aviso del paso 18 ahora dice cuál). Sin el backup,
+  **ni el paso 18 ni el 47 vacían nada** (en seco listan igual, con el aviso).
+- **`paso47_revisarDesagregado_enSeco()` / `paso47_revisarDesagregado()`** (diagnostico/10_mal_escritas.js): las filas del
+  paso 18 con sus EDADES y su SEXO contra lo que trae B hoy. Sólo si la corrida las va a reescribir (los datos de B de
+  ese formulario no están frenados y el Inscriptos del destino está vacío o es el de B):
+  - edades del destino en 0 o vacías y B hoy trae edades → vacía **juntas** las edades en 0 y Sin identificar (si alguna
+    de esas edades no la escribió el sistema, no toca la fila);
+  - edades iguales a las de B → vacía sólo Sin identificar;
+  - si no, no toca (lo lista);
+  - Masculinos / Femeninos en 0 escritos por el sistema, si B hoy trae sexo: también.
+  Sólo celdas con el color del sistema y vacías en el backup (chequeo 4). Guarda las filas (RDV_UID) para el 47b.
+- **`paso47b_completarFilasRevisadas_enSeco()` / `paso47b_completarFilasRevisadas()`**: el paso 22 **limitado a esas
+  filas** (el upsert del historial, sólo celdas vacías). El paso 22 entero también las reescribe, pero completaría
+  además cualquier otra celda vacía del historial que hoy se pueda calcular (B trae ahora edades que antes no traía): si
+  se prefiere ése, primero `paso22_completarHistorial_enSeco()` para ver cuánto escribe fuera de esas filas.
+
+Test: escritura_lote [26] (los cuatro casos, la del legado, el 47b que devuelve los valores correctos y no toca ninguna
+otra fila, y que sin backup no se vacía nada).
+
+**Orden, con la predicción anotada ANTES:**
+0. Compartir el backup del 02/10 como Lector con la cuenta que corre el script.
+1. `paso18_malEscritas_listar()` → **con el chequeo 4**: si la hipótesis es buena, las 24 siguen (estaban vacías el 02/10);
+   las que "ya estaban en el backup" (del legado) salen de la lista y no se tocan.
+2. `paso47_revisarDesagregado_enSeco()` → casos, por la hipótesis mayormente "edades + Sin identificar" (edades del destino
+   en 0 o vacías y B hoy con edades); mirar la lista. Después `paso47_revisarDesagregado()`.
+3. `paso47b_completarFilasRevisadas_enSeco()` → del orden de las celdas vaciadas. Después `paso47b_completarFilasRevisadas()`.
+4. `paso18_malEscritas_listar()` → 0 en esas filas.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

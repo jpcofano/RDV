@@ -1574,8 +1574,11 @@ function medirDesacuerdoUbicacion() {
 function _correrUpsert_(enSeco, opciones) {
   const t0 = new Date();
   const historial = !!(opciones && opciones.historial);
+  // 07/10 (paso 47b): el upsert del historial, pero escribiendo SÓLO en estas filas (por RDV_UID)
+  const soloUids = opciones && opciones.soloUids ? new Set(opciones.soloUids) : null;
   Logger.log('=== upsertDestino (%s)%s ===', enSeco ? 'DRY_RUN — no escribe nada' : 'ESCRITURA REAL',
-             historial ? ' — TODO EL HISTORIAL (paso 22, una vez: sin el límite de DIAS_ACTIVOS)' : '');
+             historial ? (soloUids ? ' — HISTORIAL, SÓLO ' + soloUids.size + ' FILAS (paso 47b)'
+                                   : ' — TODO EL HISTORIAL (paso 22, una vez: sin el límite de DIAS_ACTIVOS)') : '');
   Logger.log('  solapa destino: %s', descripcionHojaDestino_());
 
   /*
@@ -1588,13 +1591,13 @@ function _correrUpsert_(enSeco, opciones) {
     return null;
   }
   try {
-    return _correrUpsertConBloqueo_(enSeco, t0, historial);
+    return _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids);
   } finally {
     lock.releaseLock();
   }
 }
 
-function _correrUpsertConBloqueo_(enSeco, t0, historial) {
+function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   // La guarda (02/10): la solapa destino existe y, si es la copia, tiene los encabezados del real.
   // Si no, error ANTES de calcular: no se escribe nada.
   verificarHojaDestino_(ssDestino_());
@@ -1630,7 +1633,7 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
   _logCruceAsistentes_(plan.asistentes, false);
 
   if (!enSeco) {
-    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes, historial);
+    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes, historial, soloUids);
     plan.res.escritas = w.celdas;
     plan.res.uidsEstampados = w.uids;
     plan.res.escritura = w;
@@ -1692,7 +1695,7 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
                'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
   }
 
-  _registrarCorrida_(plan, enSeco, t0, fallaron, historial);
+  _registrarCorrida_(plan, enSeco, t0, fallaron, soloUids ? 'historial, sólo ' + soloUids.size + ' filas (paso 47b)' : historial);
   Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
              ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
              plan.res.cerradasSinResolver);
@@ -1731,7 +1734,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   RDV_HOJA_DESTINO, w ? _sn_(w.completa) : '', w ? w.filasPendientes : '',
                   w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan,
                   w ? JSON.stringify(w.porColumna) : '',
-                  historial ? 'historial (paso 22)' : 'activas (' + DIAS_ACTIVOS + ' días)',
+                  historial ? (historial === true ? 'historial (paso 22)' : String(historial)) : 'activas (' + DIAS_ACTIVOS + ' días)',
                   DERIVADAS_POR_SCRIPT ? (r.derivadas || 0) : 'fórmulas']);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
@@ -4308,7 +4311,7 @@ function _simularTopePorFila_(grupos, n) {
  *     escriben ahora).
  * `Barrio` (manual) y las derivadas no se escriben nunca.
  */
-function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial) {
+function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUids) {
   const sh = dest.sh;
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
   const conStatus = iSt != null && iAs != null;
@@ -4328,6 +4331,7 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial) {
   dest.filas.forEach(function (f) {
     if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
     if (!historial && !esFilaActiva_(f.fecha)) return;             // cerrada (DIAS_ACTIVOS): no se toca, salvo el paso 22
+    if (soloUids && !soloUids.has(f.uid)) return;                  // paso 47b: sólo las filas que se vaciaron
     const d = decisionDeFila_(f, porDecision, asistentes);
     const c = celdasDeDecision_(dest, d, f.valores, true);
     if (c.celdas.length || c.status) pendientes.push(d);
