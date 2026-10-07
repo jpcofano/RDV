@@ -1,5 +1,7 @@
 # La agenda: qué hace el sistema y qué cargan ustedes
 
+> Versión corta: solapa GUÍA del archivo de la base.
+
 > **En corto.** Las reuniones del mail las crea el sistema (columna **"Origen fila"** = "sistema (agenda)", celdas en
 > celeste). **No carguen una fila nueva para una reunión que ya está: completen la que existe.** Lo que corrijan se
 > respeta y queda anotado en **"Tocado por el equipo"**. Si una fila sobra, **bórrenla: el sistema no la vuelve a

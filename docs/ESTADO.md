@@ -833,6 +833,17 @@ otra fila, y que sin backup no se vacía nada).
 3. `paso47b_completarFilasRevisadas_enSeco()` → del orden de las celdas vaciadas. Después `paso47b_completarFilasRevisadas()`.
 4. `paso18_malEscritas_listar()` → 0 en esas filas.
 
+#### Solapas de AYUDA (07/10)
+
+`43_Ayuda.js`, **paso 48** (`paso48_ayuda_enSeco()` → `paso48_ayuda()`): **"GUÍA"** en el archivo del destino (base RDV) y
+**"LEER"** en el archivo "Agenda", con el texto del usuario y formato: una columna (A, 900 px, ajuste, Arial 11), título
+en la fila 1 (negrita 16, #1F3864, letra blanca, 36 px, congelada), secciones en negrita 12 sobre #D9E1F2 con una fila en
+blanco antes, una viñeta por fila (" • "), los colores de "QUÉ SIGNIFICAN LOS COLORES" con el fondo que describen (los
+de las fichas, `RM.COLOR`, y #CFE2F3), ELEGIR en negrita, sin cuadrícula, la primera de la izquierda. Protegidas (sólo el
+dueño y quien corre el script). **Nada del sistema las lee ni las toca** (ningún código lee solapas por posición: se
+verificó antes de ponerlas primeras); el paso 48 las reescribe enteras si ya existen. En docs/elegir-match.md y
+docs/agenda-equipo.md, arriba: "Versión corta: solapa GUÍA del archivo de la base". Test: tests/ayuda.test.js.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

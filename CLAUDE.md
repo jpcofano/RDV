@@ -2624,6 +2624,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    dentro de upsertDiario, antes del cruce; si falla, el upsert sigue)  ← 06/10
 41_AgendaParser.js el parser de los mails de agenda y el barrio desde la dirección (regla de confianza)  ← 06/10
 42_BarriosCabaGeo.js los límites oficiales de los 48 barrios (sólo datos)                          ← 06/10
+43_Ayuda.js        las solapas de AYUDA para el equipo: "GUÍA" (archivo del destino) y "LEER" (archivo "Agenda"),
+                   con formato y protegidas; las escribe sólo el paso 48. Nada del sistema las lee   ← 07/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

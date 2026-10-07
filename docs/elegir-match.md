@@ -1,5 +1,7 @@
 # Cómo elegir un match a mano
 
+> Versión corta: solapa GUÍA del archivo de la base.
+
 Para quien revisa las reuniones que el sistema no pudo emparejar solo.
 
 ## Qué es esto

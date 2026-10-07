@@ -17,6 +17,7 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (13): solapas de AYUDA: paso48_ayuda_enSeco() → paso48_ayuda()  ("GUÍA" en la base, "LEER" en "Agenda").
  *  >>> 07/10 (12): las 24 celdas de Sin identificar mal escritas (filas 372–403, cerradas; paso 18). EN ORDEN:
  *        0. compartir el backup del 02/10 (RDV_SS_BACKUP_0210) como LECTOR con la cuenta que corre el script (el paso 18
  *           dice cuál); sin él no se vacía nada → paso18_malEscritas_listar() (con el chequeo 4)
@@ -1000,6 +1001,21 @@ function paso47b_completarFilasRevisadas() {
   return completarFilasRevisadas(true);
 }
 
+/** PASO 48 — EN SECO: las solapas de ayuda ("GUÍA" en la base RDV, "LEER" en el archivo "Agenda"): qué escribiría. */
+function paso48_ayuda_enSeco() {
+  _anunciar_('paso 48 — solapas de ayuda (EN SECO)', 'escribirSolapasAyuda(false)  [43_Ayuda.js]', 'NO escribe nada',
+             'el log: el texto de cada solapa y si existe o se crea');
+  return escribirSolapasAyuda(false);
+}
+
+/** PASO 48 — escribe (o reescribe) "GUÍA" en el archivo del destino y "LEER" en el archivo "Agenda", con formato y protegidas. */
+function paso48_ayuda() {
+  _anunciar_('paso 48 — solapas de ayuda', 'escribirSolapasAyuda(true)  [43_Ayuda.js]',
+             'SÍ: escribe/reescribe SÓLO las solapas "' + AYUDA_SOLAPA_GUIA + '" (base RDV) y "' + AYUDA_SOLAPA_LEER + '" (archivo "Agenda"), ' +
+             'las pone primeras y las protege; ninguna otra solapa', 'el log: filas escritas y la protección');
+  return escribirSolapasAyuda(true);
+}
+
 /**
  * **ronda()** — los pasos de esta ronda, en orden, en una sola ejecución. La escribió el usuario en el editor (07/10) y
  * se movió acá tal cual, para que un `clasp push` no la borre. El único que escribe es paso43_limpiarFondoAgenda: SÓLO
@@ -1061,4 +1077,36 @@ function verificar() {
   }
   Logger.log('');
   Logger.log('########## verificar — fin');
+}
+
+/**
+ * **limpiar24()** — corrige de una vez las 24 celdas viejas (filas 372–403, dic-2025/ene-2026). La escribió el usuario
+ * en el editor (07/10) y se movió acá tal cual, para que un `clasp push` no la borre.
+ * ANTES: compartir el backup del 02/10 como Lector con la cuenta que corre el script.
+ * Sin el backup, los pasos 18 y 47 no vacían nada (sólo listan), así que no hay riesgo.
+ * Si un paso falla, se frena ahí.
+ */
+function limpiar24() {
+  var pasos = [
+    ['paso18_malEscritas_listar (antes)',          paso18_malEscritas_listar],
+    ['paso47_revisarDesagregado_enSeco',           paso47_revisarDesagregado_enSeco],
+    ['paso47_revisarDesagregado (vacía)',          paso47_revisarDesagregado],
+    ['paso47b_completarFilasRevisadas_enSeco',     paso47b_completarFilasRevisadas_enSeco],
+    ['paso47b_completarFilasRevisadas (reescribe)', paso47b_completarFilasRevisadas],
+    ['paso18_malEscritas_listar (después: tiene que dar 0)', paso18_malEscritas_listar]
+  ];
+  for (var i = 0; i < pasos.length; i++) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + pasos[i][0] + ' ##########');
+    try {
+      pasos[i][1]();
+      Logger.log('########## OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ERROR — se frena acá: ' + (e && e.stack ? e.stack : e));
+      return;
+    }
+  }
+  Logger.log('');
+  Logger.log('########## limpiar24 — fin');
 }
