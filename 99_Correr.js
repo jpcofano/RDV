@@ -17,6 +17,12 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (3): AGENDA, AJUSTES DEL EQUIPO antes de la primera corrida real (prompt 07; ESTADO 0.z, "Ajustes del
+ *      equipo"): "Origen fila", "Tocado por el equipo", las columnas "(mail)", AGENDA_DUPLICADOS, la fila borrada por el
+ *      equipo no se recrea. Lo próximo, con la predicción escrita en ESTADO:
+ *        1. paso41_medirFormatoEquipo()  (sólo lectura) → ajustar AGENDA_DIRECCION_FORMA / _EVENTO_CON_EJE / _HORA_AJUSTE_MIN
+ *        2. semana()  (con AGENDA_SOLO_SEMANA = '2026-10-05'): columnas (16 al final) → la agenda REAL → paso 16
+ *      Para volver atrás: paso38_deshacerAgenda_enSeco() → paso38_deshacerAgenda().
  *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
  *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
  *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
@@ -573,7 +579,7 @@ function paso36_columnasAgenda_enSeco() {
   return agregarColumnasAgenda(false);
 }
 
-/** PASO 36 — agrega al final del destino los 9 encabezados de la agenda. Idempotente. */
+/** PASO 36 — agrega al final del destino los encabezados de la agenda que falten (16; 07/10). Idempotente. */
 function paso36_columnasAgenda() {
   _anunciar_('paso 36 — columnas de la agenda', 'agregarColumnasAgenda(true)  [05_Escritura.js]',
              'SÍ, en el destino: sólo encabezados, al final, después de form_clave', 'el log: las agregadas');
@@ -677,6 +683,7 @@ function todas() {
     ['paso35_medirReglaBarrio',        paso35_medirReglaBarrio],
     ['paso35b_medirDesaparecidas',     paso35b_medirDesaparecidas],
     ['paso36_columnasAgenda_enSeco',   paso36_columnasAgenda_enSeco],
+    ['paso41_medirFormatoEquipo',      paso41_medirFormatoEquipo],
     ['paso37_agenda_enSeco',           paso37_agenda_enSeco]
   ];
   var t0 = Date.now();
@@ -853,4 +860,34 @@ function _anunciar_(que, llama, escribe, salida) {
 function _anunciarDiag_(llama, salida) {
   _anunciar_('diagnóstico ya corrido, rehaciéndolo', llama, 'NO en el destino (sólo lectura)',
              salida + ' en la intermedia');
+}
+
+/** PASO 41 — SÓLO LECTURA: cómo llena el equipo Figura, Barrio, EVENTO, FECHA, HORA, Dirección y STATUS (últimos 3 meses). */
+function paso41_medirFormatoEquipo() {
+  _anunciar_('paso 41 — la forma del equipo', 'medirFormatoEquipo()  [diagnostico/18_formato_equipo.js]', 'NO escribe nada',
+             'el log: tipo, formato, mayúsculas y 5 ejemplos por columna; Dirección, EVENTO, STATUS de las futuras, HORA contra el ' +
+             'mail; y qué poner en AGENDA_DIRECCION_FORMA / AGENDA_EVENTO_CON_EJE / AGENDA_HORA_AJUSTE_MIN');
+  return medirFormatoEquipo();
+}
+
+/**
+ * **semana()** — la PRIMERA CORRIDA REAL de la agenda, sólo la semana de AGENDA_SOLO_SEMANA (07/10, prompt 07). En orden,
+ * y se corta en el primer error: 1) las columnas de la agenda (paso 36, real: sólo encabezados al final); 2) la agenda
+ * REAL (paso 37); 3) el control (paso 16). Sin AGENDA_SOLO_SEMANA no corre (para todo el alcance: paso37_agenda()).
+ */
+function semana() {
+  if (!AGENDA_SOLO_SEMANA) {
+    Logger.log('>>> semana(): AGENDA_SOLO_SEMANA = null. Poner el lunes de la semana (00_Config.js) — para todo el alcance, paso37_agenda().');
+    return null;
+  }
+  var t0 = Date.now();
+  Logger.log('########## semana — la agenda REAL, sólo la semana del %s ##########', AGENDA_SOLO_SEMANA);
+  var col = paso36_columnasAgenda();
+  if (col && col.error) { Logger.log('########## semana — cortada en las columnas: %s', col.error); return col; }
+  var r = paso37_agenda();
+  if (!r || r.error) { Logger.log('########## semana — cortada en la agenda: %s (el paso 16 no corre)', r ? r.error : 'sin resultado'); return r; }
+  paso16_verificarEscritura();
+  Logger.log('########## semana — fin (%s s). Para volver atrás: paso38_deshacerAgenda_enSeco() → paso38_deshacerAgenda().',
+             Math.round((Date.now() - t0) / 1000));
+  return r;
 }

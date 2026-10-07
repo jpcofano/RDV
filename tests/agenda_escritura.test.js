@@ -47,6 +47,9 @@ function crearEntorno(config) {
         setBackground: function (col) { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.bg[f - 1 + i][c - 1 + j] = col; return rango; },
         clearContent: function () { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.v[f - 1 + i][c - 1 + j] = ''; return rango; },
         setNumberFormat: function () { return rango; },
+        getNumberFormats: function () { const o = []; for (let i = 0; i < nf; i++) { const r = []; for (let j = 0; j < nc; j++) r.push((h.nf || {})[(f + i) + ',' + (c + j)] || 'General'); o.push(r); } return o; },
+        setNumberFormats: function (m) { h.nf = h.nf || {}; for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.nf[(f + i) + ',' + (c + j)] = m[i][j]; return rango; },
+        setDataValidation: function (v) { h.validaciones = (h.validaciones || 0) + 1; h.opciones = v; return rango; },
         setFontWeight: function () { return rango; }
       };
       return rango;
@@ -73,7 +76,15 @@ function crearEntorno(config) {
     setFrozenRows() {}
     clear() { this.v = []; this.bg = []; }
     getProtections() { return []; }
-    protect() { const h = this; return { setDescription: function (d) { h.proteccion = d; return { setWarningOnly: function (w) { h.advertencia = w; } }; } }; }
+    protect() {
+      const h = this;
+      const pr = { setDescription: function (d) { h.proteccion = d; return pr; }, getDescription: function () { return h.proteccion; },
+                   setWarningOnly: function (w) { h.advertencia = w; return pr; }, setUnprotectedRanges: function (r) { h.libres = r.length; return pr; },
+                   addEditor: function () { return pr; }, getEditors: function () { return []; }, removeEditors: function () { return pr; },
+                   canDomainEdit: function () { return false; }, setDomainEdit: function () { return pr; } };
+      return pr;
+    }
+    hideColumns() {}
     autoResizeColumns() {}
     clearContents() { this.v = this.v.map(function (r) { return r.map(function () { return ''; }); }); }
   }
@@ -94,7 +105,10 @@ function crearEntorno(config) {
       getUuid: function () { E.uuid++; return 'uuid-' + E.uuid + '-xxxx'; }, sleep: function (ms) { (E.esperas = E.esperas || []).push(ms); }
     },
     SpreadsheetApp: { openById: function (id) { if (E.fallarAbrir && E.fallarAbrir(id)) throw new Error('Service Spreadsheets timed out'); return E.planilla(id); },
-                      flush: function () {}, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' } },
+                      flush: function () {}, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
+                      newDataValidation: function () { const b = { lista: null, requireValueInList: function (l) { b.lista = l; return b; },
+                        setAllowInvalid: function () { return b; }, build: function () { return b.lista; } }; return b; } },
+    Session: { getEffectiveUser: function () { return { getEmail: function () { return 'yo@test'; } }; } },
     LockService: { getScriptLock: function () { return { tryLock: function () { return true; }, releaseLock: function () {} }; } },
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
@@ -122,7 +136,8 @@ const HDR = (function () {
            .concat(['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave']);
 })();
 const COLUMNAS_AGENDA = ['No participa', 'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita',
-  'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito'];
+  'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito',
+  'Origen fila', 'Tocado por el equipo', 'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con'];
 const BARRIOS = [['Recoleta', 2], ['Palermo', 14], ['Almagro', 5], ['Boedo', 5], ['Belgrano', 13], ['Núñez', 13],
   ['Colegiales', 13], ['Flores', 7], ['Parque Chacabuco', 7], ['San Nicolás', 1], ['Monserrat', 1], ['Villa Urquiza', 12]];
 const FIGURAS = ['Clara Muzzio', 'Jorge Macri', 'Hernán Lombardi', 'Gabino Tapia', 'Laura Alonso', 'Ezequiel Sabor'];
@@ -358,7 +373,7 @@ r = correr(E, false, [V1]);
 ok(r && /faltan las columnas/.test(r.error || ''), 'sin las columnas de la agenda, la escritura real no corre: ' + (r && r.error));
 E.ctx.__x = 1;
 const col = E.run('agregarColumnasAgenda(true)');
-ok(col.agregadas === 9 && E.D.v[0].slice(-9).join('|') === COLUMNAS_AGENDA.join('|'), 'paso 36: las 9 columnas al final, en orden (desde ' + col.desde + ')');
+ok(col.agregadas === 16 && E.D.v[0].slice(-16).join('|') === COLUMNAS_AGENDA.join('|'), 'paso 36: las 16 columnas al final, en orden (desde ' + col.desde + ')');
 ok(E.run('agregarColumnasAgenda(true)').agregadas === 0, 'y es idempotente');
 
 console.log('[10] la copia en el archivo "Agenda"');
@@ -507,6 +522,124 @@ ok(regs.hojas['REGISTRO_AGENDA'] && regs.hojas['REGISTRO_AGENDA'].v.length === 2
    !E.planilla(E.run('RDV_SS_INTERMEDIA')).hojas['REGISTRO_AGENDA'], 'REGISTRO_AGENDA y los cambios van al archivo de registros, no a la intermedia');
 d = E.run('deshacerAgenda(true)');
 ok(d && d.sacarian === 5, 'y deshacer los lee de ahí (sacaría las 5 creadas)');
+
+console.log('[17] la forma del equipo, las columnas del mail, "Origen fila" y "Tocado por el equipo"');
+E = montar(true, [function (r, C) {   // una fila del equipo en el alcance que el mail no trae
+  r[C('Figura')] = 'Gabino Tapia'; r[C('Barrio')] = 'Núñez'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '17:00';
+  r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+}, function (r, C) {                  // y una vieja, de agosto: fuera del alcance (hoy − 30)
+  r[C('Figura')] = 'Laura Alonso'; r[C('Barrio')] = 'Flores'; r[C('FECHA')] = new D(2026, 7, 20, 12); r[C('STATUS REUNIÓN')] = 'Realizada';
+}, function (r, C) {                  // la del equipo, otra vez al final: es la "fila modelo" del formato
+  r[C('Figura')] = 'Laura Alonso'; r[C('Barrio')] = 'Flores'; r[C('FECHA')] = new D(2026, 8, 30, 12); r[C('STATUS REUNIÓN')] = 'Realizada';
+}]);
+E.D.nf = {}; E.D.nf[(E.D.getLastRow()) + ',' + (E.C('FECHA') + 1)] = 'dd/MM/yyyy'; E.D.nf[(E.D.getLastRow()) + ',' + (E.C('HORA') + 1)] = 'HH:mm';
+const ultimaEquipo = E.D.getLastRow();
+r = correr(E, false, [V1]);
+let iM = fila(E, 'Clara Muzzio', 8), iL = fila(E, 'Hernán Lombardi', 7), iA = fila(E, 'Laura Alonso', 7), iT = fila(E, 'Gabino Tapia', 9);
+ok(celda(E, iM, 'Origen fila') === 'sistema (agenda)' && celda(E, iA, 'Origen fila') === 'equipo + agenda' && celda(E, iT, 'Origen fila') === 'equipo',
+   '"Origen fila": sistema (agenda) la creada, equipo + agenda la vinculada, equipo la del equipo que el mail no trae');
+const iAgo = E.D.v.findIndex(function (x) { return x[E.C('FECHA')] instanceof Date && x[E.C('FECHA')].getMonth() === 7; });
+ok(celda(E, iAgo, 'Origen fila') === '' && celda(E, 1, 'Origen fila') === 'equipo',
+   'la de agosto (fuera del alcance, hoy − 30) no se toca; las de septiembre del equipo: "equipo"');
+ok((celda(E, iL, 'Conjunta con') || '') === '', '"Conjunta con" sin la figura que NO PARTICIPA (' + celda(E, iL, 'Conjunta con') + ')');
+ok(/Clara Muzzio/.test(celda(E, iM, 'Evento (mail)')) && celda(E, iM, 'Dirección (mail)') === 'Av. Santa Fe 1234, Club Social' &&
+   celda(E, iM, 'Lugar (mail)') !== '', 'columnas del mail: Evento (mail), Lugar (mail), Dirección (mail) — ' + celda(E, iM, 'Lugar (mail)'));
+ok(celda(E, iL, 'No participa') === 'Gabino Tapia' && /Lombardi/.test(celda(E, iL, 'Evento (mail)')), 'conjunta: "No participa" y el evento entero');
+ok(celda(E, iA, 'Dirección (mail)') === 'Rivadavia 7000, Plaza' && fondo(E, iA, 'Dirección (mail)') === SIS && fondo(E, iA, 'HORA') === null,
+   'la vinculada también recibe las columnas del mail (en #CFE2F3); las del equipo, sin color');
+ok(E.D.nf[(iM + 1) + ',' + (E.C('FECHA') + 1)] === 'dd/MM/yyyy' && E.D.nf[(iM + 1) + ',' + (E.C('HORA') + 1)] === 'HH:mm' && iM + 1 > ultimaEquipo,
+   'las filas nuevas toman el formato numérico de la última fila (FECHA dd/MM/yyyy, HORA HH:mm)');
+ok(celda(E, iM, 'Tocado por el equipo') === '', '"Tocado por el equipo" vacío recién creada');
+E.D.v[iL][E.C('HORA')] = '20:00'; E.D.v[iM][E.C('Dirección')] = 'Av. Santa Fe 1250';
+r = correr(E, false, [V1]);
+ok(celda(E, iL, 'Tocado por el equipo') === 'HORA' && celda(E, iM, 'Tocado por el equipo') === 'Dirección' && r.tocado === 2,
+   '"Tocado por el equipo": HORA en Lombardi, Dirección en Muzzio (' + celda(E, iL, 'Tocado por el equipo') + ' / ' + celda(E, iM, 'Tocado por el equipo') + ')');
+E.D.v[iL][E.C('HORA')] = '19:00';
+r = correr(E, false, [V1]);
+ok(celda(E, iL, 'Tocado por el equipo') === '', 'si el equipo la vuelve a lo del mail, "Tocado" se vacía (se recalcula cada corrida)');
+const Vl = mail(5, 9, [EV.sabor, EV.lombardi, EV.alonso, EV.muzzio('Jueves 08/10', '18:30'), EV.seguridad, EV.macri('Serrano 1500 piso 2')]);
+r = correr(E, false, [V1, Vl]);
+const iMa2 = fila(E, 'Jorge Macri', 9);
+ok(celda(E, iMa2, 'Dirección (mail)') === 'Serrano 1500 piso 2', 'cada versión del mail actualiza las columnas del mail');
+
+console.log('[18] casi duplicado ANTES de crear: no se crea, se pregunta en AGENDA_DUPLICADOS; se aplica lo elegido');
+E = montar(true, [function (r, C) {     // el equipo cargó a Muzzio el 09/10 (el mail dice 08/10)
+  r[C('Figura')] = 'Clara Muzzio'; r[C('Barrio')] = 'Recoleta'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '18:30';
+  r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+}, function (r, C) {                     // y otra figura en la misma fecha y comuna que la de Macri (09/10, Comuna 14)
+  r[C('Figura')] = 'Ezequiel Sabor'; r[C('Barrio')] = 'Palermo'; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('HORA')] = '11:00';
+  r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+}]);
+let nFil = E.D.v.length;
+r = correr(E, true, [V1]);
+ok(r.crear === 3 && r.duplicadosAntes === 2, 'en seco: crearía 3 (no 5): Muzzio y Macri van a AGENDA_DUPLICADOS (' + r.crear + ' / ' + r.duplicadosAntes + ')');
+ok(!E.ssD.hojas['AGENDA_DUPLICADOS'], 'en seco no se escribe la solapa');
+r = correr(E, false, [V1]);
+const dup = E.ssD.hojas['AGENDA_DUPLICADOS'];
+ok(E.D.v.length === nFil + 3 && dup && dup.v.length === 3 && dup.v[0][0] === 'ELEGIR' && dup.v[0][1] === 'COMENTARIO',
+   'real: 3 filas nuevas; AGENDA_DUPLICADOS en el archivo del destino, ELEGIR y COMENTARIO adelante, 2 líneas');
+ok(dup.validaciones === 2 && dup.proteccion === E.run('DESC_PROTECCION_DUPLICADOS') && dup.libres === 2 && dup.advertencia === false,
+   'desplegable en las 2, protección real con ELEGIR/COMENTARIO libres');
+ok(/fecha \(1 día\)/.test(dup.v.map(function (x) { return x.join('|'); }).join('\n')) && /figura \(Ezequiel Sabor\)/.test(dup.v.map(function (x) { return x.join('|'); }).join('\n')),
+   'la diferencia en palabras: "fecha (1 día)" y "figura (Ezequiel Sabor)"');
+r = correr(E, false, [V1]);
+ok(r.crear === 0 && r.duplicadosAntes === 2 && E.D.v.length === nFil + 3, 'sin elegir: sigue preguntando, no crea');
+const lMuz = dup.v.findIndex(function (x) { return /Clara Muzzio/.test(x.join('|')); });
+const lSeg = dup.v.findIndex(function (x, i) { return i > 0 && i !== lMuz; });
+dup.v[lMuz][0] = 'Es la misma: vincular'; dup.v[lMuz][1] = 'la cargamos con la fecha mal';
+dup.v[lSeg][0] = 'Son distintas: crear';
+const iEq = fila(E, 'Clara Muzzio', 9);
+r = correr(E, false, [V1]);
+ok(r.eleccionesAplicadas === 2 && r.crear === 1 && r.vincular === 1, 'elegido: vincula Muzzio y crea Macri (' + r.vincular + ' / ' + r.crear + ')');
+ok(/^v-/.test(celda(E, iEq, 'agenda_uid')) && celda(E, iEq, 'Origen fila') === 'equipo + agenda' && celda(E, iEq, 'Barrio') === 'Recoleta',
+   'la fila del equipo quedó vinculada, con su barrio');
+const elec = E.ssI.hojas['ELECCIONES_AGENDA'];
+ok(elec && elec.v.length === 3, 'las elecciones se guardaron en ELECCIONES_AGENDA (sobreviven a que se regenere la solapa)');
+ok(E.ssD.hojas['AGENDA_DUPLICADOS'].v.length === 1, 'resueltas: AGENDA_DUPLICADOS queda con el encabezado solo');
+r = correr(E, false, [V1]);
+ok(r.crear === 0 && r.vincular === 0 && r.duplicadosAntes === 0, 'otra corrida: nada nuevo (' + JSON.stringify([r.crear, r.vincular, r.duplicadosAntes, r.eleccionesAplicadas]) + ')');
+
+console.log('[19] duplicado DESPUÉS de crear: se lista, nunca se borra ni se fusiona');
+E = montar();
+correr(E, false, [V1]);
+nFil = E.D.v.length;
+const copiaFila = E.D.v[0].map(function () { return ''; });
+copiaFila[E.C('Figura')] = 'Clara Muzzio'; copiaFila[E.C('Barrio')] = 'Recoleta'; copiaFila[E.C('FECHA')] = new D(2026, 9, 8, 12);
+copiaFila[E.C('HORA')] = '18:30'; copiaFila[E.C('STATUS REUNIÓN')] = 'en agenda';
+E.D.v.push(copiaFila); E.D.bg.push(copiaFila.map(function () { return null; }));
+r = correr(E, false, [V1]);
+ok(r.duplicadosDespues === 1 && r.crear === 0 && r.ambiguas === 0, 'la fila que cargó el equipo encima de la de la agenda: 1 duplicado posterior, ninguna ambigua');
+ok(E.D.v.length === nFil + 1 && E.ssD.hojas['AGENDA_DUPLICADOS'].v.some(function (x) { return x[3] === 'después de crear'; }),
+   'no se borró nada; en AGENDA_DUPLICADOS como "después de crear"');
+
+console.log('[20] una fila creada por la agenda y BORRADA por el equipo no se recrea; si sale del mail y vuelve, sí');
+E = montar();
+correr(E, false, [V1]);
+let iMz = fila(E, 'Clara Muzzio', 8);
+nFil = E.D.v.length;
+E.D.deleteRow(iMz + 1);                         // el equipo la borra
+r = correr(E, false, [V1]);
+ok(r.crear === 0 && r.borradasEquipo === 1 && fila(E, 'Clara Muzzio', 8) === -1, 'no se recrea (BORRADA POR EL EQUIPO)');
+const camE = E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v;
+ok(camE.filter(function (x) { return x[1] === 'borrada_por_equipo'; }).length === 1, 'REGISTRO_AGENDA_CAMBIOS: "borrada_por_equipo", una vez');
+r = correr(E, false, [V1]);
+ok(r.crear === 0 && E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.filter(function (x) { return x[1] === 'borrada_por_equipo'; }).length === 1,
+   'otra corrida: sigue sin recrearla, y no la vuelve a anotar');
+ok(E.planilla(E.run('AGENDA_COPIA_SS')).hojas[E.run('AGENDA_COPIA_SOLAPA')].v.some(function (x) { return x.join('|').indexOf('borrada por el equipo') >= 0; }),
+   'en el archivo "Agenda": "borrada por el equipo"');
+const sinMuzzio = mail(5, 9, [EV.sabor, EV.lombardi, EV.alonso, EV.seguridad, EV.macri('Serrano 1500')]);
+r = correr(E, false, [V1, sinMuzzio]);
+ok(E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.some(function (x) { return x[1] === 'olvidar_borrada'; }), 'salió del mail: se olvida');
+const vuelve = mail(6, 9, [EV.sabor, EV.lombardi, EV.alonso, EV.muzzio('Jueves 08/10', '18:30'), EV.seguridad, EV.macri('Serrano 1500')]);
+r = correr(E, false, [V1, sinMuzzio, vuelve]);
+ok(r.crear === 1 && fila(E, 'Clara Muzzio', 8) > 0, 'volvió al mail: se crea de nuevo');
+
+console.log('[21] sin historial legible, la corrida real no crea (podría recrear una borrada)');
+E = montar();
+r = correr(E, false, [V1], { historial: { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), error: 'Service Spreadsheets timed out' } });
+ok(!r.error && r.crear === 0 && r.noCreadasSinHistorial === 5 && r.vincular === 1, 'no crea ninguna de las 5 (las vincula igual): ' + r.noCreadasSinHistorial);
+r = correr(E, true, [V1], { historial: { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), error: 'x' } });
+ok(r.crear === 5, 'en seco sí las cuenta como CREAR (para ver el plan)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

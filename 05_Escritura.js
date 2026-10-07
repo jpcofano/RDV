@@ -697,3 +697,21 @@ function statusConocido_(s) {
   }
   return false;
 }
+
+/**
+ * Las filas que CREÓ la agenda toman el formato NUMÉRICO (fecha, hora, números) de la fila modelo —la última con datos
+ * antes de crear—, para que FECHA y HORA se vean como las carga el equipo (07/10, prompt 07, B). Sólo el formato
+ * numérico: nunca fondos ni bordes (la marca de procedencia no se toca). Sólo filas nuevas, posteriores a la modelo.
+ */
+function copiarFormatoNumericoAgenda_(sh, filaModelo, filas) {
+  if (!filaModelo || filaModelo < 2) return 0;
+  const nCols = sh.getLastColumn();
+  const formatos = sh.getRange(filaModelo, 1, 1, nCols).getNumberFormats()[0];
+  let n = 0;
+  filas.forEach(function (f) {
+    if (f <= filaModelo) throw new Error('copiarFormatoNumericoAgenda_: la fila ' + f + ' no es nueva (modelo ' + filaModelo + ')');
+    sh.getRange(f, 1, 1, nCols).setNumberFormats([formatos]);
+    n++;
+  });
+  return n;
+}

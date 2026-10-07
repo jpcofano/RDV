@@ -1087,8 +1087,38 @@ const COLUMNA_NO_PARTICIPA = 'No participa';
  */
 const COLUMNAS_AGENDA = [
   COLUMNA_NO_PARTICIPA, 'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita',
-  'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito'
+  'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito',
+  // 07/10 (prompt 07): quién creó y quién tocó la fila, y lo del mail que la forma del equipo no guarda
+  'Origen fila', 'Tocado por el equipo', 'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con'
 ];
+/** "Origen fila" (07/10): quién creó la fila. Las filas del equipo que la agenda no vinculó: ORIGEN_EQUIPO. */
+const ORIGEN_SISTEMA = 'sistema (agenda)';
+const ORIGEN_EQUIPO = 'equipo';
+const ORIGEN_AMBOS = 'equipo + agenda';
+/**
+ * **AGENDA_DUPLICADOS** (07/10, en el ARCHIVO del destino, como REVISAR_MATCH): lo que la agenda no crea porque hay una
+ * fila parecida del equipo (la misma figura a ±AGENDA_DUP_DIAS días, o la misma fecha y comuna con otra figura o sin
+ * figura), con ELEGIR adelante; y los duplicados que aparecen después de crear (informativos). Las elecciones se
+ * guardan en ELECCIONES_AGENDA (archivo de registros o intermedia) y se aplican en la corrida siguiente.
+ */
+const AGENDA_SOLAPA_DUPLICADOS = 'AGENDA_DUPLICADOS';
+const RDV_HOJA_ELECCIONES_AGENDA = 'ELECCIONES_AGENDA';
+const AGENDA_DUP_DIAS = 2;
+const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Son distintas: crear', 'No sé'];
+const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
+/**
+ * **Llenar las columnas del equipo como las llena el equipo** (07/10, prompt 07, B). Valores iniciales: lo que la agenda
+ * venía escribiendo; `paso41_medirFormatoEquipo()` (sólo lectura) mide cómo las llena hoy el equipo y dice qué poner:
+ *   - AGENDA_DIRECCION_FORMA: 'completa' = la línea "Lugar:" del mail entera ("Chile 1769, Asociación Civil…");
+ *     'calle' = sólo calle y número ("A CONFIRMAR…" va igual, tal cual). Lo que se acorta queda en "Dirección (mail)";
+ *   - AGENDA_EVENTO_CON_EJE: true = 'Encuentro con Vecinos - Eje Norte' cuando el mail trae eje;
+ *   - AGENDA_HORA_AJUSTE_MIN: minutos a sumar a la hora del mail (la del mail es la de convocatoria);
+ *   - AGENDA_COPIAR_FORMATO: las filas nuevas toman el formato numérico (fecha, hora) de la última fila con datos.
+ */
+const AGENDA_DIRECCION_FORMA = 'completa';
+const AGENDA_EVENTO_CON_EJE = false;
+const AGENDA_HORA_AJUSTE_MIN = 0;
+const AGENDA_COPIAR_FORMATO = true;
 /** Las columnas del destino que la agenda puede escribir (la excepción `escribirAgendaLote_`, 05_Escritura.js). */
 const COLUMNAS_QUE_ESCRIBE_AGENDA = ['Figura', 'EVENTO', 'FECHA', 'HORA', 'Dirección', 'Barrio', 'STATUS REUNIÓN']
   .concat(COLUMNAS_AGENDA);

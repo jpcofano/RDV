@@ -1,5 +1,11 @@
 # La agenda: qué hace el sistema y qué cargan ustedes
 
+> **En corto.** Las reuniones del mail las crea el sistema (columna **"Origen fila"** = "sistema (agenda)", celdas en
+> celeste). **No carguen una fila nueva para una reunión que ya está: completen la que existe.** Lo que corrijan se
+> respeta y queda anotado en **"Tocado por el equipo"**. Si una fila sobra, **bórrenla: el sistema no la vuelve a
+> crear.** Si el sistema duda, pregunta en la solapa **AGENDA_DUPLICADOS**. El texto completo del mail queda en las
+> columnas **"(mail)"**, al final.
+
 Desde que se prende la agenda, el sistema lee los mails semanales de agenda ("Agenda Encuentros de vecinos con …") y
 mantiene al día las filas de la planilla **"RVD JM-CM - ES"**. Esta página dice qué hace solo, qué no toca nunca y qué
 les queda para cargar a ustedes.
@@ -13,6 +19,17 @@ les queda para cargar a ustedes.
   Vecinos", con la Figura vacía hasta que se sepa).
 - **No duplica.** Si ya hay una fila de esa figura ese día (porque la cargaron ustedes), la usa: completa sólo lo que
   esté vacío y no toca lo que ya cargaron.
+- **Si hay una fila parecida, pregunta antes de crear.** Una fila de ustedes con la misma figura uno o dos días antes o
+  después, o la misma fecha y comuna con otra figura (o sin figura): el sistema **no crea** la reunión y la pone en la
+  solapa **AGENDA_DUPLICADOS** (en este mismo archivo). Ahí, en **ELEGIR**: *"Es la misma: vincular"* (el sistema usa
+  esa fila), *"Son distintas: crear"* (crea la suya) o *"No sé"* (sigue preguntando). **COMENTARIO** es libre. Se aplica
+  en la corrida siguiente (cada hora). Sólo se puede escribir en esas dos columnas.
+- **Si aparece un duplicado después** (alguien cargó una fila para una reunión que el sistema ya había creado), también
+  sale en AGENDA_DUPLICADOS, como *"después de crear"*. **El sistema no borra ni junta filas solo**: si es la misma
+  reunión, borren la que sobra.
+- **Si borran una fila que creó el sistema, no la vuelve a crear** mientras la reunión siga en el mail (en el archivo
+  "Agenda" figura como "borrada por el equipo"). Si la reunión sale del mail y después vuelve, es una reunión nueva y sí
+  la crea.
 - **Sigue los cambios del mail** ("Actualizo:"): hora, dirección y, si cambió la dirección, el barrio. Sólo mientras la
   reunión está "en agenda".
 - **Si la reunión se pasa a otro día de la misma semana**, mueve la fecha de la fila (no crea otra).
@@ -26,6 +43,12 @@ les queda para cargar a ustedes.
 - **"Seguridad en tu Barrio"** viene sin figura: la fila se crea sin Figura y el sistema la completa cuando la reunión
   aparece en RDV CONJUNTO (por fecha y barrio).
 - **Todo lo que escribe el sistema queda en celeste** (#CFE2F3), para que se vea de un vistazo.
+- **Columnas al final de la planilla** (las escribe el sistema): **"Origen fila"** (*sistema (agenda)*: la creó el
+  sistema; *equipo*: la cargaron ustedes; *equipo + agenda*: la cargaron ustedes y el sistema la completó), **"Tocado
+  por el equipo"** (qué columnas cambiaron ustedes respecto de lo que escribió el sistema: FECHA, HORA, Dirección,
+  Barrio, STATUS; se recalcula en cada corrida), y lo del mail tal cual: **"Evento (mail)"**, **"Lugar (mail)"**,
+  **"Dirección (mail)"**, **"Marcas (mail)"**, **"Conjunta con"**, **"No participa"**. Así no se pierde nada del mail
+  aunque las columnas de ustedes tengan otra forma.
 - **Una copia de toda la agenda** queda en el archivo **"Agenda"**: una fila por reunión, con su estado (vigente,
   reprogramada, desaparecida), qué cambió, el barrio que calculó (o por qué no), la fila de la planilla y su STATUS. **No
   se edita a mano**: se reescribe en cada corrida. Lo que haya que corregir, se corrige en la planilla.

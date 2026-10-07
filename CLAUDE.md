@@ -173,9 +173,11 @@ reflejarse en su fila, y "sólo celda vacía" la congelaría con la primera vers
 vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 
 - **sólo las columnas de `COLUMNAS_QUE_ESCRIBE_AGENDA`**: Figura, EVENTO, FECHA, HORA, Dirección, Barrio, STATUS y las
-  nueve columnas de la agenda (al final, después de `form_clave`: `No participa`, `agenda_uid`, `agenda_mail`,
-  `agenda_version`, `agenda_hora_escrita`, `agenda_direccion_escrita`, `agenda_barrio_escrito`, `agenda_fecha_escrita`,
-  `agenda_status_escrito`). Cualquier otra es un error y no se escribe nada;
+  dieciséis columnas de la agenda (`COLUMNAS_AGENDA`, al final, después de `form_clave`, AV..BK: `No participa`,
+  `agenda_uid`, `agenda_mail`, `agenda_version`, `agenda_hora_escrita`, `agenda_direccion_escrita`,
+  `agenda_barrio_escrito`, `agenda_fecha_escrita`, `agenda_status_escrito`; y desde el 07/10 `Origen fila`, `Tocado por
+  el equipo`, `Evento (mail)`, `Lugar (mail)`, `Dirección (mail)`, `Marcas (mail)`, `Conjunta con`). Cualquier otra es
+  un error y no se escribe nada;
 - **una celda se pisa sólo si todavía tiene lo que escribió el sistema** (lo anotado en `agenda_*_escrita`), con
   lectura fresca. Si alguien del equipo la cambió, no se toca nunca más ("editada por el equipo"). Al vincular una
   fila del equipo, una celda que replica lo que dice el mail se anota como del sistema;
@@ -189,6 +191,12 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   segunda justo antes de borrar, con el bloqueo), se guarda entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura.
   Es la excepción a "no borrar filas" de §6: nada del sistema depende del número de fila (fichas y elecciones van por
   figura + fecha + barrio; el registro de la agenda, por `agenda_uid`).
+- **la agenda nunca borra ni fusiona por un duplicado, y no recrea lo que borró el equipo** (07/10, prompt 07): si hay
+  una fila del equipo parecida (misma figura a ±2 días, o misma fecha y comuna con otra figura), **no crea**: pregunta
+  en **AGENDA_DUPLICADOS** (archivo del destino, como las fichas: ELEGIR y COMENTARIO, protección real; elecciones
+  guardadas en ELECCIONES_AGENDA). Una fila que creó y que el equipo borró **no la vuelve a crear** mientras la reunión
+  siga en el mail (lo sabe por las líneas `crear_id` de REGISTRO_AGENDA_CAMBIOS); sin ese historial, la corrida real no
+  crea. "Origen fila" y "Tocado por el equipo" dicen quién creó la fila y qué cambió el equipo (docs/agenda-equipo.md).
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
@@ -2582,7 +2590,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    las auxiliares, en 26_Fichas.js. REVISAR_FORMATO_NUEVO = true        ← 06/10
 30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
 40_Agenda.js       la AGENDA (06/10): Gmail → crear / vincular / actualizar / mover / suspender filas del destino, la
-                   copia en el archivo "Agenda", REGISTRO_AGENDA y deshacer. Apagada (AGENDA_ACTIVA)  ← 06/10
+                   copia en el archivo "Agenda", REGISTRO_AGENDA y deshacer; AGENDA_DUPLICADOS, "Origen fila",
+                   "Tocado por el equipo", las columnas "(mail)" (07/10). Apagada (AGENDA_ACTIVA)  ← 06/10
 41_AgendaParser.js el parser de los mails de agenda y el barrio desde la dirección (regla de confianza)  ← 06/10
 42_BarriosCabaGeo.js los límites oficiales de los 48 barrios (sólo datos)                          ← 06/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

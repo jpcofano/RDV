@@ -189,6 +189,15 @@ function verificarEscritura() {
     Logger.log('  celdas editadas por el equipo (ya no tienen lo que escribió la agenda; no se tocan más — informativo): %s',
                ag.editadas.length);
     ag.editadas.slice(0, 30).forEach(function (x) { Logger.log('    fila %s | %s: "%s" (la agenda había escrito "%s")', x.fila, x.col, x.ahora, x.escrito); });
+    Logger.log('  CASI duplicados de las filas que creó la agenda (otra fila del equipo con la misma figura a ±%s días, o la misma ' +
+               'fecha y comuna con otra figura; informativo — los resuelve el equipo, ver %s): %s', AGENDA_DUP_DIAS,
+               AGENDA_SOLAPA_DUPLICADOS, ag.casiDuplicados.length);
+    ag.casiDuplicados.slice(0, 30).forEach(function (x) {
+      Logger.log('    fila %s (agenda) %s %s ~ fila %s: %s', x.filaAgenda, x.figura, fmtFecha_(x.fecha), x.fila, x.diferencia);
+    });
+    Logger.log('  "Origen fila": %s', Object.keys(ag.origen).map(function (k) { return k + ' ' + ag.origen[k]; }).join(' | ') || '—');
+    Logger.log('  "Tocado por el equipo": %s filas | por columna: %s', ag.filasTocadas,
+               Object.keys(ag.tocado).map(function (k) { return k + ' ' + ag.tocado[k]; }).join(' | ') || '—');
     if (ag.duplicados.length) problemas.push('filas de agenda duplicadas (figura + fecha): ' + ag.duplicados.length);
   }
 
@@ -328,7 +337,8 @@ function _ultimaEscrituraRegistrada_diag8() {
 /** Las filas de la agenda (06/10): duplicados figura + fecha, "en agenda" vencidas, celdas editadas, Barrio de la agenda. */
 function _filasAgenda_diag8(dest) {
   const A = indicesAgenda_(dest.hdr);
-  const out = { sinColumnas: A.faltan.length > 0, filas: 0, duplicados: [], vencidas: [], editadas: [], barrioDeLaAgenda: 0 };
+  const out = { sinColumnas: A.faltan.length > 0, filas: 0, duplicados: [], vencidas: [], editadas: [], barrioDeLaAgenda: 0,
+                casiDuplicados: [], tocado: {}, filasTocadas: 0, origen: {} };
   if (out.sinColumnas) return out;
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
   const limite = new Date(hoyMediodia_().getTime() - AGENDA_DIAS_VENCIDA * 86400000);
@@ -359,6 +369,28 @@ function _filasAgenda_diag8(dest) {
     if (lista.length > 1 && lista.some(function (f) { return !esVacio_(val(f, 'agenda_uid')); })) {
       out.duplicados.push({ figura: lista[0].figura, fecha: lista[0].fecha, filas: lista.map(function (f) { return f.fila; }) });
     }
+  });
+  // 07/10 (prompt 07): "Origen fila", "Tocado por el equipo" y los CASI duplicados de las filas que creó la agenda (la
+  // misma figura a ±AGENDA_DUP_DIAS días, o la misma fecha y comuna con otra figura o sin figura; filas del equipo).
+  dest.filas.forEach(function (f) {
+    const o = str(val(f, 'Origen fila')) || '(vacío)';
+    out.origen[o] = (out.origen[o] || 0) + 1;
+    const t = str(val(f, 'Tocado por el equipo'));
+    if (t) { out.filasTocadas++; t.split(/\s*,\s*/).forEach(function (c) { out.tocado[c] = (out.tocado[c] || 0) + 1; }); }
+  });
+  const comunaDe = function (f) { return f.barrio ? _comunaBarrioAg_(f.barrio) : null; };
+  dest.filas.forEach(function (fa) {
+    if (!/^c-/.test(str(val(fa, 'agenda_uid'))) || !fa.fecha) return;
+    const com = comunaDe(fa);
+    dest.filas.forEach(function (f) {
+      if (f.fila === fa.fila || !f.fecha || !esVacio_(val(f, 'agenda_uid'))) return;
+      const d = Math.abs(diasEntre_(f.fecha, fa.fecha));
+      const mismaFig = fa.figura && f.figura && normalizeText_(f.figura) === normalizeText_(fa.figura);
+      let dif = '';
+      if (mismaFig && d > 0 && d <= AGENDA_DUP_DIAS) dif = 'fecha (' + d + ' días)';
+      else if (!mismaFig && d === 0 && com != null && comunaDe(f) === com) dif = 'figura (' + (f.figura || 'vacía') + ')';
+      if (dif) out.casiDuplicados.push({ filaAgenda: fa.fila, fila: f.fila, figura: fa.figura || '(sin figura)', fecha: fa.fecha, diferencia: dif });
+    });
   });
   return out;
 }

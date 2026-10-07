@@ -488,6 +488,72 @@ todos SIN la etiqueta desde el 09/09: **buscar por asunto queda fijo**). VINCULA
    dice "línea de la corrida … escrita") y la ejecución termina sin Error.**
 3. Si REGISTRO_AGENDA vuelve a fallar: `paso40_archivoRegistros()`, poner el ID en `RDV_SS_REGISTROS`, clasp push, y otra vez.
 
+**Corrió el 07/10 10:20 (en seco): OK** — CREAR 10, VINCULAR 35, el duplicado de la misma corrida resuelto,
+REGISTRO_AGENDA escrito, sin Error.
+
+#### Ajustes del equipo, antes de la primera corrida real (07/10; prompt 07, [PROMPT-07](prompts/PROMPT-07-AGENDA-AJUSTES-EQUIPO.md))
+
+**A. Quién creó y quién tocó cada fila.** Dos columnas nuevas, del sistema:
+- **"Origen fila"**: *sistema (agenda)* en las que crea; *equipo + agenda* en las del equipo que vincula; *equipo* en
+  las del equipo **del alcance de la agenda** (la semana, con `AGENDA_SOLO_SEMANA`; si no, desde hoy − 30) que la agenda
+  no vincula. Las más viejas no se tocan.
+- **"Tocado por el equipo"**: en las filas de la agenda, las columnas que el equipo cambió contra lo que escribió el
+  sistema (FECHA, HORA, Dirección, Barrio, STATUS — contra `agenda_*_escrita`; pasar a Realizada no cuenta). Se
+  recalcula en cada corrida (`tocadoPorEquipoAgenda_`); si el equipo vuelve al valor del mail, se vacía.
+
+**B. La forma del equipo.** `paso41_medirFormatoEquipo()` (diagnostico/18_formato_equipo.js, sólo lectura) mide, en
+las filas del equipo de los últimos 3 meses: tipo, formato de celda, mayúsculas y 5 ejemplos de Figura, Barrio,
+EVENTO, FECHA, HORA, Dirección y STATUS; Dirección con nombre de lugar o sólo calle; EVENTO con eje o Seguridad; el
+STATUS de las futuras; la HORA del equipo contra la del mail. Y dice qué poner en tres perillas nuevas (00_Config.js),
+que arrancan con lo que venía haciendo la agenda: `AGENDA_DIRECCION_FORMA = 'completa'` (o `'calle'`),
+`AGENDA_EVENTO_CON_EJE = false`, `AGENDA_HORA_AJUSTE_MIN = 0`. `AGENDA_COPIAR_FORMATO = true`: las filas nuevas toman
+el **formato numérico** de la última fila (sólo el formato numérico, nunca fondos: `copiarFormatoNumericoAgenda_`).
+**Nada del mail se pierde**: columnas nuevas **"Evento (mail)"**, **"Lugar (mail)"**, **"Dirección (mail)"**,
+**"Marcas (mail)"**, **"Conjunta con"** (sólo las que participan) y la que ya estaba, "No participa"; en las creadas y
+en las vinculadas, y se actualizan con cada versión del mail (sólo lo que cambia).
+
+**Las columnas.** `COLUMNAS_AGENDA` pasa de 9 a **16**; el paso 36 agrega las 7 que faltan, al final. Con form_clave en
+**AU**, las 16 quedan en **AV..BK** (las 9 de antes en AV..BD si ya se habían agregado; las nuevas en **BE..BK**).
+
+**C. Duplicados.**
+- **Antes de crear** (punto 7): una fila del equipo (sin agenda_uid) con la misma figura a ±`AGENDA_DUP_DIAS` (2) días,
+  o la misma fecha y comuna con otra figura o sin figura → **no se crea**; va a **AGENDA_DUPLICADOS**, en el archivo del
+  destino, como las fichas: ELEGIR (desplegable *Es la misma: vincular / Son distintas: crear / No sé*) y COMENTARIO
+  adelante, únicas celdas editables, protección real; la identidad en columnas ocultas (la reunión: figura + fecha +
+  hora; la fila: figura + fecha + barrio, nunca el número). Se lee en la corrida siguiente y se guarda en
+  **ELECCIONES_AGENDA** (archivo de registros o intermedia). "Vincular" sigue valiendo en las corridas siguientes aunque
+  la fila del equipo tenga otra fecha. **La figura que "NO PARTICIPA" no cuenta** (test). **Las Seguridad sin figura no
+  cambian**: siguen vinculando por fecha + comuna, como desde el 06/10 (es la regla que dio 13 de 16).
+- **Después de crear** (punto 8): una fila del equipo igual o casi igual a una creada por la agenda → se lista en
+  AGENDA_DUPLICADOS como "después de crear", informativa. **El sistema nunca borra ni fusiona.**
+- **La fila que creó la agenda y borró el equipo no se recrea** (punto 9) mientras la reunión siga en el mail: log
+  "BORRADA POR EL EQUIPO", "borrada por el equipo" en REGISTRO_AGENDA_CAMBIOS (una vez) y en el archivo "Agenda". Se
+  sabe por el historial: cada fila creada deja una línea `crear_id` (agenda_uid → la reunión) en
+  REGISTRO_AGENDA_CAMBIOS; un uid creado que ya no está en el destino, y que no borró la propia agenda (regla 7) ni
+  una corrida deshecha, lo borró el equipo. Si la reunión sale del mail, se anota `olvidar_borrada`: si vuelve, se
+  crea. **Si el historial no se puede leer, la corrida real no crea nada** (podría recrear una borrada); en seco sí
+  las cuenta.
+- **Paso 16** (punto 10): los casi duplicados de las filas creadas por la agenda (informativos), "Origen fila" por
+  valor y "Tocado por el equipo" por columna. REGISTRO_AGENDA suma `borradas_equipo` y `duplicados`.
+
+**D.** [agenda-equipo.md](agenda-equipo.md): el resumen de arriba, para el equipo.
+
+**E.** Tests en Node: agenda_escritura [17]–[21] (forma y columnas del mail, Origen y Tocado, casi duplicado que pregunta
+y aplica lo elegido, duplicado posterior listado, fila borrada no recreada y recreada al volver, sin historial no crea).
+
+**La primera corrida real, con la predicción anotada ANTES** (`AGENDA_SOLO_SEMANA = '2026-10-05'`, clasp push):
+
+1. `paso41_medirFormatoEquipo()` (sólo lectura). Si propone otra cosa para las tres perillas, cambiarlas, clasp push.
+2. **`semana()`**: paso 36 real (agrega las columnas que falten, al final) → paso 37 **real** → paso 16. Se corta en el
+   primer error. Predicción del prompt: **CREAR 9, VINCULAR 0, AGENDA_DUPLICADOS vacía, "Origen fila" = "sistema
+   (agenda)" en las 9, "Tocado por el equipo" vacío.**
+   > **Ojo, la predicción del prompt no cierra con la última en seco**: el 07/10 10:20 dio VINCULAR **35**, y nada de
+   > este cambio deja de vincular. Si ninguna corrida real escribió todavía, lo esperable es **VINCULAR 35** (y esas
+   > 35 con "Origen fila" = *equipo + agenda* y las columnas "(mail)"), y **CREAR + AGENDA_DUPLICADOS (antes) = 10**:
+   > una de las 10 puede pasar a preguntar si hay una fila del equipo parecida. "Origen fila" = *equipo* en las filas
+   > del equipo de esa semana que el mail no trae. "Tocado por el equipo" vacío. REGISTRO_AGENDA escrito, sin Error.
+3. Para volver atrás: `paso38_deshacerAgenda_enSeco()` → `paso38_deshacerAgenda()`.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista
