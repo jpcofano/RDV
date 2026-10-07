@@ -53,3 +53,10 @@ les queda para cargar a ustedes.
 Corríjanlo en la planilla. El sistema respeta lo que cargan. Si una corrida escribió algo mal en muchas filas, se puede
 **deshacer** la última corrida (lo corre quien mantiene el sistema): saca las filas que creó, si nadie les cargó nada, y
 vuelve atrás lo que cambió, salvo lo que ustedes hayan tocado después.
+
+## Casos para revisar
+
+- **Jorge Macri, 01/10, "1 a 1", Belgrano** (07/10): el mail la trae y hoy no tiene fila (la agenda la crearía). Hay un
+  formulario sin fila, "Jueves 1/10 Belgrano", con 2 inscriptos. Y la fila de Macri del 29/09 está "Suspendida": puede ser
+  **la misma reunión antes de moverse** al 01/10. Si es así, conviene corregir la fila del 29/09 (fecha 01/10, STATUS) en
+  vez de dejar que se cree otra; si son dos reuniones distintas, no hay que hacer nada.

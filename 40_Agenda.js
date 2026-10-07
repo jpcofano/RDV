@@ -126,6 +126,9 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   }
   if (enSeco) plan.corrida = _registrarAgenda_(plan, enSeco, t0, '');
   else _completarRegistroAgenda_(plan, t0);
+  // Que nada quede pendiente para el flush implícito del final de la ejecución (07/10: la ejecución terminó en Error
+  // ahí, con REGISTRO_AGENDA sin escribir). Si falla, se dice y la corrida termina igual.
+  try { SpreadsheetApp.flush(); } catch (err) { Logger.log('>>> el flush final falló: %s (lo anterior ya se había escrito con su flush)', err); }
   Logger.log('agenda: %s ms', Date.now() - t0);
   return plan.resumen;
 }
@@ -178,7 +181,7 @@ function indicesAgenda_(hdr) {
  */
 function planAgenda_(dest, r, A, alcance, opciones) {
   opciones = opciones || {};
-  const P = { A: A, filaDe: new Map(), acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
+  const P = { A: A, filaDe: new Map(), duplicadasEnCorrida: [], acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
               saltadas60: [], noFuturas: [], viejasSinFila: [], figuraACompletar: [], eventoPorTipo: {}, barrio: {},
               alcance: alcance, r: r, A: A, resumen: {} };
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
@@ -244,7 +247,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   const barrioDe = _barrioAgenda_(opciones, P);
 
   const enAlcance = r.unicas.filter(function (ev) { return _enAlcance_(alcance, ev.fecha); });
-  const presentes = new Set(r.unicas.map(function (ev) { return ev.clave; }));
+  const planeadas = {};
+  // Presentes: las claves de TODAS las últimas versiones (también las repetidas en otro grupo y la clave de su mail).
+  const presentes = new Set();
+  r.ultimas.concat(r.unicas).forEach(function (ev) { presentes.add(ev.clave); if (ev.claveGrupo) presentes.add(ev.claveGrupo); });
   const atendidas = new Set();
 
   // --- 6. reprogramación dentro de la semana: la desaparecida y la misma figura en otra fecha de la última versión ---
@@ -297,8 +303,16 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       else _accionActualizar_(P, f, ev, A, barrioDe, {});
       return;
     }
-    // Crear, al final
+    // Crear, al final — salvo que ya se vaya a crear en esta misma corrida la misma reunión (figura + fecha + hora; sin
+    // figura, fecha + hora + lugar): el control de "ya existe" mira también lo planeado, no sólo el destino (07/10).
+    const kPlan = (ev.figuraFila ? normalizeText_(ev.figuraFila) : 'sin_figura|' + normalizeText_(ev.lugar)) + '|' + ymd_(ev.fecha) + '|' + ev.hora;
+    if (planeadas[kPlan]) {
+      P.duplicadasEnCorrida.push({ ev: ev, fila: planeadas[kPlan] });
+      P.filaDe.set(ev.clave, { fila: planeadas[kPlan], status: 'en agenda', nueva: true });
+      return;
+    }
     const fila = proxima++;
+    planeadas[kPlan] = fila;
     const b = barrioDe(ev);
     const lugar = _direccionAgenda_(ev);
     const valores = {
@@ -412,7 +426,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                 figura: n('figura'), ambiguas: P.ambiguas.length, editadas: P.editadas.length,
                 saltadas60: P.saltadas60.length, noFuturas: P.noFuturas.length, entreSemanas: P.entreSemanas.length,
                 reprogramadasNoMovibles: P.reprogramadasNoMovibles.length, viejasSinFila: P.viejasSinFila.length,
-                figuraACompletar: P.figuraACompletar.length, barrio: P.barrio };
+                figuraACompletar: P.figuraACompletar.length, duplicadasEnCorrida: P.duplicadasEnCorrida.length, barrio: P.barrio };
   return P;
 }
 
@@ -788,6 +802,13 @@ function logPlanAgenda_(P, dest) {
   }
   Logger.log('  Seguridad sin figura: se completa %s | a completar por el equipo %s | reuniones viejas del mail sin fila ' +
              '(no se crean) %s', s.figura, s.figuraACompletar, s.viejasSinFila);
+  if (P.duplicadasEnCorrida.length) {
+    Logger.log('  la misma reunión dos veces en esta corrida (se crea UNA): %s', P.duplicadasEnCorrida.length);
+    P.duplicadasEnCorrida.forEach(function (x) {
+      Logger.log('    DUPLICADA EN LA CORRIDA | %s %s | %s | %s → la fila nueva %s', fmtFecha_(x.ev.fecha), x.ev.hora,
+                 x.ev.figuraFila || x.ev.tipo, x.ev.lugar, x.fila);
+    });
+  }
 }
 
 function _escribirSolapasAgenda_(P) {
@@ -796,13 +817,11 @@ function _escribirSolapasAgenda_(P) {
     P.viejasSinFila.forEach(function (ev) {
       viejas.push([fmtFecha_(ev.fecha), ev.hora, ev.tipo, ev.figuraFila, ev.lugar, ev.lugarTexto, ev.grupo, _origenAgenda_(ev), ev.eventoTexto]);
     });
-    if (viejas.length === 1) viejas.push(['(ninguna)', '', '', '', '', '', '', '', '']);
     _escribirHojaAgenda_(AGENDA_SOLAPA_VIEJAS, viejas);
     const fig = [['fila', 'fecha', 'barrio', 'evento', 'por qué falta la figura', 'filas de RDV CONJUNTO']];
     P.figuraACompletar.forEach(function (x) {
       fig.push([P.ajustarFila ? P.ajustarFila(x.f.fila) : x.f.fila, fmtFecha_(x.f.fecha), x.f.barrio, x.f.evento, x.motivo, (x.filas || []).join(', ')]);
     });
-    if (fig.length === 1) fig.push(['(ninguna)', '', '', '', '', '']);
     _escribirHojaAgenda_(AGENDA_SOLAPA_FIGURA, fig);
     _agregarCacheGeocode_(P.geocodeNuevas || []);
   } catch (err) {
@@ -816,17 +835,20 @@ function _escribirSolapasAgenda_(P) {
  */
 function _registrarAgenda_(P, enSeco, t0, error) {
   const id = _idCorridaAgenda_();
+  const s = P ? P.resumen : {}, w = P && P.escrito ? P.escrito : null;
   try {
-    const ss = intermediaAgenda_();
-    const sh = _hojaRegistroAgenda_(ss);
-    const s = P ? P.resumen : {}, w = P && P.escrito ? P.escrito : null;
-    sh.appendRow([id, new Date(), enSeco ? 'en seco' : 'ESCRITURA', AGENDA_SOLO_SEMANA || '', s.mails || '',
-                  s.reunionesEnAlcance || 0, s.crear || 0, s.vincular || 0, s.actualizar || 0, s.mover || 0, s.suspender || 0,
-                  s.reactivar || 0, s.figura || 0, s.ambiguas || 0, s.editadas || 0, s.saltadas60 || 0,
-                  w ? w.hechas.length : 0, w ? JSON.stringify(w.porColumna) : '', w ? w.saltadas.length : 0, Date.now() - t0, error || '',
-                  s.borrar || 0]);
+    _conReintentosAgenda_('REGISTRO_AGENDA', function () {
+      const sh = _hojaRegistroAgenda_(registrosAgenda_());
+      sh.appendRow([id, new Date(), enSeco ? 'en seco' : 'ESCRITURA', AGENDA_SOLO_SEMANA || '', s.mails || '',
+                    s.reunionesEnAlcance || 0, s.crear || 0, s.vincular || 0, s.actualizar || 0, s.mover || 0, s.suspender || 0,
+                    s.reactivar || 0, s.figura || 0, s.ambiguas || 0, s.editadas || 0, s.saltadas60 || 0,
+                    w ? w.hechas.length : 0, w ? JSON.stringify(w.porColumna) : '', w ? w.saltadas.length : 0, Date.now() - t0,
+                    error || '', s.borrar || 0]);
+      SpreadsheetApp.flush();
+    });
+    Logger.log('  %s: línea de la corrida %s escrita.', RDV_HOJA_REGISTRO_AGENDA, id);
   } catch (err) {
-    Logger.log('[agenda] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO_AGENDA, err);
+    Logger.log('>>> no se pudo escribir %s: %s (en seco o con error no es obligatorio: la corrida igual terminó)', RDV_HOJA_REGISTRO_AGENDA, err);
   }
   return id;
 }
@@ -859,7 +881,7 @@ function deshacerAgenda(enSeco, corrida) {
 function _deshacerAgenda_(enSeco, corrida) {
   const t0 = Date.now();
   Logger.log('=== deshacer la agenda (%s) ===', enSeco ? 'EN SECO' : 'REAL');
-  const ss = intermediaAgenda_();
+  const ss = registrosAgenda_();
   const reg = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA), cam = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS);
   if (!reg || !cam || cam.getLastRow() < 2) { Logger.log('>>> No hay ninguna corrida de la agenda que haya escrito.'); return { deshecho: 0 }; }
   const regV = reg.getRange(1, 1, reg.getLastRow(), reg.getLastColumn()).getValues();
@@ -1133,7 +1155,7 @@ function _hojaRegistroAgenda_(ss) {
 function _anotarCambiosAgenda_(filas) {
   if (!filas.length) return;
   _conReintentosAgenda_('REGISTRO_AGENDA_CAMBIOS', function () {
-    const ss = intermediaAgenda_();
+    const ss = registrosAgenda_();
     let c = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS);
     if (!c) { c = ss.insertSheet(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS); c.appendRow(ENC_CAMBIOS_AGENDA_); }
     else if (c.getLastColumn() < ENC_CAMBIOS_AGENDA_.length) c.getRange(1, 1, 1, ENC_CAMBIOS_AGENDA_.length).setValues([ENC_CAMBIOS_AGENDA_]);
@@ -1153,7 +1175,7 @@ function _registrarCorridaAntesDeEscribir_(corrida, P, cambios, nCeldas, nBorrar
   const s = P.resumen;
   _anotarCambiosAgenda_(cambios);
   _conReintentosAgenda_('REGISTRO_AGENDA', function () {
-    const sh = _hojaRegistroAgenda_(intermediaAgenda_());
+    const sh = _hojaRegistroAgenda_(registrosAgenda_());
     sh.appendRow([corrida, new Date(), 'ESCRITURA', AGENDA_SOLO_SEMANA || '', s.mails || '', s.reunionesEnAlcance || 0, s.crear || 0,
                   s.vincular || 0, s.actualizar || 0, s.mover || 0, s.suspender || 0, s.reactivar || 0, s.figura || 0, s.ambiguas || 0,
                   s.editadas || 0, s.saltadas60 || 0, nCeldas, '', '', '', '', nBorrar]);
@@ -1166,10 +1188,11 @@ function _registrarCorridaAntesDeEscribir_(corrida, P, cambios, nCeldas, nBorrar
 function _completarRegistroAgenda_(P, t0) {
   try {
     if (!P.filaRegistro || !P.escrito) return;
-    const sh = intermediaAgenda_().getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
+    const sh = registrosAgenda_().getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
     const w = P.escrito;
     sh.getRange(P.filaRegistro, 17, 1, 6).setValues([[w.hechas.length, JSON.stringify(w.porColumna), w.saltadas.length,
                                                        Date.now() - t0, '', w.borradas || 0]]);
+    SpreadsheetApp.flush();
   } catch (err) {
     Logger.log('[agenda] no se pudo completar la línea de REGISTRO_AGENDA: %s (lo planeado ya estaba registrado)', err);
   }

@@ -439,6 +439,55 @@ Si algo sale mal: **`paso38_deshacerAgenda_enSeco()`** → **`paso38_deshacerAge
   formas del equipo y lo que se escribiría ya coincide ("Encuentro con Vecinos", "Uno a uno", "Encuentro Temático
   \"…\""). La copia en "Agenda": escribiría tantas filas como reuniones de la semana (+ las desaparecidas).
 
+**`todas()` del 06/10 23:10** (con `AGENDA_SOLO_SEMANA = '2026-10-05'`): **Gmail OK** (33 mails, 9 semanas + grupo; casi
+todos SIN la etiqueta desde el 09/09: **buscar por asunto queda fijo**). VINCULAR 35 OK. EVENTO OK. Dos problemas:
+
+1. **Duplicado**: CREAR 821 y 822 eran la misma reunión (Jorge Macri, 08/10 17:15, Eje Norte), en el mail de CM y
+   Ministros y en el de JM. **La causa** (reproducida en el test [14]): la unificación entre grupos comparaba la clave de
+   cada mail, y esa clave suma la hora cuando un mail trae **dos** reuniones de la figura ese día. Con CM trayendo 10:00 y
+   17:15 y JM sólo 17:15, la 17:15 de CM ("…|17:15") no se juntaba con la de JM, la 10:00 de CM se juntaba (mal) con
+   ella, y la 17:15 se creaba dos veces (y la 10:00 se perdía). **Arreglo** (`_unificarEntreGrupos_`, 41_AgendaParser.js):
+   dos reuniones de grupos distintos son la misma si tienen la misma figura (o, sin figura, el mismo lugar), la misma
+   fecha y además la misma hora, o el mismo tipo y lugar, o cada grupo trae una sola de esa figura ese día; queda la
+   versión más nueva. Y **el control de "ya existe fila" mira también lo que se va a crear en la misma corrida**
+   (figura + fecha + hora): una segunda vez no crea otra fila (log "DUPLICADA EN LA CORRIDA").
+2. **Timeout en la intermedia, otra vez**: falló REGISTRO_AGENDA y la ejecución terminó en Error en el flush final.
+   - **El peso** (Drive, 07/10, rangos con datos): **47 solapas, ~278.000 celdas con datos**. Las de medición de la etapa 1
+     (DIAG_MAILS, AGENDA_MAIL, AGENDA_MAIL_DESAPARECIDAS, AGENDA_CRUCE, AGENDA_DESTINO_SIN_MAIL, AGENDA_BARRIO_DIRECCION,
+     AGENDA_SEGURIDAD) son ~43.000 (**15,5%**). **Lo que más pesa son restos del legado y diagnósticos viejos: ~165.000
+     (59%)**: C (1072×32), Reporte Sincronización BF (4775×8), DIAG_PISADO (4011×7), Copia de B, Hoja 10, B2, A2,
+     DIAG_TOTAL_DIVERGENTE, DIAG_ATOMICIDAD, TEST CLAVES… B es A1:Z (833×26). REGISTRO_AGENDA estaba vacía (nunca se pudo
+     escribir). `paso39_medirIntermedia()` mide además las celdas ASIGNADAS (que cuentan aunque estén vacías), las
+     fórmulas y el tiempo de abrir y de leer.
+   - **`paso39_limpiarIntermedia_enSeco()` / `paso39_limpiarIntermedia()`**: borra las 7 de medición de la etapa 1
+     (`SOLAPAS_MEDICION_ETAPA1`). **Ningún paso de producción las lee** (sólo los diagnósticos 03 y 16; el 16, sin
+     DIAG_MAILS, lee Gmail). Nunca borra B, Asistentes, AGENDA_GEOCODE, REGISTRO_*, ELECCIONES_MATCH, los reportes
+     (una lista con alguna de ésas da error y no borra nada).
+   - **Propuesta, a confirmar**: `paso39b_limpiarLegado_enSeco()` lista los restos del legado (`SOLAPAS_LEGADO_INTERMEDIA`,
+     23 solapas); `paso39b_limpiarLegado()` los borra sólo con `LIMPIAR_LEGADO_CONFIRMADO = true`. A2 y B2 no están en esa
+     lista (las leen los pasos 1-4 del legado, apagados): se deciden aparte.
+   - **Si con eso no alcanza**: `paso40_archivoRegistros()` crea "RDV registros" (liviano), copia REGISTRO_AGENDA y
+     REGISTRO_AGENDA_CAMBIOS y dice el ID para `RDV_SS_REGISTROS`; desde ahí la agenda registra ahí (y deshacer lee de
+     ahí). Los otros registros (REGISTRO_UPSERT) siguen en la intermedia.
+   - **Cada archivo se abre UNA vez** por corrida (`intermediaAgenda_`, `registrosAgenda_`), con reintentos; **flush
+     después de cada escritura** del registro (con reintentos) y **un flush final explícito** que, si falla, se loguea
+     sin terminar en Error. En la corrida real, REGISTRO_AGENDA va ANTES de tocar el destino (ya era así).
+   - **Los pasos de medición (29-32, 35) ya no escriben sus solapas** salvo `MEDICION_ESCRIBE_SOLAPAS = true`: todo
+     queda en el log (la cache AGENDA_GEOCODE sí se sigue actualizando).
+3. **AGENDA_FIGURA_A_COMPLETAR "1 fila" contra el log "0"**: **el log estaba bien**. La fila era el renglón "(ninguna)"
+   que se ponía cuando no había nada, y el log genérico de la solapa lo contaba. Se sacó el renglón: sin casos, la
+   solapa queda con el encabezado solo, y los dos números coinciden.
+4. **Caso para el equipo** (no bloqueante): listado en docs/agenda-equipo.md, "Casos para revisar".
+
+**La próxima corrida, con la predicción anotada ANTES**:
+
+1. `paso39_limpiarIntermedia_enSeco()` → borraría las 7 de medición (~43.000 celdas con datos). `paso39_limpiarIntermedia()`.
+2. `todas()` con `AGENDA_SOLO_SEMANA = '2026-10-05'`: pasos 35 y 35b ahora leen Gmail (siete meses; tardan más) y dan lo
+   mismo que el 06/10 (175 / 97,1%; 24 futuras, 9 Suspendida; 5 entre semanas). **Paso 37 en seco: CREAR 10 (sin el
+   duplicado), VINCULAR 35, "DUPLICADA EN LA CORRIDA" 0 (la unificación ya la resuelve), REGISTRO_AGENDA escrito (el log
+   dice "línea de la corrida … escrita") y la ejecución termina sin Error.**
+3. Si REGISTRO_AGENDA vuelve a fallar: `paso40_archivoRegistros()`, poner el ID en `RDV_SS_REGISTROS`, clasp push, y otra vez.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

@@ -66,3 +66,59 @@ function medirIntermedia() {
   }
   return { abrirMs: tAbrir, solapas: filas.length, asignadas: tot.asignadas, conDatos: tot.conDatos, medicion: med.length, pesoMedicion: pesoMed };
 }
+
+// ===================== PASO 39 / 39b — limpiar la intermedia; PASO 40 — el archivo de registros =====================
+
+/**
+ * **Borra de la intermedia las solapas de una lista** (07/10). Sólo nombres de `lista`; las que no existen se saltean.
+ * Nunca borra lo que lee o escribe el sistema: B, Asistentes, AGENDA_GEOCODE, REGISTRO_*, ELECCIONES_MATCH, los
+ * reportes (guarda `SOLAPAS_NUNCA_BORRAR_`). En seco, sólo dice qué borraría y cuánto pesa.
+ */
+const SOLAPAS_NUNCA_BORRAR_ = ['B', 'Asistentes', 'AGENDA_GEOCODE', 'REGISTRO_AGENDA', 'REGISTRO_AGENDA_CAMBIOS', 'REGISTRO_UPSERT',
+  'ELECCIONES_MATCH', 'HISTORICO_SIN_RESOLVER', 'EMPAREJAR_MANUAL', 'SIN_MATCH', 'REVISAR_MATCH', 'DERIVADAS_RESPALDO',
+  'ALERTA_CAMBIOS', 'AGENDA_VIEJAS_SIN_FILA', 'AGENDA_FIGURA_A_COMPLETAR'];
+function limpiarIntermedia(lista, escribe, que) {
+  Logger.log('=== limpiar la intermedia: %s (%s) ===', que, escribe ? 'BORRA' : 'EN SECO');
+  const ss = intermediaAgenda_();
+  let borradas = 0, celdas = 0;
+  const faltan = [];
+  lista.forEach(function (nombre) {
+    if (SOLAPAS_NUNCA_BORRAR_.indexOf(nombre) >= 0) throw new Error('"' + nombre + '" no se borra nunca. No se borró nada.');
+  });
+  lista.forEach(function (nombre) {
+    const sh = ss.getSheetByName(nombre);
+    if (!sh) { faltan.push(nombre); return; }
+    const n = sh.getMaxRows() * sh.getMaxColumns();
+    celdas += n;
+    Logger.log('  %s %s (%s×%s con datos, %s celdas asignadas)', escribe ? 'BORRA' : 'borraría', nombre, sh.getLastRow(), sh.getLastColumn(), n);
+    if (escribe) { ss.deleteSheet(sh); borradas++; }
+  });
+  if (faltan.length) Logger.log('  no existen (nada que borrar): %s', faltan.join(', '));
+  if (escribe) SpreadsheetApp.flush();
+  Logger.log('>>> %s %s solapas, %s celdas asignadas. Quedan %s solapas.', escribe ? 'borradas' : 'se borrarían',
+             escribe ? borradas : lista.length - faltan.length, celdas, ss.getSheets().length);
+  return { borradas: borradas, celdas: celdas, faltan: faltan };
+}
+
+/**
+ * **El archivo de registros** (paso 40): crea "RDV registros" (en la carpeta raíz de Drive de quien lo corre), copia
+ * ahí REGISTRO_AGENDA y REGISTRO_AGENDA_CAMBIOS de la intermedia, y dice el ID para poner en `RDV_SS_REGISTROS`. Las
+ * solapas viejas de la intermedia NO se borran (quedan de respaldo). En seco, sólo dice qué haría.
+ */
+function crearArchivoRegistros(escribe) {
+  Logger.log('=== el archivo de registros (%s) ===', escribe ? 'CREA' : 'EN SECO');
+  if (RDV_SS_REGISTROS) { Logger.log('>>> RDV_SS_REGISTROS ya tiene un ID (%s): no se crea otro.', RDV_SS_REGISTROS); return { id: RDV_SS_REGISTROS }; }
+  const ss = intermediaAgenda_();
+  const solapas = [RDV_HOJA_REGISTRO_AGENDA, RDV_HOJA_REGISTRO_AGENDA_CAMBIOS].map(function (n) { return ss.getSheetByName(n); }).filter(Boolean);
+  Logger.log('  copiaría: %s', solapas.map(function (sh) { return sh.getName() + ' (' + sh.getLastRow() + ' filas)'; }).join(', ') || '(no hay registros todavía)');
+  if (!escribe) return { solapas: solapas.length };
+  const nuevo = SpreadsheetApp.create('RDV registros');
+  solapas.forEach(function (sh) { sh.copyTo(nuevo).setName(sh.getName()); });
+  const vacia = nuevo.getSheets().filter(function (sh) { return solapas.map(function (x) { return x.getName(); }).indexOf(sh.getName()) < 0; })[0];
+  if (vacia && nuevo.getSheets().length > 1) nuevo.deleteSheet(vacia);
+  SpreadsheetApp.flush();
+  Logger.log('>>> creado "RDV registros": %s', nuevo.getUrl());
+  Logger.log('>>> poner en 00_Config.js: const RDV_SS_REGISTROS = \'%s\';  y clasp push. Desde ahí la agenda registra ahí.', nuevo.getId());
+  return { id: nuevo.getId(), url: nuevo.getUrl() };
+}
+

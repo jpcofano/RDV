@@ -127,18 +127,10 @@ function agendaDesdeListaDeMails_(lista, meta) {
     r.semanas.push(g);
   });
 
-  // Una reunión que figura en los mails de dos grupos la misma semana es UNA reunión.
-  const unicas = new Map();
+  // Una reunión que figura en los mails de dos grupos la misma semana es UNA reunión (07/10: por figura + fecha + hora,
+  // no por la clave de cada mail, que cambia si un grupo trae dos reuniones de la figura ese día).
   r.ultimas.sort(function (a, b) { return (a.fecha - b.fecha) || String(a.hora).localeCompare(String(b.hora)); });
-  r.ultimas.forEach(function (ev) {
-    const k = ev.clave;
-    const ya = unicas.get(k);
-    if (!ya) { unicas.set(k, ev); ev.otrosGrupos = []; return; }
-    ya.otrosGrupos.push(ev.grupo);
-    ev.repetidaDe = ya.grupo;
-    if (ev.mailFecha > ya.mailFecha) { ev.otrosGrupos = ya.otrosGrupos.concat([ya.grupo]); ev.repetidaDe = ''; ya.repetidaDe = ev.grupo; unicas.set(k, ev); }
-  });
-  unicas.forEach(function (ev) { r.unicas.push(ev); });
+  r.unicas = _unificarEntreGrupos_(r.ultimas);
   r.semanas.sort(function (a, b) { return (a.desde || 0) - (b.desde || 0); });
   return r;
 }
@@ -182,6 +174,48 @@ function _semanaAgenda_(asunto, cuerpo, fechaMail) {
   }
   if (sem && !sem.grupo) sem.grupo = '(sin grupo)';
   return sem;
+}
+
+/**
+ * **Las reuniones únicas entre los mails de los distintos grupos** (07/10: la misma reunión de Macri del 08/10 17:15
+ * venía en el mail de CM y Ministros y en el de JM, y se iba a crear dos veces). Dos reuniones de grupos distintos son
+ * la MISMA si tienen la misma figura de la fila (o, sin figura, el mismo lugar) y la misma fecha, y además: la misma
+ * hora, o el mismo tipo y lugar, o cada grupo trae una sola reunión de esa figura ese día. Se queda la versión más
+ * nueva (la del mail más reciente); las otras quedan marcadas `repetidaDe`. Si dos reuniones únicas distintas quedan
+ * con la misma clave (una figura con dos reuniones ese día), a la segunda se le suma la hora a la clave; la clave de
+ * su mail queda en `claveGrupo`.
+ */
+function _unificarEntreGrupos_(ultimas) {
+  const base = function (ev) {
+    const f = ev.fecha ? ymd_(ev.fecha) : 'sin_fecha';
+    return ev.figuraFila ? normalizeText_(ev.figuraFila) + '|' + f : 'sin_figura|' + f + '|' + normalizeText_(ev.lugar);
+  };
+  const cuenta = {};
+  ultimas.forEach(function (ev) {
+    const k = base(ev);
+    cuenta[k] = cuenta[k] || {};
+    cuenta[k][ev.grupo] = (cuenta[k][ev.grupo] || 0) + 1;
+  });
+  const porBase = {}, unicas = [];
+  ultimas.slice().sort(function (a, b) { return b.mailFecha - a.mailFecha; }).forEach(function (ev) {
+    const k = base(ev);
+    const unoPorGrupo = Object.keys(cuenta[k]).every(function (g) { return cuenta[k][g] === 1; });
+    const lista = porBase[k] = porBase[k] || [];
+    const misma = lista.filter(function (u) {
+      if (u._grupos[ev.grupo]) return false;
+      return unoPorGrupo || (ev.hora && u.hora === ev.hora) || (u.tipo === ev.tipo && u.lugar && u.lugar === ev.lugar);
+    })[0];
+    if (misma) { misma._grupos[ev.grupo] = true; misma.otrosGrupos.push(ev.grupo); ev.repetidaDe = misma.grupo; return; }
+    ev._grupos = {}; ev._grupos[ev.grupo] = true; ev.otrosGrupos = []; ev.repetidaDe = '';
+    lista.push(ev); unicas.push(ev);
+  });
+  unicas.sort(function (a, b) { return (a.fecha - b.fecha) || String(a.hora).localeCompare(String(b.hora)); });
+  const claves = {};
+  unicas.forEach(function (ev) {
+    if (claves[ev.clave]) { ev.claveGrupo = ev.clave; ev.clave = ev.clave + '|' + ev.hora + '|' + normalizeText_(ev.grupo); }
+    claves[ev.clave] = true;
+  });
+  return unicas;
 }
 
 /**
@@ -519,11 +553,7 @@ function _diaSemanaAgenda_(f) {
   return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][f.getDay()];
 }
 
-/**
- * Escribe una solapa de la intermedia EN TANDAS, cada una con reintento (06/10: AGENDA_BARRIO_DIRECCION se cortó con
- * "Service Spreadsheets timed out" escribiéndose de una vez). `clearContents`, nunca `clear`. Una tanda que falla dos
- * veces corta con error: la solapa queda a medias, pero el log ya tiene los números (se loguea antes de escribir).
- */
+/** Filas por tanda al escribir una solapa (de la intermedia o de los registros). */
 const AGENDA_FILAS_POR_TANDA = 300;
 
 /**
@@ -532,15 +562,29 @@ const AGENDA_FILAS_POR_TANDA = 300;
  * esperas crecientes (`AGENDA_ESPERAS_INTERMEDIA_MS`: 2, 5 y 10 s) y recién ahí tira.
  */
 function intermediaAgenda_() {
-  if (_ssIntermedia_) return _ssIntermedia_;
+  if (!_ssIntermedia_) _ssIntermedia_ = _abrirConReintentos_(RDV_SS_INTERMEDIA, 'la intermedia');
+  return _ssIntermedia_;
+}
+
+/**
+ * **Dónde van los registros de la agenda** (REGISTRO_AGENDA y REGISTRO_AGENDA_CAMBIOS): el archivo propio y liviano
+ * "RDV registros" si `RDV_SS_REGISTROS` tiene su ID (07/10, si la intermedia sigue sin responder: paso 40), o la
+ * intermedia. Se abre UNA vez por corrida, con los mismos reintentos.
+ */
+var _ssRegistros_ = null;
+function registrosAgenda_() {
+  if (!RDV_SS_REGISTROS) return intermediaAgenda_();
+  if (!_ssRegistros_) _ssRegistros_ = _abrirConReintentos_(RDV_SS_REGISTROS, 'el archivo de registros');
+  return _ssRegistros_;
+}
+
+/** openById con las esperas de `AGENDA_ESPERAS_INTERMEDIA_MS` (2, 5, 10 s) entre intentos; tira si no se puede. */
+function _abrirConReintentos_(id, que) {
   let ultimo = null;
   for (let i = 0; i <= AGENDA_ESPERAS_INTERMEDIA_MS.length; i++) {
-    try {
-      _ssIntermedia_ = SpreadsheetApp.openById(RDV_SS_INTERMEDIA);
-      return _ssIntermedia_;
-    } catch (err) {
+    try { return SpreadsheetApp.openById(id); } catch (err) {
       ultimo = err;
-      Logger.log('[agenda] abrir la intermedia falló (intento %s): %s', i + 1, err);
+      Logger.log('[agenda] abrir %s falló (intento %s): %s', que, i + 1, err);
       if (i < AGENDA_ESPERAS_INTERMEDIA_MS.length) Utilities.sleep(AGENDA_ESPERAS_INTERMEDIA_MS[i]);
     }
   }
@@ -554,7 +598,7 @@ function _conReintentosAgenda_(que, fn) {
     try { return fn(); } catch (err) {
       ultimo = err;
       Logger.log('[agenda] %s falló (intento %s): %s', que, i + 1, err);
-      if (i < AGENDA_ESPERAS_INTERMEDIA_MS.length) { Utilities.sleep(AGENDA_ESPERAS_INTERMEDIA_MS[i]); _ssIntermedia_ = null; }
+      if (i < AGENDA_ESPERAS_INTERMEDIA_MS.length) { Utilities.sleep(AGENDA_ESPERAS_INTERMEDIA_MS[i]); _ssIntermedia_ = null; _ssRegistros_ = null; }
     }
   }
   throw ultimo;

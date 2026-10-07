@@ -97,8 +97,13 @@ function _leerMailsAgenda_() {
     });
     return { fuente: 'Gmail (' + DIAG3_QUERY + ')', lista: lista };
   }
-  const sh = ssIntermedia_().getSheetByName(DIAG3_SALIDA);
-  if (!sh || sh.getLastRow() < 2) throw new Error('No hay "' + DIAG3_SALIDA + '" en la intermedia: correr rehacer_diagMuestrasMail() primero.');
+  const sh = intermediaAgenda_().getSheetByName(DIAG3_SALIDA);
+  if (!sh || sh.getLastRow() < 2) {
+    // 07/10: DIAG_MAILS se borra con la limpieza de la intermedia (paso 39): las mediciones leen Gmail, 7 meses.
+    const h = hoyMediodia_();
+    Logger.log('  (no hay "%s" en la intermedia: los mails salen de Gmail, por etiqueta o asunto, desde hace 7 meses)', DIAG3_SALIDA);
+    return leerMailsAgendaGmail_(new Date(h.getFullYear(), h.getMonth() - 7, h.getDate(), 12, 0, 0));
+  }
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
   const hdr = vals[0];
   const iF = findIdxOr_(hdr, ['fecha']), iA = findIdxOr_(hdr, ['asunto']), iC = findIdxOr_(hdr, ['cuerpo']);
@@ -974,6 +979,11 @@ function medirDesaparecidasAgenda() {
  * no falla — los números ya están en el log, que se escribe antes.
  */
 function _escribirMedicionAgenda_(nombre, matriz) {
+  if (!MEDICION_ESCRIBE_SOLAPAS) {
+    Logger.log('[agenda] la solapa de medición %s no se escribe (MEDICION_ESCRIBE_SOLAPAS = false; %s filas, todo en el log).',
+               nombre, matriz.length - 1);
+    return;
+  }
   try { _escribirHojaAgenda_(nombre, matriz); }
   catch (err) { Logger.log('[agenda] la solapa de medición %s NO se escribió: %s (los números de arriba valen igual)', nombre, err); }
 }

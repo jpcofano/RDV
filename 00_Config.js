@@ -1044,6 +1044,25 @@ const AGENDA_ETIQUETA_GMAIL = 'GCBA/Encuentros Con Vecinos';
 const AGENDA_ASUNTOS_GMAIL = ['Agenda Encuentros de vecinos', 'Agenda de Encuentros con Vecinos'];
 /** Las esperas entre reintentos al abrir o escribir la intermedia (06/10: abrirla falló tres veces seguidas). */
 const AGENDA_ESPERAS_INTERMEDIA_MS = [2000, 5000, 10000];
+/**
+ * El archivo propio y liviano de los registros de la agenda, "RDV registros" (07/10): `null` = en la intermedia. Lo crea
+ * `paso40_archivoRegistros()` (copia REGISTRO_AGENDA y REGISTRO_AGENDA_CAMBIOS) y dice el ID para poner acá.
+ */
+const RDV_SS_REGISTROS = null;
+/** Los pasos de medición (29-32, 35) escriben sus solapas en la intermedia sólo si se pide (07/10): el log alcanza. */
+const MEDICION_ESCRIBE_SOLAPAS = false;
+/** Las solapas de MEDICIÓN de la etapa 1 de Agenda (cerrada): las borra `paso39_limpiarIntermedia()`. */
+const SOLAPAS_MEDICION_ETAPA1 = ['DIAG_MAILS', 'AGENDA_MAIL', 'AGENDA_MAIL_DESAPARECIDAS', 'AGENDA_CRUCE', 'AGENDA_DESTINO_SIN_MAIL',
+  'AGENDA_BARRIO_DIRECCION', 'AGENDA_SEGURIDAD'];
+/**
+ * Restos del legado y de diagnósticos viejos en la intermedia (07/10, ~59% de las celdas con datos): sólo PROPUESTA.
+ * `paso39b_limpiarLegado()` los borra únicamente con `LIMPIAR_LEGADO_CONFIRMADO = true` (decisión del usuario).
+ */
+const SOLAPAS_LEGADO_INTERMEDIA = ['C', 'Reporte Sincronización BF', 'DIAG_PISADO', 'Copia de B', 'Hoja 10', 'Hoja 5',
+  'DIAG_TOTAL_DIVERGENTE', 'DIAG_ATOMICIDAD', 'DIAG_FECHA_FIN', 'DIAG_SCORES', 'DIAG_CORTE_B', 'DIAG_HUECO', 'DIAG_DUP_B2',
+  'DIAG_ANCLA_FECHA', 'DIAG_PROCEDENCIA', 'TEST CLAVES', 'AUDIT Claves', 'TEST PUNTUAL', 'REPORTE_A2_vs_B2', 'Base Final',
+  'import B2 Completo', 'REVISAR_FORMATO_PRUEBA', 'REVISAR_MATCH_DEMO'];
+const LIMPIAR_LEGADO_CONFIRMADO = false;
 /** Regla de confianza del barrio, (c): el punto tiene que estar a MÁS de estos metros de cualquier otro barrio. */
 const BARRIO_MARGEN_M = 100;
 /**

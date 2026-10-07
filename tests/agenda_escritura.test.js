@@ -14,7 +14,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
-                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js'];
+                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js'];
 const HOY = new Date(2026, 9, 6, 12, 0, 0);
 /** UNA sola clase de fecha, la misma adentro y afuera del contexto: si no, `instanceof Date` falla adentro. */
 class D extends Date {
@@ -64,6 +64,8 @@ function crearEntorno(config) {
     getLastRow() { for (let i = this.v.length; i >= 1; i--) if (this.v[i - 1].some(function (x) { return x !== '' && x !== null && x !== undefined; })) return i; return 0; }
     getLastColumn() { let m = 0; this.v.forEach(function (r) { for (let j = r.length; j >= 1; j--) if (r[j - 1] !== '' && r[j - 1] != null) { m = Math.max(m, j); break; } }); return m; }
     getMaxRows() { return Math.max(this.v.length, 1000); }
+    getMaxColumns() { return Math.max(this.getLastColumn(), 26); }
+    getName() { return this.nombre; }
     insertRowsAfter() {}
     deleteRows(f, n) { this.v.splice(f - 1, n); this.bg.splice(f - 1, n); }
     deleteRow(f) { this.deleteRows(f, 1); }
@@ -79,7 +81,9 @@ function crearEntorno(config) {
   const planillas = {};
   E.planilla = function (id) {
     if (!planillas[id]) planillas[id] = { hojas: {}, getSheetByName: function (n) { return this.hojas[n] || null; },
-                                           insertSheet: function (n) { this.hojas[n] = new Hoja(n, []); return this.hojas[n]; } };
+                                           insertSheet: function (n) { this.hojas[n] = new Hoja(n, []); return this.hojas[n]; },
+                                           getSheets: function () { return Object.keys(this.hojas).map(function (k) { return this.hojas[k]; }, this); },
+                                           deleteSheet: function (sh) { delete this.hojas[sh.nombre]; } };
     return planillas[id];
   };
   const ctx = {
@@ -462,6 +466,47 @@ antes = foto(E.D);
 E.ctx._registrarCorridaAntesDeEscribir_ = function () { throw new Error('Service Spreadsheets timed out'); };
 r = correr(E, false, [V1]);
 ok(r && /REGISTRO_AGENDA/.test(r.error || '') && foto(E.D) === antes, 'sin REGISTRO_AGENDA la corrida real NO escribe el destino: ' + (r && r.error));
+
+console.log('[14] la misma reunión en el mail de dos grupos: UNA fila (el caso del 06/10, CREAR 821 y 822)');
+E = montar();
+const ASUNTO_JM = 'Agenda Encuentros de vecinos con JM - Semana del 05/10 al 10/10';
+const macriEN = ['*Jueves 08/10*', 'Evento: Encuentro con Vecinos Jorge Macri, Eje Norte', 'Hora: 17:15h', 'Lugar: A CONFIRMAR'];
+const macri10 = ['Evento: Encuentro con Vecinos Jorge Macri, Comuna 14', 'Hora: 10:00h', 'Lugar: Serrano 1500'];
+// El caso del 06/10: CM trae dos de Macri ese día (10:00 y 17:15) y JM sólo la de las 17:15. Con la clave de cada mail,
+// la de las 17:15 de CM ('…|17:15') no se juntaba con la de JM, la de las 10:00 de CM se juntaba con ella (mal), y la
+// de las 17:15 se creaba DOS veces (y la de las 10:00 se perdía).
+const mCM = mail(3, 9, [['*Jueves 08/10*'], macri10, macriEN.slice(1)]);
+const mJM = mail(4, 9, [macriEN], ASUNTO_JM);                         // JM (más nuevo): sólo la de las 17:15
+r = correr(E, true, [mCM, mJM]);
+ok(r.crear === 2, 'en seco: CREAR 2 (la de las 10:00 y la de las 17:15 una sola vez) — ' + r.crear);
+r = correr(E, false, [mCM, mJM]);
+const macris = E.D.v.filter(function (x, i) { return i > 0 && x[E.C('Figura')] === 'Jorge Macri' && x[E.C('FECHA')] instanceof Date && x[E.C('FECHA')].getDate() === 8 && x[E.C('FECHA')].getMonth() === 9; });
+ok(macris.length === 2 && macris.map(function (x) { return x[E.C('HORA')]; }).sort().join('|') === '10:00|17:15', 'dos filas: 10:00 y 17:15');
+ok(macris.filter(function (x) { return x[E.C('HORA')] === '17:15'; })[0][E.C('agenda_mail')].indexOf('con JM') >= 0, 'la de las 17:15 quedó con la versión más nueva (el mail de JM)');
+r = correr(E, false, [mCM, mJM]);
+ok(r.crear === 0, 'otra corrida: no crea nada');
+
+console.log('[15] limpiar la intermedia: sólo la medición de la etapa 1; nunca B, la cache ni los registros');
+E = montar();
+const ssInt = E.planilla(E.run('RDV_SS_INTERMEDIA'));
+['DIAG_MAILS', 'AGENDA_MAIL', 'AGENDA_CRUCE', 'B', 'AGENDA_GEOCODE', 'REGISTRO_AGENDA'].forEach(function (n) { ssInt.hojas[n] = new E.Hoja(n, [['x'], [1]]); });
+let lim = E.run('limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, false, "test")');
+ok(lim.borradas === 0 && ssInt.hojas['DIAG_MAILS'], 'en seco: no borra nada');
+lim = E.run('limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, true, "test")');
+ok(lim.borradas === 3 && !ssInt.hojas['DIAG_MAILS'] && !ssInt.hojas['AGENDA_MAIL'] && !ssInt.hojas['AGENDA_CRUCE'] &&
+   ssInt.hojas['B'] && ssInt.hojas['AGENDA_GEOCODE'] && ssInt.hojas['REGISTRO_AGENDA'], 'real: borra las 3 de medición que había; B, la cache y el registro quedan');
+error = null;
+try { E.run('limpiarIntermedia(["DIAG_MAILS", "B"], true, "test")'); } catch (e) { error = e; }
+ok(error && /no se borra nunca/.test(error.message) && ssInt.hojas['B'], 'una lista con B: error, no borra nada');
+
+console.log('[16] los registros en su propio archivo (RDV_SS_REGISTROS)');
+E = montar(true, [], { RDV_SS_REGISTROS: "'archivo-de-registros'" });
+correr(E, false, [V1]);
+const regs = E.planilla('archivo-de-registros');
+ok(regs.hojas['REGISTRO_AGENDA'] && regs.hojas['REGISTRO_AGENDA'].v.length === 2 && regs.hojas['REGISTRO_AGENDA_CAMBIOS'] &&
+   !E.planilla(E.run('RDV_SS_INTERMEDIA')).hojas['REGISTRO_AGENDA'], 'REGISTRO_AGENDA y los cambios van al archivo de registros, no a la intermedia');
+d = E.run('deshacerAgenda(true)');
+ok(d && d.sacarian === 5, 'y deshacer los lee de ahí (sacaría las 5 creadas)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

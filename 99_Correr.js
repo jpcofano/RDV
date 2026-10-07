@@ -20,6 +20,9 @@
  *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
  *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
  *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
+ *  >>> 07/10 (2): la corrida de todas() del 06/10 23:10 (ESTADO 0.z): duplicado entre grupos arreglado; la intermedia:
+ *      paso39_limpiarIntermedia_enSeco() → paso39_limpiarIntermedia() → todas() (con AGENDA_SOLO_SEMANA = '2026-10-05').
+ *      Si REGISTRO_AGENDA vuelve a fallar: paso40_archivoRegistros() y poner el ID en RDV_SS_REGISTROS.
  *  >>> 07/10: AGENDA, ETAPA 2 — ajustes de la corrida de todas() del 06/10 22:33 (ESTADO 0.z, "Ajustes"): Gmail por
  *      etiqueta O asunto, la intermedia con reintentos y REGISTRO obligatorio, EVENTO como el equipo, BORRAR la fila
  *      creada y sin tocar (regla 7), paso39_medirIntermedia(). Lo próximo: todas() con AGENDA_SOLO_SEMANA = '2026-10-05'.
@@ -609,6 +612,52 @@ function paso38_deshacerAgenda() {
              'SÍ, en el destino: saca las filas creadas que siguen replicando el mail y vuelve atrás las celdas que todavía tienen ' +
              'lo que escribió la agenda. No toca el archivo "Agenda" (se regenera en la corrida siguiente)', 'el log');
   return deshacerAgenda(false);
+}
+
+/** PASO 39 — borrar las solapas de MEDICIÓN de la etapa 1 (SOLAPAS_MEDICION_ETAPA1), EN SECO. */
+function paso39_limpiarIntermedia_enSeco() {
+  _anunciar_('paso 39 — limpiar la intermedia (EN SECO)', 'limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, false)  [diagnostico/17_peso_intermedia.js]',
+             'NO borra nada', 'el log: qué borraría y cuánto pesa');
+  return limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, false, 'medición de la etapa 1');
+}
+
+/** PASO 39 — borrar las solapas de MEDICIÓN de la etapa 1. Ningún paso de producción las lee. */
+function paso39_limpiarIntermedia() {
+  _anunciar_('paso 39 — limpiar la intermedia', 'limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, true)  [diagnostico/17_peso_intermedia.js]',
+             'SÍ: borra de la intermedia ' + SOLAPAS_MEDICION_ETAPA1.join(', ') + ' (se recuperan del historial de versiones del archivo)',
+             'el log: las borradas');
+  return limpiarIntermedia(SOLAPAS_MEDICION_ETAPA1, true, 'medición de la etapa 1');
+}
+
+/** PASO 39b — los restos del legado y diagnósticos viejos (SOLAPAS_LEGADO_INTERMEDIA): EN SECO. */
+function paso39b_limpiarLegado_enSeco() {
+  _anunciar_('paso 39b — limpiar el legado de la intermedia (EN SECO)', 'limpiarIntermedia(SOLAPAS_LEGADO_INTERMEDIA, false)',
+             'NO borra nada', 'el log: qué borraría y cuánto pesa');
+  return limpiarIntermedia(SOLAPAS_LEGADO_INTERMEDIA, false, 'legado y diagnósticos viejos');
+}
+
+/** PASO 39b — borrar el legado de la intermedia. Sólo con LIMPIAR_LEGADO_CONFIRMADO = true (decisión del usuario). */
+function paso39b_limpiarLegado() {
+  if (!LIMPIAR_LEGADO_CONFIRMADO) {
+    Logger.log('>>> LIMPIAR_LEGADO_CONFIRMADO = false: no se borra nada. Revisar paso39b_limpiarLegado_enSeco() y confirmarlo en 00_Config.js.');
+    return null;
+  }
+  _anunciar_('paso 39b — limpiar el legado de la intermedia', 'limpiarIntermedia(SOLAPAS_LEGADO_INTERMEDIA, true)',
+             'SÍ: borra ' + SOLAPAS_LEGADO_INTERMEDIA.length + ' solapas de la intermedia', 'el log: las borradas');
+  return limpiarIntermedia(SOLAPAS_LEGADO_INTERMEDIA, true, 'legado y diagnósticos viejos');
+}
+
+/** PASO 40 — el archivo de registros "RDV registros", EN SECO. */
+function paso40_archivoRegistros_enSeco() {
+  _anunciar_('paso 40 — el archivo de registros (EN SECO)', 'crearArchivoRegistros(false)', 'NO crea nada', 'el log');
+  return crearArchivoRegistros(false);
+}
+
+/** PASO 40 — crea "RDV registros", copia los registros de la agenda y dice el ID para RDV_SS_REGISTROS. */
+function paso40_archivoRegistros() {
+  _anunciar_('paso 40 — el archivo de registros', 'crearArchivoRegistros(true)  [diagnostico/17_peso_intermedia.js]',
+             'SÍ: crea un archivo nuevo en tu Drive y copia REGISTRO_AGENDA y REGISTRO_AGENDA_CAMBIOS', 'el log: el ID para 00_Config.js');
+  return crearArchivoRegistros(true);
 }
 
 /** PASO 39 — SÓLO LECTURA: cuánto pesa la intermedia, por solapa, y qué se puede sacar. */
