@@ -17,10 +17,12 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (14): el backup de la BASE (RDV_SS_BACKUP_BASE; el anterior era una copia de la intermedia). Correr
+ *      limpiar24() (o sus pasos uno por uno): paso 18 → 47 en seco → 47 → 47b en seco → 47b → paso 18. Predicción en ESTADO.
  *  >>> 07/10 (13): solapas de AYUDA: paso48_ayuda_enSeco() → paso48_ayuda()  ("GUÍA" en la base, "LEER" en "Agenda").
  *  >>> 07/10 (12): las 24 celdas de Sin identificar mal escritas (filas 372–403, cerradas; paso 18). EN ORDEN:
- *        0. compartir el backup del 02/10 (RDV_SS_BACKUP_0210) como LECTOR con la cuenta que corre el script (el paso 18
- *           dice cuál); sin él no se vacía nada → paso18_malEscritas_listar() (con el chequeo 4)
+ *        0. el backup de la BASE (RDV_SS_BACKUP_BASE, 04/10 antes de las 00:20; el anterior era de la intermedia): el
+ *           paso 18 confirma archivo, solapa y filas al leerlo; sin él no se vacía nada → paso18_malEscritas_listar()
  *        1. paso47_revisarDesagregado_enSeco() → mirar la lista → paso47_revisarDesagregado()
  *        2. paso47b_completarFilasRevisadas_enSeco() → paso47b_completarFilasRevisadas()   (sólo esas filas; el paso 22
  *           entero también sirve, pero completaría cualquier otra celda vacía del historial)
@@ -382,7 +384,7 @@ function paso17_validarCuentas() {
 function paso18_malEscritas_listar() {
   _anunciar_('paso 18 — mal escritas por el sistema desde el 02/10 (EN SECO)',
              'listarMalEscritas()  [diagnostico/10_mal_escritas.js]',
-             'NO escribe en ninguna planilla (lee el destino, B y el backup del 02/10)',
+             'NO escribe en ninguna planilla (lee el destino, B y el backup de la base)',
              'sólo el log: por solapa, cada celda mal escrita con el valor escrito y el correcto');
   return listarMalEscritas();
 }
@@ -978,7 +980,7 @@ function paso47_revisarDesagregado_enSeco() {
   return revisarDesagregadoMalEscrito(false);
 }
 
-/** PASO 47 — vacía esas celdas (sólo las del sistema, con el backup del 02/10) y anota las filas para el paso 47b. */
+/** PASO 47 — vacía esas celdas (sólo las del sistema, con el backup de la base) y anota las filas para el paso 47b. */
 function paso47_revisarDesagregado() {
   _anunciar_('paso 47 — Sin identificar mal escrito: VACIAR', 'revisarDesagregadoMalEscrito(true)  [diagnostico/10_mal_escritas.js]',
              'SÍ, en "' + RDV_HOJA_DESTINO_REAL + '": vacía y saca el color de las celdas listadas (sólo las del sistema); sin el backup no vacía nada',
@@ -1082,8 +1084,8 @@ function verificar() {
 /**
  * **limpiar24()** — corrige de una vez las 24 celdas viejas (filas 372–403, dic-2025/ene-2026). La escribió el usuario
  * en el editor (07/10) y se movió acá tal cual, para que un `clasp push` no la borre.
- * ANTES: compartir el backup del 02/10 como Lector con la cuenta que corre el script.
- * Sin el backup, los pasos 18 y 47 no vacían nada (sólo listan), así que no hay riesgo.
+ * ANTES: el backup de la base (RDV_SS_BACKUP_BASE) tiene que poder leerse: el paso 18 lo confirma (archivo, solapa,
+ * filas) o dice el error exacto. Sin el backup, los pasos 18 y 47 no vacían nada (sólo listan), así que no hay riesgo.
  * Si un paso falla, se frena ahí.
  */
 function limpiar24() {

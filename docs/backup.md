@@ -177,3 +177,22 @@ reportes, que se rehacen corriendo el paso 2.
    mismo total de `#4F81BD` que antes de la corrida; `paso2_upsertEnSeco()` vuelve a los números de
    la última corrida en seco (ninguna fila entra por `RDV_UID`).
 4. Anotar en docs/ESTADO.md qué pasó y por qué se volvió atrás, en el mismo commit que el arreglo.
+
+### 8.3 El backup de la BASE para el chequeo 4 de los pasos 18 y 47 (07/10)
+
+- **ID**: `1YPhxToFccTZ4RiEzCCI6LpohIhG9cGlZf4Z1MRG0MXA` → `RDV_SS_BACKUP_BASE` en `00_Config.js`.
+- **Qué es**: una **copia de la BASE** (el archivo del destino, "RDV JM CM ES + funcionarios"), sacada del **historial
+  de versiones**: la versión del **04/10, antes de las 00:20**, de antes de la migración (el paso 22, completar el
+  historial). La solapa que se lee es **"RVD JM-CM - ES"**.
+- **De quién**: de la misma cuenta que corre el script. **No se comparte con nadie ni se edita**: es la foto contra la
+  que el chequeo 4 decide qué no se toca.
+- **Para qué**: una celda que ya tenía valor en esta copia **no la escribió el paso 22** (la dejó el legado, o el
+  sistema antes del 04/10), y los pasos 18 y 47 no la vacían. Sin poder leerla, no se vacía nada.
+- **Cómo se verifica**: al leerla, el paso 18 (y el 47) dicen en el log *"Backup de la base: archivo "…", solapa "RVD
+  JM-CM - ES" encontrada, N filas"*; si falla, el error exacto (no se puede abrir, no tiene la solapa —y cuáles tiene—,
+  no tiene Figura y FECHA, o el error de lectura).
+
+**El anterior** (`1QLDcmTb01LC_…`, anotado el 02/10 en ESTADO como "el backup del 02/10") **era una copia de la
+INTERMEDIA, no de la base**: no tenía la solapa "RVD JM-CM - ES", y la lectura devolvía nada sin decirlo. Por eso el
+chequeo 4 nunca se aplicó (el 03/10 se dio por "resuelto" al compartirlo, pero el problema era otro). Queda el link
+viejo en ESTADO como registro.

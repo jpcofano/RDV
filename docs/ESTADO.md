@@ -803,7 +803,10 @@ escribieron el **04/10 con el paso 22**, cuando B no traía las edades de esos f
 el chequeo 4 no se aplicó, y desde el paso 19 el color del legado es el mismo que el del sistema: alguna de esas 24
 podría ser del legado. Por eso:
 
-- **El backup** (`RDV_SS_BACKUP_0210`, 1QLDcmTb01LC_…): ni la cuenta conectada a Claude ni la que corre el script lo ven
+- ~~**El backup** (`RDV_SS_BACKUP_0210`, 1QLDcmTb01LC_…): ni la cuenta conectada a Claude ni la que corre el script lo ven~~
+  **Corregido el 07/10: ese archivo era una copia de la INTERMEDIA, no de la base** (no tiene la solapa "RVD JM-CM - ES";
+  la lectura devolvía nada sin decirlo). Ahora: `RDV_SS_BACKUP_BASE` (abajo, y docs/backup.md §8.3).
+  Lo que se había escrito: ni la cuenta conectada a Claude ni la que corre el script lo ven
   (Drive: "not found"; el destino sí se ve). Es la copia del 02/10 que se hizo a mano ("no compartir"). Hay que
   **compartirla como LECTOR con la cuenta que corre el script** (el aviso del paso 18 ahora dice cuál). Sin el backup,
   **ni el paso 18 ni el 47 vacían nada** (en seco listan igual, con el aviso).
@@ -843,6 +846,24 @@ de las fichas, `RM.COLOR`, y #CFE2F3), ELEGIR en negrita, sin cuadrícula, la pr
 dueño y quien corre el script). **Nada del sistema las lee ni las toca** (ningún código lee solapas por posición: se
 verificó antes de ponerlas primeras); el paso 48 las reescribe enteras si ya existen. En docs/elegir-match.md y
 docs/agenda-equipo.md, arriba: "Versión corta: solapa GUÍA del archivo de la base". Test: tests/ayuda.test.js.
+
+#### El backup de la BASE para los pasos 18 y 47 (07/10)
+
+El backup anterior (`1QLDcmTb…`) **era una copia de la INTERMEDIA**, no de la base: por eso "no se pudo leer" (no tiene
+la solapa del destino, y la lectura devolvía nada **sin decirlo**). **Nuevo**: `RDV_SS_BACKUP_BASE` =
+`1YPhxToFccTZ4RiEzCCI6LpohIhG9cGlZf4Z1MRG0MXA`, **copia de la base sacada del historial de versiones** (la versión del
+**04/10 antes de las 00:20**, antes de la migración / el paso 22), solapa "RVD JM-CM - ES", de la misma cuenta que corre
+el script, **no se comparte** (docs/backup.md §8.3).
+
+- **El chequeo 4 ahora quiere decir**: una celda con valor en ese backup no la escribió el paso 22 (la dejó el legado, o el
+  sistema antes del 04/10) → no se toca. El error del 02/10 (Sin identificar = Inscriptos, una celda en el real, la fila
+  6) ya se había vaciado entonces, así que un backup posterior no pierde nada.
+- **Al leerlo**, los pasos 18 y 47 confirman en el log *archivo, solapa encontrada y cantidad de filas*; si falla, **el
+  error exacto** (no se puede abrir —y con qué cuenta—, no tiene la solapa —y cuáles tiene—, no tiene Figura y FECHA, o
+  el error de lectura). Test: escritura_lote [26] (la confirmación, y un backup sin la solapa: error exacto, no vacía).
+
+**Predicción del usuario para `limpiar24()`, anotada ANTES:** el paso 47 vacía **22 filas (132 celdas**: las 5 edades y
+Sin identificar de cada una), el 47b las reescribe, y el paso 18 final lista **sólo la 399 y la 401**.
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
@@ -1573,6 +1594,8 @@ filas **29, 36, 66, 86 y 786** dejaron de aparecer. Si siguen, con fila y column
 
 - **Backup del 02/10: resuelto** (había que compartirlo con la cuenta que corre el script). El ID de
   `RDV_SS_BACKUP_0210` no cambia; el chequeo 4 del paso 18 vuelve a aplicarse.
+  *[Corrección del 07/10: no estaba resuelto. Ese archivo era una copia de la intermedia, sin la solapa del destino, y
+  el chequeo 4 nunca se aplicó. Ver docs/backup.md §8.3.]*
 - **"Otros"**: consulta al equipo (1a). `MAPEO_CANALES` sigue en Otros → Difusión.
 - **El falso aviso de incompletas cuando B trae 0: arreglado (03/10).** En `Inscriptos`, un 0 del
   destino cuenta como vacío; si `B` también traía 0, el sistema "escribía" 0 sobre 0, la celda seguía en

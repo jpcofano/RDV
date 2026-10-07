@@ -270,6 +270,8 @@ function crearEntorno(opts) {
       const hojas = {};
       planillas[id] = {
         hojas: hojas,
+        getName: function () { return 'planilla ' + String(id).slice(0, 6); },
+        getSheets: function () { return Object.keys(hojas).map(function (k) { return hojas[k]; }); },
         getSheetByName: function (n) { return hojas[n] || null; },
         insertSheet: function (n) { escribir(1); hojas[n] = new Hoja(n, []); return hojas[n]; }
       };
@@ -946,7 +948,7 @@ function escenarioEncabezadosB() {
 
 /**
  * El paso 18: el sistema escribió Sin identificar = Inscriptos (el bug del 02/10) en filas con RDV_UID.
- * Se listan en seco (con el backup del 02/10 para no tocar lo que ya estaba), se vacían y se les saca el
+ * Se listan en seco (con el backup de la base para no tocar lo que ya estaba), se vacían y se les saca el
  * color, y la corrida siguiente las completa con el valor correcto.
  */
 function escenarioMalEscritas() {
@@ -956,7 +958,7 @@ function escenarioMalEscritas() {
   const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   // El backup: el destino antes de escribir.
   const backup = new E.Hoja('RVD JM-CM - ES', hoja.v);
-  E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'] = backup;
+  E.planilla(E.cfg('RDV_SS_BACKUP_BASE')).hojas['RVD JM-CM - ES'] = backup;
   E.ejecutar('upsertDestino');
   const iSin = colD('Sin identificar'), iIns = colD('Inscriptos');
   // El bug: en 6 filas del hueco, Sin identificar = Inscriptos (azul, como lo escribió el sistema).
@@ -1764,7 +1766,7 @@ function escenarioPaso47() {
   const m = montar(E, 200, true);
   const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const backup = new E.Hoja('RVD JM-CM - ES', hoja.v);                  // el destino antes de la primera escritura
-  E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'] = backup;
+  E.planilla(E.cfg('RDV_SS_BACKUP_BASE')).hojas['RVD JM-CM - ES'] = backup;
   E.ejecutar('upsertDestino');                                          // escribe bien sexo, edades y Sin identificar
   const iSin = colD('Sin identificar'), iIns = colD('Inscriptos');
   const E5 = ['18-24', '25-39', '40-55', '56-65', '66+'].map(colD), iM = colD('Masculinos'), iF = colD('Femeninos');
@@ -1796,6 +1798,8 @@ function escenarioPaso47() {
   E.ctx.p47breal_ = function () { return E.ctx.completarFilasRevisadas(true); };
   const s47 = E.ejecutar('p47seco_');
   const x = s47.resultado;
+  ok(s47.logs.some(function (l) { return /^Backup de la base: archivo "planilla .+", solapa "RVD JM-CM - ES" encontrada, \d+ filas \(copia de la base, versión del 04\/10/.test(l); }),
+     'al leer el backup confirma archivo, solapa y filas');
   ok(!s47.error && JSON.stringify(foto(hoja)) === antes, 'paso 47 en seco: no toca nada' + (s47.error ? ' — ' + s47.error.message : ''));
   ok(x && x.filas === 4 && x.celdas === 9 && x.casos['edades + Sin identificar + sexo en 0'] === 1 && x.casos['sólo Sin identificar'] === 1 &&
      x.casos['no se toca'] === 2, 'las 4 filas (la del legado no): edades + Sin identificar + sexo 1, sólo Sin identificar 1, no se toca 2; 9 celdas — ' + JSON.stringify(x));
@@ -1814,17 +1818,23 @@ function escenarioPaso47() {
   ok(JSON.stringify(hoja.v.filter(function (f, i) { return i !== iA && i !== iB; })) === fotoOtras, 'y no toca ninguna otra fila');
   const l18 = E.ejecutar('listarMalEscritas').resultado['RVD JM-CM - ES'];
   ok(l18.lista.length === 2 && l18.estabanAntes === 1, 'paso 18 después: quedan C y D (y la del legado, aparte)');
+  // un backup que no es de la base (como el de antes, una copia de la intermedia): lo dice y no vacía nada
+  delete E.planilla(E.cfg('RDV_SS_BACKUP_BASE')).hojas['RVD JM-CM - ES'];
+  E.planilla(E.cfg('RDV_SS_BACKUP_BASE')).hojas['B'] = new E.Hoja('B', [['nombre']]);
+  const otraCopia = E.ejecutar('p47real_');
+  ok(otraCopia.resultado && otraCopia.resultado.error === 'sin backup' &&
+     otraCopia.logs.some(function (l) { return /no tiene la solapa "RVD JM-CM - ES" \(tiene: B\) — ¿es una copia de la base\?/.test(l); }),
+     'un backup sin la solapa (una copia de la intermedia): dice el error exacto y no vacía nada');
   // sin el backup, ni el 18 ni el 47 vacían nada
-  delete E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'];
   E.ctx.SpreadsheetApp.openById = (function (orig) {
-    return function (id) { if (id === E.cfg('RDV_SS_BACKUP_0210')) throw new Error('No tiene permiso para acceder'); return orig(id); };
+    return function (id) { if (id === E.cfg('RDV_SS_BACKUP_BASE')) throw new Error('No tiene permiso para acceder'); return orig(id); };
   })(E.ctx.SpreadsheetApp.openById);
   const antes2 = JSON.stringify(foto(hoja));
   const sinBk47 = E.ejecutar('p47real_');
   E.ctx.vaciarReal_test47_ = function () { return E.ctx.vaciarMalEscritas('RVD JM-CM - ES'); };
   const sinBk18 = E.ejecutar('vaciarReal_test47_');
   ok(sinBk47.resultado && sinBk47.resultado.error === 'sin backup' && sinBk18.resultado && sinBk18.resultado.error === 'sin backup' &&
-     JSON.stringify(foto(hoja)) === antes2, 'sin el backup del 02/10: el 47 y el 18 no vacían nada');
+     JSON.stringify(foto(hoja)) === antes2, 'sin el backup de la base: el 47 y el 18 no vacían nada');
   ok(sinBk47.logs.some(function (l) { return /Compartir el backup con esa cuenta como LECTOR/.test(l); }), 'y el aviso dice qué hacer con el permiso');
 }
 

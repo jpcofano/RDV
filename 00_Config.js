@@ -845,11 +845,17 @@ const DIVISOR_SEXO = 'identificados';
 const INSCRIPTOS_CERO_ES_VACIO = true;
 
 /**
- * El backup del destino tomado el 02/10 antes de la primera escritura real (docs/backup.md §8.1). Lo
- * lee —sólo lectura— el paso 18 para saber qué celdas estaban vacías antes de que escribiera el
- * sistema.
+ * **El backup de la BASE para el chequeo 4 de los pasos 18 y 47** (07/10; docs/backup.md §8.3): una copia del archivo
+ * del destino sacada del historial de versiones, de la versión del **04/10 antes de las 00:20** (antes de la migración:
+ * el paso 22), solapa "RVD JM-CM - ES". Es de la misma cuenta que corre el script y **no se comparte ni se edita**. Lo
+ * leen —sólo lectura— los pasos 18 y 47: una celda que ya tenía valor en el backup no la escribió el paso 22 (la dejó
+ * el legado, o el sistema antes del 04/10) y no se toca.
+ *
+ * El anterior (1QLDcmTb…, "del 02/10") era una copia de la INTERMEDIA, no de la base: no tenía la solapa, y la lectura
+ * devolvía nada sin decirlo. Desde el 07/10 cada lectura confirma archivo, solapa y filas, o dice el error exacto.
  */
-const RDV_SS_BACKUP_0210 = '1QLDcmTb01LC_pw4DRXBqIWOEcutvOBeOkVwvQd4OGEY';
+const RDV_SS_BACKUP_BASE = '1YPhxToFccTZ4RiEzCCI6LpohIhG9cGlZf4Z1MRG0MXA';
+const RDV_BACKUP_BASE_VERSION = 'copia de la base, versión del 04/10 antes de las 00:20';
 
 /**
  * **Escalado de sexo.** `B` trae M y F contados sobre los identificados, que son menos que

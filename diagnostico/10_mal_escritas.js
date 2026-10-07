@@ -20,9 +20,10 @@
  *   1. tiene el fondo del sistema (#4F81BD);
  *   2. tiene exactamente el valor que daba el cálculo roto (Sin identificar = Inscriptos de B);
  *   3. es distinta del valor correcto (el de ahora, con COLUMNAS_B);
- *   4. estaba VACÍA en el backup del 02/10 (antes de la primera escritura real), si la fila está en el
- *      backup —se busca por figura + fecha, no por número de fila—. Así no se toca nada que hubiera
- *      escrito el legado: los errores del pasado no se corrigen; éste es nuestro.
+ *   4. estaba VACÍA en el backup de la base (RDV_SS_BACKUP_BASE: la versión del 04/10 antes de las 00:20,
+ *      antes del paso 22), si la fila está en el backup —se busca por figura + fecha, no por número de fila—.
+ *      Así no se toca nada que hubiera escrito el legado: los errores del pasado no se corrigen; éste es nuestro.
+ *      (Hasta el 07/10 el backup configurado era una copia de la intermedia: el chequeo nunca se aplicó.)
  *
  * --- Cómo se corre (lo corre el usuario) ---
  *   paso18_malEscritas_listar()        en seco: lista en el real y en la copia, no toca nada
@@ -63,8 +64,8 @@ function vaciarMalEscritas(hoja) {
   const cands = leerCandidatos_();
   const backup = _leerBackup_diag10();
   if (!backup) {
-    Logger.log('>>> SIN el backup del 02/10 no se vacía nada (chequeo 4: si la celda ya estaba antes del 02/10, la escribió el ' +
-               'legado y no se toca). Ver el aviso de arriba.');
+    Logger.log('>>> SIN el backup de la base no se vacía nada (chequeo 4: si la celda ya tenía valor en el backup, no la ' +
+               'escribió el paso 22 y no se toca). Ver el aviso de arriba.');
     return { listadas: 0, vaciadas: 0, error: 'sin backup' };
   }
   const r = _malEscritasEn_diag10(hoja, cands, backup, false);
@@ -117,11 +118,11 @@ function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
     Logger.log('  celdas MAL ESCRITAS por el sistema desde el 02/10: %s   (%s)', r.lista.length,
                Object.keys(r.porCampo).filter(function (k) { return r.porCampo[k]; })
                  .map(function (k) { return k + ' ' + r.porCampo[k]; }).join(', ') || 'ninguna');
-    Logger.log('  con el valor roto pero que ya estaban en el backup del 02/10 (las dejó el legado; no se tocan): %s',
+    Logger.log('  con el valor roto pero que ya tenían valor en el backup de la base (no las escribió el paso 22; no se tocan): %s',
                r.estabanAntes);
     Logger.log('  con el valor roto en filas con figura + fecha repetida en el backup (no se pueden verificar; no se tocan): %s',
                r.sinVerificar);
-    if (!backup) Logger.log('  AVISO: no se pudo leer el backup del 02/10: el chequeo 4 no se aplicó.');
+    if (!backup) Logger.log('  AVISO: no se pudo leer el backup de la base: el chequeo 4 no se aplicó (el motivo, arriba).');
     Logger.log('  fila | figura | fecha | columna | escrito | correcto | formulario');
     r.lista.slice(0, 300).forEach(function (x) {
       Logger.log('    %s | %s | %s | %s | %s | %s | %s', x.fila, x.figura, fmtFecha_(x.fecha), x.campo,
@@ -132,28 +133,45 @@ function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
   return r;
 }
 
-/** El backup del 02/10 (sólo lectura): figura|fecha → valores de la fila, y los índices de sexo y edades. */
+/**
+ * El backup de la base (sólo lectura; RDV_SS_BACKUP_BASE): figura|fecha → valores de la fila, y los índices de sexo y
+ * edades. **Confirma lo que leyó** (archivo, solapa, filas) o **dice el error exacto** (07/10: el anterior era una copia de
+ * la intermedia, sin la solapa, y devolvía nada sin decirlo). Si no se puede leer, se avisa y se sigue SIN el chequeo 4
+ * (en seco); los pasos que vacían no vacían nada sin él.
+ */
 function _leerBackup_diag10() {
-  // Si el backup no se puede abrir (02/10: "no permission"), se avisa y se sigue SIN el chequeo 4:
-  // nunca termina en error.
+  const id = RDV_SS_BACKUP_BASE, solapa = RDV_HOJA_DESTINO_REAL;
+  const sinChequeo = function (motivo) {
+    Logger.log('AVISO: el backup de la base (%s, %s) no se pudo leer: %s. Sigue sin el chequeo 4 (y sin él no se vacía nada).',
+               id, RDV_BACKUP_BASE_VERSION, motivo);
+    return null;
+  };
   let ss = null;
-  try { ss = SpreadsheetApp.openById(RDV_SS_BACKUP_0210); } catch (err) {
+  try { ss = SpreadsheetApp.openById(id); } catch (err) {
     let quien = '';
     try { quien = Session.getEffectiveUser().getEmail(); } catch (e) { /* sin permiso para saberlo */ }
-    Logger.log('AVISO: no se pudo abrir el backup del 02/10 (%s): %s. Sigue sin el chequeo 4.', RDV_SS_BACKUP_0210,
-               String(err && err.message || err));
     Logger.log('  >>> La cuenta que corre el script%s no puede abrirlo. Compartir el backup con esa cuenta como LECTOR (sólo ' +
                'lectura; no se edita nunca) o correr con una cuenta que lo vea. Sin el chequeo 4 no se vacía nada: desde el ' +
                'paso 19 el color no distingue lo que escribió el legado de lo que escribió el sistema.', quien ? ' (' + quien + ')' : '');
-    return null;
+    return sinChequeo('no se pudo abrir el archivo — ' + String(err && err.message || err));
   }
+  let nombre = '';
+  try { nombre = ss.getName(); } catch (e) { nombre = '(sin nombre)'; }
   try {
-    const sh = ss.getSheetByName(RDV_HOJA_DESTINO_REAL);
-    if (!sh) return null;
+    const sh = ss.getSheetByName(solapa);
+    if (!sh) {
+      let hay = '';
+      try { hay = ss.getSheets().map(function (h) { return h.getName(); }).join(', '); } catch (e) { /* no importa */ }
+      return sinChequeo('el archivo "' + nombre + '" no tiene la solapa "' + solapa + '"' + (hay ? ' (tiene: ' + hay + ')' : '') +
+                        ' — ¿es una copia de la base?');
+    }
     const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
     const hdr = vals[0];
     const iFig = findIdxOr_(hdr, aliasColumna_('Figura'), true), iFec = findIdxOr_(hdr, aliasColumna_('FECHA'), true);
-    if (iFig == null || iFec == null) return null;
+    if (iFig == null || iFec == null) {
+      return sinChequeo('la solapa "' + solapa + '" de "' + nombre + '" no tiene ' + (iFig == null ? 'Figura' : '') +
+                        (iFig == null && iFec == null ? ' ni ' : '') + (iFec == null ? 'FECHA' : '') + ' por encabezado');
+    }
     const idx = {};
     CAMPOS_DESAGREGADO_.forEach(function (c) { idx[c] = findIdxOr_(hdr, aliasColumna_(c), true); });
     const porClave = new Map(), repetidas = new Set();
@@ -163,13 +181,11 @@ function _leerBackup_diag10() {
       if (porClave.has(k)) repetidas.add(k); else porClave.set(k, vals[i]);
     }
     repetidas.forEach(function (k) { porClave.delete(k); });   // figura + fecha repetida: no se usa
-    Logger.log('Backup del 02/10: %s filas leídas (%s claves figura + fecha repetidas, no se usan).',
-               vals.length - 1, repetidas.size);
-    return { porClave: porClave, idx: idx, repetidas: repetidas };
+    Logger.log('Backup de la base: archivo "%s", solapa "%s" encontrada, %s filas (%s); %s claves figura + fecha repetidas, ' +
+               'no se usan. El chequeo 4 se aplica.', nombre, solapa, vals.length - 1, RDV_BACKUP_BASE_VERSION, repetidas.size);
+    return { porClave: porClave, idx: idx, repetidas: repetidas, nombre: nombre, filas: vals.length - 1 };
   } catch (err) {
-    Logger.log('AVISO: no se pudo leer el backup del 02/10 (%s): %s. Sigue sin el chequeo 4.', RDV_SS_BACKUP_0210,
-               String(err && err.message || err));
-    return null;
+    return sinChequeo('error al leer "' + nombre + '" — ' + String(err && err.message || err));
   }
 }
 
@@ -190,7 +206,7 @@ const PROP_FILAS_PASO47_ = 'RDV_FILAS_PASO47';
  *   - edades del destino iguales a las de B → se vacía sólo Sin identificar;
  *   - si no, no se toca (y se lista por qué);
  *   - además, Masculinos / Femeninos en 0 escritos por el sistema, si B hoy trae sexo.
- * Sólo celdas **del sistema**: con el color del sistema y VACÍAS en el backup del 02/10 (chequeo 4; sin el backup no se
+ * Sólo celdas **del sistema**: con el color del sistema y VACÍAS en el backup de la base (chequeo 4; sin el backup no se
  * vacía nada). `vaciarCeldasDelSistema_` vuelve a verificar valor y color justo antes. Después: paso 47b (completa sólo
  * esas filas) o, si se prefiere, el paso 22 entero.
  */
@@ -200,7 +216,7 @@ function revisarDesagregadoMalEscrito(escribe) {
   const cands = leerCandidatos_();
   const backup = _leerBackup_diag10();
   if (!backup) {
-    Logger.log('  >>> SIN el backup del 02/10: la lista puede incluir celdas que dejó el legado (el color ya no lo distingue).%s',
+    Logger.log('  >>> SIN el backup de la base: la lista puede incluir celdas que dejó el legado (el color ya no lo distingue).%s',
                escribe ? ' NO se vacía nada.' : '');
     if (escribe) return { error: 'sin backup', filas: 0, vaciadas: 0 };
   }
