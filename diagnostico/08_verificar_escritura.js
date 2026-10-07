@@ -122,6 +122,12 @@ function verificarEscritura() {
     Logger.log('  de ésas, escritas por la agenda (agenda_barrio_escrito): %s — no cuentan contra la línea de base', ag.barrioDeLaAgenda);
   }
   if (az.trazaSinAzul) problemas.push('celdas de traza sin azul: ' + az.trazaSinAzul);
+  Logger.log('  columnas del sistema (traza y agenda): celdas con el color del sistema y SIN valor: %s   (tiene que dar 0)%s',
+             az.sistemaSinValorTotal, az.sistemaSinValorTotal ? ' — ' + Object.keys(az.sistemaSinValor).map(function (n) {
+               return n + ' ' + az.sistemaSinValor[n]; }).join(' | ') : '');
+  if (az.sistemaSinValorTotal) {
+    problemas.push('color del sistema sin valor en columnas del sistema: ' + az.sistemaSinValorTotal + ' (paso43_limpiarFondoAgenda)');
+  }
 
   // --- 4) filas con RDV_UID: traza y completitud ---
   Logger.log('--- 4) filas con RDV_UID ---');
@@ -262,7 +268,12 @@ function _azules_diag8(dest) {
     return 'otras';
   });
   const out = { total: 0, manual: 0, grupos: { traza: 0, datos: 0, status: 0, manuales: 0, otras: 0 },
-                porColumna: {}, trazaConValor: 0, trazaSinAzul: 0, ejemplosSinAzul: [] };
+                porColumna: {}, trazaConValor: 0, trazaSinAzul: 0, ejemplosSinAzul: [], sistemaSinValor: {}, sistemaSinValorTotal: 0 };
+  // 07/10: columnas del SISTEMA (traza y agenda): una celda con el color del sistema y sin valor no debería existir (las
+  // 16 de la agenda heredaron el color de form_clave al agregarse; paso43_limpiarFondoAgenda).
+  const delSistema = hdr.map(function (h) {
+    return COLUMNAS_TRAZA.concat(COLUMNAS_AGENDA).some(function (c) { return normalizeHeader_(c) === normalizeHeader_(h); });
+  });
   const nuevo = COLOR_SISTEMA.toLowerCase();
   const porFila = {};
   dest.filas.forEach(function (f) { porFila[f.fila] = f; });
@@ -280,6 +291,10 @@ function _azules_diag8(dest) {
         if (String(fondos[i][k]).toLowerCase() === nuevo) x.nuevo++; else x.viejo++;
       }
       const f = porFila[i + 1];
+      if (esAzul && delSistema[k] && (!f || esVacio_(f.valores[k]))) {
+        out.sistemaSinValor[hdr[k]] = (out.sistemaSinValor[hdr[k]] || 0) + 1;
+        out.sistemaSinValorTotal++;
+      }
       if (g === 'traza' && f && !esVacio_(f.valores[k])) {
         out.trazaConValor++;
         if (!esAzul) {

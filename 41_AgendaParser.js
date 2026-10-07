@@ -113,32 +113,51 @@ function agendaDesdeListaDeMails_(lista, meta) {
                                     versiones: g.versiones.length, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '',
                                     desde: g.desde, hasta: g.hasta });
     });
-    const n = parseadas.length, ultima = parseadas[n - 1];
+    const n = parseadas.length;
+    // 07/10 (decisión del usuario): un "Re:", "RV:", "RE:" o "Fwd:" sólo AGREGA o ACTUALIZA reuniones; nunca hace
+    // desaparecer. Una desaparición la produce sólo un mail NUEVO con la agenda completa. El estado de la semana es el
+    // último mail completo (la "base") más lo que agregan o actualizan las respuestas posteriores. Sin ningún mail
+    // completo, la unión de todo. `meta.respuestasQuitan` = el comportamiento anterior (todas son versiones), para medir.
+    const quitan = !!(meta && meta.respuestasQuitan);
+    const esResp = g.versiones.map(function (m) { return !quitan && RE_RESPUESTA_AGENDA_.test(m.asunto || ''); });
+    let base = -1;
+    for (let i = n - 1; i >= 0; i--) if (!esResp[i]) { base = i; break; }
+    const estado = new Map();
+    if (base >= 0) parseadas[base].forEach(function (ev) { estado.set(ev.clave, ev); });
+    for (let i = base + 1; i < n; i++) parseadas[i].forEach(function (ev) { estado.set(ev.clave, ev); });
+    const ultima = Array.from(estado.values());
     g.cantidades = parseadas.map(function (p) { return p.length; });
-    if (n > 1 && parseadas[n - 2].length && ultima.length < parseadas[n - 2].length * AGENDA_FRACCION_VERSION_PARCIAL) {
+    g.respuestas = esResp.filter(Boolean).length;
+    // Versión parcial: la base contra el mail completo anterior (las respuestas no cuentan).
+    let previa = -1;
+    for (let i = base - 1; i >= 0; i--) if (!esResp[i]) { previa = i; break; }
+    if (base >= 0 && previa >= 0 && parseadas[previa].length &&
+        parseadas[base].length < parseadas[previa].length * AGENDA_FRACCION_VERSION_PARCIAL) {
       r.parciales.push({ g: g, cantidades: g.cantidades });
     }
-    // Cambios contra la versión anterior (sólo las reuniones que estaban).
-    const anterior = n > 1 ? _porClave_(parseadas[n - 2]) : new Map();
+    // Cambios de cada reunión contra su aparición anterior (en cualquier mail anterior al suyo).
     ultima.forEach(function (ev) {
-      const prev = anterior.get(ev.clave);
+      let prev = null;
+      for (let j = ev.version - 2; j >= 0 && !prev; j--) prev = _porClave_(parseadas[j]).get(ev.clave) || null;
       ev.cambios = n === 1 ? '' : (prev ? _cambiosEntre_(prev, ev) : 'nueva en la última versión');
       r.ultimas.push(ev);
     });
-    // Las que desaparecen: estaban en alguna versión anterior y no en la última.
-    const enUltima = _porClave_(ultima);
+    // Las que desaparecen: estaban en algún mail y no en el estado. Las sacó el primer mail COMPLETO posterior a la
+    // última vez que se vieron.
     const vistas = new Map();
-    for (let i = 0; i < n - 1; i++) parseadas[i].forEach(function (ev) { vistas.set(ev.clave, ev); });
+    for (let i = 0; i < n; i++) parseadas[i].forEach(function (ev) { vistas.set(ev.clave, ev); });
     vistas.forEach(function (ev, clave) {
-      if (enUltima.has(clave)) return;
+      if (estado.has(clave)) return;
       const misma = ultima.filter(function (u) { return ev.figuraFila && u.figuraFila === ev.figuraFila; });
       ev.ahora = misma.length ? misma.map(function (u) { return fmtFecha_(u.fecha) + ' ' + u.hora; }).join(' / ') : '';
       ev.ultimaVersionVista = ev.version;
-      // La versión que la dejó afuera es la siguiente a la última en la que estaba (06/10, regla 7 de la etapa 2):
-      // sólo cuenta como desaparecida si la reunión todavía era FUTURA cuando se mandó ese mail. Un "Actualizo:" de
-      // mitad de semana que ya no lista los días que pasaron no es una cancelación.
-      const saco = g.versiones[ev.version] || null;
+      let k = ev.version;                                  // índice del mail siguiente a la última vez que se vio
+      while (k < n && esResp[k]) k++;
+      const saco = g.versiones[k] || null;
+      ev.versionQueLaSaco = saco ? k + 1 : null;
       ev.mailQueLaSaco = saco ? saco.fecha : null;
+      ev.asuntoQueLaSaco = saco ? saco.asunto : '';
+      // Sólo cuenta como desaparecida si la reunión todavía era FUTURA cuando se mandó ese mail (06/10, regla 7).
       ev.futuraAlDesaparecer = !!(ev.fecha && saco && ymd_(ev.fecha) >= ymd_(saco.fecha));
       ev.versionParcial = r.parciales.some(function (x) { return x.g === g; });
       r.desaparecidas.push(ev);

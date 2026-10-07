@@ -191,6 +191,11 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   segunda justo antes de borrar, con el bloqueo), se guarda entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura.
   Es la excepción a "no borrar filas" de §6: nada del sistema depende del número de fila (fichas y elecciones van por
   figura + fecha + barrio; el registro de la agenda, por `agenda_uid`).
+- **la cancelación se pregunta** (07/10, `AGENDA_CANCELACION_AUTOMATICA = false`): la regla 7 de arriba (suspender o
+  borrar) se aplica sólo cuando una persona eligió "Se canceló" en AGENDA_DUPLICADOS; con `true`, automática. Y sólo un
+  mail **completo** hace desaparecer una reunión: un "Re:"/"RV:"/"Fwd:" sólo agrega o actualiza;
+- **el fondo de las celdas vacías de sus 16 columnas** (paso 43, 07/10): lo heredaron de form_clave al agregarse; es la
+  única limpieza de fondos del sistema, sólo en celdas sin valor de sus columnas, y el paso 16 avisa si vuelve a pasar;
 - **la agenda nunca borra ni fusiona por un duplicado, y no recrea lo que borró el equipo** (07/10, prompt 07): si hay
   una fila del equipo parecida (misma figura a ±2 días, o misma fecha y comuna con otra figura), **no crea**: pregunta
   en **AGENDA_DUPLICADOS** (archivo del destino, como las fichas: ELEGIR y COMENTARIO, protección real; elecciones

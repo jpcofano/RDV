@@ -600,6 +600,42 @@ igual en los dos lados, una línea por reunión).
    pregunta en AGENDA_DUPLICADOS por la 804/805), **VINCULAR 35**, las 9 de esta semana sin cambios, "Agenda" sin
    líneas repetidas.
 
+#### `semana()` 07/10 13:35: OK — y tres ajustes más
+
+**Resultado**: 10 celdas (agenda_version 9, Conjunta con 1), "Agenda" 10 líneas sin repetidos, paso 16 OK (0
+duplicados, 0 casi duplicados, 0 tocadas). El upsert de las 13:29 ya completó formularios, asistentes y oradores en las
+filas que creó la agenda (812, 813).
+
+1. **El color heredado**: las 16 columnas AV..BK heredaron el fondo de form_clave (agenda_uid: 784 celdas con color y 9
+   con valor). **`paso43_limpiarFondoAgenda()`** (`limpiarFondoAgendaVacias`, 05_Escritura.js; en seco primero) saca el
+   fondo de las celdas **vacías** de esas 16 columnas en todo el destino; las que tienen valor no se tocan. **El paso 36
+   ya no hereda**: a las columnas que agrega les saca el formato debajo del encabezado. **El paso 16 avisa** (y lo cuenta
+   como problema) si hay celdas con el color del sistema y sin valor en cualquier columna del sistema (traza y agenda).
+2. **Un "Re:", "RV:", "RE:" o "Fwd:" sólo AGREGA o ACTUALIZA reuniones** (`agendaDesdeListaDeMails_`): el estado de la
+   semana es el último mail completo más lo que agregan o actualizan las respuestas posteriores. **Una desaparición la
+   produce sólo un mail nuevo con la agenda completa** (el que queda en "la sacó"). La versión parcial (60%) compara
+   mails completos. Sin ningún mail completo, la unión. **`paso42_medirRespuestas()`** (sólo lectura) parsea los mails
+   con la regla y con el comportamiento anterior y lista las desaparecidas que dejan de serlo (con su fila y su STATUS
+   de hoy: si están Suspendida, el Re: era una cancelación de verdad) y las que aparecen.
+3. **`AGENDA_CANCELACION_AUTOMATICA = false`**: una reunión futura que desaparece **no se suspende ni se borra sola**: se
+   pregunta en AGENDA_DUPLICADOS como "cancelación" (*Se canceló: suspender/borrar* / *Sigue* / *No sé*), con la fila, la
+   reunión y el mail que la sacó. Se aplica en la corrida siguiente: "Se canceló" hace lo de la regla 7 (Suspendida, o
+   se borra si la creó la agenda y nadie la tocó); "Sigue" no la toca ni vuelve a preguntar (queda en ELECCIONES_AGENDA);
+   "No sé" sigue preguntando. En "Agenda": "desaparecida: ¿se canceló?". Con `true`, la regla 7 automática.
+
+Tests: agenda_parser [9] (el Re: sólo agrega; la saca el mail completo; un Re: posterior que la cita no la revive) y
+agenda_escritura [23] (paso 36 sin heredar, la limpieza sólo en vacías, el aviso del paso 16), [24] (la cancelación se
+pregunta; "Se canceló" y "Sigue") y [25] (el paso 42).
+
+**Las próximas, con la predicción anotada ANTES** (`AGENDA_SOLO_SEMANA = null`):
+
+1. `paso43_limpiarFondoAgenda_enSeco()` → del orden de 16 × ~775 celdas vacías con fondo (agenda_uid: 784 con color − 9
+   con valor; igual las otras). `paso43_limpiarFondoAgenda()`. Después, en el paso 16, "color del sistema y SIN valor" en 0.
+2. `paso42_medirRespuestas()` (sólo lectura): sin número previo; lo que da es el dato.
+3. `paso37_agenda_enSeco()`: **CREAR 1** (Macri 01/10 Belgrano, o pregunta en AGENDA_DUPLICADOS por la 804/805),
+   **VINCULAR 35, SUSPENDER 0, BORRAR 0** (con la cancelación preguntada, lo que antes se suspendía sale como "se
+   pregunta"), **las 9 de esta semana sin cambios**.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

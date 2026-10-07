@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (5): semana() de las 13:35 OK. Ajustes (ESTADO 0.z): el color heredado de las 16 columnas, un "Re:" sólo
+ *      agrega o actualiza, la cancelación se PREGUNTA (AGENDA_CANCELACION_AUTOMATICA = false). AGENDA_SOLO_SEMANA = null.
+ *        1. paso43_limpiarFondoAgenda_enSeco() → paso43_limpiarFondoAgenda()   (el fondo de las celdas vacías)
+ *        2. paso42_medirRespuestas()   (sólo lectura: cuántas desaparecidas cambian con la regla del "Re:")
+ *        3. paso37_agenda_enSeco()     (todo el alcance; predicción en ESTADO 0.z) → paso16_verificarEscritura()
  *  >>> 07/10 (4): después de semana() (11:52): versión como texto, formato de la traza, "Re:"/"Fwd:" sin el texto
  *      citado, una línea por reunión en "Agenda", "Conjunta con" igual en los dos lados (ESTADO 0.z). Lo próximo:
  *        1. paso37_agenda_enSeco()  (la semana) → CREAR 0, SUSPENDER 0, BORRAR 0 (si no, NO seguir)
@@ -895,4 +900,25 @@ function semana() {
   Logger.log('########## semana — fin (%s s). Para volver atrás: paso38_deshacerAgenda_enSeco() → paso38_deshacerAgenda().',
              Math.round((Date.now() - t0) / 1000));
   return r;
+}
+
+/** PASO 42 — SÓLO LECTURA: cuántas desaparecidas cambian porque un "Re:"/"RV:"/"Fwd:" ya no hace desaparecer. */
+function paso42_medirRespuestas() {
+  _anunciar_('paso 42 — las respuestas sólo agregan', 'medirRespuestasAgenda()  [diagnostico/16_agenda_medicion.js]', 'NO escribe nada',
+             'el log: desaparecidas antes y ahora, las que dejan de serlo (con su fila y STATUS de hoy) y las que aparecen');
+  return medirRespuestasAgenda();
+}
+
+/** PASO 43 — EN SECO: cuántas celdas vacías de las columnas de la agenda tienen fondo (heredado de form_clave). */
+function paso43_limpiarFondoAgenda_enSeco() {
+  _anunciar_('paso 43 — el fondo heredado (EN SECO)', 'limpiarFondoAgendaVacias(false)  [05_Escritura.js]', 'NO escribe nada',
+             'el log: cuántas celdas, por columna');
+  return limpiarFondoAgendaVacias(false);
+}
+
+/** PASO 43 — saca el fondo de las celdas VACÍAS de las 16 columnas de la agenda (las que tienen valor no se tocan). */
+function paso43_limpiarFondoAgenda() {
+  _anunciar_('paso 43 — el fondo heredado', 'limpiarFondoAgendaVacias(true)  [05_Escritura.js]',
+             'SÍ, en el destino: sólo el FONDO de las celdas vacías de las columnas de la agenda (AV..BK)', 'el log');
+  return limpiarFondoAgendaVacias(true);
 }

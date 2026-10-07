@@ -1034,7 +1034,7 @@ const AGENDA_ACTIVA = false;
  * '2026-10-05'). La agenda sólo crea, vincula, actualiza, mueve y suspende reuniones de esa semana. `null` = todo el
  * alcance (desde hoy − DIAS_ACTIVOS en adelante).
  */
-const AGENDA_SOLO_SEMANA = '2026-10-05';
+const AGENDA_SOLO_SEMANA = null;
 /** La etiqueta de Gmail de donde se leen los mails de agenda (la cuenta que corre el script tiene que tenerla). */
 const AGENDA_ETIQUETA_GMAIL = 'GCBA/Encuentros Con Vecinos';
 /**
@@ -1105,6 +1105,14 @@ const AGENDA_SOLAPA_DUPLICADOS = 'AGENDA_DUPLICADOS';
 const RDV_HOJA_ELECCIONES_AGENDA = 'ELECCIONES_AGENDA';
 const AGENDA_DUP_DIAS = 2;
 const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Son distintas: crear', 'No sé'];
+/**
+ * **La cancelación se pregunta** (07/10, decisión del usuario): con `false`, una reunión futura que desaparece del mail
+ * NO se suspende ni se borra sola: se pregunta en AGENDA_DUPLICADOS (AGENDA_OPCIONES_CANCELACION) con la fila, la
+ * reunión y el mail que la sacó, y se aplica en la corrida siguiente ("Se canceló": suspender, o borrar si la creó la
+ * agenda y nadie la tocó; "Sigue": no se toca y no se vuelve a preguntar). Con `true`, la regla 7 automática.
+ */
+const AGENDA_CANCELACION_AUTOMATICA = false;
+const AGENDA_OPCIONES_CANCELACION = ['Se canceló: suspender/borrar', 'Sigue', 'No sé'];
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
 /**
  * **Llenar las columnas del equipo como las llena el equipo** (07/10, prompt 07, B). Valores iniciales: lo que la agenda

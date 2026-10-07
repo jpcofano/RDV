@@ -33,10 +33,12 @@ les queda para cargar a ustedes.
 - **Sigue los cambios del mail** ("Actualizo:"): hora, dirección y, si cambió la dirección, el barrio. Sólo mientras la
   reunión está "en agenda".
 - **Si la reunión se pasa a otro día de la misma semana**, mueve la fecha de la fila (no crea otra).
-- **Si una reunión que todavía no pasó desaparece del mail**: si la fila la había creado el sistema y nadie le cargó ni
-  le cambió nada, **la borra** (si la reunión vuelve a aparecer, la crea de nuevo); si no, la pone en **"Suspendida"**. Si vuelve a aparecer, la
-  vuelve a "en agenda". Si un "Actualizo:" trae mucho menos que el anterior (menos del 60%), no suspende nada: puede ser
-  un mail con sólo los cambios.
+- **Si una reunión que todavía no pasó desaparece del mail, el sistema PREGUNTA** en **AGENDA_DUPLICADOS** (como
+  "cancelación", con la fila, la reunión y el mail que la sacó): *"Se canceló: suspender/borrar"* (la pone en
+  "Suspendida", o la borra si la había creado el sistema y nadie le cargó nada), *"Sigue"* (no la toca ni vuelve a
+  preguntar) o *"No sé"*. Se aplica en la corrida siguiente. **Sólo un mail nuevo con la agenda completa hace
+  desaparecer una reunión**: un "Re:" o un reenvío sólo agrega o actualiza. Si un "Actualizo:" trae mucho menos que el
+  anterior (menos del 60%), no pregunta nada: puede ser un mail con sólo los cambios.
 - **"NO PARTICIPA"**: la reunión se hace igual y tiene su fila a nombre de esa figura; los nombres que no participan
   van a la columna **"No participa"**.
 - **Reunión conjunta** (varias figuras): una sola fila, a nombre de la primera que nombra el mail.

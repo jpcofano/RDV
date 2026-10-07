@@ -200,7 +200,7 @@ function indicesAgenda_(hdr) {
  */
 function planAgenda_(dest, r, A, alcance, opciones) {
   opciones = opciones || {};
-  const P = { A: A, filaDe: new Map(), duplicadasEnCorrida: [], duplicados: [], borradasEquipo: [], acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
+  const P = { A: A, filaDe: new Map(), duplicadasEnCorrida: [], duplicados: [], borradasEquipo: [], cancelacionSigue: [], acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
               saltadas60: [], noFuturas: [], viejasSinFila: [], figuraACompletar: [], eventoPorTipo: {}, barrio: {},
               alcance: alcance, r: r, A: A, resumen: {} };
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
@@ -453,7 +453,25 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const f = c[0];
     if (normStatus_(val(f, 'STATUS REUNIÓN')) !== 'en agenda') return;
     usadas.add(f.fila);
-    const salida = 'desapareció en la versión ' + (d.ultimaVersionVista + 1) + ' (' + fmtFecha_(d.mailQueLaSaco) + ')';
+    const salida = 'desapareció en la versión ' + (d.versionQueLaSaco || d.ultimaVersionVista + 1) + ' (' + fmtFecha_(d.mailQueLaSaco) + ')';
+    // 07/10: con AGENDA_CANCELACION_AUTOMATICA = false, la cancelación se PREGUNTA en AGENDA_DUPLICADOS y se aplica en
+    // la corrida siguiente según lo elegido (la fila, por figura + fecha + barrio; la reunión, por su identidad).
+    if (!AGENDA_CANCELACION_AUTOMATICA) {
+      const idC = 'cancelacion|' + idReunionAgenda_(d);
+      const el = elecciones.get(idC);
+      const vale = el && el.idFila === idFilaAgenda_(f);
+      if (vale && el.eleccion === 'sigue') {
+        P.cancelacionSigue.push({ ev: d, f: f });
+        P.filaDe.set(d.clave, { fila: f.fila, status: val(f, 'STATUS REUNIÓN'), f: f, sigue: true });
+        return;
+      }
+      if (!(vale && el.eleccion === 'cancelar')) {
+        P.duplicados.push({ tipo: 'cancelacion', ev: d, id: idC, candidatas: [{ f: f, diferencia: salida }], eleccion: vale ? el : null });
+        P.filaDe.set(d.clave, { fila: f.fila, status: val(f, 'STATUS REUNIÓN'), f: f, cancelacionPendiente: true });
+        return;
+      }
+      P.eleccionesAplicadas.push({ id: idC, eleccion: 'cancelar', fila: f.fila });
+    }
     // 06/10, decisión del usuario: la fila que CREÓ la agenda y nadie tocó se BORRA (se guarda entera para deshacer).
     const intocada = filaIntocadaAgenda_(f.valores, dest.hdr, d);
     if (intocada.ok) {
@@ -553,6 +571,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (!enCopia(d) || presentes.has(d.clave) || atendidas.has(d.clave)) return;
     const x = P.filaDe.get(d.clave);
     if (x && x.borrada) P.copia.push({ ev: d, x: null, estado: 'desaparecida (fila borrada)', fechaOriginal: d.fechaOriginal || null });
+    else if (x && x.cancelacionPendiente) P.copia.push({ ev: d, x: x, estado: 'desaparecida: ¿se canceló? (AGENDA_DUPLICADOS)', fechaOriginal: d.fechaOriginal || null });
+    else if (x && x.sigue) P.copia.push({ ev: d, x: x, estado: 'desaparecida, pero sigue (lo eligió el equipo)', fechaOriginal: d.fechaOriginal || null });
     else P.copia.push({ ev: d, x: filaDeCopia(d), estado: 'desaparecida', fechaOriginal: d.fechaOriginal || null });
   });
   P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev); });
@@ -566,6 +586,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                 figuraACompletar: P.figuraACompletar.length, duplicadasEnCorrida: P.duplicadasEnCorrida.length, barrio: P.barrio,
                 duplicadosAntes: P.duplicados.filter(function (x) { return x.tipo === 'antes'; }).length,
                 duplicadosDespues: P.duplicados.filter(function (x) { return x.tipo === 'despues'; }).length,
+                cancelaciones: P.duplicados.filter(function (x) { return x.tipo === 'cancelacion'; }).length,
+                cancelacionSigue: P.cancelacionSigue.length,
                 borradasEquipo: P.borradasEquipo.length, origenEquipo: P.origenEquipo || 0, tocado: n('tocado'),
                 eleccionesAplicadas: P.eleccionesAplicadas.length, noCreadasSinHistorial: P.noCreadasSinHistorial || 0 };
   return P;
@@ -973,11 +995,18 @@ function logPlanAgenda_(P, dest) {
     if (x.tipo === 'antes') {
       Logger.log('    DUPLICADO (no se crea) | %s %s | %s | %s → %s', fmtFecha_(x.ev.fecha), x.ev.hora, x.ev.figuraFila || x.ev.tipo,
                  x.ev.lugar, x.candidatas.map(function (c) { return 'fila ' + c.f.fila + ' (' + c.diferencia + ')'; }).join('; '));
+    } else if (x.tipo === 'cancelacion') {
+      Logger.log('    ¿SE CANCELÓ? (se pregunta) | %s %s | %s | %s → fila %s | %s', fmtFecha_(x.ev.fecha), x.ev.hora,
+                 x.ev.figuraFila || x.ev.tipo, x.ev.lugar, x.candidatas[0].f.fila, x.candidatas[0].diferencia);
     } else {
       Logger.log('    DUPLICADO POSTERIOR | fila %s de la agenda (%s %s) ~ %s', x.fAgenda.fila, x.fAgenda.figura || '(sin figura)',
                  fmtFecha_(x.fAgenda.fecha), x.candidatas.map(function (c) { return 'fila ' + c.f.fila + ' (' + c.diferencia + ')'; }).join('; '));
     }
   });
+  if (!AGENDA_CANCELACION_AUTOMATICA) {
+    Logger.log('  CANCELACIONES (AGENDA_CANCELACION_AUTOMATICA = false): se preguntan %s | "Sigue" (no se tocan) %s',
+               s.cancelaciones, s.cancelacionSigue);
+  }
   P.borradasEquipo.forEach(function (x) {
     Logger.log('    BORRADA POR EL EQUIPO (no se recrea) | %s %s | %s | %s', fmtFecha_(x.ev.fecha), x.ev.hora, x.ev.figuraFila || x.ev.tipo, x.ev.lugar);
   });
@@ -1579,7 +1608,8 @@ function leerEleccionesAgenda_() {
   const m = new Map();
   const tomar = function (id, eleccion, idFila, comentario, nueva) {
     const e = normalizeText_(eleccion);
-    const el = /vincular|es la misma/.test(e) ? 'vincular' : (/crear|distintas/.test(e) ? 'crear' : (/no s/.test(e) ? 'no_se' : ''));
+    const el = /vincular|es la misma/.test(e) ? 'vincular' : (/crear|distintas/.test(e) ? 'crear' :
+               (/cancel/.test(e) ? 'cancelar' : (/^sigue/.test(e) ? 'sigue' : (/no s/.test(e) ? 'no_se' : ''))));
     if (!id || !el) return;
     m.set(id, { eleccion: el, idFila: idFila, comentario: comentario || '', nueva: !!nueva, texto: eleccion });
   };
@@ -1650,12 +1680,21 @@ function escribirDuplicadosAgenda_(P) {
   };
   P.duplicados.forEach(function (x) {
     x.candidatas.forEach(function (c) {
+      if (x.tipo === 'cancelacion') {
+        const el = x.eleccion;
+        filas.push([el ? el.texto : '', el ? el.comentario : '', el && el.eleccion === 'no_se' ? 'pendiente (No sé)' : 'no se tocó: elegir',
+                    'cancelación', reunionTexto(x.ev) + ' | la sacó: ' + (x.ev.asuntoQueLaSaco || '') + ' (' + fmtFecha_(x.ev.mailQueLaSaco) + ')']
+                    .concat(dato(c), ['"Se canceló": la fila pasa a Suspendida (o se borra, si la creó la agenda y nadie la tocó). ' +
+                    '"Sigue": no se toca y no se vuelve a preguntar.', x.id, idFilaAgenda_(c.f)]));
+        editables.push({ fila: filas.length, opciones: AGENDA_OPCIONES_CANCELACION });
+        return;
+      }
       if (x.tipo === 'antes') {
         const el = x.eleccion && x.eleccion.idFila === idFilaAgenda_(c.f) ? x.eleccion : null;
         filas.push([el ? el.texto : '', el ? el.comentario : '', el && el.eleccion === 'no_se' ? 'pendiente (No sé)' : 'no se creó: elegir',
                     'antes de crear', reunionTexto(x.ev)].concat(dato(c), ['"Es la misma": la agenda usa esa fila. "Son distintas": la crea.',
                     x.id, idFilaAgenda_(c.f)]));
-        editables.push(filas.length);
+        editables.push({ fila: filas.length, opciones: AGENDA_OPCIONES_DUPLICADO });
       } else {
         const fa = x.fAgenda;
         filas.push(['', '', 'informativo', 'después de crear', 'fila ' + fa.fila + ' (de la agenda): ' + (fa.figura || '(sin figura)') + ' ' +
@@ -1668,16 +1707,14 @@ function escribirDuplicadosAgenda_(P) {
   sh.getRange(1, 1, filas.length, ancho).setValues(filas);
   sh.setFrozenRows(1);
   sh.getRange(1, 1, 1, ancho).setFontWeight('bold').setBackground('#D9D9D9');
-  if (editables.length) {
-    const regla = SpreadsheetApp.newDataValidation().requireValueInList(AGENDA_OPCIONES_DUPLICADO, true).setAllowInvalid(false).build();
-    editables.forEach(function (f) {
-      sh.getRange(f, 1).setDataValidation(regla);
-      sh.getRange(f, 1, 1, 2).setBackground('#FFF2CC');
-    });
-  }
+  editables.forEach(function (e) {
+    sh.getRange(e.fila, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(e.opciones, true)
+      .setAllowInvalid(false).build());
+    sh.getRange(e.fila, 1, 1, 2).setBackground('#FFF2CC');
+  });
   try { sh.hideColumns(ancho - 1, 2); } catch (e) { /* no importa */ }
   try { sh.autoResizeColumns(1, ancho - 2); } catch (e) { /* no importa */ }
-  _protegerDuplicadosAgenda_(sh, editables.map(function (f) { return sh.getRange(f, 1, 1, 2); }));
+  _protegerDuplicadosAgenda_(sh, editables.map(function (e) { return sh.getRange(e.fila, 1, 1, 2); }));
   SpreadsheetApp.flush();
   Logger.log('  %s (archivo del destino): %s líneas, %s para elegir.', AGENDA_SOLAPA_DUPLICADOS, filas.length - 1, editables.length);
   return { lineas: filas.length - 1, elegir: editables.length };

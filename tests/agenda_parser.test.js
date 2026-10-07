@@ -99,7 +99,7 @@ const C1 = ['*Martes 29/09*', 'Evento: Encuentro con Vecinos Clara Muzzio, Recol
 
 ctx.__mails = [
   { fecha: new Date(2026, 8, 25, 10, 0), asunto: ASUNTO_A, cuerpo: A1, truncado: false },
-  { fecha: new Date(2026, 8, 28, 9, 0), asunto: 'Re: ' + ASUNTO_A, cuerpo: A2, truncado: false },
+  { fecha: new Date(2026, 8, 28, 9, 0), asunto: ASUNTO_A, cuerpo: A2, truncado: false },   // un mail NUEVO completo (un "Re:" sólo agrega: [9])
   { fecha: new Date(2026, 11, 26, 9, 0), asunto: ASUNTO_B, cuerpo: B1, truncado: false },
   { fecha: new Date(2026, 8, 27, 9, 0), asunto: ASUNTO_C, cuerpo: C1, truncado: false }
 ];
@@ -267,9 +267,20 @@ const r9 = vm.runInContext('agendaDesdeListaDeMails_(__mails2, { fuente: "test" 
 const mEN = r9.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 8; });
 ok(mEN.length === 1 && mEN[0].lugarTexto === 'Av. del Libertador 3500' && mEN[0].cambios !== 'nueva en la última versión',
    'Macri 08/10 Eje Norte UNA vez, la de la versión nueva (no "nueva en la última versión"): ' + mEN.length + ' / ' + (mEN[0] && mEN[0].cambios));
-ok(r9.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 0 &&
-   r9.desaparecidas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 1,
-   'la del 09/10 (sólo citada en el Re:) es DESAPARECIDA: no "vuelve" por estar citada');
+ok(r9.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 1 &&
+   r9.desaparecidas.length === 0, 'un "Re:" sólo agrega o actualiza: la del 09/10 (no está en lo propio del Re:) SIGUE, no desaparece');
+// un mail COMPLETO posterior sin la del 09/10: ésa sí la hace desaparecer (y un "Re:" más nuevo no la revive por citarla)
+ctx.__mails3 = ctx.__mails2.concat([
+  { fecha: new Date(2026, 9, 7, 12, 0), asunto: SEM_JM, cuerpo: macriEN.concat(['Lugar: Av. del Libertador 3500']).join(String.fromCharCode(10)), truncado: false },
+  { fecha: new Date(2026, 9, 7, 13, 0), asunto: 'Re: ' + SEM_JM, cuerpo: ['Ok', 'El mié, 7 oct 2026, Agenda <agenda@ejemplo.com> escribió:', cita(jm1)].join(String.fromCharCode(10)), truncado: false }
+]);
+const r9b = vm.runInContext('agendaDesdeListaDeMails_(__mails3, { fuente: "test" })', ctx);
+const des9 = r9b.desaparecidas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; });
+ok(des9.length === 1 && des9[0].asuntoQueLaSaco === SEM_JM && des9[0].versionQueLaSaco === 3 &&
+   r9b.unicas.filter(function (x) { return x.figuraFila === 'Jorge Macri' && x.fecha.getDate() === 9; }).length === 0,
+   'la saca el mail COMPLETO (la versión 3: los "Re:" sin agenda propia no son versión), no el "Re:"; y el "Re:" posterior que la cita no la revive');
+const r9c = vm.runInContext('agendaDesdeListaDeMails_(__mails2, { fuente: "test", respuestasQuitan: true })', ctx);
+ok(r9c.desaparecidas.length === 1, 'con el comportamiento anterior (respuestasQuitan) el "Re:" sí la sacaba: para medir');
 ok(r9.respuestasSinAgenda.length === 1 && mEN[0] && mEN[0].versiones === 2,
    'el "Re:" que sólo agradece no es una versión (quedan 2): ' + r9.respuestasSinAgenda.length);
 ok(r9.citasCortadas === 2 && r9.reenvios === 1, 'citas cortadas 2, reenvíos 1: ' + r9.citasCortadas + ' / ' + r9.reenvios);

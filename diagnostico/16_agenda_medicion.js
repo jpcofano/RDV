@@ -977,6 +977,59 @@ function medirDesaparecidasAgenda() {
 
 
 /**
+ * **Paso 42** (07/10, sólo lectura): cuántas desaparecidas cambian con la regla "un Re:/RV:/Fwd: sólo agrega o
+ * actualiza; una desaparición la produce sólo un mail completo". Lee los mails UNA vez y los parsea dos veces: con la
+ * regla (como corre la agenda) y con el comportamiento anterior (`respuestasQuitan`). Lista las que dejan de ser
+ * desaparecidas —las sacaba una respuesta— con su fila y su STATUS de hoy, y las que aparecen nuevas.
+ */
+function medirRespuestasAgenda() {
+  Logger.log('=== medirRespuestasAgenda (paso 42) — sólo lectura, no escribe nada ===');
+  const mails = _leerMailsAgenda_();
+  const resp = mails.lista.filter(function (m) { return RE_RESPUESTA_AGENDA_.test(m.asunto || ''); }).length;
+  Logger.log('  mails: %s (%s) | de ésos, respuestas o reenvíos (Re:/RV:/Fwd:): %s', mails.lista.length, mails.fuente, resp);
+  const nuevo = agendaDesdeListaDeMails_(mails.lista, mails);
+  const viejo = agendaDesdeListaDeMails_(mails.lista, Object.assign({}, mails, { respuestasQuitan: true }));
+  const dest = leerDestino_();
+  // Todas las desaparecidas (también las futuras: son las que se suspenden); la fila y su STATUS, del cruce (que mira
+  // sólo las que ya pasaron) o, si no, por figura + fecha.
+  const cViejo = agendaCruce_(dest, viejo);
+  const k = function (ev) { return normalizeText_(ev.grupo) + '|' + idReunionAgenda_(ev); };
+  const filaDe = function (ev) {
+    const x = cViejo.desap.filter(function (d) { return d.ev === ev; })[0];
+    if (x) return x.fila;
+    const fs = dest.filas.filter(function (f) { return ev.figuraFila && f.fecha && normalizeText_(f.figura) === normalizeText_(ev.figuraFila) && ymd_(f.fecha) === ymd_(ev.fecha); });
+    return fs.length === 1 ? fs[0] : null;
+  };
+  const aD = function (r) { return r.desaparecidas.map(function (ev) { return { ev: ev, fila: filaDe(ev) }; }); };
+  const dV = aD(viejo), dN = aD(nuevo);
+  const cNuevo = { desap: dN }, cViejoT = { desap: dV };
+  const enNuevo = new Set(dN.map(function (d) { return k(d.ev); }));
+  const enViejo = new Set(dV.map(function (d) { return k(d.ev); }));
+  const dejan = dV.filter(function (d) { return !enNuevo.has(k(d.ev)); });
+  const aparecen = dN.filter(function (d) { return !enViejo.has(k(d.ev)); });
+  const caso = function (ev) { return ev.versionParcial ? 'parcial' : (ev.futuraAlDesaparecer ? 'futura' : 'ya pasada'); };
+  Logger.log('--- desaparecidas: antes (las respuestas también sacaban) %s | con la regla %s | dejan de serlo %s | aparecen %s ---',
+             cViejoT.desap.length, cNuevo.desap.length, dejan.length, aparecen.length);
+  const porCaso = {};
+  dejan.forEach(function (d) { const c = caso(d.ev); porCaso[c] = (porCaso[c] || 0) + 1; });
+  Logger.log('  las que dejan de ser desaparecidas, por caso: %s   (las "futura" son las que la regla 7 suspendía o borraba ' +
+             'por un Re:)', Object.keys(porCaso).map(function (c) { return c + ' ' + porCaso[c]; }).join(' · ') || '—');
+  dejan.slice(0, 60).forEach(function (d) {
+    Logger.log('    DEJA | %s %s | %s | %s | %s | la sacaba: %s | fila %s %s', fmtFecha_(d.ev.fecha), d.ev.hora, d.ev.grupo,
+               d.ev.figuraFila || d.ev.tipo, caso(d.ev), d.ev.asuntoQueLaSaco || '—', d.fila ? d.fila.fila : '—',
+               d.fila ? cViejo.status(d.fila) || '' : '');
+  });
+  aparecen.slice(0, 30).forEach(function (d) {
+    Logger.log('    APARECE | %s %s | %s | %s | %s | la saca: %s', fmtFecha_(d.ev.fecha), d.ev.hora, d.ev.grupo,
+               d.ev.figuraFila || d.ev.tipo, caso(d.ev), d.ev.asuntoQueLaSaco || '—');
+  });
+  Logger.log('  >>> si las "futura" que dejan de serlo tienen hoy su fila Suspendida, el Re: era una cancelación de verdad y la ' +
+             'regla las pierde; si están Realizada / en agenda, la regla evita suspensiones equivocadas.');
+  return { mails: mails.lista.length, respuestas: resp, antes: cViejoT.desap.length, ahora: cNuevo.desap.length,
+           dejan: dejan.length, aparecen: aparecen.length, porCaso: porCaso };
+}
+
+/**
  * Las solapas de MEDICIÓN de este archivo (06/10): si la intermedia no responde ni con los reintentos, la medición
  * no falla — los números ya están en el log, que se escribe antes.
  */

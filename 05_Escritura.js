@@ -597,8 +597,11 @@ function agregarColumnasAgenda(escribe) {
   }
   if (!faltan.length || !escribe) return { faltan: faltan, agregadas: 0, desde: _a1_(1, nCols + 1).replace(/\d+$/, '') };
   sh.getRange(1, nCols + 1, 1, faltan.length).setValues([faltan]);
+  // 07/10: las columnas nuevas NO heredan el formato de la anterior (form_clave tenía el color del sistema en 784 filas
+  // y las 16 de la agenda lo copiaron). Son columnas nuevas y vacías: se les saca todo formato debajo del encabezado.
+  if (sh.getMaxRows() > 1) sh.getRange(2, nCols + 1, sh.getMaxRows() - 1, faltan.length).clearFormat();
   SpreadsheetApp.flush();
-  Logger.log('>>> agregadas al final, a partir de la columna %s.', _a1_(1, nCols + 1).replace(/\d+$/, ''));
+  Logger.log('>>> agregadas al final, a partir de la columna %s (sin formato heredado).', _a1_(1, nCols + 1).replace(/\d+$/, ''));
   return { faltan: faltan, agregadas: faltan.length, desde: _a1_(1, nCols + 1).replace(/\d+$/, '') };
 }
 
@@ -757,4 +760,38 @@ function formatearColumnasAgenda_(sh, hdr, filas) {
     sh.getRangeList(filas.map(function (f) { return _a1_(f, c + 1); })).setNumberFormat(AGENDA_FORMATO_COLUMNAS[n]);
   });
   return filas.length;
+}
+
+/**
+ * **Paso 43** (07/10): saca el fondo de las celdas VACÍAS de las columnas de la agenda (`COLUMNAS_AGENDA`), en todo el
+ * destino. Lo heredaron de form_clave al agregarse; no es la marca de procedencia (no hay nada escrito). Las celdas con
+ * valor no se tocan. En seco, sólo cuenta. Es la única limpieza de fondos que hace el sistema, y sólo en sus columnas.
+ */
+function limpiarFondoAgendaVacias(escribe) {
+  const sh = verificarHojaDestino_(ssDestino_());
+  const nCols = sh.getLastColumn(), nFilas = sh.getMaxRows();
+  const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0].map(normalizeHeader_);
+  Logger.log('=== fondo de las celdas vacías de las columnas de la agenda (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
+  let total = 0;
+  const porCol = {};
+  COLUMNAS_AGENDA.forEach(function (n) {
+    const k = hdr.indexOf(normalizeHeader_(n));
+    if (k < 0 || nFilas < 2) return;
+    const rg = sh.getRange(2, k + 1, nFilas - 1, 1);
+    const v = rg.getValues(), bg = rg.getBackgrounds();
+    const a1 = [];
+    for (let i = 0; i < v.length; i++) {
+      const b = String(bg[i][0] || '').toLowerCase();
+      if (esVacio_(v[i][0]) && b && b !== '#ffffff') a1.push(_a1_(i + 2, k + 1));
+    }
+    if (!a1.length) return;
+    porCol[n] = a1.length;
+    total += a1.length;
+    if (escribe) for (let j = 0; j < a1.length; j += 500) sh.getRangeList(a1.slice(j, j + 500)).setBackground(null);
+  });
+  Logger.log('  celdas vacías con fondo: %s | por columna: %s', total,
+             Object.keys(porCol).map(function (n) { return n + ' ' + porCol[n]; }).join(' | ') || '—');
+  if (escribe) { SpreadsheetApp.flush(); Logger.log('>>> fondo quitado de %s celdas vacías (las que tienen valor, intactas).', total); }
+  else Logger.log('>>> EN SECO: no se tocó nada.');
+  return { celdas: total, porColumna: porCol };
 }

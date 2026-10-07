@@ -14,7 +14,8 @@ const vm = require('vm'), fs = require('fs'), path = require('path');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
-                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js'];
+                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
+                  'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js'];
 const HOY = new Date(2026, 9, 6, 12, 0, 0);
 /** UNA sola clase de fecha, la misma adentro y afuera del contexto: si no, `instanceof Date` falla adentro. */
 class D extends Date {
@@ -55,6 +56,7 @@ function crearEntorno(config) {
         setNumberFormat: function (fmt) { h.nf = h.nf || {}; for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.nf[(f + i) + ',' + (c + j)] = fmt; return rango; },
         getNumberFormats: function () { const o = []; for (let i = 0; i < nf; i++) { const r = []; for (let j = 0; j < nc; j++) r.push((h.nf || {})[(f + i) + ',' + (c + j)] || 'General'); o.push(r); } return o; },
         setNumberFormats: function (m) { h.nf = h.nf || {}; for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) h.nf[(f + i) + ',' + (c + j)] = m[i][j]; return rango; },
+        clearFormat: function () { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) { h.bg[f - 1 + i][c - 1 + j] = null; if (h.nf) delete h.nf[(f + i) + ',' + (c + j)]; } return rango; },
         setDataValidation: function (v) { h.validaciones = (h.validaciones || 0) + 1; h.opciones = v; return rango; },
         setFontWeight: function () { return rango; }
       };
@@ -124,7 +126,7 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -687,6 +689,72 @@ E.ctx.__evs = E.run('agendaDesdeListaDeMails_([' + "{ fecha: new Date(2026, 9, 2
 const cop = E.run('(function () { const ev = __evs[0]; const P = { copia: [{ ev: ev, x: { fila: 9 }, estado: "vigente" }, { ev: ev, x: null, estado: "desaparecida" }] }; ' +
                   'const m = armarCopiaAgenda_(P, new Date()); return { lineas: m.length - 1, repetidas: P.repetidasCopia }; })()');
 ok(cop.lineas === 1 && cop.repetidas === 1, '"Agenda": la misma reunión dos veces → UNA línea (la vigente)');
+
+console.log('[23] el color heredado: las columnas de la agenda sin fondo en las celdas vacías; paso 36 no hereda; paso 16 avisa');
+E = montar(false);
+const cFC = E.C('form_clave');
+for (let i = 1; i < E.D.v.length; i++) E.D.bg[i][cFC] = SIS;              // form_clave con el color del sistema
+let col36 = E.run('agregarColumnasAgenda(true)');
+E.D.v.forEach(function (x, i) { if (i > 0) { E.D.bg[i][E.D.v[0].indexOf('agenda_uid')] = E.D.bg[i][E.D.v[0].indexOf('agenda_uid')]; } });
+ok(col36.agregadas === 16 && E.D.bg.slice(1).every(function (x) { return x.slice(cFC + 1).every(function (b) { return !b; }); }),
+   'paso 36: las 16 columnas nuevas sin formato debajo del encabezado (no heredan el de form_clave)');
+// lo que pasó en el real: las 16 heredaron el color en todas las filas; sólo algunas tienen valor
+E = montar();
+correr(E, false, [V1]);
+const cUid = E.C('agenda_uid'), cOri = E.C('Origen fila');
+for (let i = 1; i < E.D.v.length; i++) for (let k = cUid - 1; k < E.D.v[0].length; k++) E.D.bg[i][k] = E.D.bg[i][k] || SIS;
+const conValorAntes = E.D.v.filter(function (x, i) { return i > 0 && x[cUid] !== ''; }).length;
+const az = E.run('_azules_diag8(leerDestino_())');
+ok(az.sistemaSinValorTotal > 0 && az.sistemaSinValor['agenda_uid'] > 0, 'paso 16 avisa: color del sistema sin valor en columnas del sistema (' + az.sistemaSinValorTotal + ')');
+let lim23 = E.run('limpiarFondoAgendaVacias(false)');
+ok(lim23.celdas > 0 && E.D.bg[1][cUid] === SIS, 'en seco: cuenta (' + lim23.celdas + ') y no toca nada');
+lim23 = E.run('limpiarFondoAgendaVacias(true)');
+const iMu3 = fila(E, 'Clara Muzzio', 8);
+ok(E.D.bg[1][cUid] === null && E.D.bg[1][E.C('Marcas (mail)')] === null && E.D.bg[1][cOri] === SIS && celda(E, 1, 'Origen fila') === 'equipo' && fondo(E, iMu3, 'agenda_uid') === SIS && celda(E, iMu3, 'agenda_uid') !== '',
+   'real: sin fondo las vacías; las que tienen valor (la fila creada) conservan su color');
+ok(E.D.v.filter(function (x, i) { return i > 0 && x[cUid] !== ''; }).length === conValorAntes && E.run('_azules_diag8(leerDestino_())').sistemaSinValorTotal === 0,
+   'ningún valor cambió, y el paso 16 queda en 0');
+
+console.log('[24] AGENDA_CANCELACION_AUTOMATICA = false: la cancelación se PREGUNTA en AGENDA_DUPLICADOS');
+E = montar(true, [], { AGENDA_CANCELACION_AUTOMATICA: 'false' });
+correr(E, false, [V1]);
+const iLo4 = fila(E, 'Hernán Lombardi', 7), nFil4 = E.D.v.length;
+const V3b = mail(6, 8, [EV.sabor, EV.alonso, EV.muzzio('Jueves 08/10', '18:30'), EV.seguridad, EV.macri('Serrano 1500')]);   // sin Lombardi
+r = correr(E, true, [V1, V3b]);
+ok(r.suspender === 0 && r.borrar === 0 && r.cancelaciones === 1, 'en seco: SUSPENDER 0, BORRAR 0, se pregunta 1 (Lombardi 07/10)');
+r = correr(E, false, [V1, V3b]);
+const dup4 = E.ssD.hojas['AGENDA_DUPLICADOS'];
+const lin4 = dup4.v.findIndex(function (x) { return x[3] === 'cancelación'; });
+ok(lin4 > 0 && E.D.v.length === nFil4 && celda(E, iLo4, 'STATUS REUNIÓN') === 'en agenda',
+   'real: la fila NO se toca; en AGENDA_DUPLICADOS como "cancelación"');
+ok(/la sacó: Agenda Encuentros/.test(dup4.v[lin4][4]) && /fila /.test(dup4.v[lin4][5]) && dup4.opciones && dup4.opciones.indexOf('Sigue') >= 0,
+   'con la reunión, el mail que la sacó, la fila, y el desplegable "Se canceló / Sigue / No sé"');
+dup4.v[lin4][0] = 'Se canceló: suspender/borrar';
+r = correr(E, false, [V1, V3b]);
+ok(r.borrar === 1 && fila(E, 'Hernán Lombardi', 7) === -1 && r.eleccionesAplicadas >= 1,
+   'elegido "Se canceló": se aplica en la corrida siguiente (la creó la agenda y nadie la tocó → se borra)');
+E = montar(true, [], { AGENDA_CANCELACION_AUTOMATICA: 'false' });
+correr(E, false, [V1]);
+correr(E, false, [V1, V3b]);
+const dup5 = E.ssD.hojas['AGENDA_DUPLICADOS'];
+dup5.v[dup5.v.findIndex(function (x) { return x[3] === 'cancelación'; })][0] = 'Sigue';
+r = correr(E, false, [V1, V3b]);
+ok(r.suspender === 0 && r.borrar === 0 && r.cancelaciones === 0 && r.cancelacionSigue === 1 && fila(E, 'Hernán Lombardi', 7) > 0,
+   '"Sigue": no se toca y no se vuelve a preguntar');
+r = correr(E, false, [V1, V3b]);
+ok(r.cancelaciones === 0 && r.cancelacionSigue === 1, 'y en las corridas siguientes tampoco (ELECCIONES_AGENDA)');
+
+console.log('[25] paso 42: cuántas desaparecidas cambian porque un "Re:" ya no hace desaparecer');
+E = montar();
+const reSinLombardi = mail(5, 9, [EV.sabor, EV.alonso, EV.muzzio('Jueves 08/10', '18:30'), EV.seguridad, EV.macri('Serrano 1500')], 'Re: ' + ASUNTO);
+E.ssI.hojas['DIAG_MAILS'] = new E.Hoja('DIAG_MAILS', [['fecha', 'asunto', 'cuerpo', 'truncado']].concat([V1, reSinLombardi].map(function (m) {
+  return [m.fecha, m.asunto, m.cuerpo, false];
+})));
+const med = E.run('medirRespuestasAgenda()');
+ok(med.respuestas === 1 && med.antes === 1 && med.ahora === 0 && med.dejan === 1 && med.porCaso.futura === 1,
+   'Lombardi 07/10 (futura) la sacaba el "Re:": antes 1, con la regla 0 — ' + JSON.stringify(med));
+r = correr(E, true, [V1, reSinLombardi]);
+ok(r.suspender === 0 && r.borrar === 0 && r.cancelaciones === 0, 'y la agenda no la suspende, ni borra, ni pregunta');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
