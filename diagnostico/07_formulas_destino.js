@@ -133,7 +133,7 @@ function diagFormulasDestino(solapa) {
   // --- d): las cuatro de la fila, contra el cálculo del script (30_Derivadas.js) ---
   const deFila = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion'];
   let difFila = 0;
-  if (solapa === RDV_HOJA_DESTINO_REAL || solapa === RDV_HOJA_COPIA_PRUEBA) {
+  if (solapa === RDV_HOJA_DESTINO_REAL) {
     const cmp = _compararDerivadas_(_ctxDerivadas_(solapa), deFila);
     Logger.log('--- d) las cuatro de la fila contra el cálculo del script ---');
     deFila.forEach(function (n) {

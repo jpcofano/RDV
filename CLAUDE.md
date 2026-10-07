@@ -165,6 +165,27 @@ que la de STATUS, y vive aparte en `05_Escritura.js` (`escribirDerivadas_`):
 
 `setSiDelSistema_` sigue siendo verificable con un grep: las derivadas nunca pasan por él.
 
+### La tercera excepción: la AGENDA (06/10)
+
+La agenda (`40_Agenda.js`, docs/ESTADO.md 0.z) **crea filas y las mantiene al día con los mails**: una reunión cuya
+hora o dirección cambia en un "Actualizo:", que se reprograma dentro de la semana o que desaparece del mail, tiene que
+reflejarse en su fila, y "sólo celda vacía" la congelaría con la primera versión. Es la tercera excepción anunciada, y
+vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
+
+- **sólo las columnas de `COLUMNAS_QUE_ESCRIBE_AGENDA`**: Figura, EVENTO, FECHA, HORA, Dirección, Barrio, STATUS y las
+  nueve columnas de la agenda (al final, después de `form_clave`: `No participa`, `agenda_uid`, `agenda_mail`,
+  `agenda_version`, `agenda_hora_escrita`, `agenda_direccion_escrita`, `agenda_barrio_escrito`, `agenda_fecha_escrita`,
+  `agenda_status_escrito`). Cualquier otra es un error y no se escribe nada;
+- **una celda se pisa sólo si todavía tiene lo que escribió el sistema** (lo anotado en `agenda_*_escrita`), con
+  lectura fresca. Si alguien del equipo la cambió, no se toca nunca más ("editada por el equipo"). Al vincular una
+  fila del equipo, una celda que replica lo que dice el mail se anota como del sistema;
+- **STATUS sólo por `AGENDA_TRANSICIONES_STATUS`**: '' → en agenda, en agenda → Suspendida (desapareció del mail
+  siendo futura), Suspendida → en agenda (volvió, y el "Suspendida" lo había puesto el sistema). Ver 3.4;
+- las filas nuevas van **al final**; todo lo que escribe va en `COLOR_SISTEMA`; **deshacer** (paso 38) borra las
+  filas creadas sólo si son las últimas (si no, las vacía) y vuelve atrás sólo lo que todavía tiene lo que escribió.
+
+`setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
+
 ### Tres consecuencias que no son negociables
 
 **a) El cero cuenta como valor escrito.** Escribir `0` sobre una celda vacía la marca como
@@ -193,7 +214,8 @@ antes de que nadie haya cargado nada en ellas.
 | 1 | **Destino final** — workbook "RDV JM-CM - ES / funcionarios" | `1ZpHO6Ru1uY2r9WfBF_yFtu5z7ip7F3Q6VOoRJN5vLAo` | sí |
 | 2 | **Intermedia** — "Base intermedia Reuniones de Vecinos". El script está atado acá (`getActive()`) | `1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM` | sí |
 | 3 | **Origen inscriptos** — `Hoja1` | `1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg` | **no** |
-| 4 | **Agenda** | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
+| 4 | **Agenda** (legado) — la lee y escribe el flujo Agenda del legado | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
+| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`), solapa "Agenda". Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
 
 Solapas que importan:
 
@@ -1617,7 +1639,7 @@ Son los únicos que aparecen como literal en todo el repo
 |---|---|---|
 | `en agenda` | agendada, todavía no pasó | es el **único origen** de la transición |
 | `Realizada` | ocurrió | es el **único destino** de la transición |
-| `Suspendida` | no se hizo | **no.** Decisión de una persona |
+| `Suspendida` | no se hizo | **no**, salvo la AGENDA (06/10, regla 7 del usuario): "en agenda" → "Suspendida" si la reunión desapareció del mail siendo futura, y de vuelta a "en agenda" si reaparece (sólo si el "Suspendida" lo puso ella; `agenda_status_escrito`) |
 | `Reprogramada` | se movió de fecha | **no.** Decisión de una persona |
 | `Se modifico el barrio` | cambió la ubicación | **no.** Decisión de una persona |
 
@@ -2352,7 +2374,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    > `COLUMNAS_MANUALES` pasa a ser **sólo `['Barrio']`**. El desagregado (sexo y edades) se escribe
    > sólo si `Inscriptos` está vacío o es igual al de `B`, para que la fila no quede con un total que no
    > cierra con su desagregado. Las columnas de agenda (`Figura`, `Barrio`, `FECHA`, `HORA`,
-   > `Dirección`, `EVENTO`) quedan fuera: son otro proceso y se encaran después. **B2 se elimina**: el
+   > `Dirección`, `EVENTO`) quedan fuera: son otro proceso y se encaran después (**06/10: las escribe la agenda**,
+   > por su excepción; sección 0, "La tercera excepción"). **B2 se elimina**: el
    > sistema calcula al vuelo desde `B`. Color nuevo de la marca: `#CFE2F3`.
    >
    > **Antes de implementar se valida**: `paso17_validarCuentas()` (`diagnostico/09_validar_cuentas.js`,
@@ -2552,7 +2575,10 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 27_RevisarFormato.js  el dibujo de REVISAR_MATCH con el formato aprobado (renderRevisarMatch); los datos y
                    las auxiliares, en 26_Fichas.js. REVISAR_FORMATO_NUEVO = true        ← 06/10
 30_Derivadas.js    recalcDerivadas_() — las 11 derivadas por script; pasos 25-27        ← 05/10 (prendido)
-40_Agenda.js       flujo Gmail → Agenda → upsert  (rescatado del legado, redirigido)
+40_Agenda.js       la AGENDA (06/10): Gmail → crear / vincular / actualizar / mover / suspender filas del destino, la
+                   copia en el archivo "Agenda", REGISTRO_AGENDA y deshacer. Apagada (AGENDA_ACTIVA)  ← 06/10
+41_AgendaParser.js el parser de los mails de agenda y el barrio desde la dirección (regla de confianza)  ← 06/10
+42_BarriosCabaGeo.js los límites oficiales de los 48 barrios (sólo datos)                          ← 06/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
@@ -3441,7 +3467,11 @@ Lo que falta contestar:
   se queda siempre con el último: si la corrección vino en uno del medio y después alguien
   respondió algo trivial, está tomando el equivocado.
 
-> **06/10 — Agenda, etapa 1 (medir), en curso: docs/ESTADO.md, 0.x.** Ya contestado del análisis de `DIAG_MAILS`:
+> **06/10 noche — Agenda, etapa 2 (crear y actualizar filas del destino): IMPLEMENTADA, sin correr todavía**
+> (docs/ESTADO.md, 0.z; para el equipo: docs/agenda-equipo.md). `40_Agenda.js`, apagada (`AGENDA_ACTIVA = false`);
+> la secuencia (versión con nombre, en seco, una semana, deshacer), en ESTADO y en 99_Correr.js (pasos 35 a 38).
+>
+> **06/10 — Agenda, etapa 1 (medir), cerrada: docs/ESTADO.md, 0.x.** Ya contestado del análisis de `DIAG_MAILS`:
 > el cuerpo es muy estable (día + `Evento:` / `Hora:` / `Lugar:`) y **no son hilos sino versiones**: por semana +
 > grupo llegan de 1 a 10 mails y vale el último. **"NO PARTICIPA" no es "no se hace"**: la reunión se hace, con fila a
 > nombre de esa figura (el legado las descartaba). Los pasos 29-32 (`diagnostico/16_agenda_medicion.js`) miden el

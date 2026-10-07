@@ -90,6 +90,12 @@ function porQueVacia(desde, hasta) {
   Logger.log('--- resumen por causa ---');
   Object.keys(causas).sort(function (a, b) { return causas[b] - causas[a]; })
     .forEach(function (c) { Logger.log('  %s: %s', c, causas[c]); });
+  // Barrio y Figura (06/10, Agenda etapa 2): las escribe la agenda, no el upsert. Por qué están vacías, sin geocodificar.
+  const ag = _causasAgenda_diag12(dest, d1, d2, soloActivas);
+  Logger.log('--- Barrio y Figura vacíos (los escribe la agenda): %s ---', ag.total);
+  Object.keys(ag.causas).sort(function (a, b) { return ag.causas[b] - ag.causas[a]; })
+    .forEach(function (c) { Logger.log('  %s: %s', c, ag.causas[c]); });
+  ag.lineas.slice(0, 60).forEach(function (x) { Logger.log('    fila %s | %s | %s | %s → %s', x.f.fila, x.f.figura || '(sin figura)', fmtFecha_(x.f.fecha), x.col, x.causa); });
   Logger.log('--- f) DEBERÍA ESTAR ESCRITA: %s   (tiene que dar 0 después de una corrida real del upsert) ---', deberia.length);
   deberia.forEach(function (x) { Logger.log('  fila %s | %s | %s | %s', x.f.fila, x.f.figura, fmtFecha_(x.f.fecha), x.col); });
   return { causas: causas, deberia: deberia.length, lineas: lineas.length };
@@ -153,3 +159,30 @@ function _causaStatus_(f, v, d, ahora, dest) {
   }
   return ahora.status ? null : 'e) STATUS: no pasa (ver el log del upsert)';
 }
+
+/**
+ * Por qué están vacíos Barrio y Figura (06/10, Agenda etapa 2). Sin geocodificar nada: el motivo exacto de un barrio
+ * vacío ("cerca del límite", "otra comuna que la del mail"…) está en la copia del archivo "Agenda" (Sin barrio porque).
+ */
+function _causasAgenda_diag12(dest, d1, d2, soloActivas) {
+  const A = indicesAgenda_(dest.hdr);
+  const out = { total: 0, causas: {}, lineas: [] };
+  const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
+  const sumar = function (f, col, c) { out.total++; out.causas[c] = (out.causas[c] || 0) + 1; out.lineas.push({ f: f, col: col, causa: c }); };
+  const esSeg = function (f) { return normalizeText_(val(f, 'EVENTO')) === normalizeText_(AGENDA_EVENTO_POR_TIPO['Seguridad en tu Barrio']); };
+  dest.filas.forEach(function (f) {
+    if (f.fila < d1 || f.fila > d2) return;
+    if (soloActivas && !esFilaActiva_(f.fecha)) return;
+    const deAgenda = !A.faltan.length && !esVacio_(val(f, 'agenda_uid'));
+    if (esVacio_(f.barrio)) {
+      sumar(f, 'Barrio', !deAgenda ? 'g) Barrio: la fila no es de la agenda (la carga el equipo)'
+                                    : 'h) Barrio: no se cumplió la regla de confianza (el motivo, en la copia "Agenda": Sin barrio porque) — lo carga el equipo');
+    }
+    if (!f.figura) {
+      sumar(f, 'Figura', esSeg(f) ? 'i) Figura: Seguridad en tu Barrio, todavía no está en RDV CONJUNTO o es ambigua (' + AGENDA_SOLAPA_FIGURA + ')'
+                                  : 'j) Figura vacía en una fila que no es Seguridad en tu Barrio');
+    }
+  });
+  return out;
+}
+

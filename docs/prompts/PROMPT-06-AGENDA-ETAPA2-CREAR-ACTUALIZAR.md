@@ -137,6 +137,50 @@ PASO_DERIVADAS_SOLAPA, arnés de tests: los tests de Node siguen usando una hoja
     y una página para el equipo: qué hace el sistema con la agenda y qué tienen que cargar
     ellos (barrio cuando queda vacío, figura de Seguridad ambigua).
 
+17. COPIA EN EL ARCHIVO "Agenda": además del destino, las reuniones del mail se copian en el
+    archivo "Agenda" (ID 1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0), solapa "Agenda"
+    (hoy está VACÍA).
+    a) Una fila por reunión (la última versión de su semana), de todas las semanas desde que
+       arranca Agenda (no se rellena el histórico). Orden: fecha y hora.
+    b) Columnas, en este orden (decisión del usuario, con agregados):
+         Semana | Grupo | Día | FECHA | HORA | Figura | No participa | Conjunta con | EVENTO |
+         Lugar del mail | Dirección | Barrio calculado | Comuna | Sin barrio porque | Marcas |
+         Estado en la agenda | Cambios | Fecha original | Fila del destino |
+         STATUS en el destino | Mail | Versión | Última actualización
+       Qué va en cada una:
+       - Semana: "DD/MM al DD/MM" del asunto. Grupo: CM y Ministros / JM / CM, LA y Ministros.
+       - Día: día de la semana en minúscula, como en el destino.
+       - Figura: la que le corresponde a la fila (1ª nombrada si es conjunta; en Seguridad en
+         tu Barrio, la que salió de RDV CONJUNTO, o vacía si todavía no está).
+       - No participa / Conjunta con: nombres separados por " / ".
+       - EVENTO: el tipo normalizado, con las mismas formas que usa el destino.
+       - Lugar del mail: tal como lo dice el evento (Comuna 12, Eje Sur, Recoleta).
+       - Barrio calculado: con la regla de confianza; vacío si no la cumple.
+       - Comuna: la del barrio calculado o, si no hay, la que trae el mail.
+       - Sin barrio porque: si Barrio calculado está vacío, el motivo (A CONFIRMAR, cerca del
+         límite, geocodificación aproximada, el mail trae eje, otra comuna que la del mail...).
+       - Marcas: SOLO SE COMUNICA POR REDES, A CONFIRMAR, NO SE COMUNICA LA DIRECCIÓN...
+       - Estado en la agenda: vigente / reprogramada / desaparecida.
+       - Cambios: lo que cambió en la última versión respecto de la anterior (hora 17:45 →
+         18:15, dirección, lugar, "nueva").
+       - Fecha original: si la fecha se corrigió (mes mal escrito en el mail) o se reprogramó,
+         la de antes.
+       - Fila del destino: número de fila (vacío si todavía no tiene). STATUS en el destino:
+         el que tiene esa fila hoy.
+       - Mail: asunto, con link al mensaje de Gmail. Versión: "3 de 5". Última actualización:
+         fecha y hora de la corrida que la escribió.
+       Mismo formato de fecha y hora que el destino.
+    c) Es una solapa DEL SISTEMA: se reescribe entera en cada corrida, con formato (encabezado
+       fijo, anchos ajustados, la semana en curso destacada) y protegida con advertencia. Nadie
+       la edita a mano; lo que haya que corregir se corrige en el destino.
+    d) ANTES: revisá en el código del legado quién lee o escribe ese archivo
+       (syncAgendaSheetInBaseFromAgenda_2 y agenda_* de "Agenda traer datos del mail.js" /
+       "Agenda push a base.js"). Si algún activador del legado lee esa solapa y la empuja a la
+       base, hay que apagarlo o redirigirlo antes de escribir ahí, para que no se mezclen los
+       dos procesos. Decímelo en el plan.
+    e) Va en la misma corrida de agenda (y en su versión en seco, que muestra cuántas filas
+       escribiría). El paso de deshacer no la toca: se regenera sola en la corrida siguiente.
+
 ## Secuencia de corridas para el usuario (dejala en ESTADO y en la cabecera de 99_Correr.js)
 
 1. Versión con nombre del destino.

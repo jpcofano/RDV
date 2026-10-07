@@ -1599,6 +1599,13 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
   // Si no, error ANTES de calcular: no se escribe nada.
   verificarHojaDestino_(ssDestino_());
 
+  // La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
+  // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
+  if (AGENDA_ACTIVA && !historial) {
+    try { correrAgendaEnBloqueo_(enSeco); }
+    catch (err) { Logger.log('>>> La agenda falló: %s (el cruce con los formularios sigue igual).', err); }
+  }
+
   // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas
   // que ya escribió tienen RDV_UID y entran por ahí; sólo se completan sus celdas vacías.
   const props = PropertiesService.getScriptProperties();

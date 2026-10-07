@@ -32,7 +32,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
-                  '27_RevisarFormato.js'];
+                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -344,11 +344,10 @@ function crearEntorno(opts) {
    * filas): los escenarios de antes del 03/10 usan fechas de 2025 y 2026 contra un "hoy" del 02/10/2026.
    * El escenario [15] pone DIAS_ACTIVOS = 30 y las fichas.
    */
-  // RDV_HOJA_DESTINO: los escenarios escriben en la copia simulada y verifican que la real no se toque (desde el
-  // 03/10 la constante apunta al real).
+  // 06/10: la copia de prueba ya no existe; los escenarios escriben en la solapa del destino, simulada.
   // DERIVADAS_POR_SCRIPT: los datos sintéticos traen derivadas de mentira ("derivada-i"); sólo [19] lo prende.
   // REVISAR_FORMATO_NUEVO: los escenarios de fichas de antes del 06/10 prueban el formato de una ficha por bloque; [22], el nuevo.
-  const config = Object.assign({ DIAS_ACTIVOS: 'null', RDV_HOJA_DESTINO: "'AAA NOBORRAR'", DERIVADAS_POR_SCRIPT: 'false',
+  const config = Object.assign({ DIAS_ACTIVOS: 'null', DERIVADAS_POR_SCRIPT: 'false',
                                  REVISAR_FORMATO_NUEVO: 'false' },
                                opts.config || {});
   ARCHIVOS.forEach(function (f) {
@@ -479,7 +478,6 @@ function montar(E, n, conCopia, casos) {
   if (casos) casos(E, datos);
   const ssD = E.planilla(E.cfg('RDV_SS_DESTINO')), ssI = E.planilla(E.cfg('RDV_SS_INTERMEDIA'));
   ssD.hojas['RVD JM-CM - ES'] = new E.Hoja('RVD JM-CM - ES', datos.dest);
-  if (conCopia) ssD.hojas['AAA NOBORRAR'] = new E.Hoja('AAA NOBORRAR', datos.dest);
   ssD.hojas['Comunas'] = new E.Hoja('Comunas', datos.comunas);
   ssD.hojas['RDV CONJUNTO'] = new E.Hoja('RDV CONJUNTO', datos.conjunto);
   ssI.hojas['B'] = new E.Hoja('B', datos.b, COSTO_BASE.leerB);
@@ -523,11 +521,11 @@ function contarUid(h) { let n = 0; for (let i = 1; i < h.v.length; i++) if (h.v[
 // ============================== los escenarios ==============================
 
 function escenarioDesdeCero() {
-  console.log('\n[1] 800 filas, la copia vacía de traza: una escritura completa');
+  console.log('\n[1] 800 filas, sin traza: una escritura completa');
   const E = crearEntorno();
   const m = montar(E, 800, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'], real = m.ssD.hojas['RVD JM-CM - ES'];
-  const antes = foto(hoja), antesReal = foto(real);
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
+  const antes = foto(hoja);
   const r = E.ejecutar('upsertDestino');
   ok(!r.error, 'termina sin error' + (r.error ? ': ' + r.error.message : ''));
   const w = r.resultado && r.resultado.escritura;
@@ -536,7 +534,6 @@ function escenarioDesdeCero() {
   ok(a.sinAzul === 0, 'todo lo escrito está en azul');
   ok(a.fondosTocados === 0, 'ningún otro fondo cambió');
   ok(a.manualesODerivadas === 0, 'ninguna columna manual ni derivada recibió nada');
-  ok(JSON.stringify(foto(real)) === JSON.stringify(antesReal), 'la solapa real no se tocó (el destino apunta a la copia)');
   ok(w && w.completa, 'completa en una corrida');
   ok(contarUid(hoja) === w.filasHechas, 'filas con RDV_UID = filas escritas (' + contarUid(hoja) + ')');
   ok(a.realizadas === w.realizadas && a.realizadas > 0, 'STATUS en agenda → Realizada: ' + a.realizadas);
@@ -562,7 +559,7 @@ function escenarioReanudarCortada(fuenteVieja) {
   // La cortada se arma escribiendo como el código viejo: celda por celda, en orden, y cortando a mitad de una fila.
   const E = crearEntorno();
   const m = montar(E, 800, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   let filasCortadas;
   if (fuenteVieja) {
     const V = crearEntorno({ fuente: fuenteVieja });
@@ -594,7 +591,7 @@ function escenarioReanudarCortada(fuenteVieja) {
     // Sin el código viejo: 123 filas escritas a mano en el mock, la última a mitad.
     const E2 = crearEntorno(); const m2 = montar(E2, 800, true);
     E2.ejecutar('upsertDestino');
-    const llena = m2.ssD.hojas['AAA NOBORRAR'];
+    const llena = m2.ssD.hojas['RVD JM-CM - ES'];
     // Las primeras 123 filas escritas, completas; la 123ª sólo con traza y RDV_UID (el corte cayó
     // antes de sus datos), como dejaba el orden del código viejo: traza, uid, datos, STATUS.
     let n = 0;
@@ -637,7 +634,7 @@ function escenarioCorteYContinuacion() {
   console.log('\n[3] corte propio: con el servicio 50 veces más lento, se corta sola y sigue en la próxima');
   const E = crearEntorno({ costo: { op: 2000, lectura: 3000 } });
   const m = montar(E, 800, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const antes = foto(hoja);
   let corridas = 0, maxMs = 0, completa = false, cortes = 0;
   while (!completa && corridas < 10) {
@@ -665,7 +662,7 @@ function escenarioEquipoEnElMedio() {
   console.log('\n[4] el equipo carga una celda vacía DESPUÉS de que se calculó el plan: no se pisa');
   const E = crearEntorno();
   const m = montar(E, 800, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const orig = E.ctx.setSiDelSistemaLote_;
   let celda = null;
   E.ctx.setSiDelSistemaLote_ = function (sh, hdr, esc) {
@@ -681,18 +678,19 @@ function escenarioEquipoEnElMedio() {
 }
 
 function escenarioGuarda() {
-  console.log('\n[5] la guarda: solapa inexistente, o con otros encabezados → error, sin escribir');
-  let E = crearEntorno(); let m = montar(E, 50, false);
-  let antes = JSON.stringify(foto(m.ssD.hojas['RVD JM-CM - ES']));
+  console.log('\n[5] la guarda: sin la solapa destino, o una solapa con otros encabezados → error, sin escribir');
+  let E = crearEntorno(); let m = montar(E, 50, true);
+  const datos = m.ssD.hojas['RVD JM-CM - ES'];
+  delete m.ssD.hojas['RVD JM-CM - ES'];
   let r = E.ejecutar('upsertDestino');
-  ok(r.error && /No existe la solapa destino/.test(r.error.message), 'sin la copia: ' + (r.error && r.error.message));
-  ok(JSON.stringify(foto(m.ssD.hojas['RVD JM-CM - ES'])) === antes, 'y no tocó nada');
-  E = crearEntorno(); m = montar(E, 50, true);
-  m.ssD.hojas['AAA NOBORRAR'].v[0][colD('Masculinos')] = 'Varones';
-  antes = JSON.stringify(foto(m.ssD.hojas['AAA NOBORRAR']));
+  ok(r.error && /No existe la solapa destino/.test(r.error.message), 'sin la solapa destino: ' + (r.error && r.error.message));
+  E = crearEntorno({ config: { RDV_HOJA_DESTINO: "'Otra solapa'" } }); m = montar(E, 50, true);
+  m.ssD.hojas['Otra solapa'] = new E.Hoja('Otra solapa', datos.v);
+  m.ssD.hojas['Otra solapa'].v[0][colD('Masculinos')] = 'Varones';
+  const antes = JSON.stringify(foto(m.ssD.hojas['Otra solapa']));
   r = E.ejecutar('upsertDestino');
-  ok(r.error && /no son los del destino real/.test(r.error.message), 'encabezado cambiado: ' + (r.error && r.error.message));
-  ok(JSON.stringify(foto(m.ssD.hojas['AAA NOBORRAR'])) === antes, 'y no tocó nada');
+  ok(r.error && /no son los del destino real/.test(r.error.message), 'otra solapa con un encabezado cambiado: ' + (r.error && r.error.message));
+  ok(JSON.stringify(foto(m.ssD.hojas['Otra solapa'])) === antes, 'y no tocó nada');
 }
 
 /**
@@ -756,7 +754,7 @@ function escenarioGemelos() {
   console.log('\n[8] gemelos (02/10): la 309/315, clave repetida, la 134, la Macri "Orden Público" y la 645');
   const E = crearEntorno();
   const m = montar(E, 200, true, casosGemelos);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const filaDe = function (fig, d, mes) {
     return hoja.v.findIndex(function (r, i) {
       const f = r[colD('FECHA')];
@@ -796,7 +794,7 @@ function escenarioGemelos() {
   console.log('  — lo que quedó en la copia: filas escritas sólo con el nombre (sin form_clave); la "309" con el gemelo —');
   const E2 = crearEntorno();
   const m2 = montar(E2, 200, true, casosGemelos);
-  const h2 = m2.ssD.hojas['AAA NOBORRAR'];
+  const h2 = m2.ssD.hojas['RVD JM-CM - ES'];
   E2.ejecutar('upsertDestino');
   // Como antes del 02/10 noche: ninguna fila con form_clave, y la "309" escrita con el mismo nombre.
   const nombreG = 'VÍNCULO CIUDADANO - Encuentro con vecinos - Clara Mendieta 07/08 Recoleta';
@@ -848,7 +846,7 @@ function escenarioPasoA() {
   const E = crearEntorno();
   const m = montar(E, 300, true);
   m.ssI.hojas['B2'] = new E.Hoja('B2', armarB2(E, m.ssI.hojas['B'].v));
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const iAs = colD('Asistentes'), iBar = colD('Barrio');
   let vaciados = 0, sinBarrio = 0;
   for (let i = 1; i < hoja.v.length; i++) {
@@ -896,7 +894,7 @@ function escenarioEncabezadosB() {
   const m = montar(E, 200, true);
   m.ssI.hojas['B'].v[0] = HDR_B_VIEJO.slice();
   const r = E.ejecutar('upsertDestino');
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const filaHueco = hoja.v.findIndex(function (f, i) { return i > 0 && (i - 1) % 10 < 3; });
   ok(!r.error && hoja.v[filaHueco][colD('Masculinos')] !== '' && hoja.v[filaHueco][colD('18-24')] !== '',
      'con los encabezados VIEJOS se lee todo (alias): sexo y edades escritos');
@@ -906,11 +904,11 @@ function escenarioEncabezadosB() {
   const E2 = crearEntorno();
   const m2 = montar(E2, 200, true);
   m2.ssI.hojas['B'].v[0][HDR_B.indexOf('inscriptos_edades_40_55')] = 'otra cosa';
-  const antes = JSON.stringify(foto(m2.ssD.hojas['AAA NOBORRAR']));
+  const antes = JSON.stringify(foto(m2.ssD.hojas['RVD JM-CM - ES']));
   const r2 = E2.ejecutar('upsertDestino');
   ok(r2.error && /Faltan columnas en "B"/.test(r2.error.message) && /edad40_55/.test(r2.error.message),
      'falta una obligatoria: error — ' + (r2.error ? r2.error.message.slice(0, 120) : 'sin error'));
-  ok(JSON.stringify(foto(m2.ssD.hojas['AAA NOBORRAR'])) === antes, 'y no escribió nada');
+  ok(JSON.stringify(foto(m2.ssD.hojas['RVD JM-CM - ES'])) === antes, 'y no escribió nada');
   const r3 = E2.ejecutar('validarCuentas');
   ok(r3.error && /Faltan columnas/.test(r3.error.message), 'el paso 17 también se frena');
 }
@@ -924,7 +922,7 @@ function escenarioMalEscritas() {
   console.log('\n[11] paso 18: deshacer lo mal escrito (Sin identificar = Inscriptos)');
   const E = crearEntorno();
   const m = montar(E, 200, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   // El backup: el destino antes de escribir.
   const backup = new E.Hoja('RVD JM-CM - ES', hoja.v);
   E.planilla(E.cfg('RDV_SS_BACKUP_0210')).hojas['RVD JM-CM - ES'] = backup;
@@ -944,13 +942,12 @@ function escenarioMalEscritas() {
   const antes = JSON.stringify(foto(hoja));
   const l = E.ejecutar('listarMalEscritas');
   ok(!l.error && JSON.stringify(foto(hoja)) === antes, 'listar: en seco, no toca nada' + (l.error ? ' — ' + l.error.message : ''));
-  const enCopia = l.resultado['AAA NOBORRAR'], enReal = l.resultado['RVD JM-CM - ES'];
-  ok(enCopia.lista.length === 5 && enCopia.estabanAntes === 1, 'copia: 5 mal escritas, 1 ya estaba en el backup (' +
-     enCopia.lista.length + ' / ' + enCopia.estabanAntes + ')');
-  ok(enReal.lista.length === 0, 'real: ninguna (no se escribió) — ' + enReal.lista.length);
-  E.ctx.vaciarCopia_test_ = function () { return E.ctx.vaciarMalEscritas('AAA NOBORRAR'); };
-  const v = E.ejecutar('vaciarCopia_test_');
-  ok(!v.error && v.resultado.vaciadas === 5, 'vaciar la copia: ' + (v.resultado ? v.resultado.vaciadas : v.error.message));
+  const enReal = l.resultado['RVD JM-CM - ES'];
+  ok(enReal.lista.length === 5 && enReal.estabanAntes === 1, '5 mal escritas, 1 ya estaba en el backup (' +
+     enReal.lista.length + ' / ' + enReal.estabanAntes + ')');
+  E.ctx.vaciarReal_test_ = function () { return E.ctx.vaciarMalEscritas('RVD JM-CM - ES'); };
+  const v = E.ejecutar('vaciarReal_test_');
+  ok(!v.error && v.resultado.vaciadas === 5, 'vaciar: ' + (v.resultado ? v.resultado.vaciadas : v.error.message));
   ok(tocadas.slice(0, 5).every(function (t) { return hoja.v[t.i][iSin] === '' && hoja.bg[t.i][iSin] === null; }),
      'quedaron vacías y sin color');
   ok(hoja.v[legado.i][iSin] === hoja.v[legado.i][iIns], 'la del legado sigue como estaba');
@@ -969,7 +966,7 @@ function escenarioPasoB() {
   console.log('\n[12] PASO B: Inscriptos, canales, Asistentes, desagregado condicionado, STATUS, color nuevo');
   const E = crearEntorno();
   const m = montar(E, 300, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'], conj = m.ssD.hojas['RDV CONJUNTO'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'], conj = m.ssD.hojas['RDV CONJUNTO'];
   const C = function (n) { return colD(n); };
   const filaB = m.ssI.hojas['B'].v;
   const insB = function (i) { return filaB[i][2]; };          // la fila i del destino es la fila i de B
@@ -1057,7 +1054,7 @@ function escenarioPorQueVacia() {
   console.log('\n[13] PASO 20: por qué está vacía');
   const E = crearEntorno();
   const m = montar(E, 120, true);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'], filaB = m.ssI.hojas['B'].v;
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'], filaB = m.ssI.hojas['B'].v;
   const C = colD;
   hoja.v[101][C('Mail')] = '';                                   // B la tiene → se escribiría
   hoja.v[102][C('Mail')] = ''; filaB[102][11] = '';               // B no la trae → b)
@@ -1114,7 +1111,7 @@ function escenarioElegido() {
   // REVISAR_MATCH en el formato de una línea por fila (las fichas tienen su escenario, [15] y [16]).
   const E = crearEntorno({ config: { REVISAR_COMO_FICHAS: 'false' } });
   const m = montar(E, 150, true, casosElegido);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const filaDe = function (fig, d, mes) {
     return hoja.v.findIndex(function (r, i) {
       const f = r[colD('FECHA')];
@@ -1216,7 +1213,7 @@ function escenarioFichas() {
   console.log('\n[15] DIAS_ACTIVOS = 30 y REVISAR_MATCH como fichas (03/10)');
   const E = crearEntorno({ config: { DIAS_ACTIVOS: '30', REVISAR_COMO_FICHAS: 'true' } });
   const m = montar(E, 300, true, casosFichas);
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const ini = new E.Date(2026, 8, 2, 12, 0, 0);   // hoy (02/10) − 30
   const esCerrada = function (r) { const f = r[colD('FECHA')]; return !(f instanceof Date) || f < ini; };
   const antes = foto(hoja);
@@ -1382,7 +1379,7 @@ function escenarioOrdenFichas() {
      'la confianza, en palabras');
 
   // El eje (paso 21 sobre una fila que se escribe): amarillo y "⚠️", sin cambiar el puntaje ni la decisión.
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const nS = hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === 'Sofía Ibarra'; }) + 1;
   vm.runInContext('function __paso21b() { return fichasDePrueba([' + nS + ']); }', E.ctx);
   const p = E.ejecutar('__paso21b');
@@ -1410,14 +1407,14 @@ function escenarioCompletarHistorial() {
   // B: DIAS_ACTIVOS = 30 y el paso 22.
   const EB = crearEntorno({ config: { DIAS_ACTIVOS: '30' } });
   const mB = montar(EB, 300, true, casosFichas);
-  const hB = mB.ssD.hojas['AAA NOBORRAR'];
+  const hB = mB.ssD.hojas['RVD JM-CM - ES'];
   const ini = new EB.Date(2026, 8, 2, 12, 0, 0);
   const antes = foto(hB);
   const rB = EB.ejecutar('completarHistorial');
   ok(!rB.error, 'paso 22 sin error' + (rB.error ? ': ' + rB.error.stack : ''));
   const logB = rB.logs.join('\n');
   ok(/TODO EL HISTORIAL/.test(logB) && /filas activas: \d+ \(todo el historial\)/.test(logB), 'el log dice que es sobre todo el historial');
-  ok(sinUuids(hB) === sinUuids(mA.ssD.hojas['AAA NOBORRAR']), 'escribe lo mismo que el upsert sin límite (salvo los uuids)');
+  ok(sinUuids(hB) === sinUuids(mA.ssD.hojas['RVD JM-CM - ES']), 'escribe lo mismo que el upsert sin límite (salvo los uuids)');
   let viejasEscritas = 0, viejasRealizadas = 0;
   for (let i = 1; i < hB.v.length; i++) {
     const f = antes.v[i][colD('FECHA')];
@@ -1463,7 +1460,7 @@ function escenarioCompletarHistorial() {
     if (!completa && /FALTAN \d+ filas del historial: volver a correr paso22_completarHistorial/.test(r.logs.join('\n'))) falta = true;
   }
   ok(completa && corridas > 1 && falta, 'reanudable: ' + corridas + ' corridas, el log dice cuántas filas faltan');
-  ok(sinUuids(mC.ssD.hojas['AAA NOBORRAR']) === sinUuids(mA.ssD.hojas['AAA NOBORRAR']), 'y termina igual que de una sola vez');
+  ok(sinUuids(mC.ssD.hojas['RVD JM-CM - ES']) === sinUuids(mA.ssD.hojas['RVD JM-CM - ES']), 'y termina igual que de una sola vez');
 }
 
 function escenarioActivadores() {
@@ -1488,10 +1485,10 @@ function escenarioActivadores() {
   ok(E.ejecutar('listarActivadores').resultado.nuevoInstalado, 'paso 23: el del pipeline, INSTALADO');
   E.ejecutar('borrarActivadorDiario_');
   ok(E.activadores.join('|') === 'syncAgendaSheetInBaseFromAgenda_2', 'borrarlo no toca los demás');
-  const E2 = crearEntorno();   // el destino apunta a la copia (como en los demás escenarios)
+  const E2 = crearEntorno({ config: { RDV_HOJA_DESTINO: "'Otra solapa'" } });   // el destino apunta a otra solapa
   montar(E2, 50, true);
   const i3 = E2.ejecutar('instalarActivadorDiario_');
-  ok(i3.error && /no al destino real/.test(i3.error.message), 'con el destino en la copia, tampoco se instala');
+  ok(i3.error && /no al destino real/.test(i3.error.message), 'con el destino en otra solapa, no se instala');
 }
 
 /**
@@ -1520,8 +1517,9 @@ function ponerFormulasDerivadas(h, comunas) {
 }
 
 function escenarioDerivadas() {
-  console.log('\n[19] derivadas por script: comparar, quitar las fórmulas, recalcular, el upsert, restaurar');
-  const E = crearEntorno({ config: { RDV_HOJA_DESTINO: "'RVD JM-CM - ES'", DERIVADAS_POR_SCRIPT: 'true' } });
+  console.log('\n[19] derivadas por script: comparar, el upsert con fórmulas, quitarlas, recalcular, restaurar, paso 16');
+  // 06/10: la copia de prueba ya no existe; todo sobre la solapa del destino (simulada).
+  const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true' } });
   let comunasDatos = null;
   const m = montar(E, 120, true, function (E2, datos) {
     const c = function (n) { return colD(n); };
@@ -1536,73 +1534,73 @@ function escenarioDerivadas() {
     comunasDatos = datos.comunas;
   });
   vm.runInContext('diagFormulasDestino = __diagFormulasReal;', E.ctx);   // el paso 14 de verdad
-  const copia = m.ssD.hojas['AAA NOBORRAR'], real = m.ssD.hojas['RVD JM-CM - ES'];
-  ponerFormulasDerivadas(copia, comunasDatos);
+  const real = m.ssD.hojas['RVD JM-CM - ES'];
   ponerFormulasDerivadas(real, comunasDatos);
   const corre = function (expr) {
     vm.runInContext('function __der() { return ' + expr + '; }', E.ctx);
     return E.ejecutar('__der');
   };
 
-  const c0 = corre("compararDerivadas('AAA NOBORRAR')");
+  const c0 = corre("compararDerivadas('RVD JM-CM - ES')");
   ok(!c0.error && c0.resultado.distintas === 0 && c0.resultado.filas === 120, 'paso 25: 0 distintas en las 120 filas' +
      (c0.error ? ': ' + c0.error.stack : ' (' + c0.resultado.distintas + ')'));
   ok(/Día de la semana \| columna D \| array/.test(c0.logs.join('\n')), 'paso 25: loguea el texto de cada fórmula, con su columna');
-  const k = colD('% de Asistencia'), guardado = copia.v[5][k];
-  copia.v[5][k] = 0.123456;
-  const c1 = corre("compararDerivadas('AAA NOBORRAR')");
+  const k = colD('% de Asistencia'), guardado = real.v[5][k];
+  real.v[5][k] = 0.123456;
+  const c1 = corre("compararDerivadas('RVD JM-CM - ES')");
   ok(c1.resultado.distintas === 1 && c1.resultado.porCol['% de Asistencia'].ejemplos[0].fila === 6, 'una distinta: la cuenta y la muestra (fila 6)');
-  const q0 = corre("quitarFormulasDerivadas('AAA NOBORRAR', true)");
+  const q0 = corre("quitarFormulasDerivadas('RVD JM-CM - ES', true)");
   ok(q0.resultado.quitadas === 0 && q0.resultado.distintas === 1, 'con una distinta, el paso 26 no quita nada');
-  copia.v[5][k] = guardado;
+  real.v[5][k] = guardado;
 
-  const f0 = JSON.stringify(foto(copia));
-  const s0 = corre("quitarFormulasDerivadas('AAA NOBORRAR', false)");
-  ok(!s0.error && s0.resultado.enSeco && JSON.stringify(foto(copia)) === f0, 'paso 26 en seco: no cambia nada');
-  const antes = foto(copia);
-  const q = corre("quitarFormulasDerivadas('AAA NOBORRAR', true)");
-  ok(!q.error && q.resultado.quitadas === 11 && q.resultado.distintas === 0, 'paso 26: quita las 11 y vuelve a dar 0 distintas' +
-     (q.error ? ': ' + q.error.stack : ''));
-  ok(!Object.keys(copia.f).some(function (key) { return /^1,/.test(key); }), 'no queda ninguna fórmula en el encabezado');
-  ok(DERIVADAS.every(function (n) { return copia.v[0][colD(n)] === n; }), 'el encabezado queda como texto');
-  // (el mock agrega filas vacías al vaciar hasta el final de la hoja: se comparan las filas que había)
-  const n0 = antes.v.length;
-  ok(JSON.stringify(foto(copia).v.slice(0, n0)) === JSON.stringify(antes.v) && JSON.stringify(copia.bg.slice(0, n0)) === JSON.stringify(antes.bg),
-     'los valores son los mismos que mostraban las fórmulas, y sin color');
-  ok((copia.protecciones || []).length === 11 && copia.protecciones.every(function (x) { return x.warning; }),
-     'las 11 columnas protegidas con advertencia');
-  const resp = m.ssI.hojas['DERIVADAS_RESPALDO'];
-  ok(resp && resp.v.filter(function (r) { return r[0] === 'AAA NOBORRAR' && r[3] === 'array'; }).length === 11, 'respaldo: las 11 fórmulas');
-
-  // Cambia lo que las origina: se recalculan sólo esas celdas.
-  copia.v[3][colD('Inscriptos')] = 999;
-  copia.v[4][colD('Barrio')] = 'Recoleta';
-  const r1 = corre("recalcularDerivadas('AAA NOBORRAR', true)");
-  ok(!r1.error && r1.resultado.total === 2 && r1.resultado.porCol['% de Asistencia'] === 1 && r1.resultado.porCol['Comuna'] === 1,
-     'recalcular: sólo las celdas que cambiaron (el %, y la Comuna: en los datos sintéticos el resto de Comunas es igual) → ' + (r1.resultado ? r1.resultado.total : r1.error));
-  ok(copia.v[3][k] === copia.v[3][colD('Asistentes')] / 999 && copia.v[4][colD('Comuna')] === 2, 'con los valores nuevos');
-  ok(JSON.stringify(copia.bg.slice(0, n0)) === JSON.stringify(antes.bg), 'sin color');
-  const d14 = corre("diagFormulasDestino('AAA NOBORRAR')");
-  ok(!d14.error && d14.resultado.porScript === 11 && d14.resultado.sinFormula === 0 && d14.resultado.difFila === 0 &&
-     /CONFIRMADO: valores = Comunas/.test(d14.logs.join('\n')), 'paso 14 sin fórmulas: "valores = Comunas" (11 por script)' +
-     (d14.error ? ': ' + d14.error.stack : ''));
-
-  // El upsert sobre el real, que todavía tiene las fórmulas: no las toca.
+  // El upsert con las fórmulas todavía puestas: no las toca.
   const fr = JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); }));
   const u = E.ejecutar('upsertDestino');
   ok(!u.error && /la columna Día de la semana todavía tiene fórmula: no se escribe\. Correr paso26_quitarFormulasDerivadas/.test(u.logs.join('\n')) &&
      JSON.stringify(DERIVADAS.map(function (n) { return real.v.map(function (r) { return r[colD(n)]; }); })) === fr,
      'el upsert no escribe las derivadas de una solapa que todavía tiene fórmulas');
+  // (El upsert completó datos; en Sheets las fórmulas se recalculan solas, en el mock no: se vuelven a poner.)
+  ponerFormulasDerivadas(real, comunasDatos);
+
+  const f0 = JSON.stringify(foto(real));
+  const s0 = corre("quitarFormulasDerivadas('RVD JM-CM - ES', false)");
+  ok(!s0.error && s0.resultado.enSeco && JSON.stringify(foto(real)) === f0, 'paso 26 en seco: no cambia nada');
+  const antes = foto(real);
+  const q = corre("quitarFormulasDerivadas('RVD JM-CM - ES', true)");
+  ok(!q.error && q.resultado.quitadas === 11 && q.resultado.distintas === 0, 'paso 26: quita las 11 y vuelve a dar 0 distintas' +
+     (q.error ? ': ' + q.error.stack : ''));
+  ok(!Object.keys(real.f).some(function (key) { return /^1,/.test(key); }), 'no queda ninguna fórmula en el encabezado');
+  ok(DERIVADAS.every(function (n) { return real.v[0][colD(n)] === n; }), 'el encabezado queda como texto');
+  // (el mock agrega filas vacías al vaciar hasta el final de la hoja: se comparan las filas que había)
+  const n0 = antes.v.length;
+  ok(JSON.stringify(foto(real).v.slice(0, n0)) === JSON.stringify(antes.v) && JSON.stringify(real.bg.slice(0, n0)) === JSON.stringify(antes.bg),
+     'los valores son los mismos que mostraban las fórmulas, y el color no cambió');
+  ok((real.protecciones || []).length === 11 && real.protecciones.every(function (x) { return x.warning; }),
+     'las 11 columnas protegidas con advertencia');
+  const resp = m.ssI.hojas['DERIVADAS_RESPALDO'];
+  ok(resp && resp.v.filter(function (r) { return r[0] === 'RVD JM-CM - ES' && r[3] === 'array'; }).length === 11, 'respaldo: las 11 fórmulas');
+
+  // Cambia lo que las origina: se recalculan sólo esas celdas.
+  real.v[3][colD('Inscriptos')] = 999;
+  real.v[4][colD('Barrio')] = 'Recoleta';
+  const r1 = corre("recalcularDerivadas('RVD JM-CM - ES', true)");
+  ok(!r1.error && r1.resultado.total === 2 && r1.resultado.porCol['% de Asistencia'] === 1 && r1.resultado.porCol['Comuna'] === 1,
+     'recalcular: sólo las celdas que cambiaron (el %, y la Comuna: en los datos sintéticos el resto de Comunas es igual) → ' + (r1.resultado ? r1.resultado.total : r1.error));
+  ok(real.v[3][k] === real.v[3][colD('Asistentes')] / 999 && real.v[4][colD('Comuna')] === 2, 'con los valores nuevos');
+  ok(JSON.stringify(real.bg.slice(0, n0)) === JSON.stringify(antes.bg), 'sin color');
+  const d14 = corre("diagFormulasDestino('RVD JM-CM - ES')");
+  ok(!d14.error && d14.resultado.porScript === 11 && d14.resultado.sinFormula === 0 && d14.resultado.difFila === 0 &&
+     /CONFIRMADO: valores = Comunas/.test(d14.logs.join('\n')), 'paso 14 sin fórmulas: "valores = Comunas" (11 por script)' +
+     (d14.error ? ': ' + d14.error.stack : ''));
 
   // Volver atrás.
-  const t0 = corre("restaurarFormulasDerivadas('AAA NOBORRAR', false)");
-  ok(!t0.error && t0.resultado.enSeco && !Object.keys(copia.f).some(function (key) { return /^1,/.test(key); }), 'paso 27 en seco: nada cambia');
-  const t1 = corre("restaurarFormulasDerivadas('AAA NOBORRAR', true)");
-  ok(!t1.error && t1.resultado.restauradas === 11 && DERIVADAS.every(function (n) { return /^=\{/.test(copia.f['1,' + (colD(n) + 1)] || ''); }) &&
-     DERIVADAS.every(function (n) { return copia.v.slice(1).every(function (r) { return r[colD(n)] === '' || r[colD(n)] === undefined; }); }) &&
-     !(copia.protecciones || []).length, 'paso 27: las 11 fórmulas de vuelta, columnas vacías para el array, sin protección');
-  // Paso 16 con DERIVADAS_POR_SCRIPT: "valores = cálculo" (0 distintas), aunque el real tenga fórmulas.
-  // (El upsert de arriba completó datos del real; en Sheets las fórmulas se recalculan solas, en el mock no.)
+  const t0 = corre("restaurarFormulasDerivadas('RVD JM-CM - ES', false)");
+  ok(!t0.error && t0.resultado.enSeco && !Object.keys(real.f).some(function (key) { return /^1,/.test(key); }), 'paso 27 en seco: nada cambia');
+  const t1 = corre("restaurarFormulasDerivadas('RVD JM-CM - ES', true)");
+  ok(!t1.error && t1.resultado.restauradas === 11 && DERIVADAS.every(function (n) { return /^=\{/.test(real.f['1,' + (colD(n) + 1)] || ''); }) &&
+     DERIVADAS.every(function (n) { return real.v.slice(1).every(function (r) { return r[colD(n)] === '' || r[colD(n)] === undefined; }); }) &&
+     !(real.protecciones || []).length, 'paso 27: las 11 fórmulas de vuelta, columnas vacías para el array, sin protección');
+  // Paso 16 con DERIVADAS_POR_SCRIPT: "valores = cálculo" (0 distintas), con las fórmulas puestas.
   ponerFormulasDerivadas(real, comunasDatos);
   const v16 = E.ejecutar('verificarEscritura');
   ok(!v16.error && /distintas en las once: 0/.test(v16.logs.join('\n')) &&
@@ -1612,11 +1610,38 @@ function escenarioDerivadas() {
   const v16b = E.ejecutar('verificarEscritura');
   ok(v16b.resultado.problemas.some(function (x) { return /derivadas: 1 celdas distintas/.test(x); }),
      'paso 16: una celda que no es la del cálculo es un problema');
-  // El upsert (cada hora) en el real ya sin fórmulas: recalcula y la corrige; el log dice por columna.
+  // El upsert (cada hora) ya sin fórmulas: recalcula y la corrige; el log dice por columna.
   real.f = {};
   const u2 = E.ejecutar('upsertDestino');
   ok(!u2.error && real.v[3][colD('Falta Informacion')] === 'No' && /celdas que cambió: 1/.test(u2.logs.join('\n')) &&
      /    Falta Informacion: 1/.test(u2.logs.join('\n')), 'el upsert recalcula y lo dice por columna (Falta Informacion: 1)');
+}
+
+/**
+ * [23] (06/10, Agenda etapa 2) Una fila SIN Figura: la "Seguridad en tu Barrio" que crea la agenda antes de que RDV
+ * CONJUNTO tenga la figura. El cruce con los formularios y el paso 16 tienen que andar igual, sin escribirle nada raro.
+ */
+function escenarioFilaSinFigura() {
+  console.log('\n[23] una fila sin Figura (Seguridad en tu Barrio de la agenda): el upsert y el paso 16 andan igual');
+  const E = crearEntorno();
+  let n = 0;
+  const m = montar(E, 200, true, function (E2, datos) {
+    const D = E2.Date, col = function (x) { return HDR_DESTINO.indexOf(x); };
+    [['Almagro', 24], ['Flores', 25]].forEach(function (b) {
+      const r = HDR_DESTINO.map(function () { return ''; });
+      r[col('Barrio')] = b[0]; r[col('FECHA')] = new D(2026, 8, b[1], 12, 0, 0); r[col('HORA')] = '18:00';
+      r[col('EVENTO')] = 'Seguridad en tu Barrio'; r[col('STATUS REUNIÓN')] = 'en agenda';
+      datos.dest.push(r);
+    });
+    n = datos.dest.length;
+  });
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
+  const u = E.ejecutar('upsertDestino');
+  ok(!u.error, 'el upsert termina sin error' + (u.error ? ': ' + u.error.stack : ''));
+  ok(hoja.v[n - 1][colD('Figura')] === '' && hoja.v[n - 2][colD('Figura')] === '', 'y no les escribe Figura (la escribe la agenda)');
+  const v = E.ejecutar('verificarEscritura');
+  ok(!v.error && !v.resultado.problemas.some(function (x) { return /invariante|duplicad/.test(x); }), 'paso 16 sin problemas por esas filas' +
+     (v.error ? ': ' + v.error.stack : ''));
 }
 
 function casosOradores(E, datos) {
@@ -1651,7 +1676,7 @@ function escenarioOradores() {
   console.log('\n[20] oradores desde RDV CONJUNTO: medir, completar vacías, no pisar, no escribir lo ambiguo');
   const E = crearEntorno();
   const m = montar(E, 200, true, casosOradores);
-  const h = m.ssD.hojas['AAA NOBORRAR'];
+  const h = m.ssD.hojas['RVD JM-CM - ES'];
   const filaDe = function (fig, d) {
     return h.v.findIndex(function (r, i) { return i > 0 && r[colD('Figura')] === fig && r[colD('FECHA')].getDate() === d; });
   };
@@ -1697,7 +1722,7 @@ function escenarioOradores() {
   // Encabezado fuera de lugar: frena con error, no escribe nada.
   const E2 = crearEntorno();
   const m2 = montar(E2, 50, true);
-  const h2 = m2.ssD.hojas['AAA NOBORRAR'];
+  const h2 = m2.ssD.hojas['RVD JM-CM - ES'];
   h2.v[0][colD('Oradores anotados')] = 'Oradores (anotados)';
   m2.ssD.hojas['RVD JM-CM - ES'].v[0][colD('Oradores anotados')] = 'Oradores (anotados)';   // igual en el real (si no, frena la guarda)
   const f2 = JSON.stringify(foto(h2));
@@ -1741,7 +1766,7 @@ function escenarioFichasEnDestino() {
      'la de la intermedia queda con un aviso, sin desplegables');
 
   // Una elección en ELEGIR del destino se lee y se aplica; algo escrito fuera de ELEGIR, no.
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const kLia = fx.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[5] === 'Lía Ferrante'; });
   const kRita = fx.v.findIndex(function (x) { return x[3] === 'REUNIÓN' && x[5] === 'Rita Gómez'; });
   fx.v[kLia][0] = 'Opción 2';
@@ -1880,7 +1905,7 @@ function escenarioFormatoRevisar() {
   rev3.v[kR3][0] = 'Opción 1';
   const opcion1Rita = rev3.v[kR3 + 2][ia('form_nombre')];
   const r = E.ejecutar('upsertDestino');
-  const hoja = m.ssD.hojas['AAA NOBORRAR'];
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
   const n = function (fig) { return hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === fig; }); };
   ok(!r.error && hoja.v[n('Rita Gómez')][colD('form_origen')] === opcion1Rita &&
      /\+elegido_por_persona/.test(hoja.v[n('Rita Gómez')][colD('form_nivel')]),
@@ -1907,8 +1932,8 @@ function escenarioSecoIgualReal() {
   // Una sola entrada que cambia (el equipo carga un barrio) cambia la huella del destino, y se ve cuál.
   const E2 = crearEntorno(); const m2 = montar(E2, 800, true);
   const a = E2.ejecutar('correrEnSeco').logs.find(function (l) { return /^Huella de entradas/.test(l); });
-  const fila = m2.ssD.hojas['AAA NOBORRAR'].v.findIndex(function (r, i) { return i > 0 && r[colD('Barrio')] === ''; });
-  m2.ssD.hojas['AAA NOBORRAR'].v[fila][colD('Barrio')] = 'Palermo';
+  const fila = m2.ssD.hojas['RVD JM-CM - ES'].v.findIndex(function (r, i) { return i > 0 && r[colD('Barrio')] === ''; });
+  m2.ssD.hojas['RVD JM-CM - ES'].v[fila][colD('Barrio')] = 'Palermo';
   const b = E2.ejecutar('correrEnSeco').logs.find(function (l) { return /^Huella de entradas/.test(l); });
   const parte = function (s, k) { return new RegExp(k + ' ([0-9a-f]+)').exec(s)[1]; };
   ok(parte(a, 'destino') !== parte(b, 'destino') && parte(a, 'B') === parte(b, 'B'),
@@ -1928,7 +1953,8 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--elegido') >= 0 || process.argv.indexOf('--fichas') >= 0 ||
     process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
     process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
-    process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
+    process.argv.indexOf('--sinfigura') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -1939,6 +1965,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--oradores') >= 0) escenarioOradores();
   else if (process.argv.indexOf('--fichasdestino') >= 0) escenarioFichasEnDestino();
   else if (process.argv.indexOf('--formato') >= 0) escenarioFormatoRevisar();
+  else if (process.argv.indexOf('--sinfigura') >= 0) escenarioFilaSinFigura();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -1976,6 +2003,7 @@ escenarioDerivadas();
 escenarioOradores();
 escenarioFichasEnDestino();
 escenarioFormatoRevisar();
+escenarioFilaSinFigura();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

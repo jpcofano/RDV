@@ -18,6 +18,10 @@
  *   escribirDerivadas_(...)                 la excepción de las DERIVADAS (05/10): las once columnas que
  *                                           eran fórmulas. No son carga del usuario: se sobrescriben.
  *   quitarFormulasDerivadas_ / restaurarFormulasDerivadas_   el cambio de fórmula a script, y vuelta.
+ *   escribirAgendaLote_(...)               la excepción de la AGENDA (06/10): crea filas al final y actualiza
+ *                                           HORA, Dirección, Barrio, FECHA y STATUS sólo si la celda todavía
+ *                                           tiene lo que escribió el sistema. Y deshacerla (deshacerAgendaLote_,
+ *                                           sacarFilasCreadasAgenda_).
  *
  * La excepción está **afuera** de `setSiDelSistema_`, no adentro. Meterla adentro la volvería
  * inauditable: la regla general dejaría de ser cierta y nadie lo vería leyendo el helper.
@@ -404,12 +408,187 @@ function _tieneFormulaDerivada_(sh, col) {
   return !!(f1 || f2);
 }
 
+// ===================== La tercera excepción: la AGENDA (06/10, etapa 2) =====================
+
+/**
+ * **La agenda crea y actualiza filas del destino** (docs/prompts/PROMPT-06-…, CLAUDE.md sección 0, "La tercera
+ * excepción"). Es una excepción anunciada, como STATUS y las derivadas, y vive aparte para que `setSiDelSistema_`
+ * siga siendo verificable con un grep. Las reglas, todas acá:
+ *
+ *   1. **sólo las columnas de `COLUMNAS_QUE_ESCRIBE_AGENDA`** (Figura, EVENTO, FECHA, HORA, Dirección, Barrio, STATUS
+ *      y las columnas de la agenda), por nombre: cualquier otra es un error y no se escribe NADA;
+ *   2. cada escritura dice qué espera encontrar (`esperado`; '' = celda vacía). Con una **lectura fresca**, hecha acá
+ *      e inmediatamente antes de escribir, la celda se escribe **sólo si todavía tiene eso**. Para una actualización,
+ *      `esperado` es lo que había escrito el sistema (`agenda_*_escrita`): si alguien del equipo la cambió, no
+ *      coincide y no se toca. Es la regla del prompt ("sólo si la celda todavía tiene lo que escribió el sistema");
+ *   3. **STATUS sólo por `AGENDA_TRANSICIONES_STATUS`**: '' → en agenda, en agenda → Suspendida, Suspendida → en
+ *      agenda. Cualquier otro par es un error y no se escribe nada;
+ *   4. lo escrito con valor se pinta `COLOR_SISTEMA`; una celda que se VACÍA (el barrio del sistema cuando la
+ *      dirección nueva ya no cumple la regla) queda sin color;
+ *   5. las filas nuevas van AL FINAL (filas vacías después de la última con datos): nunca se inserta en el medio.
+ *
+ * Devuelve las escrituras hechas, cada una con `antes` y `fondoAntes` (lo que había: para REGISTRO_AGENDA_CAMBIOS y
+ * para deshacer), y las que no se hicieron porque la celda ya no tenía lo esperado (`saltadas`).
+ *
+ * @param {Sheet} sh   la solapa destino
+ * @param {Array} hdr  su fila de encabezados
+ * @param {Array} escrituras [{fila, col, valor, esperado}], fila y col 1-based
+ */
+function escribirAgendaLote_(sh, hdr, escrituras) {
+  const permitidas = COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_);
+  escrituras.forEach(function (e) {
+    const nombre = normalizeHeader_(hdr[e.col - 1]);
+    if (permitidas.indexOf(nombre) < 0) {
+      throw new Error('escribirAgendaLote_: la columna "' + hdr[e.col - 1] + '" no la escribe la agenda. No se escribió nada.');
+    }
+    if (nombre === normalizeHeader_('STATUS REUNIÓN')) {
+      const ok = AGENDA_TRANSICIONES_STATUS.some(function (t) {
+        return normStatus_(t.desde) === normStatus_(e.esperado) && normStatus_(t.hacia) === normStatus_(e.valor);
+      });
+      if (!ok) {
+        throw new Error('escribirAgendaLote_: STATUS "' + e.esperado + '" → "' + e.valor + '" no es una transición de la ' +
+                        'agenda. No se escribió nada.');
+      }
+    }
+  });
+  if (!escrituras.length) return { hechas: [], saltadas: [] };
+
+  // Filas nuevas al final: si hace falta, se agregan filas AL FINAL de la hoja (no mueve nada).
+  const maxFila = escrituras.reduce(function (a, e) { return Math.max(a, e.fila); }, 0);
+  if (maxFila > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), maxFila - sh.getMaxRows());
+
+  let f1 = Infinity, f2 = 0, c1 = Infinity, c2 = 0;
+  escrituras.forEach(function (e) {
+    f1 = Math.min(f1, e.fila); f2 = Math.max(f2, e.fila); c1 = Math.min(c1, e.col); c2 = Math.max(c2, e.col);
+  });
+  const rango = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1);
+  const actual = rango.getValues();                 // lectura fresca
+  const fondos = rango.getBackgrounds();
+  const conValor = {}, vaciar = {}, hechas = [], saltadas = [], vistas = {};
+  escrituras.forEach(function (e) {
+    const k = e.fila + ':' + e.col;
+    if (vistas[k]) return;                           // una celda pedida dos veces: vale la primera
+    vistas[k] = true;
+    const nombre = hdr[e.col - 1];
+    const v = actual[e.fila - f1][e.col - c1];
+    if (valorAgendaComparable_(v, nombre) !== valorAgendaComparable_(e.esperado, nombre)) { saltadas.push(e); return; }
+    const vacio = e.valor === '' || e.valor === null || e.valor === undefined;
+    if (vacio && esVacio_(v)) return;               // vaciar lo vacío: nada que hacer
+    const x = Object.assign({}, e, { antes: v, fondoAntes: fondos[e.fila - f1][e.col - c1] });
+    (vacio ? vaciar : conValor)[e.fila] = ((vacio ? vaciar : conValor)[e.fila] || []).concat([vacio ? Object.assign({}, x, { valor: '' }) : x]);
+    hechas.push(x);
+  });
+  const bloques = _bloquesDeEscritura_(conValor);
+  bloques.forEach(function (b) { sh.getRange(b.fila, b.col, b.valores.length, b.valores[0].length).setValues(b.valores); });
+  _pintarBloques_(sh, bloques);
+  Object.keys(vaciar).forEach(function (fila) {
+    vaciar[fila].forEach(function (e) { sh.getRange(e.fila, e.col).setValue('').setBackground(null); });
+  });
+  return { hechas: hechas, saltadas: saltadas };
+}
+
+/**
+ * Un valor de celda como se compara en la agenda: una hora (HORA, agenda_hora_escrita) como "HH:mm" venga como
+ * texto o como hora de Sheets; una fecha (FECHA, agenda_fecha_escrita) como "yyyyMMdd"; un estado sin acentos ni
+ * mayúsculas; el resto, texto sin espacios de más. Es la única definición de "la celda todavía tiene lo que escribió
+ * el sistema".
+ */
+function valorAgendaComparable_(v, nombreCol) {
+  const n = normalizeHeader_(nombreCol);
+  if (v === null || v === undefined) v = '';
+  if (n === 'hora' || n === 'agenda_hora_escrita') {
+    if (v instanceof Date) return Utilities.formatDate(v, RDV_TZ, 'HH:mm');
+    return _horaAgenda_(v) || str(v);
+  }
+  if (n === 'fecha' || n === 'agenda_fecha_escrita') {
+    const d = toDate_(v);
+    return d ? ymd_(d) : str(v);
+  }
+  if (n === normalizeHeader_('STATUS REUNIÓN') || n === 'agenda_status_escrito') return normStatus_(v);
+  if (v instanceof Date) return Utilities.formatDate(v, RDV_TZ, 'yyyyMMdd HH:mm');
+  return str(v).replace(/\s+/g, ' ');
+}
+
+/**
+ * **Deshacer** (paso 38): vuelve cada celda a lo que había (`antes`, con su fondo) **sólo si todavía tiene lo que
+ * escribió la agenda** (`despues`). Las que alguien cambió después, no se tocan (se devuelven en `saltadas`).
+ * @param {Array} cambios [{fila, col, antes, despues, fondoAntes}]
+ */
+function deshacerAgendaLote_(sh, hdr, cambios) {
+  const hechas = [], saltadas = [];
+  cambios.forEach(function (c) {
+    const nombre = hdr[c.col - 1];
+    if (COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_).indexOf(normalizeHeader_(nombre)) < 0) {
+      throw new Error('deshacerAgendaLote_: "' + nombre + '" no es una columna de la agenda. No se deshizo nada.');
+    }
+  });
+  cambios.forEach(function (c) {
+    const r = sh.getRange(c.fila, c.col);
+    const nombre = hdr[c.col - 1];
+    if (valorAgendaComparable_(r.getValue(), nombre) !== valorAgendaComparable_(c.despues, nombre)) { saltadas.push(c); return; }
+    r.setValue(c.antes === undefined ? '' : c.antes);
+    r.setBackground(c.fondoAntes || null);
+    hechas.push(c);
+  });
+  return { hechas: hechas, saltadas: saltadas };
+}
+
+/**
+ * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
+ * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
+ * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila
+ * con datos de la hoja.
+ */
+function sacarFilasCreadasAgenda_(sh, filas, ultimaConDatos) {
+  const orden = filas.slice().sort(function (a, b) { return a - b; });
+  if (!orden.length) return { borradas: 0, vaciadas: 0 };
+  const alFinal = orden[orden.length - 1] === ultimaConDatos &&
+                  orden.every(function (f, i) { return i === 0 || f === orden[i - 1] + 1; });
+  if (alFinal) {
+    sh.deleteRows(orden[0], orden.length);
+    return { borradas: orden.length, vaciadas: 0 };
+  }
+  const nCols = sh.getLastColumn();
+  orden.forEach(function (f) {
+    const r = sh.getRange(f, 1, 1, nCols);
+    r.clearContent();
+    r.setBackground(null);
+  });
+  return { borradas: 0, vaciadas: orden.length };
+}
+
+/**
+ * **Las columnas de la agenda** (paso 36): agrega al final del destino las de `COLUMNAS_AGENDA` que falten. Sólo
+ * encabezados, en la primera columna libre al final; nunca inserta en el medio. Idempotente. En seco, sólo dice qué
+ * agregaría.
+ */
+function agregarColumnasAgenda(escribe) {
+  const sh = verificarHojaDestino_(ssDestino_());
+  const nCols = sh.getLastColumn();
+  const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0];
+  const presentes = {};
+  hdr.forEach(function (h) { presentes[normalizeHeader_(h)] = true; });
+  const faltan = COLUMNAS_AGENDA.filter(function (c) { return !presentes[normalizeHeader_(c)]; });
+  Logger.log('=== columnas de la agenda (%s) ===', escribe ? 'ESCRIBE encabezados' : 'EN SECO');
+  Logger.log('  el destino tiene %s columnas; la última es "%s". De las %s de la agenda faltan %s: %s', nCols,
+             hdr[nCols - 1], COLUMNAS_AGENDA.length, faltan.length, faltan.join(', ') || '—');
+  if (normalizeHeader_(hdr[nCols - 1]) !== normalizeHeader_('form_clave') && faltan.length === COLUMNAS_AGENDA.length) {
+    Logger.log('  AVISO: la última columna no es form_clave; las de la agenda van igual al final (a partir de %s).',
+               _a1_(1, nCols + 1).replace(/\d+$/, ''));
+  }
+  if (!faltan.length || !escribe) return { faltan: faltan, agregadas: 0, desde: _a1_(1, nCols + 1).replace(/\d+$/, '') };
+  sh.getRange(1, nCols + 1, 1, faltan.length).setValues([faltan]);
+  SpreadsheetApp.flush();
+  Logger.log('>>> agregadas al final, a partir de la columna %s.', _a1_(1, nCols + 1).replace(/\d+$/, ''));
+  return { faltan: faltan, agregadas: faltan.length, desde: _a1_(1, nCols + 1).replace(/\d+$/, '') };
+}
+
 // ===================== La guarda de la solapa destino =====================
 
 /**
- * La solapa a la que apunta `RDV_HOJA_DESTINO`, **o error sin escribir nada** (02/10). Si no es el
- * destino real (la copia de prueba), sus encabezados tienen que ser exactamente los del destino
- * real, en el mismo orden: una solapa que no es la esperada no se escribe.
+ * La solapa a la que apunta `RDV_HOJA_DESTINO`, **o error sin escribir nada** (02/10). Desde el 06/10 (la copia de
+ * prueba ya no existe) tiene que ser el destino real. Si RDV_HOJA_DESTINO apuntara a otra solapa, sus encabezados
+ * tendrían que ser exactamente los del real, en el mismo orden (lo que sigue queda para eso).
  */
 function verificarHojaDestino_(ss) {
   const sh = ss.getSheetByName(RDV_HOJA_DESTINO);

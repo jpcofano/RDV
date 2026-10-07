@@ -20,6 +20,16 @@
  *  >>> 06/10: REVISAR_MATCH con el FORMATO APROBADO (docs/revisar-match-ficha-tecnica.md), PRENDIDO
  *      (REVISAR_FORMATO_NUEVO = true) después de los pasos 33 y 34. Falta: upsertDestino() una vez → la solapa del equipo
  *      pasa al formato nuevo, conservando ELEGIR y COMENTARIO.
+ *  >>> 06/10 noche: AGENDA, ETAPA 2 — crear y actualizar filas del destino (ESTADO 0.z; prompt 06). La copia de prueba
+ *      ya no existe: todo va sobre el real, con estas protecciones. Predicción de cada paso en ESTADO 0.z:
+ *        1. ponerle NOMBRE a la versión del archivo del destino (Archivo → Historial de versiones)
+ *        2. paso35_medirReglaBarrio()  y  paso35b_medirDesaparecidas()   (sólo lectura) → aprobar el margen
+ *        3. paso36_columnasAgenda_enSeco() → paso36_columnasAgenda()      (9 encabezados al final)
+ *        4. AGENDA_SOLO_SEMANA = el lunes de la semana en curso (00_Config.js) → paso37_agenda_enSeco()
+ *        5. paso37_agenda()  (real, esa semana) → paso16_verificarEscritura() → mirar las filas y el archivo "Agenda"
+ *        6. AGENDA_SOLO_SEMANA = null: paso37_agenda_enSeco() → paso37_agenda() → paso16_verificarEscritura()
+ *        7. AGENDA_ACTIVA = true (entra al activador de cada hora)
+ *      Para volver atrás: paso38_deshacerAgenda_enSeco() → paso38_deshacerAgenda().
  *  >>> 06/10 tarde: AGENDA, ETAPA 1 — SEGUNDA CORRIDA, con los ajustes (fecha fuera de semana, asuntos, tipos,
  *      regla de confianza del barrio; ESTADO 0.x, predicción escrita): paso29 → paso30 → paso31 (mide la regla).
  *  >>> 06/10: AGENDA, ETAPA 1 — MEDIR (ESTADO 0.x; todo sólo lectura sobre el destino; predicciones en ESTADO):
@@ -51,7 +61,7 @@
  *      Alcance nuevo (Inscriptos, canales, Asistentes; ESTADO 0.l): PASO A, sólo lectura.
  *  02/10 noche: PASO B implementado (Inscriptos, canales, Asistentes, color #CFE2F3; ESTADO 0.n).
  *      Prueba en la copia, en este orden:
- *        1. paso18_malEscritas_vaciarCopia()  → si todavía no se corrió
+ *        1. (paso18 sobre la copia: ya no existe, ni la copia)
  *        2. paso16_verificarEscritura()       → línea de base de Barrio (anotarla en LINEA_BASE_AZULES)
  *        3. upsertDestino() una vez            [20_UpsertDestino.js]
  *        4. paso16_verificarEscritura()       → OK: invariante 0, Barrio sin subir, 0 incompletas
@@ -325,16 +335,9 @@ function paso17_validarCuentas() {
 function paso18_malEscritas_listar() {
   _anunciar_('paso 18 — mal escritas por el sistema desde el 02/10 (EN SECO)',
              'listarMalEscritas()  [diagnostico/10_mal_escritas.js]',
-             'NO escribe en ninguna planilla (lee el real, la copia, B y el backup del 02/10)',
+             'NO escribe en ninguna planilla (lee el destino, B y el backup del 02/10)',
              'sólo el log: por solapa, cada celda mal escrita con el valor escrito y el correcto');
   return listarMalEscritas();
-}
-
-function paso18_malEscritas_vaciarCopia() {
-  _anunciar_('paso 18 — VACIAR las mal escritas en la COPIA', 'vaciarMalEscritas()  [diagnostico/10_mal_escritas.js]',
-             'SÍ, en "' + RDV_HOJA_COPIA_PRUEBA + '": vacía esas celdas y les saca el color (nada más)',
-             'el log dice cuántas vació');
-  return vaciarMalEscritas(RDV_HOJA_COPIA_PRUEBA);
 }
 
 function paso18_malEscritas_vaciarReal() {
@@ -409,63 +412,62 @@ function paso22_completarHistorial_enSeco() {
 //  DERIVADAS POR SCRIPT (05/10, antes de Agenda; ESTADO 0.u). La solapa sobre la que trabajan los
 //  pasos 25 a 27: primero la copia; después el real (cambiar esta constante).
 // =============================================================================================
-const PASO_DERIVADAS_SOLAPA = 'RVD JM-CM - ES';   // 05/10: la copia ya está hecha; ahora el real
 
 /** PASO 25 — SÓLO LECTURA: las once derivadas por script contra lo que muestran las fórmulas. Tiene que dar 0. */
 function paso25_compararDerivadas() {
-  _anunciar_('paso 25 — comparar las derivadas (script contra fórmulas) en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 25 — comparar las derivadas (script contra fórmulas) en "' + RDV_HOJA_DESTINO + '"',
              'compararDerivadas()  [30_Derivadas.js]', 'NO escribe nada',
              'el log: el texto exacto de las once fórmulas, y por columna iguales / distintas (10 primeras distintas)');
-  return compararDerivadas(PASO_DERIVADAS_SOLAPA);
+  return compararDerivadas(RDV_HOJA_DESTINO);
 }
 
 /** PASO 26 — quitar las fórmulas, EN SECO: dice qué haría (y si da 0 distintas). */
 function paso26_quitarFormulasDerivadas_enSeco() {
-  _anunciar_('paso 26 — quitar las fórmulas de las derivadas (EN SECO) en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 26 — quitar las fórmulas de las derivadas (EN SECO) en "' + RDV_HOJA_DESTINO + '"',
              'quitarFormulasDerivadas(solapa, false)  [30_Derivadas.js]', 'NO escribe nada',
              'el log: cuántas columnas y celdas; si hay distintas, no seguiría');
-  return quitarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, false);
+  return quitarFormulasDerivadas(RDV_HOJA_DESTINO, false);
 }
 
 /** PASO 26 — quitar las fórmulas: respaldo, fórmula → valores en la misma tanda, protección con advertencia. */
 function paso26_quitarFormulasDerivadas() {
-  _anunciar_('paso 26 — QUITAR las fórmulas de las derivadas en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 26 — QUITAR las fórmulas de las derivadas en "' + RDV_HOJA_DESTINO + '"',
              'quitarFormulasDerivadas(solapa, true)  [30_Derivadas.js]',
              'con DRY_RUN = false, SÍ: guarda el respaldo en ' + RDV_HOJA_RESPALDO_DERIVADAS + ', cambia las once fórmulas por ' +
              'sus valores (sólo si da 0 distintas) y las protege con advertencia', 'el log: quitadas, y la verificación (0 distintas)');
-  return quitarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, true);
+  return quitarFormulasDerivadas(RDV_HOJA_DESTINO, true);
 }
 
 /** PASO 26b — recalcular las derivadas por script a mano (lo que hace el upsert al final de cada corrida). */
 function paso26_recalcularDerivadas() {
-  _anunciar_('paso 26b — recalcular las derivadas en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 26b — recalcular las derivadas en "' + RDV_HOJA_DESTINO + '"',
              'recalcularDerivadas(solapa, true)  [30_Derivadas.js]',
              'con DRY_RUN = false, SÍ: sobrescribe sólo las celdas de las once que cambiaron (las que no tienen fórmula)',
              'el log: celdas que cambian, por columna');
-  return recalcularDerivadas(PASO_DERIVADAS_SOLAPA, true);
+  return recalcularDerivadas(RDV_HOJA_DESTINO, true);
 }
 
 /** PASO 26c — el paso 14 sobre la solapa de las derivadas: "valores = Comunas" con o sin fórmula. */
 function paso26_formulasDerivadas() {
-  _anunciar_('paso 26c — paso 14 sobre "' + PASO_DERIVADAS_SOLAPA + '"', 'diagFormulasDestino(solapa)  [diagnostico/07_formulas_destino.js]',
+  _anunciar_('paso 26c — paso 14 sobre "' + RDV_HOJA_DESTINO + '"', 'diagFormulasDestino(solapa)  [diagnostico/07_formulas_destino.js]',
              'NO escribe nada', 'el log: fórmula o "por script" de cada una, valores contra Comunas y las de la fila contra el script');
-  return diagFormulasDestino(PASO_DERIVADAS_SOLAPA);
+  return diagFormulasDestino(RDV_HOJA_DESTINO);
 }
 
 /** PASO 27 — volver atrás, EN SECO: lista las fórmulas del respaldo que pondría. */
 function paso27_restaurarFormulasDerivadas_enSeco() {
-  _anunciar_('paso 27 — restaurar las fórmulas (EN SECO) en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 27 — restaurar las fórmulas (EN SECO) en "' + RDV_HOJA_DESTINO + '"',
              'restaurarFormulasDerivadas(solapa, false)  [30_Derivadas.js]', 'NO escribe nada', 'el log: las fórmulas del respaldo');
-  return restaurarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, false);
+  return restaurarFormulasDerivadas(RDV_HOJA_DESTINO, false);
 }
 
 /** PASO 27 — volver atrás: borra los valores de las once y pone las fórmulas del respaldo. */
 function paso27_restaurarFormulasDerivadas() {
-  _anunciar_('paso 27 — RESTAURAR las fórmulas en "' + PASO_DERIVADAS_SOLAPA + '"',
+  _anunciar_('paso 27 — RESTAURAR las fórmulas en "' + RDV_HOJA_DESTINO + '"',
              'restaurarFormulasDerivadas(solapa, true)  [30_Derivadas.js]',
              'con DRY_RUN = false, SÍ: borra los valores de las once columnas y pone las fórmulas de ' + RDV_HOJA_RESPALDO_DERIVADAS,
              'el log: cuántas restauró. Después, DERIVADAS_POR_SCRIPT = false');
-  return restaurarFormulasDerivadas(PASO_DERIVADAS_SOLAPA, true);
+  return restaurarFormulasDerivadas(RDV_HOJA_DESTINO, true);
 }
 
 /**
@@ -536,6 +538,74 @@ function paso34_fichasFormatoDePrueba() {
              'NO escribe el destino ni REVISAR_MATCH; escribe sólo la solapa "' + RDV_HOJA_REVISAR_FORMATO_PRUEBA + '" (intermedia)',
              'la solapa; el log: fichas por motivo y los textos que el diseño no cubre (por qué / coincide largos)');
   return fichasFormatoDePrueba();
+}
+
+// =============================================================================================
+//  AGENDA, ETAPA 2 (06/10; ESTADO 0.z; prompt: docs/prompts/PROMPT-06-AGENDA-ETAPA2-CREAR-ACTUALIZAR.md).
+//  Escribe en el DESTINO REAL: versión con nombre antes de la primera escritura, en seco primero, una semana primero.
+// =============================================================================================
+
+/** PASO 35 — SÓLO LECTURA: la regla de confianza del barrio CON el margen de borde (BARRIO_MARGEN_M), sobre las filas del paso 31. */
+function paso35_medirReglaBarrio() {
+  _anunciar_('paso 35 — la regla del barrio con el margen de ' + BARRIO_MARGEN_M + ' m', 'medirBarrioDesdeDireccion()  [diagnostico/16_agenda_medicion.js]',
+             'NO toca el destino; reescribe AGENDA_BARRIO_DIRECCION y agrega a la cache AGENDA_GEOCODE (intermedia)',
+             'el log: el bloque "12. LA REGLA CON EL MARGEN": cumplen, exacto, las que saca el margen');
+  return medirBarrioDesdeDireccion();
+}
+
+/** PASO 35b — SÓLO LECTURA: las desaparecidas (futuras o ya pasadas al desaparecer) contra el STATUS, y las reprogramaciones entre semanas. */
+function paso35b_medirDesaparecidas() {
+  _anunciar_('paso 35b — desaparecidas y reprogramaciones entre semanas', 'medirDesaparecidasAgenda()  [diagnostico/16_agenda_medicion.js]',
+             'NO escribe en ninguna planilla', 'sólo el log');
+  return medirDesaparecidasAgenda();
+}
+
+/** PASO 36 — las columnas de la agenda, EN SECO: cuáles faltan y desde qué columna irían. */
+function paso36_columnasAgenda_enSeco() {
+  _anunciar_('paso 36 — columnas de la agenda (EN SECO)', 'agregarColumnasAgenda(false)  [05_Escritura.js]', 'NO escribe nada',
+             'el log: cuáles faltan y desde qué columna');
+  return agregarColumnasAgenda(false);
+}
+
+/** PASO 36 — agrega al final del destino los 9 encabezados de la agenda. Idempotente. */
+function paso36_columnasAgenda() {
+  _anunciar_('paso 36 — columnas de la agenda', 'agregarColumnasAgenda(true)  [05_Escritura.js]',
+             'SÍ, en el destino: sólo encabezados, al final, después de form_clave', 'el log: las agregadas');
+  return agregarColumnasAgenda(true);
+}
+
+/** PASO 37 — la agenda EN SECO: qué crearía, vincularía, actualizaría, movería y suspendería. */
+function paso37_agenda_enSeco() {
+  _anunciar_('paso 37 — la agenda (EN SECO)' + (AGENDA_SOLO_SEMANA ? ', sólo la semana del ' + AGENDA_SOLO_SEMANA : ', TODO el alcance'),
+             'correrAgendaEnSeco()  [40_Agenda.js]', 'NO toca el destino ni el archivo "Agenda"; escribe REGISTRO_AGENDA, ' +
+             AGENDA_SOLAPA_VIEJAS + ' y ' + AGENDA_SOLAPA_FIGURA + ' (intermedia)',
+             'el log: crear / vincular / actualizar / mover / suspender / reactivar, ambiguas, editadas, EVENTO por tipo, barrio');
+  return correrAgendaEnSeco();
+}
+
+/** PASO 37 — la agenda REAL (respeta DRY_RUN). */
+function paso37_agenda() {
+  _anunciar_('paso 37 — la agenda (REAL)' + (AGENDA_SOLO_SEMANA ? ', sólo la semana del ' + AGENDA_SOLO_SEMANA : ', TODO el alcance'),
+             'correrAgendaReal()  [40_Agenda.js]',
+             'SÍ: crea y actualiza filas del destino (por escribirAgendaLote_), reescribe la solapa "Agenda" del archivo Agenda, ' +
+             'y deja REGISTRO_AGENDA y REGISTRO_AGENDA_CAMBIOS (para deshacer)',
+             'el log: lo que escribió, por tipo y por columna');
+  return correrAgendaReal();
+}
+
+/** PASO 38 — deshacer la última corrida de la agenda, EN SECO. */
+function paso38_deshacerAgenda_enSeco() {
+  _anunciar_('paso 38 — deshacer la agenda (EN SECO)', 'deshacerAgenda(true)  [40_Agenda.js]', 'NO escribe nada',
+             'el log: qué filas sacaría (y cuáles no, porque alguien cargó algo) y cuántas celdas volvería atrás');
+  return deshacerAgenda(true);
+}
+
+/** PASO 38 — deshacer la última corrida de la agenda. */
+function paso38_deshacerAgenda() {
+  _anunciar_('paso 38 — DESHACER la agenda', 'deshacerAgenda(false)  [40_Agenda.js]',
+             'SÍ, en el destino: saca las filas creadas que siguen replicando el mail y vuelve atrás las celdas que todavía tienen ' +
+             'lo que escribió la agenda. No toca el archivo "Agenda" (se regenera en la corrida siguiente)', 'el log');
+  return deshacerAgenda(false);
 }
 
 /**

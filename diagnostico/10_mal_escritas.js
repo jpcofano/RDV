@@ -23,26 +23,25 @@
  *
  * --- Cómo se corre (lo corre el usuario) ---
  *   paso18_malEscritas_listar()        en seco: lista en el real y en la copia, no toca nada
- *   paso18_malEscritas_vaciarCopia()   vacía y saca el color en "AAA NOBORRAR"
  *   paso18_malEscritas_vaciarReal()    vacía y saca el color en el destino real
  * La próxima corrida del upsert (ya con las columnas bien leídas) completa esas celdas vacías con el
  * valor correcto: entran por RDV_UID.
  */
 
-/** En seco: lista las mal escritas en el destino real y en la copia de prueba. No escribe nada. */
+/** En seco: lista las mal escritas en el destino real. No escribe nada. (La copia de prueba ya no existe, 06/10.) */
 function listarMalEscritas() {
   Logger.log('=== listarMalEscritas (paso 18, EN SECO) — no escribe nada ===');
   const cands = leerCandidatos_();
   const backup = _leerBackup_diag10();
   const out = {};
-  [RDV_HOJA_DESTINO_REAL, RDV_HOJA_COPIA_PRUEBA].forEach(function (hoja) {
+  [RDV_HOJA_DESTINO_REAL].forEach(function (hoja) {
     if (!ssDestino_().getSheetByName(hoja)) { Logger.log('--- "%s": no existe ---', hoja); return; }
     out[hoja] = _malEscritasEn_diag10(hoja, cands, backup, true);
   });
   return out;
 }
 
-/** Vacía y saca el color a las mal escritas de una solapa (la copia o el real). */
+/** Vacía y saca el color a las mal escritas de una solapa (el destino real). */
 function vaciarMalEscritas(hoja) {
   Logger.log('=== vaciarMalEscritas en "%s" (paso 18) — ESCRIBE: vacía celdas y les saca el color ===', hoja);
   const cands = leerCandidatos_();

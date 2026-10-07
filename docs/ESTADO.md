@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y)
+# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -258,6 +258,111 @@ Desde las 14:50 las corridas reales dan **758 | 39 | 13**; el paso 2 en seco de 
 difieran, comparar las huellas** del log o de `REGISTRO_UPSERT` (`huella_entradas`, `huella_plan`):
 misma huella de entradas → tiene que ser el mismo plan; distinta → la huella dice cuál de las cuatro
 entradas (destino, `B`, figuras, `Comunas`) cambió.
+
+### z) 06/10 noche: AGENDA, ETAPA 2 — crear y actualizar filas del destino (implementado; NADA escribió todavía)
+
+Prompt: [prompts/PROMPT-06-AGENDA-ETAPA2-CREAR-ACTUALIZAR.md](prompts/PROMPT-06-AGENDA-ETAPA2-CREAR-ACTUALIZAR.md) (la versión
+del 06/10 22:09, con el punto 17). Para el equipo: [agenda-equipo.md](agenda-equipo.md).
+
+**La etapa 1 quedó cerrada con la segunda corrida (06/10 20:47)**: reuniones del mail con su fila 280/302 (92,7%);
+reprogramadas 3; filas del destino sin reunión en el mail 0; fechas corregidas 26; mails afuera 1; desaparecidas con
+fila: 9, las 9 "Suspendida"; NO PARTICIPA 74, todas con fila y Realizada; conjuntas 8 de 9 a nombre de la 1ª;
+Seguridad en tu Barrio contra RDV CONJUNTO 13/16 (13 iguales al destino); barrio por polígono 93,3% exacto general y
+95,7% con la regla de confianza (201/210: 6 barrios vecinos de la misma comuna, 3 donde el sistema coincide con la
+comuna del mail y el equipo no).
+
+**La copia "AAA NOBORRAR" ya no existe.** Todo va sobre el destino real, con cuatro protecciones: versión con nombre del
+archivo antes de la primera escritura, en seco primero, una semana primero (`AGENDA_SOLO_SEMANA`) y deshacer (paso 38).
+Se sacaron las referencias operativas: `RDV_HOJA_COPIA_PRUEBA` (y su línea de base de azules), `PASO_DERIVADAS_SOLAPA`
+(los pasos 25-27 usan `RDV_HOJA_DESTINO`), `paso18_malEscritas_vaciarCopia`, y la copia en 30_Derivadas, diagnostico/07 y
+/10. Los tests en Node siguen con una hoja simulada, que ahora se llama como el destino.
+
+**Plan aprobado por el usuario (06/10)**, con sus respuestas: van `agenda_fecha_escrita` y `agenda_status_escrito`;
+deshacer borra o vacía sólo las filas creadas **que siguen replicando lo que dice el mail**; Seguridad ambigua → solapa
+propia; las fórmulas de las derivadas **ya se sacaron del real** (paso 26 hecho).
+
+**Lo hecho:**
+
+- **`40_Agenda.js`** (nuevo): `correrAgenda(enSeco)` lee Gmail (etiqueta `AGENDA_ETIQUETA_GMAIL`; si la búsqueda falla
+  o trae cero, no escribe nada y lo dice), parsea con el parser de la etapa 1 y arma un plan: **crear** (al final),
+  **vincular** (fila que ya existía: figura + fecha, u otra figura de la conjunta; sin figura, fecha + lugar),
+  **actualizar** (HORA, Dirección y Barrio si cambió la dirección, sólo si la celda todavía tiene lo que escribió el
+  sistema), **mover** (reprogramada dentro de la semana), **suspender** (desaparecida siendo futura, fila "en agenda";
+  no con versión parcial), **reactivar** (volvió y el "Suspendida" lo había puesto el sistema), **figura** (Seguridad en
+  tu Barrio, desde RDV CONJUNTO). Lo ambiguo no se toca y se lista. Al vincular, una celda del equipo que **replica el
+  mail** queda anotada como del sistema y sigue al mail; una que dice otra cosa es del equipo para siempre.
+- **La tercera excepción anunciada**, `escribirAgendaLote_` (05_Escritura.js; CLAUDE.md sección 0): sólo las columnas
+  de `COLUMNAS_QUE_ESCRIBE_AGENDA`, sólo si la celda tiene lo esperado (lectura fresca), STATUS sólo por
+  `AGENDA_TRANSICIONES_STATUS` ('' → en agenda, en agenda → Suspendida, Suspendida → en agenda), todo en `#CFE2F3`.
+- **Columnas nuevas, al final, después de `form_clave`** (paso 36, sólo encabezados; si `form_clave` es AU):
+  AV `No participa`, AW `agenda_uid`, AX `agenda_mail`, AY `agenda_version`, AZ `agenda_hora_escrita`,
+  BA `agenda_direccion_escrita`, BB `agenda_barrio_escrito`, BC `agenda_fecha_escrita`, BD `agenda_status_escrito`.
+- **Regla de confianza con margen** (`_reglaBarrioConMargen_`, 41_AgendaParser.js): (a) geocodificación "ok", (b) misma
+  comuna o mismo barrio que el mail, (c) a más de `BARRIO_MARGEN_M` (100 m) de otro barrio, (d) celda vacía.
+- **REGISTRO_AGENDA** (una línea por corrida) y **REGISTRO_AGENDA_CAMBIOS** (cada celda con antes, después y fondo) en la
+  intermedia; **AGENDA_VIEJAS_SIN_FILA** (reuniones viejas del mail sin fila, no se crean) y **AGENDA_FIGURA_A_COMPLETAR**.
+- **Punto 17 — la copia en el archivo "Agenda"** (`AGENDA_COPIA_SS` = `1_W4qry…`, solapa "Agenda"): una fila por
+  reunión, 23 columnas (Semana … Última actualización), ordenada por fecha y hora, vigente / reprogramada / desaparecida,
+  con la fila y el STATUS del destino, el asunto con link al mensaje de Gmail, la semana en curso destacada, protegida
+  con advertencia; se reescribe entera en cada corrida real (en seco sólo dice cuántas filas). Deshacer no la toca.
+  `AGENDA_COPIA_DESDE` (null) fija "desde que arranca Agenda".
+- **Corre en el activador de cada hora** con `AGENDA_ACTIVA = true` (hoy `false`): dentro del bloqueo del upsert y antes
+  del cruce con los formularios. Nunca en el paso 22.
+- **Paso 16**: bloque 6 "filas de agenda" (duplicados figura + fecha: tiene que dar 0; "en agenda" vencidas hace más de
+  `AGENDA_DIAS_VENCIDA` días: aviso; celdas editadas por el equipo: informativo) y el control de Barrio descuenta lo que
+  escribió la agenda. **Paso 20**: por qué están vacíos Barrio y Figura.
+- **Paso 35 / 35b**: la regla con margen sobre las filas del paso 31; las desaparecidas futuras / ya pasadas contra el
+  STATUS y las reprogramaciones entre semanas.
+- El parser pasó a **`41_AgendaParser.js`** y los polígonos a **`42_BarriosCabaGeo.js`** (código de producción);
+  `diagnostico/16` quedó con las mediciones.
+- **Tests**: `tests/agenda_escritura.test.js` (nuevo, 10 escenarios: en seco, crear y vincular sin duplicar,
+  actualizar sólo lo del sistema y no lo editado, mover, suspender, "ya había pasado", reactivar, protección del 60%,
+  Seguridad sin figura, deshacer, la guarda, el margen, AGENDA_SOLO_SEMANA, las columnas, la copia en "Agenda");
+  `tests/agenda_parser.test.js`; `tests/escritura_lote.test.js` sin la copia y con el [23] (una fila sin Figura en el
+  cruce con los formularios). Todo en verde.
+
+**Choques con lo que ya existía, y cómo quedaron:**
+
+1. *Invariante*: actualizar pisa celdas → **tercera excepción anunciada** (arriba), auditada por un grep como las otras dos.
+2. *STATUS*: CLAUDE.md 3.4 decía que "Suspendida" es decisión de una persona. **Cambio de regla del usuario (regla 7)**: la
+   agenda puede pasar "en agenda" → "Suspendida" y volver, sólo si el "Suspendida" lo puso ella.
+3. *Barrio manual*: sigue en `COLUMNAS_MANUALES` para el upsert de formularios; la agenda lo escribe sólo por su
+   excepción. El paso 16 descuenta esas celdas.
+4. *Borrar filas* (CLAUDE.md §6): deshacer **borra** sólo si las filas creadas son las últimas; si no, las **vacía**.
+5. *Fichas*: Seguridad ambigua NO va a REVISAR_MATCH: va a `AGENDA_FIGURA_A_COMPLETAR` (las fichas eligen formularios,
+   no figuras); el equipo carga la Figura en la fila.
+6. *El archivo "Agenda" y el legado*: el ID nuevo (`1_W4qry…`, creado el 06/10, de reporteseinformesgcba@gmail.com) **no
+   lo abre ningún código del legado**. El legado (`Agenda traer datos del mail.js`, `Agenda push a base.js`,
+   `Solapa agenda base final.js`) lee y escribe OTRO archivo, `RDV_SS_AGENDA` = `1hP8zMN8…`. El único activador vivo del
+   legado de Agenda era `syncAgendaSheetInBaseFromAgenda_2` (espejo de ese archivo viejo en una solapa "Agenda" del
+   archivo del destino): **no se mezcla con la copia nueva**, pero conviene confirmarlo con `paso23_listarActivadores()`
+   y **no correr a mano `agenda_syncFromEmails` ni `agenda_pushReadyToBaseFinal`** (escriben en `Para Revisar`). **La
+   cuenta que corre el script tiene que ser editora del archivo "Agenda" nuevo.**
+
+**La secuencia, con la predicción anotada ANTES de correr** (también en la cabecera de 99_Correr.js):
+
+1. **Versión con nombre** del archivo del destino (Archivo → Historial de versiones → Asignar un nombre).
+2. **`paso35_medirReglaBarrio()`** → **Predicción**: con el margen de 100 m cumplen **menos que las 210** de la regla sin
+   margen (cobertura por debajo del 80,8%; estimo 170-195) y el **exacto sube a ~98-99%**: salen casi todos los 6 bordes;
+   los 3 de "comuna del mail" no se mueven (no son de borde). **`paso35b_medirDesaparecidas()`** → de las desaparecidas de
+   la ventana, las 9 con fila "Suspendida" caen en **"futura al desaparecer"**; las que ya habían pasado, con fila
+   Realizada. Reprogramaciones entre semanas: **pocas (0-3)** — si son muchas, se vinculan en vez de crear otra.
+   → aprobar el margen.
+3. **`paso36_columnasAgenda_enSeco()`** → faltan las 9, desde **AV** (si la última es `form_clave` en AU).
+   **`paso36_columnasAgenda()`** → las 9, al final; volver a correrlo no hace nada.
+4. **`AGENDA_SOLO_SEMANA = '2026-10-05'`** (o el lunes de la semana en curso), clasp push, **`paso37_agenda_enSeco()`** →
+   **Predicción**: unas **10-15 reuniones** de la semana (302 en ~26 semanas); como el equipo carga las filas de la semana,
+   **casi todas VINCULAR** y CREAR sólo las que todavía no cargó (0-5); suspender 0-1; ambiguas 0; editadas por el equipo
+   algunas (HORA o Dirección cargadas distinto del mail); duplicados 0. La tabla "EVENTO que escribe hoy el equipo, por
+   tipo" dice si hay que ajustar `AGENDA_EVENTO_POR_TIPO` antes de escribir. Copia en "Agenda": escribiría tantas filas
+   como reuniones.
+5. **`paso37_agenda()`** (real, esa semana) → escribe lo mismo que dijo el seco. **`paso16_verificarEscritura()`** → bloque
+   6: **duplicados 0**; Barrio "sin subir" salvo lo de la agenda; mirar las filas en la planilla y el archivo "Agenda".
+6. **`AGENDA_SOLO_SEMANA = null`**: en seco → **Predicción**: las semanas de los últimos 30 días, ~50 reuniones, casi todas
+   VINCULAR (las pasadas ya tienen fila), CREAR casi 0 → real → paso 16.
+7. **`AGENDA_ACTIVA = true`** (entra al activador de cada hora) y `AGENDA_COPIA_DESDE` = el lunes de la primera semana.
+
+Si algo sale mal: **`paso38_deshacerAgenda_enSeco()`** → **`paso38_deshacerAgenda()`** (la última corrida que escribió).
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

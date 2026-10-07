@@ -17,6 +17,9 @@
  * `upsertDiario` llama a `upsertDestino()`, que **respeta `DRY_RUN`** (con `true` es una corrida en
  * seco más), toma un bloqueo (`LockService`: dos corridas no se pisan) y deja una línea en
  * `REGISTRO_UPSERT` (intermedia): hora, cuántas escribió, pendientes, a revisar, sin match.
+ * Con `AGENDA_ACTIVA` (06/10, Agenda etapa 2), dentro de ese mismo bloqueo y ANTES del cruce con los
+ * formularios, corre la agenda (40_Agenda.js): lee Gmail, crea y actualiza las filas de la semana, y deja su
+ * línea en `REGISTRO_AGENDA`.
  *
  * --- Antes de instalarlo ---
  * Anotarlo en docs/triggers-legado.md (función, frecuencia, dueño), igual que los del legado.
@@ -33,8 +36,7 @@ function upsertDiario() {
 
 /** Crea el activador (cada ACTIVADOR_CADA_HORAS horas). Si ya existe, no crea otro. */
 function instalarActivadorDiario_() {
-  // 02/10: no se instala mientras el destino apunte a la copia de prueba. Primero se revierte
-  // RDV_HOJA_DESTINO y se verifica la escritura real (docs/ESTADO.md).
+  // 02/10: no se instala si el destino no es el real (la copia de prueba ya no existe desde el 06/10).
   if (RDV_HOJA_DESTINO !== RDV_HOJA_DESTINO_REAL) {
     throw new Error('RDV_HOJA_DESTINO apunta a "' + RDV_HOJA_DESTINO + '", no al destino real. ' +
                     'El activador no se instala hasta revertirla y verificar la escritura real.');

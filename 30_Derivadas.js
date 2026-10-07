@@ -36,9 +36,8 @@ const DIAS_SEMANA_TEXTO_ = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves'
  * derivada, todos los valores, la tabla de Comunas y la última fila con datos.
  */
 function _ctxDerivadas_(solapa) {
-  if (solapa !== RDV_HOJA_DESTINO_REAL && solapa !== RDV_HOJA_COPIA_PRUEBA) {
-    throw new Error('Las derivadas se trabajan sólo en "' + RDV_HOJA_DESTINO_REAL + '" o en la copia "' +
-                    RDV_HOJA_COPIA_PRUEBA + '", no en "' + solapa + '".');
+  if (solapa !== RDV_HOJA_DESTINO_REAL) {
+    throw new Error('Las derivadas se trabajan sólo en "' + RDV_HOJA_DESTINO_REAL + '", no en "' + solapa + '".');
   }
   const ss = ssDestino_();
   const sh = ss.getSheetByName(solapa);

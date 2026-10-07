@@ -1,6 +1,6 @@
 /**
- * diagnostico/17_barrios_caba_geo.js — los límites oficiales de los 48 barrios de la Ciudad, para el punto en
- * polígono del paso 31 (barrio desde la dirección; Agenda, etapa 1). SÓLO DATOS: no define funciones.
+ * 42_BarriosCabaGeo.js — los límites oficiales de los 48 barrios de la Ciudad (antes diagnostico/17), para el punto en
+ * polígono del barrio desde la dirección (41_AgendaParser.js). SÓLO DATOS: no define funciones.
  *
  * Fuente: Buenos Aires Data, dataset "Barrios" (Ministerio de Educación / GCBA), GeoJSON en WGS84,
  *   https://cdn.buenosaires.gob.ar/datosabiertos/datasets/ministerio-de-educacion/barrios/barrios.geojson

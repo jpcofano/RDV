@@ -20,18 +20,13 @@ const RDV_SS_AGENDA     = '1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U'; // (4)
  * La solapa que el upsert, los pasos y los diagnósticos leen y escriben como destino. **Es la única
  * referencia**: nada lleva el nombre escrito a mano. El log de cada paso dice a cuál apunta.
  *
- * Del 02/10 al 03/10 apuntó a la copia "AAA NOBORRAR" para probar la escritura en lote mientras el
- * equipo trabajaba en la solapa real (docs/ESTADO.md, sección 0). **Volvió al real el 03/10**, confirmado
- * por el usuario después del paso 22 sobre la copia (22:15). Secuencia en el real: ESTADO 0.s.
+ * Del 02/10 al 03/10 apuntó a una copia de prueba; **la copia ya no existe (06/10, la borró el usuario)**:
+ * todo va sobre el destino real, con las protecciones de la etapa 2 de Agenda (versión con nombre del
+ * archivo, en seco primero, una semana primero, deshacer; docs/ESTADO.md, 0.z).
  */
-const RDV_HOJA_DESTINO   = 'RVD JM-CM - ES';   // el destino real (03/10; antes, la copia 'AAA NOBORRAR')
-/**
- * El destino real. Sólo para la guarda (`verificarHojaDestino_`): si RDV_HOJA_DESTINO apunta a otra
- * solapa, sus encabezados tienen que ser exactamente los de ésta; si no, el upsert no corre.
- */
+const RDV_HOJA_DESTINO   = 'RVD JM-CM - ES';
+/** El destino real. La guarda (`verificarHojaDestino_`): si RDV_HOJA_DESTINO no es ésta, no se escribe nada. */
 const RDV_HOJA_DESTINO_REAL = 'RVD JM-CM - ES';
-/** La copia de prueba del destino (02/10). Queda como referencia cuando se vuelva al real. */
-const RDV_HOJA_COPIA_PRUEBA = 'AAA NOBORRAR';
 const RDV_HOJA_ASISTENTES_SRC = 'RDV CONJUNTO'; // origen de asistentes. NO se modifica
 const RDV_HOJA_COMUNAS   = 'Comunas';          // lookup barrio → comuna, A:H
 const RDV_HOJA_STAGING   = 'Para Revisar';     // staging legado. Se retira en la Fase 9
@@ -62,9 +57,7 @@ const VENTANA_NINGUNO_DIAS = 7;
 const LINEA_BASE_AZULES = {
   // Total: 02/10 12:44 antes de la primera escritura real; 6368 después de la corrida cortada (14:50).
   // Barrio: 0, paso 16 del 04/10 00:20, antes de completar el historial (y 0 después: no puede subir).
-  'RVD JM-CM - ES': { barrio: 0, total: 6368 },
-  // La copia de prueba (TEMPORAL 02/10): total del paso 16 de las 16:59, antes de escribir en ella.
-  'AAA NOBORRAR':   { barrio: null, total: 6368 }
+  'RVD JM-CM - ES': { barrio: 0, total: 6368 }
 };
 
 /** Cuánto espera una corrida del upsert a que termine otra (LockService), antes de no hacer nada. */
@@ -1026,3 +1019,86 @@ const MIN_ASISTENTES_REALIZADA = 1;
  * timestamp, esto debería medirse sobre ella.
  */
 const VENTANA_ALERTA_DIAS = 15;
+
+// ===================== AGENDA, etapa 2: crear y actualizar filas del destino (06/10) =====================
+// Prompt: docs/prompts/PROMPT-06-AGENDA-ETAPA2-CREAR-ACTUALIZAR.md. Código: 40_Agenda.js (+ 41_AgendaParser.js).
+
+/**
+ * **La agenda dentro del activador de cada hora** (upsertDiario → upsertDestino, antes del cruce con los formularios).
+ * `false` hasta que el usuario la prenda (último paso de la secuencia de ESTADO 0.z). Con `false`, la agenda corre
+ * sólo a mano (paso 37).
+ */
+const AGENDA_ACTIVA = false;
+/**
+ * **Sólo una semana** (protección de la primera corrida real): el LUNES de la semana, 'yyyy-MM-dd' (p. ej.
+ * '2026-10-05'). La agenda sólo crea, vincula, actualiza, mueve y suspende reuniones de esa semana. `null` = todo el
+ * alcance (desde hoy − DIAS_ACTIVOS en adelante).
+ */
+const AGENDA_SOLO_SEMANA = null;
+/** La etiqueta de Gmail de donde se leen los mails de agenda (la cuenta que corre el script tiene que tenerla). */
+const AGENDA_ETIQUETA_GMAIL = 'GCBA/Encuentros Con Vecinos';
+/** Regla de confianza del barrio, (c): el punto tiene que estar a MÁS de estos metros de cualquier otro barrio. */
+const BARRIO_MARGEN_M = 100;
+/**
+ * El EVENTO de una fila nueva, según el tipo de la reunión del mail. **Valores iniciales: las formas del prompt.**
+ * La corrida en seco (paso 37) lista cómo escribe hoy el equipo el EVENTO de las filas que ya existen, por tipo,
+ * para ajustar esto.
+ */
+const AGENDA_EVENTO_POR_TIPO = {
+  'Encuentro con Vecinos': 'Encuentro con Vecinos',
+  'Encuentro "1 a 1"': 'Uno a uno',
+  'Encuentro Temático': 'Encuentro Temático',
+  'Primera Persona': 'Primera Persona',
+  'Café con Vecinos': 'Café con Vecinos',
+  'Seguridad en tu Barrio': 'Seguridad en tu Barrio'
+};
+/** La columna nueva con las figuras que NO participan (regla 2): los nombres, separados por " / ". */
+const COLUMNA_NO_PARTICIPA = 'No participa';
+/**
+ * Las columnas nuevas de la agenda, AL FINAL del destino, después de `form_clave` (nunca insertadas en el medio:
+ * correrían los fondos, CLAUDE.md §6). Las `agenda_*_escrita` guardan lo que escribió el sistema: una celda se
+ * actualiza SÓLO si todavía tiene eso (si alguien la cambió, no se toca nunca más).
+ */
+const COLUMNAS_AGENDA = [
+  COLUMNA_NO_PARTICIPA, 'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita',
+  'agenda_direccion_escrita', 'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito'
+];
+/** Las columnas del destino que la agenda puede escribir (la excepción `escribirAgendaLote_`, 05_Escritura.js). */
+const COLUMNAS_QUE_ESCRIBE_AGENDA = ['Figura', 'EVENTO', 'FECHA', 'HORA', 'Dirección', 'Barrio', 'STATUS REUNIÓN']
+  .concat(COLUMNAS_AGENDA);
+/** Las transiciones de STATUS que puede escribir la agenda (y ninguna otra). */
+const AGENDA_TRANSICIONES_STATUS = [
+  { desde: '', hacia: 'en agenda' },               // fila nueva o vinculada con STATUS vacío
+  { desde: 'en agenda', hacia: 'Suspendida' },     // regla 7: desapareció siendo futura
+  { desde: 'Suspendida', hacia: 'en agenda' }      // regla 7: volvió (sólo si el "Suspendida" lo puso el sistema)
+];
+/** REGISTRO_AGENDA (intermedia): una línea por corrida. REGISTRO_AGENDA_CAMBIOS: cada celda cambiada, antes y después. */
+const RDV_HOJA_REGISTRO_AGENDA = 'REGISTRO_AGENDA';
+const RDV_HOJA_REGISTRO_AGENDA_CAMBIOS = 'REGISTRO_AGENDA_CAMBIOS';
+/** Las reuniones viejas del mail (antes de hoy − DIAS_ACTIVOS) sin fila: sólo informativa, no se crean. */
+const AGENDA_SOLAPA_VIEJAS = 'AGENDA_VIEJAS_SIN_FILA';
+/** "Seguridad en tu Barrio" con la figura ambigua o todavía sin fila en RDV CONJUNTO: la carga el equipo en la fila. */
+const AGENDA_SOLAPA_FIGURA = 'AGENDA_FIGURA_A_COMPLETAR';
+/**
+ * **La copia de la agenda en el archivo "Agenda"** (punto 17 del prompt, 06/10): una fila por reunión (la última versión
+ * de su semana), reescrita entera en cada corrida de la agenda, con formato y protegida con advertencia. Es un archivo
+ * NUEVO (06/10, de reporteseinformesgcba@gmail.com), distinto del archivo de Agenda del legado (`RDV_SS_AGENDA`,
+ * `1hP8zMN8…`), que es el que leen y escriben "Agenda traer datos del mail.js", "Agenda push a base.js" y
+ * "Solapa agenda base final.js". Ningún código del legado abre éste. La cuenta que corre el script tiene que ser editora.
+ */
+const AGENDA_COPIA_SS = '1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0';
+const AGENDA_COPIA_SOLAPA = 'Agenda';
+/**
+ * Desde qué fecha entran reuniones a la copia ('yyyy-MM-dd'): "desde que arranca Agenda" (no se rellena el histórico).
+ * `null` = el mismo alcance que el destino (hoy − DIAS_ACTIVOS, o la semana de AGENDA_SOLO_SEMANA). Al prender la
+ * agenda, poner acá el lunes de la primera semana: Gmail se lee desde ahí.
+ */
+const AGENDA_COPIA_DESDE = null;
+/** Las columnas de la copia, en este orden (decisión del usuario, con agregados). */
+const AGENDA_COPIA_COLUMNAS = ['Semana', 'Grupo', 'Día', 'FECHA', 'HORA', 'Figura', 'No participa', 'Conjunta con', 'EVENTO',
+  'Lugar del mail', 'Dirección', 'Barrio calculado', 'Comuna', 'Sin barrio porque', 'Marcas', 'Estado en la agenda', 'Cambios',
+  'Fecha original', 'Fila del destino', 'STATUS en el destino', 'Mail', 'Versión', 'Última actualización'];
+const DESC_PROTECCION_COPIA_AGENDA = 'RDV: la escribe el sistema en cada corrida de la agenda — corregir en el destino, no acá';
+
+/** Paso 16: una fila "en agenda" con la fecha pasada hace más de estos días es un aviso. */
+const AGENDA_DIAS_VENCIDA = 2;

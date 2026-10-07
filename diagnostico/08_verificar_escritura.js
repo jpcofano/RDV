@@ -21,6 +21,10 @@
  *      el plan escribía —traza, datos o STATUS— vacía; lo decide `celdasDeDecision_`, la misma función
  *      que usa la escritura), **sin `form_clave`** (la próxima corrida la completa) y **traza ambigua**
  *      (gemelos sin `form_clave`: se sabe el nombre, no cuál de los dos).
+ *   6) **Filas de agenda** (06/10, Agenda etapa 2): duplicados figura + fecha donde una de las filas es de la agenda
+ *      (tiene que dar 0), filas "en agenda" con la fecha pasada hace más de AGENDA_DIAS_VENCIDA días (aviso) y celdas
+ *      editadas por el equipo (la celda ya no tiene lo que anotó `agenda_*_escrita`; informativo). Y en el bloque 3, el
+ *      color del sistema en Barrio puede subir sólo por las celdas que escribió la agenda (`agenda_barrio_escrito`).
  *   5) **La lista de las filas con RDV_UID** (fila, figura, fecha, formulario) y, para cada una, si HOY
  *      el plan la escribiría igual. Con **el mismo plan que el upsert** (02/10: `calcularPlan_` entero,
  *      con el invariante, sobre el destino sin sus RDV_UID), contra el formulario que resuelve la
@@ -93,6 +97,9 @@ function verificarEscritura() {
   Logger.log('--- 3) celdas con el color del sistema (%s) en "%s" ---', COLORES_SISTEMA.join(' o '), RDV_HOJA_DESTINO);
   const az = _azules_diag8(dest);
   const base = lineaBaseAzules_();
+  // Desde la etapa 2 de Agenda (06/10) el sistema escribe Barrio por la regla de confianza: esas celdas (las que
+  // todavía tienen lo que anotó agenda_barrio_escrito) se descuentan; cualquier otra que suba es un problema.
+  const ag = _filasAgenda_diag8(dest);
   Logger.log('  en Barrio (la única columna manual): %s   (línea de base: %s; NO puede subir)', az.manual,
              base.barrio == null ? 'NO ANOTADA' : base.barrio);
   Logger.log('  en toda la solapa: %s   (línea de base: %s; informativo: sube con lo que se escribe)', az.total,
@@ -108,9 +115,11 @@ function verificarEscritura() {
     Logger.log('  >>> Sin línea de base de Barrio para "%s". Si esto corre ANTES de escribir en esta solapa,', RDV_HOJA_DESTINO);
     Logger.log('      anotar en 00_Config.js: LINEA_BASE_AZULES["%s"] = { barrio: %s, total: %s }.', RDV_HOJA_DESTINO,
                az.manual, az.total);
-  } else if (az.manual > base.barrio) {
-    problemas.push('color del sistema en Barrio: ' + az.manual + ' > ' + base.barrio);
-    Logger.log('  >>> SUBIÓ el color del sistema en Barrio: el upsert NO debería escribirlo.');
+  } else if (az.manual - ag.barrioDeLaAgenda > base.barrio) {
+    problemas.push('color del sistema en Barrio: ' + az.manual + ' (de la agenda ' + ag.barrioDeLaAgenda + ') > ' + base.barrio);
+    Logger.log('  >>> SUBIÓ el color del sistema en Barrio más allá de lo que escribió la agenda: el upsert NO debería escribirlo.');
+  } else if (ag.barrioDeLaAgenda) {
+    Logger.log('  de ésas, escritas por la agenda (agenda_barrio_escrito): %s — no cuentan contra la línea de base', ag.barrioDeLaAgenda);
   }
   if (az.trazaSinAzul) problemas.push('celdas de traza sin azul: ' + az.trazaSinAzul);
 
@@ -166,6 +175,21 @@ function verificarEscritura() {
     Logger.log('  lo que escribió esa corrida, por columna: %s', ult.porColumna || '(no registrado)');
   } else {
     Logger.log('  %s no tiene ninguna corrida de ESCRITURA en esta solapa todavía.', RDV_HOJA_REGISTRO);
+  }
+
+  // --- 6) filas de agenda (06/10) ---
+  Logger.log('--- 6) filas de agenda (agenda_uid) ---');
+  if (ag.sinColumnas) Logger.log('  el destino todavía no tiene las columnas de la agenda (paso36_columnasAgenda): nada que controlar.');
+  else {
+    Logger.log('  filas de la agenda: %s | DUPLICADOS figura + fecha con una fila de la agenda: %s   (tiene que dar 0)',
+               ag.filas, ag.duplicados.length);
+    ag.duplicados.forEach(function (x) { Logger.log('    %s | %s → filas %s', x.figura, fmtFecha_(x.fecha), x.filas.join(', ')); });
+    Logger.log('  "en agenda" con la fecha pasada hace más de %s días (aviso: ¿se hizo?, ¿se suspendió?): %s', AGENDA_DIAS_VENCIDA, ag.vencidas.length);
+    ag.vencidas.slice(0, 30).forEach(function (f) { Logger.log('    fila %s | %s | %s', f.fila, f.figura || '(sin figura)', fmtFecha_(f.fecha)); });
+    Logger.log('  celdas editadas por el equipo (ya no tienen lo que escribió la agenda; no se tocan más — informativo): %s',
+               ag.editadas.length);
+    ag.editadas.slice(0, 30).forEach(function (x) { Logger.log('    fila %s | %s: "%s" (la agenda había escrito "%s")', x.fila, x.col, x.ahora, x.escrito); });
+    if (ag.duplicados.length) problemas.push('filas de agenda duplicadas (figura + fecha): ' + ag.duplicados.length);
   }
 
   // --- 5) la lista, y si hoy EL MISMO PLAN las escribiría igual ---
@@ -300,3 +324,42 @@ function _ultimaEscrituraRegistrada_diag8() {
   }
   return null;
 }
+
+/** Las filas de la agenda (06/10): duplicados figura + fecha, "en agenda" vencidas, celdas editadas, Barrio de la agenda. */
+function _filasAgenda_diag8(dest) {
+  const A = indicesAgenda_(dest.hdr);
+  const out = { sinColumnas: A.faltan.length > 0, filas: 0, duplicados: [], vencidas: [], editadas: [], barrioDeLaAgenda: 0 };
+  if (out.sinColumnas) return out;
+  const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
+  const limite = new Date(hoyMediodia_().getTime() - AGENDA_DIAS_VENCIDA * 86400000);
+  const porFigFecha = new Map();
+  dest.filas.forEach(function (f) {
+    const deAgenda = !esVacio_(val(f, 'agenda_uid'));
+    if (deAgenda) out.filas++;
+    if (f.figura && f.fecha) {
+      const k = normalizeText_(f.figura) + '|' + ymd_(f.fecha);
+      if (!porFigFecha.has(k)) porFigFecha.set(k, []);
+      porFigFecha.get(k).push(f);
+    }
+    if (normStatus_(val(f, 'STATUS REUNIÓN')) === 'en agenda' && f.fecha && f.fecha < limite) out.vencidas.push(f);
+    if (!deAgenda) return;
+    [['HORA', 'agenda_hora_escrita'], ['Dirección', 'agenda_direccion_escrita'], ['Barrio', 'agenda_barrio_escrito'],
+     ['FECHA', 'agenda_fecha_escrita'], ['STATUS REUNIÓN', 'agenda_status_escrito']].forEach(function (p) {
+      const esc = val(f, p[1]), ahora = val(f, p[0]);
+      if (esVacio_(esc)) return;
+      const igual = valorAgendaComparable_(ahora, p[0]) === valorAgendaComparable_(esc, p[0]);
+      if (p[0] === 'Barrio' && igual) out.barrioDeLaAgenda++;
+      // STATUS: que la fila pase de "en agenda" a Realizada (el upsert) no es una edición del equipo.
+      if (!igual && !(p[0] === 'STATUS REUNIÓN' && normStatus_(ahora) === 'realizada')) {
+        out.editadas.push({ fila: f.fila, col: p[0], ahora: valorAgendaComparable_(ahora, p[0]), escrito: valorAgendaComparable_(esc, p[0]) });
+      }
+    });
+  });
+  porFigFecha.forEach(function (lista) {
+    if (lista.length > 1 && lista.some(function (f) { return !esVacio_(val(f, 'agenda_uid')); })) {
+      out.duplicados.push({ figura: lista[0].figura, fecha: lista[0].fecha, filas: lista.map(function (f) { return f.fila; }) });
+    }
+  });
+  return out;
+}
+

@@ -469,3 +469,19 @@ de la dirección por una heurística de texto (nombres de barrio y "calles emble
 de Google, con un tope de 20 por corrida. **El push nunca la lee.** Detalle, y qué sirve y qué no: docs/ESTADO.md, 0.x
 (punto 0). El paso 31 lo mide contra el barrio cargado por el equipo, al lado del método nuevo (punto en polígono).
 
+## 6. Qué reemplaza la etapa 2 (06/10)
+
+La agenda nueva (`40_Agenda.js`, docs/ESTADO.md 0.z) reemplaza al flujo de este documento. Cuando se prenda
+(`AGENDA_ACTIVA`), lo del legado **no se usa más**:
+
+| legado | lo reemplaza |
+|---|---|
+| `agenda_syncFromEmails` (Gmail → solapa `Agenda` del archivo viejo, 21 días, último del hilo, descarta NO PARTICIPA) | `correrAgenda`: Gmail por la etiqueta "GCBA/Encuentros Con Vecinos", la ÚLTIMA versión por semana + grupo, NO PARTICIPA como columna |
+| la compuerta manual `Listo para enviar` / `Enviado a base` | en seco primero, una semana primero, deshacer; las celdas del equipo no se pisan nunca (`agenda_*_escrita`) |
+| `agenda_pushReadyToBaseFinal` (→ `Para Revisar`, pisa Figura / Fecha / Hora / Dirección / Barrio) | escribe **directo en el destino**, por la excepción `escribirAgendaLote_`: crea al final, vincula sin duplicar, actualiza sólo lo del sistema |
+| `syncAgendaSheetInBaseFromAgenda_2` (espejo del archivo viejo en el destino) | la copia en el archivo **"Agenda" nuevo** (`1_W4qry…`), reescrita en cada corrida |
+| "Barrio Estimado" de "CODIGOS Ajuste RDV" (heurística de calles + Google; nunca usado por el push) | punto en polígono con la regla de confianza y el margen de 100 m |
+
+**Mientras tanto, no correr a mano `agenda_syncFromEmails` ni `agenda_pushReadyToBaseFinal`**: escriben en `Para Revisar`
+y en el archivo viejo, y se mezclarían con la agenda nueva. El archivo "Agenda" nuevo no lo abre ningún código del
+legado. El activador del espejo (`syncAgendaSheetInBaseFromAgenda_2`) se da de baja con el inventario del paso 23.
