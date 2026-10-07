@@ -569,9 +569,9 @@ negocio real que **hoy existe sólo adentro de `syncB_to_B2`** y se perdería co
 > como antes. `conMail` / `conCelular` / `conFijo` no se usan (`COLUMNAS_B_IGNORADAS`). Los alias viejos se mantienen.
 > **Protección**: una obligatoria de datos que falta, o una `inscriptos_*` que no está en el mapeo, **frena los datos
 > de B en esa corrida** (Inscriptos, canales, sexo, edades; la traza, Asistentes y STATUS siguen); un formulario que no
-> cierra (`problemasFormularioB_`: los 5 canales = todos los de B; Masculinos + Femeninos + Sin identificar =
-> Inscriptos; edades ≤ Inscriptos; no "Inscriptos > 0 y todo en 0") frena sólo SUS datos. Nunca se lee un 0 por un
-> nombre que no existe. El chequeo, en seco: `paso46_chequearColumnasB()`.
+> cierra (`problemasFormularioB_`: los 5 canales = todos los de B; edades + Sin identificar = Inscriptos y edades ≤
+> Inscriptos; Masculinos + Femeninos ≤ Inscriptos; no "Inscriptos > 0 y todo en 0") frena sólo SUS datos. Nunca se lee
+> un 0 por un nombre que no existe. El chequeo, en seco: `paso46_chequearColumnasB()`.
 
 > **Los nombres de las columnas de `B` viven en `COLUMNAS_B` (`00_Config.js`), y son obligatorios**
 > (02/10). Desde que `B` es un `QUERY` sobre `Hoja1`, sus encabezados son los del origen
@@ -597,12 +597,13 @@ Sin identificar = max(0, Inscriptos − suma de las cinco bandas)
 > el código, y explica por qué `DIAG_ATOMICIDAD` ve `suma_sexo` y `suma_edades` comportarse
 > distinto contra el mismo total.
 >
-> ~~**No se cambia**: tocar el criterio cambiaría números ya publicados. Se documenta y listo.~~
-> **07/10, decisión del usuario (con las columnas nuevas de B): `Sin identificar` pasa a ser el resto del SEXO**:
-> `Inscriptos − Masculinos − Femeninos` (`sexoYSinIdentificar_`), así Masculinos + Femeninos + Sin identificar =
-> Inscriptos exacto (si el redondeo se pasa en 1, se le resta al que más subió). `inscriptos_X` queda adentro de la
-> diferencia (no se suma de nuevo). Las edades siguen crudas y su suma tiene que ser ≤ Inscriptos. Rige para lo que se
-> escribe de acá en adelante (sólo celdas vacías): lo publicado antes queda como está.
+> **No se cambia**: tocar el criterio cambiaría números ya publicados. Se documenta y listo.
+>
+> **07/10: `Sin identificar` NO cambió.** Sigue siendo el resto de las EDADES (`sinIdentificar_`): Inscriptos − las cinco
+> franjas. Ese día se lo cambió por error (al resto del sexo) y se volvió atrás en unas horas; el paso 18 reconoce y
+> deshace lo que una corrida haya escrito con esa fórmula. Lo único nuevo en el sexo (`sexoEscalado_`): si el redondeo de
+> Masculinos y Femeninos se pasa de Inscriptos (con .5 y .5), se le resta al que más subió, así M + F ≤ Inscriptos.
+> `inscriptos_X` no tiene columna en el destino y no se escribe en ningún lado.
 >
 > ⚠️ **No hay categoría X.** `B` sólo trae `Inscriptos M` y `Inscriptos F`. Si el origen empieza
 > a mandar una tercera, hoy no se lee y nadie se entera.

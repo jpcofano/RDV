@@ -5,9 +5,9 @@
  * DIAS_CHEQUEO_B días, con ejemplos:
  *
  *   - todas las columnas de B reconocidas: ninguna obligatoria que falte, ninguna `inscriptos_*` sin mapear;
- *   - por formulario: Mail + RRSS + Difusión + Call Center + IVR = la suma de TODOS los canales de B; Masculinos +
- *     Femeninos + Sin identificar = Inscriptos; la suma de edades ≤ Inscriptos; ninguno con Inscriptos > 0 y todo lo
- *     demás en 0;
+ *   - por formulario: Mail + RRSS + Difusión + Call Center + IVR = la suma de TODOS los canales de B; edades + Sin
+ *     identificar = Inscriptos (y edades ≤ Inscriptos); Masculinos + Femeninos ≤ Inscriptos; ninguno con Inscriptos > 0
+ *     y todo lo demás en 0;
  *   - 5 ejemplos: lo que trae B y lo que se escribiría en el destino.
  *
  * Si algo no cierra lo dice, y la corrida de la hora no escribe esos datos (todos, si el problema es de columnas; los de

@@ -12,6 +12,9 @@
  * O sea que, por construcción, la única celda afectada es `Sin identificar`. Igual se revisan las 8
  * columnas de sexo y edades con el mismo criterio.
  *
+ * **07/10**: también reconoce `Sin identificar = Inscriptos − Masculinos − Femeninos`, la fórmula equivocada que estuvo
+ * arriba unas horas (el resto del sexo en vez del de las edades). Si alguna corrida de la hora la escribió, se lista acá.
+ *
  * --- Qué es "mal escrita" ---
  * Una celda de sexo o edades de una fila con RDV_UID que:
  *   1. tiene el fondo del sistema (#4F81BD);
@@ -27,6 +30,19 @@
  * La próxima corrida del upsert (ya con las columnas bien leídas) completa esas celdas vacías con el
  * valor correcto: entran por RDV_UID.
  */
+
+/**
+ * Los valores rotos de Sin identificar para un formulario: Inscriptos (02/10) e Inscriptos − Masculinos − Femeninos
+ * (07/10, el resto del SEXO en vez del de las edades: se cambió por error y se volvió atrás el mismo día).
+ */
+function _rotosSinIdentificar_diag10(c) {
+  const out = [];
+  if (!(c.inscriptos > 0)) return out;
+  out.push(c.inscriptos);
+  const M = c.datos['Masculinos'], F = c.datos['Femeninos'];
+  if (M !== '' && F !== '') out.push(Math.max(0, c.inscriptos - numOcero_(M) - numOcero_(F)));
+  return out;
+}
 
 /** En seco: lista las mal escritas en el destino real. No escribe nada. (La copia de prueba ya no existe, 06/10.) */
 function listarMalEscritas() {
@@ -76,9 +92,11 @@ function _malEscritasEn_diag10(hoja, cands, backup, loguear) {
       const v = num(f.valores[idx]);
       if (v === '') return;
       if (!esColorSistema_(fondos[f.fila - 1][idx])) return;
-      const roto = campo === 'Sin identificar' ? (c.inscriptos > 0 ? c.inscriptos : '') : '';
+      // Los valores ROTOS de Sin identificar: Inscriptos (el bug del 02/10) e Inscriptos − Masculinos − Femeninos (la
+      // fórmula equivocada que estuvo arriba unas horas el 07/10). Lo correcto es el resto de las EDADES.
+      const rotos = campo === 'Sin identificar' ? _rotosSinIdentificar_diag10(c) : [];
       const correcto = c.datos[campo];
-      if (v !== roto || v === correcto) return;
+      if (rotos.indexOf(v) < 0 || v === correcto) return;
       if (backup && backup.repetidas.has(f.clave)) { r.sinVerificar++; return; }   // no se puede verificar
       if (bk) {                                    // la fila estaba en el backup: ¿la celda estaba vacía?
         const j = backup.idx[campo];

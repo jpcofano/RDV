@@ -17,8 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  >>> 07/10 (10): B CAMBIÓ DE COLUMNAS: mapeo nuevo (COLUMNAS_B / MAPEO_CANALES), Sin identificar = Inscriptos − M − F,
- *      protección (columnas de B que faltan o sin mapear, o formularios que no cierran → no se escriben esos datos).
+ *  >>> 07/10 (11): CORRECCIÓN: Sin identificar NO cambió (sigue siendo el resto de las EDADES). Correr
+ *      paso18_malEscritas_listar() (en seco): si lista celdas, alguna corrida escribió con la fórmula equivocada →
+ *      paso18_malEscritas_vaciarReal(). Y paso46_chequearColumnasB() (sólo lectura).
+ *  >>> 07/10 (10): B CAMBIÓ DE COLUMNAS: mapeo nuevo (COLUMNAS_B / MAPEO_CANALES), protección (columnas de B que faltan
+ *      o sin mapear, o formularios que no cierran → no se escriben esos datos).
  *      Correr paso46_chequearColumnasB() (sólo lectura) ANTES de la corrida de la hora (ESTADO 0.z).
  *  >>> 07/10 (9): CRUCE_CONJUNTO_POR_DIRECCION = true (paso 45: exacta 88,7% + parecida 6,6%, CAMBIA 0). El archivo
  *      "Agenda" en dos solapas: "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron).

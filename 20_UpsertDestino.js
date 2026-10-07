@@ -4822,24 +4822,24 @@ function indicesB_(hdr) {
 
 /**
  * **El chequeo de un formulario de B** (07/10), sobre lo que se escribiría: los cinco canales del destino suman lo mismo
- * que TODOS los canales de B; Masculinos + Femeninos + Sin identificar = Inscriptos; la suma de las edades ≤ Inscriptos;
- * y no hay Inscriptos > 0 con todo lo demás en 0 (señal de nombres mal leídos). Devuelve la lista de problemas.
+ * que TODOS los canales de B; edades + Sin identificar = Inscriptos (y edades ≤ Inscriptos); Masculinos + Femeninos ≤
+ * Inscriptos; y no hay Inscriptos > 0 con todo lo demás en 0 (señal de nombres mal leídos). Devuelve los problemas.
  */
 function problemasFormularioB_(ins, datos, cuentas, sumaCanalesB) {
   const p = [];
   const n0 = function (v) { return v === '' || v === null || v === undefined ? 0 : numOcero_(v); };
   const suma5 = CAMPOS_CANALES_.reduce(function (s, k) { return s + n0(cuentas[k]); }, 0);
   if (suma5 !== sumaCanalesB) p.push('canales: los 5 del destino suman ' + suma5 + ' y los de B ' + sumaCanalesB);
-  if (datos['Masculinos'] !== '' && datos['Femeninos'] !== '' && datos['Sin identificar'] !== '' &&
-      n0(datos['Masculinos']) + n0(datos['Femeninos']) + n0(datos['Sin identificar']) !== ins) {
-    p.push('sexo: Masculinos + Femeninos + Sin identificar = ' + (n0(datos['Masculinos']) + n0(datos['Femeninos']) +
-           n0(datos['Sin identificar'])) + ', Inscriptos ' + ins);
+  // sexo: Masculinos + Femeninos ≤ Inscriptos (el redondeo ya no se pasa: si se pasan, es el origen, M + F > identificados)
+  if (datos['Masculinos'] !== '' && datos['Femeninos'] !== '' && n0(datos['Masculinos']) + n0(datos['Femeninos']) > ins) {
+    p.push('sexo: Masculinos + Femeninos = ' + (n0(datos['Masculinos']) + n0(datos['Femeninos'])) + ', más que Inscriptos ' + ins);
   }
-  if (datos['Sin identificar'] !== '' && n0(datos['Sin identificar']) < 0) {
-    p.push('sexo: Masculinos + Femeninos (' + (n0(datos['Masculinos']) + n0(datos['Femeninos'])) + ') más que Inscriptos ' + ins);
-  }
+  // edades: edades + Sin identificar = Inscriptos (y edades ≤ Inscriptos)
   const edades = Object.keys(EDADES_B).reduce(function (s, e) { return s + n0(datos[e]); }, 0);
   if (edades > ins) p.push('edades: suman ' + edades + ', más que Inscriptos ' + ins);
+  else if (ins > 0 && datos['Sin identificar'] !== '' && edades + n0(datos['Sin identificar']) !== ins) {
+    p.push('edades: edades + Sin identificar = ' + (edades + n0(datos['Sin identificar'])) + ', Inscriptos ' + ins);
+  }
   if (ins > 0 && !suma5 && !n0(datos['Masculinos']) && !n0(datos['Femeninos']) && !edades) {
     p.push('Inscriptos ' + ins + ' y todo lo demás en 0 (¿nombres de columnas mal leídos?)');
   }
@@ -4885,8 +4885,8 @@ function leerCandidatos_() {
               : DIVISOR_SEXO === 'M+F+X' ? sexo.M + sexo.F + sexo.X : sexo.identificados;
 
     const datos = {};
-    // 07/10: Masculinos + Femeninos + Sin identificar = Inscriptos, exacto (resto mayor: sexoYSinIdentificar_)
-    const sx = sexoYSinIdentificar_(ins, sexo.M, sexo.F, div);
+    // Masculinos y Femeninos escalados como siempre (DIVISOR_SEXO); 07/10: el redondeo nunca pasa de Inscriptos
+    const sx = sexoEscalado_(ins, sexo.M, sexo.F, div);
     datos['Masculinos'] = sx['Masculinos'];
     datos['Femeninos']  = sx['Femeninos'];
     let sumaEdades = 0;
@@ -4895,8 +4895,9 @@ function leerCandidatos_() {
       datos[e] = v;
       sumaEdades += numOcero_(v);
     });
-    // 07/10 (decisión del usuario): Sin identificar = el resto del SEXO (Inscriptos − Masculinos − Femeninos)
-    datos['Sin identificar'] = sx['Sin identificar'];
+    // Sin identificar: el resto de las EDADES, como siempre (CLAUDE.md 1.e). NO cambió (07/10: se cambió por error y
+    // se volvió atrás el mismo día).
+    datos['Sin identificar'] = sinIdentificar_(ins, sumaEdades);
 
     // Inscriptos y canales tal como vienen (sin cero por vacío), con MAPEO_CANALES. Hoy sólo los lee
     // el paso 17 (validarCuentas); el upsert todavía no los escribe (paso B).

@@ -888,33 +888,25 @@ function sinIdentificar_(inscriptos, sumaBandas) {
 }
 
 /**
- * **Sin identificar, desde el 07/10 (decisión del usuario, con las columnas nuevas de B): el resto del SEXO**:
+ * **Masculinos y Femeninos, escalados sobre el divisor (DIVISOR_SEXO), como siempre**, con un único ajuste (07/10): si
+ * el redondeo de los dos se pasa de Inscriptos (40,5 → 41 y 49,5 → 50 daban 91 sobre 90), se le resta al que más subió
+ * al redondear, así Masculinos + Femeninos ≤ Inscriptos. Si se pasan por los datos del origen (M + F > divisor), no se
+ * ajusta: el chequeo (`problemasFormularioB_`) lo marca y ese formulario no se escribe. `inscriptos_X` no tiene columna
+ * en el destino: no se escribe en ningún lado. Sin divisor, vacío (no se escala).
  *
- *     Sin identificar = Inscriptos − Masculinos − Femeninos        (Masculinos y Femeninos escalados, DIVISOR_SEXO)
- *
- * así Masculinos + Femeninos + Sin identificar = Inscriptos. `inscriptos_X` (y los no identificados) quedan ahí, sin
- * sumarlo de nuevo: con el divisor 'identificados' ya está adentro de la diferencia. Las edades se copian crudas y su
- * suma tiene que ser ≤ Inscriptos. Antes del 07/10 era el resto de las EDADES (`sinIdentificar_`, que queda para leer
- * lo publicado).
- *
- * **Y suman EXACTO Inscriptos** (07/10): Masculinos y Femeninos se redondean como siempre (Math.round, igual que B2) y
- * Sin identificar es el resto. Sólo si el redondeo se pasa de Inscriptos (40,5 → 41 y 49,5 → 50 daban 91 sobre 90) se le
- * resta 1 al que más subió al redondear, y Sin identificar queda en 0. Si M + F > divisor (el origen no cierra), el resto
- * queda negativo: el chequeo lo marca. Sin divisor, vacío (no se escala).
+ * **Sin identificar NO es el resto del sexo**: es el resto de las EDADES (`sinIdentificar_`), como siempre. El 07/10 se
+ * cambió por error y se volvió atrás el mismo día.
  */
-function sexoYSinIdentificar_(inscriptos, M, F, divisor) {
+function sexoEscalado_(inscriptos, M, F, divisor) {
   const ins = numOcero_(inscriptos), m = numOcero_(M), f = numOcero_(F), d = numOcero_(divisor);
-  if (!(d > 0)) return { Masculinos: '', Femeninos: '', 'Sin identificar': '' };
-  const ex = [ins * m / d, ins * f / d];
+  if (!(d > 0)) return { Masculinos: '', Femeninos: '' };
+  const ex = [ins * (m / d), ins * (f / d)];             // la misma cuenta que antes del 07/10
   const r = ex.map(Math.round);
-  if (!(ins > 0)) return { Masculinos: r[0], Femeninos: r[1], 'Sin identificar': '' };
-  let resto = ins - r[0] - r[1];
-  if (resto < 0 && ins - ex[0] - ex[1] >= 0) {          // se pasó sólo por el redondeo
+  if (r[0] + r[1] > ins && m + f <= d) {                 // se pasó sólo por el redondeo (comparación en enteros)
     const k = (r[0] - ex[0]) >= (r[1] - ex[1]) ? 0 : 1;
-    r[k] += resto;                                       // resto es -1 (a lo sumo -1 con dos redondeos)
-    resto = 0;
+    r[k] -= r[0] + r[1] - ins;
   }
-  return { Masculinos: r[0], Femeninos: r[1], 'Sin identificar': resto };
+  return { Masculinos: r[0], Femeninos: r[1] };
 }
 
 

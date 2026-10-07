@@ -868,8 +868,8 @@ function escenarioPasoA() {
     ok(c.comparables > 0 && c.exacto === c.comparables && c.b2IgualB === c.b2Comparables,
        n + ': exacto ' + c.exacto + ' de ' + c.comparables + ' | B = B2 ' + c.b2IgualB + ' de ' + c.b2Comparables);
   });
-  // 07/10: 'Sin identificar' cambió de definición (el resto del sexo, decisión del usuario): ya no es la de B2. Y
-  // Masculinos / Femeninos difieren de B2 sólo donde el redondeo se pasaba de Inscriptos (se le resta 1 al que más subió).
+  // 07/10: Masculinos / Femeninos difieren de B2 sólo donde el redondeo se pasaba de Inscriptos (se le resta 1 al que
+  // más subió). Sin identificar NO cambió: sigue siendo el resto de las edades, igual que B2.
   const bv = m.ssI.hojas['B'].v, hb = bv[0];
   let sePasan = 0;
   bv.slice(1).forEach(function (r) {
@@ -882,7 +882,7 @@ function escenarioPasoA() {
     ok(c.b2Comparables > 0 && c.b2Comparables - c.b2IgualB <= sePasan, n + ' con los encabezados nuevos de B: B = B2 ' +
        c.b2IgualB + ' de ' + c.b2Comparables + ' (difieren sólo los que el redondeo pasaba de Inscriptos: ' + sePasan + ')');
   });
-  ['18-24', '66+'].forEach(function (n) {
+  ['18-24', '66+', 'Sin identificar'].forEach(function (n) {
     const c = x.porCol[n];
     ok(c.b2Comparables > 0 && c.b2IgualB === c.b2Comparables, n + ' con los encabezados nuevos de B: B = B2 ' +
        c.b2IgualB + ' de ' + c.b2Comparables);
@@ -986,6 +986,16 @@ function escenarioMalEscritas() {
   E.ejecutar('upsertDestino');
   ok(tocadas.slice(0, 5).every(function (t) { return hoja.v[t.i][iSin] === t.correcto; }),
      'la corrida siguiente las completa con el valor correcto');
+  // 07/10: la fórmula equivocada (Sin identificar = Inscriptos − Masculinos − Femeninos) también se reconoce y se deshace
+  const t7 = tocadas[0];
+  const mal07 = hoja.v[t7.i][iIns] - hoja.v[t7.i][colD('Masculinos')] - hoja.v[t7.i][colD('Femeninos')];
+  hoja.v[t7.i][iSin] = mal07;
+  const l7 = E.ejecutar('listarMalEscritas').resultado['RVD JM-CM - ES'];
+  ok(mal07 !== t7.correcto && l7.lista.length === 1 && l7.lista[0].fila === t7.i + 1 && l7.lista[0].escrito === mal07,
+     'la fórmula equivocada del 07/10 (' + mal07 + ' en vez de ' + t7.correcto + '): el paso 18 la lista');
+  E.ejecutar('vaciarReal_test_');
+  E.ejecutar('upsertDestino');
+  ok(hoja.v[t7.i][iSin] === t7.correcto, 'y después de vaciarla, la corrida la completa con el resto de las edades');
 }
 
 /**
@@ -1730,10 +1740,12 @@ function escenarioColumnasNuevasB() {
     if (i === iMal) return;
     canales.forEach(function (c) { canN++; if (numJs(hoja.v[i][colD(c)]) === numJs(esperado[i][c])) canOk++; });
     const ins = numJs(hoja.v[i][colD('Inscriptos')]), M = hoja.v[i][colD('Masculinos')], F = hoja.v[i][colD('Femeninos')], S = hoja.v[i][colD('Sin identificar')];
-    if (M !== '') { sexN++; if (numJs(M) + numJs(F) + numJs(S) === ins) sexOk++; }
+    const ed = ['18-24', '25-39', '40-55', '56-65', '66+'].reduce(function (a, e) { return a + numJs(hoja.v[i][colD(e)]); }, 0);
+    if (M !== '') { sexN++; if (ed + numJs(S) === ins && numJs(M) + numJs(F) <= ins) sexOk++; }
   });
   ok(canN > 0 && canOk === canN, 'canales escritos = la suma de los de B (RRSS = Instagram + WhatsApp + TikTok; Difusión = Territorial + QR): ' + canOk + ' de ' + canN);
-  ok(sexN > 0 && sexOk === sexN, 'Masculinos + Femeninos + Sin identificar = Inscriptos: ' + sexOk + ' de ' + sexN);
+  ok(sexN > 0 && sexOk === sexN, 'edades + Sin identificar = Inscriptos (Sin identificar: el resto de las EDADES) y Masculinos + Femeninos ≤ Inscriptos: ' +
+     sexOk + ' de ' + sexN);
   ok(canales.concat(SEXO_EDADES).every(function (c) { return hoja.v[iMal][colD(c)] === ''; }),
      'el formulario que no cierra (edades > Inscriptos): sus datos NO se escriben (la fila sigue vacía)');
   const c46 = E.ejecutar('chequearColumnasB');

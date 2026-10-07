@@ -761,21 +761,31 @@ semana que terminó pasa sola a "Agenda cerrada"**. Test agenda_escritura [29].
    AppAsistentes + AppFormulariosOffline + QR + Prensa + Otros; Call Center = CallCenter; IVR = IVR. Edades: las 5 de
    `inscriptos_edades_*`. Los nombres nuevos son `inscriptos_canal_<Nombre>` (como los que ya había); los alias viejos
    siguen. `conMail` / `conCelular` / `conFijo`: ignoradas.
-2. **Sexo y Sin identificar** (decisión del usuario): Masculinos y Femeninos escalados como hasta ahora (`DIVISOR_SEXO =
-   'identificados'`); **Sin identificar = Inscriptos − Masculinos − Femeninos** (antes era el resto de las EDADES); X
-   queda adentro, sin sumarlo dos veces. Si el redondeo de los dos se pasa de Inscriptos (pasa con .5 y .5), se le resta
-   1 al que más subió: los tres suman exacto. En el test, Masculinos y Femeninos siguen iguales a B2 (210 de 210).
+2. **Sexo y Sin identificar — CORREGIDO el 07/10, mismo día**: **`Sin identificar` NO cambió de significado**: sigue
+   siendo el resto de las EDADES, Inscriptos − (18-24 + 25-39 + 40-55 + 56-65 + 66+), como siempre (CLAUDE.md 1.e). En el
+   commit 7c7b7fd se lo había cambiado por error (al resto del sexo, Inscriptos − Masculinos − Femeninos) y se volvió
+   atrás en el siguiente. Masculinos y Femeninos, escalados sobre identificados como hasta hoy (`DIVISOR_SEXO =
+   'identificados'`), con un ajuste que queda: si el redondeo de los dos se pasa de Inscriptos (con .5 y .5), se le resta
+   1 al que más subió (`sexoEscalado_`), así M + F ≤ Inscriptos (en el test, 15 de 300 formularios; Masculinos = B2 en
+   204 de 210). `inscriptos_X` no tiene columna en el destino: no se escribe en ningún lado.
+   **Si alguna corrida de la hora escribió con la fórmula equivocada** (entre los dos commits), el paso 18 lo reconoce:
+   `paso18_malEscritas_listar()` (en seco) lista las celdas de Sin identificar con el color del sistema que valen
+   Inscriptos − Masculinos − Femeninos y no el resto de las edades; `paso18_malEscritas_vaciarReal()` las vacía y la
+   corrida siguiente las completa bien.
 3. **Protección** (cada corrida, antes de escribir): las columnas de B que hacen falta para el cruce (nombre, fecha_fin,
    inscriptos) siguen frenando todo; una obligatoria de DATOS que falta o una `inscriptos_*` sin mapear **frena los datos
    de B** (la traza, Asistentes, STATUS y la agenda siguen) y el log lo dice (">>> COLUMNAS DE B: …"); un formulario que
-   no cierra frena **sus** datos. El paso 20 lo muestra como "l) datos de B frenados". El paso 17 se frena.
+   no cierra frena **sus** datos. Los controles (`problemasFormularioB_`): los 5 canales = la suma de todos los de B;
+   edades + Sin identificar = Inscriptos (y edades ≤ Inscriptos); Masculinos + Femeninos ≤ Inscriptos; no "Inscriptos >
+   0 y todo lo demás en 0". El paso 20 lo muestra como "l) datos de B frenados". El paso 17 se frena.
 4. **`paso46_chequearColumnasB()`** (sólo lectura, diagnostico/20_columnas_b.js): columnas reconocidas / faltantes / sin
-   mapear; los formularios de los últimos 30 días que no cierran (canales, sexo, edades, "Inscriptos > 0 y todo en 0");
+   mapear; los formularios de los últimos 30 días que no cierran (canales, edades + Sin identificar, M + F ≤ Inscriptos,
+   "Inscriptos > 0 y todo en 0");
    5 ejemplos de B → destino; y si la corrida de la hora escribe los datos de B.
 
 Tests: escritura_lote [10] (falta una de datos: no escribe datos de B y sigue; una `inscriptos_*` sin mapear: lo mismo)
-y [25] (B con los nombres nuevos: canales = suma de B, M + F + Sin identificar = Inscriptos, el formulario que no cierra
-no se escribe, el paso 46).
+y [25] (B con los nombres nuevos: canales = suma de B, edades + Sin identificar = Inscriptos y M + F ≤ Inscriptos, el
+formulario que no cierra no se escribe, el paso 46); [11] (el paso 18 reconoce y deshace la fórmula equivocada del 07/10).
 
 **Predicción, anotada ANTES** de `paso46_chequearColumnasB()`: columnas: faltan 0, sin mapear 0 (si los nombres nuevos
 son `inscriptos_canal_<Nombre>`; si el origen usa otra forma, aparecen acá con el nombre exacto y se agrega el alias); los
