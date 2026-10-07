@@ -56,7 +56,8 @@ les queda para cargar a ustedes.
   Barrio, STATUS; se recalcula en cada corrida), y lo del mail tal cual: **"Evento (mail)"**, **"Lugar (mail)"**,
   **"Dirección (mail)"**, **"Marcas (mail)"**, **"Conjunta con"**, **"No participa"**. Así no se pierde nada del mail
   aunque las columnas de ustedes tengan otra forma.
-- **Una copia de toda la agenda** queda en el archivo **"Agenda"**: una fila por reunión, con su estado (vigente,
+- **Una copia de toda la agenda** queda en el archivo **"Agenda"**, en dos solapas: **"Agenda"**, la semana en curso, y
+  **"Agenda cerrada"**, las semanas que ya terminaron (la más nueva primero; el lunes la semana anterior pasa sola). Una fila por reunión, con su estado (vigente,
   reprogramada, desaparecida), qué cambió, el barrio que calculó (o por qué no), la fila de la planilla y su STATUS. **No
   se edita a mano**: se reescribe en cada corrida. Lo que haya que corregir, se corrige en la planilla.
 

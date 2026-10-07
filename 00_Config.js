@@ -1120,7 +1120,7 @@ const AGENDA_OPCIONES_CANCELACION = ['Se canceló: suspender/borrar', 'Sigue', '
  * de la figura ese día, se desempata primero por dirección. `false` hasta medirlo: `paso45_medirDireccionConjunto()`
  * (sólo lectura) dice qué cruces cambiarían; tiene que dar 0 cambios en los que ya están bien.
  */
-const CRUCE_CONJUNTO_POR_DIRECCION = false;
+const CRUCE_CONJUNTO_POR_DIRECCION = true;   // 07/10: prendido con el paso 45 (CAMBIA 0, PIERDE 0; ESTADO 0.z)
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
@@ -1167,6 +1167,12 @@ const AGENDA_SOLAPA_FIGURA = 'AGENDA_FIGURA_A_COMPLETAR';
  */
 const AGENDA_COPIA_SS = '1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0';
 const AGENDA_COPIA_SOLAPA = 'Agenda';
+/**
+ * 07/10: el archivo "Agenda" tiene dos solapas, las dos reescritas en cada corrida y protegidas: AGENDA_COPIA_SOLAPA, la
+ * semana en curso (y las que vienen, si ya llegó su mail), y AGENDA_COPIA_SOLAPA_CERRADA, las semanas que ya terminaron,
+ * la más nueva primero. El lunes, la semana que terminó pasa sola a "Agenda cerrada" (se decide por fecha en cada corrida).
+ */
+const AGENDA_COPIA_SOLAPA_CERRADA = 'Agenda cerrada';
 /**
  * Desde qué fecha entran reuniones a la copia ('yyyy-MM-dd'): "desde que arranca Agenda" (no se rellena el histórico).
  * `null` = el mismo alcance que el destino (hoy − DIAS_ACTIVOS, o la semana de AGENDA_SOLO_SEMANA). Al prender la

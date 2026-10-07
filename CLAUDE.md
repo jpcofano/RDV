@@ -237,7 +237,7 @@ antes de que nadie haya cargado nada en ellas.
 | 2 | **Intermedia** — "Base intermedia Reuniones de Vecinos". El script está atado acá (`getActive()`) | `1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM` | sí |
 | 3 | **Origen inscriptos** — `Hoja1` | `1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg` | **no** |
 | 4 | **Agenda** (legado) — la lee y escribe el flujo Agenda del legado | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
-| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`), solapa "Agenda". Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
+| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
 
 Solapas que importan:
 
@@ -1704,7 +1704,8 @@ Importa porque la transición se dispara con `Asistentes`: **el estado de una re
 la cadena de asistentes (A2), no de la de inscriptos (B2)**, que es la que está rota. Son dos
 caminos independientes, y el que alimenta la transición es el que hoy funciona.
 
-> **07/10: la DIRECCIÓN** (`CRUCE_CONJUNTO_POR_DIRECCION`, apagada hasta medirla con el paso 45): con 2+ filas de la
+> **07/10: la DIRECCIÓN** (`CRUCE_CONJUNTO_POR_DIRECCION`, **prendida** el 07/10 con el paso 45: exacta 88,7% + parecida 6,6%,
+> CAMBIA 0): con 2+ filas de la
 > figura ese día desempata primero la dirección (exacta o parecida, `compararDirecciones_`); y la figura de una
 > Seguridad en tu Barrio sale de fecha + dirección > fecha + barrio > fecha + comuna (docs/ESTADO.md, 0.z).
 >

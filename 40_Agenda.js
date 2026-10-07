@@ -138,7 +138,11 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   const copia = armarCopiaAgenda_(plan, new Date());
   plan.resumen.copia = copia.length - 1;
   if (plan.repetidasCopia) Logger.log('  copia en el archivo "Agenda": %s líneas repetidas no se escriben (una por reunión)', plan.repetidasCopia);
-  if (enSeco) Logger.log('  copia en el archivo "Agenda": escribiría %s filas (en seco no se escribe).', copia.length - 1);
+  if (enSeco) {
+    const pz = partirCopiaAgenda_(copia, hoyMediodia_());
+    Logger.log('  copia en el archivo "Agenda": escribiría %s filas en "%s" y %s en "%s" (en seco no se escribe).',
+               pz.abierta.length - 1, AGENDA_COPIA_SOLAPA, pz.cerrada.length - 1, AGENDA_COPIA_SOLAPA_CERRADA);
+  }
   else {
     try { escribirCopiaAgenda_(copia, plan); }
     catch (err) { Logger.log('>>> la copia en el archivo "Agenda" NO se escribió: %s (el destino ya quedó escrito).', err); }
@@ -1325,6 +1329,7 @@ function armarCopiaAgenda_(P, cuando) {
     ]);
   });
   out.ids = [null].concat(filas.map(function (c) { return c.ev.mailId || ''; }));
+  out.semanas = filas.map(function (c) { return { desde: c.ev.desde || null, hasta: c.ev.hasta || null }; });
   out.semanaEnCurso = filas.map(function (c) { return !!(c.ev.desde && c.ev.hasta && ymd_(hoyMediodia_()) >= ymd_(c.ev.desde) && ymd_(hoyMediodia_()) <= ymd_(c.ev.hasta)); });
   return out;
 }
@@ -1336,7 +1341,36 @@ function armarCopiaAgenda_(P, cuando) {
  */
 function escribirCopiaAgenda_(matriz, P) {
   const ss = SpreadsheetApp.openById(AGENDA_COPIA_SS);
-  const sh = ss.getSheetByName(AGENDA_COPIA_SOLAPA) || ss.insertSheet(AGENDA_COPIA_SOLAPA);
+  // 07/10: dos solapas. "Agenda": la semana en curso (y las que vienen); "Agenda cerrada": las que terminaron.
+  const pz = partirCopiaAgenda_(matriz, hoyMediodia_());
+  _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA, pz.abierta);
+  _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz.cerrada);
+}
+
+/**
+ * Parte la copia por semana: las semanas que ya terminaron (hasta < hoy) van a la cerrada, **la más nueva primero** (y
+ * dentro de cada semana, por fecha y hora); el resto —la semana en curso y las que vienen— a la abierta.
+ */
+function partirCopiaAgenda_(matriz, hoy) {
+  const hdr = matriz[0], ab = [], ce = [];
+  for (let i = 1; i < matriz.length; i++) {
+    const sem = (matriz.semanas || [])[i - 1] || {};
+    const x = { fila: matriz[i], id: (matriz.ids || [])[i] || '', enCurso: !!(matriz.semanaEnCurso || [])[i - 1], desde: sem.desde, orden: i };
+    (sem.hasta && ymd_(sem.hasta) < ymd_(hoy) ? ce : ab).push(x);
+  }
+  ce.sort(function (a, b) { return (b.desde ? b.desde.getTime() : 0) - (a.desde ? a.desde.getTime() : 0) || a.orden - b.orden; });
+  const armar = function (lista) {
+    const m = [hdr].concat(lista.map(function (x) { return x.fila; }));
+    m.ids = [null].concat(lista.map(function (x) { return x.id; }));
+    m.semanaEnCurso = lista.map(function (x) { return x.enCurso; });
+    return m;
+  };
+  return { abierta: armar(ab), cerrada: armar(ce) };
+}
+
+/** Una solapa de la copia: reescrita entera, con formato y protegida con advertencia. */
+function _escribirSolapaCopiaAgenda_(ss, nombre, matriz) {
+  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA) pr.remove();
   });
@@ -1371,7 +1405,7 @@ function escribirCopiaAgenda_(matriz, P) {
   sh.protect().setDescription(DESC_PROTECCION_COPIA_AGENDA).setWarningOnly(true);
   SpreadsheetApp.flush();
   Logger.log('  copia en el archivo "Agenda" (%s): %s filas escritas, solapa "%s", protegida con advertencia.',
-             AGENDA_COPIA_SS.slice(0, 8) + '…', n - 1, AGENDA_COPIA_SOLAPA);
+             AGENDA_COPIA_SS.slice(0, 8) + '…', n - 1, nombre);
 }
 
 // ===================== EVENTO, agenda_uid, "intocada" (06/10) =====================

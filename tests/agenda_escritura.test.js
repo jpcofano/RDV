@@ -793,7 +793,7 @@ ok(E.ssD.hojas['AGENDA_DUPLICADOS'].v.length === 1, 'AGENDA_DUPLICADOS queda vac
   ok(otras === 0 && b[cOr] === 'equipo' && !b[E.C('agenda_uid')],
      'la 805 no se toca: ni se vincula ni recibe las columnas del mail (sólo "Origen fila" = equipo, como toda fila del equipo)');
 })();
-const copiaJM = E.planilla(E.run('AGENDA_COPIA_SS')).hojas[E.run('AGENDA_COPIA_SOLAPA')];
+const copiaJM = E.planilla(E.run('AGENDA_COPIA_SS')).hojas['Agenda cerrada'];   // la semana del 28/09 ya terminó (hoy 06/10)
 const encJM = copiaJM.v[0], lin01 = copiaJM.v.filter(function (x) { return x[encJM.indexOf('FECHA')] instanceof Date && x[encJM.indexOf('FECHA')].getDate() === 1; })[0];
 ok(lin01 && lin01[encJM.indexOf('Estado en la agenda')] === 'ya cargada en la fila ' + (i805 + 1) + ' (fecha distinta)' &&
    String(lin01[encJM.indexOf('Fila del destino')]) === String(i805 + 1), '"Agenda": "ya cargada en la fila ' + (i805 + 1) + ' (fecha distinta)", Fila del destino = ' + (i805 + 1));
@@ -868,6 +868,29 @@ ok(E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.some(function (x) { return x[1] === 
 const asisCon = E.run('(function () { const x = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); const p = x.porFila.get(' + (iPal + 1) + ');' +
                       'return { amb: x.ambiguas.length, asis: p ? p.asis : null, dir: x.desempatadasPorDireccion.length }; })()');
 ok(asisCon.amb === 0 && asisCon.asis === 120 && asisCon.dir === 1, 'Asistentes: Macri 02/10 se desempata por dirección → la fila de Palermo (Serrano 1500), 120');
+
+console.log('[29] el archivo "Agenda" en dos solapas: la semana en curso y "Agenda cerrada" (las que terminaron, la más nueva primero)');
+E = montar(true, filasMacri);
+const ASUNTO_21 = 'Agenda Encuentros de vecinos con CM y Ministros - Semana del 21/09 al 27/09';
+const mail21 = { fecha: new D(2026, 8, 18, 9, 0), asunto: ASUNTO_21, truncado: false,
+                 cuerpo: ['*Martes 22/09*', 'Evento: Encuentro con Vecinos Clara Muzzio, Recoleta', 'Hora: 18:00h', 'Lugar: Av. Santa Fe 1234'].join(String.fromCharCode(10)) };
+r = correr(E, false, [mail21].concat(mailsJM(23, 25), [V1]));
+const arch = E.planilla(E.run('AGENDA_COPIA_SS'));
+const ab = arch.hojas['Agenda'], ce = arch.hojas['Agenda cerrada'];
+const encA = ab.v[0], semA = function (h, x) { return x[h.v[0].indexOf('Semana')]; };
+ok(ab && ce && ab.v.slice(1).every(function (x) { return /05\/10/.test(semA(ab, x)); }) && ab.v.length > 1,
+   '"Agenda": sólo la semana en curso (05/10 al 10/10): ' + (ab.v.length - 1) + ' líneas');
+const semCe = ce.v.slice(1).map(function (x) { return semA(ce, x); });
+ok(semCe.length === 3 && /28\/09/.test(semCe[0]) && /21\/09/.test(semCe[2]),
+   '"Agenda cerrada": las semanas que terminaron, la más nueva primero (28/09 antes que 21/09): ' + semCe.join(' · '));
+ok(ab.proteccion && ab.advertencia === true && ce.proteccion && ce.advertencia === true, 'las dos protegidas con advertencia');
+ok(encA.length === 23 && ce.v[0].join('|') === encA.join('|'), 'las dos con las mismas 23 columnas');
+// el lunes la semana que terminó pasa sola a "Agenda cerrada": se parte por fecha en cada corrida
+const pz = E.run('(function () { const p = planAgenda_(leerDestino_(), agendaDesdeListaDeMails_(__mails, {}), indicesAgenda_(leerDestino_().hdr), ' +
+                 'alcanceAgenda_(), { geocodificar: __geo, historial: { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), yaCargadas: new Set(), error: "" }, elecciones: new Map(), conjunto: new Map() }); ' +
+                 'const m = armarCopiaAgenda_(p, new Date()); const a = partirCopiaAgenda_(m, new Date(2026, 9, 6, 12)), b = partirCopiaAgenda_(m, new Date(2026, 9, 12, 12)); ' +
+                 'return { hoyAb: a.abierta.length - 1, hoyCe: a.cerrada.length - 1, lunAb: b.abierta.length - 1, lunCe: b.cerrada.length - 1 }; })()');
+ok(pz.lunAb === 0 && pz.lunCe === pz.hoyAb + pz.hoyCe, 'el lunes 12/10, la semana del 05/10 ya está en "Agenda cerrada" (' + JSON.stringify(pz) + ')');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

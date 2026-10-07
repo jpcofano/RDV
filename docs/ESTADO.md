@@ -740,6 +740,20 @@ ambiguas de hoy (Macri con 2+ filas el mismo día); **Seguridad: la 818 → la f
 "Manuel A. Rodriguez 1191"** (si RDV CONJUNTO ya la tiene). Si da eso: `CRUCE_CONJUNTO_POR_DIRECCION = true` + clasp push,
 y la próxima corrida de la hora completa la Figura de la 818.
 
+**Paso 45, 07/10 16:31 — PRENDIDO (`CRUCE_CONJUNTO_POR_DIRECCION = true`, decisión del usuario):** RDV CONJUNTO tiene
+dirección en **811 de 839** filas (788 con calle y número reconocibles). En los **769 cruces de hoy**, la dirección es
+**exacta en el 88,7%** y **parecida en el 6,6%**. **CAMBIA 0, PIERDE 0**. Seguridad: **807 y 808** (01/10, Comuna 1)
+pasan de ambiguas a resueltas por dirección exacta, con la misma figura que había cargado el equipo. Desde la corrida
+de la hora siguiente al clasp push, el cruce usa la dirección.
+
+#### El archivo "Agenda" en dos solapas (07/10)
+
+**"Agenda"** (`AGENDA_COPIA_SOLAPA`): la semana en curso —y las que vienen, si ya llegó su mail, para que no queden en
+ninguna de las dos—. **"Agenda cerrada"** (`AGENDA_COPIA_SOLAPA_CERRADA`): las semanas que ya terminaron, **la más nueva
+primero** (y dentro de cada semana, por fecha y hora). Las dos se reescriben en cada corrida y quedan protegidas con
+advertencia, con las mismas 23 columnas. La partición es por fecha en cada corrida (`partirCopiaAgenda_`): **el lunes, la
+semana que terminó pasa sola a "Agenda cerrada"**. Test agenda_escritura [29].
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

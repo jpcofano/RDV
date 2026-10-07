@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (9): CRUCE_CONJUNTO_POR_DIRECCION = true (paso 45: exacta 88,7% + parecida 6,6%, CAMBIA 0). El archivo
+ *      "Agenda" en dos solapas: "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron).
  *  >>> 07/10 (8): la DIRECCIÓN en el cruce con RDV CONJUNTO (figura de Seguridad; desempate de Asistentes/oradores),
  *      detrás de CRUCE_CONJUNTO_POR_DIRECCION = false. Primero paso45_medirDireccionConjunto() (sólo lectura): CAMBIA
  *      tiene que dar 0; si da 0 y los RESUELVE son correctos → CRUCE_CONJUNTO_POR_DIRECCION = true + clasp push.
