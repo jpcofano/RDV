@@ -709,6 +709,37 @@ mail anterior, ahora es "ya cargada" (antes preguntaba).
 **contradice 0**. **La próxima corrida no pregunta por Macri 01/10** (queda "ya cargada en la fila 805") **y
 AGENDA_DUPLICADOS queda vacía**.
 
+#### La DIRECCIÓN en el cruce con RDV CONJUNTO (07/10, dato del usuario)
+
+En general la dirección de RDV CONJUNTO es la misma que la del destino/mail, aunque escrita distinto. Implementado
+**detrás de `CRUCE_CONJUNTO_POR_DIRECCION = false`**: primero se mide.
+
+1. **Comparar direcciones** (`direccionComparable_` / `compararDirecciones_`, 41_AgendaParser.js): minúsculas, sin
+   acentos, sin "av./avenida/gral./general/dr./pje.", sin puntuación; la primera parte (antes de la coma) que tenga
+   calle + número ("25 de Mayo 1234" es calle "25 de mayo"). **Exacta** (misma calle y número), **parecida** (misma
+   calle y número a ±`DIRECCION_NUMERO_TOLERANCIA` (100), o calle con 1-2 letras de diferencia y el mismo número),
+   **no**; sin calle y número, no evaluable.
+2. **Figura de Seguridad en tu Barrio** (`figuraSeguridad_`): fecha + **dirección** (exacta; si no hay, parecida) >
+   fecha + barrio > fecha + comuna. Si la dirección señala UNA sola fila de RDV CONJUNTO, ésa gana aunque el barrio no
+   coincida, y queda en el log ("FIGURA POR DIRECCIÓN") y en REGISTRO_AGENDA_CAMBIOS (`figura_por_direccion`, con el barrio
+   de RDV CONJUNTO si difiere). Además, una fila **sin barrio** usa la comuna que dice el mail ("Lugar (mail)"): es el
+   caso **818** (sin barrio, Comuna 6, "Gral. Manuel A. Rodriguez 1191"), que antes no encontraba candidata.
+3. **Asistentes y oradores** (`cruzarAsistentes_`): con 2+ filas de la figura ese día, primero la **dirección**; si no
+   desempata, el barrio o la comuna como antes.
+4. **`paso45_medirDireccionConjunto()`** (sólo lectura, diagnostico/19_direccion_conjunto.js): cuántas filas de RDV
+   CONJUNTO tienen dirección; en los cruces de hoy, % exacta / parecida / distinta; y qué cambiaría con la dirección:
+   **CAMBIA** (una fila que hoy cruza iría a otra: **tiene que dar 0**), **RESUELVE** (ambiguas de hoy que la dirección
+   desempata, listadas), **PIERDE**; y las Seguridad cuya figura cambiaría.
+
+Tests: agenda_parser [10] (las comparaciones) y agenda_escritura [28] (la 818 con y sin la dirección, el registro, el
+desempate de Asistentes y el paso 45).
+
+**Predicción, anotada ANTES** de `paso45_medirDireccionConjunto()`: RDV CONJUNTO tiene columna de dirección (la lee el
+legado, `Sinc A to A2.js`); en los cruces de hoy, mayoría exacta o parecida; **CAMBIA 0**; RESUELVE algunas de las
+ambiguas de hoy (Macri con 2+ filas el mismo día); **Seguridad: la 818 → la figura de la fila de RDV CONJUNTO con
+"Manuel A. Rodriguez 1191"** (si RDV CONJUNTO ya la tiene). Si da eso: `CRUCE_CONJUNTO_POR_DIRECCION = true` + clasp push,
+y la próxima corrida de la hora completa la Figura de la 818.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

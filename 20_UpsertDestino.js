@@ -4501,13 +4501,17 @@ const CAMPOS_DATO_ = ['Inscriptos'].concat(CAMPOS_CANALES_, CAMPOS_DESAGREGADO_,
  * Devuelve `{ porFila: Map(fila → {asis, nombre}), ... listas y conteos }`. **No escribe nada**: el
  * upsert escribe después sólo donde Asistentes está vacío; las que difieren se cuentan, nunca se pisan.
  */
-function cruzarAsistentes_(dest, comunas) {
+function cruzarAsistentes_(dest, comunas, opciones) {
   // oradores (06/10): fila del destino → { 'Oradores anotados': v, 'Oradores que hablaron': v }; los que dan dos
   // valores distintos para la misma fila, aparte (por columna).
   const r = { error: null, porFila: new Map(), oradores: new Map(), conflictoOradores: [], iOradores: null,
               filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
               variasFiguras: [], encuentran: 0, noEncuentran: [], ambiguas: [], desempatadas: [],
-              barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, filasSinAsis: {}, conflicto: [], minFecha: null };
+              barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, filasSinAsis: {}, conflicto: [], minFecha: null,
+              desempatadasPorDireccion: [], parDe: new Map() };
+  // 07/10: con 2+ filas de la figura ese día, primero la DIRECCIÓN (CRUCE_CONJUNTO_POR_DIRECCION; la medición del
+  // paso 45 lo fuerza con opciones.conDireccion para comparar).
+  const usarDir = opciones && opciones.conDireccion !== undefined ? opciones.conDireccion : CRUCE_CONJUNTO_POR_DIRECCION;
   const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
   if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
   const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
@@ -4517,6 +4521,9 @@ function cruzarAsistentes_(dest, comunas) {
   const iFec = findIdxOr_(hdr, ['fecha', 'fecha (fecha)', 'fecha_evento', 'fecha reunion', 'fecha reunión',
                                 'fecha_reunion', 'fecha_reunión', 'fecha evento'], true);
   const iAsi = findIdxOr_(hdr, ['asistentes', 'asistente'], true);
+  const iDir = findIdxOr_(hdr, ['direccion', 'dirección'], true);
+  const iDirD = findIdxOr_(dest.hdr, ['direccion', 'dirección'], true);
+  r.iDir = iDir; r.iDirD = iDirD;
   if (iFig == null || iFec == null || iAsi == null) {
     r.error = '"' + RDV_HOJA_ASISTENTES_SRC + '" no tiene Figura, FECHA y Asistentes por encabezado: ' +
               hdr.filter(String).join(' | ');
@@ -4561,7 +4568,17 @@ function cruzarAsistentes_(dest, comunas) {
     const lista = porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
     if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
     let f;
-    if (lista.length > 1) {
+    if (lista.length > 1 && usarDir && iDir != null && iDirD != null && str(row[iDir])) {
+      const ex = lista.filter(function (x) { return compararDirecciones_(row[iDir], x.valores[iDirD]) === 'exacta'; });
+      const porDir = ex.length ? ex : lista.filter(function (x) { return compararDirecciones_(row[iDir], x.valores[iDirD]) === 'parecida'; });
+      if (porDir.length === 1) {
+        f = porDir[0];
+        r.desempatadasPorDireccion.push({ nombre: nombre, dir: str(row[iDir]), f: f, filas: lista.map(function (x) { return x.fila; }),
+                                          como: ex.length ? 'exacta' : 'parecida' });
+      }
+    }
+    if (f) { /* desempatada por dirección */ }
+    else if (lista.length > 1) {
       const coinciden = lista.filter(function (x) { return ubicacionCoincideConjunto_(bar, x, comunas); });
       if (coinciden.length !== 1) {
         r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, nums: lista.map(function (x) { return x.fila; }),
@@ -4576,6 +4593,7 @@ function cruzarAsistentes_(dest, comunas) {
       else if (bar && !ubicacionCoincideConjunto_(bar, f, comunas)) r.barrioDifiere.push({ f: f, bar: bar });
     }
     r.encuentran++;
+    r.parDe.set(i + 1, f.fila);                       // fila de RDV CONJUNTO → fila del destino (para medir, paso 45)
     if (!(asis > 0)) { r.sinAsistentes++; r.filasSinAsis[f.fila] = true; continue; }
     const ya = r.porFila.get(f.fila);
     if (ya && ya.asis !== asis) {

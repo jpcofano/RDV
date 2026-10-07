@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (8): la DIRECCIÓN en el cruce con RDV CONJUNTO (figura de Seguridad; desempate de Asistentes/oradores),
+ *      detrás de CRUCE_CONJUNTO_POR_DIRECCION = false. Primero paso45_medirDireccionConjunto() (sólo lectura): CAMBIA
+ *      tiene que dar 0; si da 0 y los RESUELVE son correctos → CRUCE_CONJUNTO_POR_DIRECCION = true + clasp push.
  *  >>> 07/10 (7): "ya cargada en otra fila" (caso Macri 01/10 ↔ 805; ESTADO 0.z): no crea ni pregunta. Correr
  *      paso44_medirYaCargadas() (sólo lectura): "contradice" tiene que dar 0.
  *  >>> 07/10 (6): LA AGENDA EN AUTOMÁTICO (AGENDA_ACTIVA = true): corre en upsertDiario, cada hora, ANTES del cruce con
@@ -936,6 +939,14 @@ function paso44_medirYaCargadas() {
   return medirYaCargadasAgenda();
 }
 
+/** PASO 45 — SÓLO LECTURA: la dirección en el cruce con RDV CONJUNTO, antes de usarla (qué cruces cambiarían). */
+function paso45_medirDireccionConjunto() {
+  _anunciar_('paso 45 — la dirección en el cruce con RDV CONJUNTO', 'medirDireccionConjunto()  [diagnostico/19_direccion_conjunto.js]',
+             'NO escribe nada', 'el log: RDV CONJUNTO con dirección; exacta / parecida / distinta en los cruces de hoy; CAMBIA / ' +
+             'RESUELVE / PIERDE con la dirección; la figura de las Seguridad');
+  return medirDireccionConjunto();
+}
+
 /**
  * **ronda()** — los pasos de esta ronda, en orden, en una sola ejecución. La escribió el usuario en el editor (07/10) y
  * se movió acá tal cual, para que un `clasp push` no la borre. El único que escribe es paso43_limpiarFondoAgenda: SÓLO
@@ -969,4 +980,32 @@ function ronda() {
   }
   Logger.log('');
   Logger.log('########## ronda — fin (' + Math.round((Date.now() - t0) / 1000) + ' s)');
+}
+
+/**
+ * **verificar()** — corre a mano lo mismo que corre el activador de cada hora (upsertDiario: agenda + formularios +
+ * asistentes/oradores + figura de Seguridad + derivadas) y después revisa el resultado. Sirve para no esperar a la
+ * próxima hora. upsertDiario ESCRIBE (es el proceso normal); paso16 y paso20 sólo leen. Si un paso falla, se frena ahí.
+ * La escribió el usuario en el editor (07/10) y se movió acá tal cual, para que un `clasp push` no la borre.
+ */
+function verificar() {
+  var pasos = [
+    ['upsertDiario (lo mismo que el activador)', upsertDiario],
+    ['paso16_verificarEscritura', paso16_verificarEscritura],
+    ['paso20_porQueVacia (filas activas)', paso20_porQueVacia]
+  ];
+  for (var i = 0; i < pasos.length; i++) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + pasos[i][0] + ' ##########');
+    try {
+      pasos[i][1]();
+      Logger.log('########## OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ERROR — se frena acá: ' + (e && e.stack ? e.stack : e));
+      return;
+    }
+  }
+  Logger.log('');
+  Logger.log('########## verificar — fin');
 }

@@ -291,5 +291,20 @@ ctx.__cuerpoVineta = ['*Jueves 08/10*', '> Evento: viñeta'].join(String.fromCha
 const corta = vm.runInContext('_cuerpoPropioAgenda_("Agenda", __cuerpoVineta)', ctx);
 ok(corta.corte === '' && /viñeta/.test(corta.texto), 'un ">" en un mail que no es respuesta no corta (podría ser una viñeta)');
 
+console.log('[10] comparar direcciones (07/10, el cruce con RDV CONJUNTO)');
+const cmpDir = function (a, b) { ctx.__a = a; ctx.__b = b; return vm.runInContext('compararDirecciones_(__a, __b)', ctx); };
+const dirC = function (a) { ctx.__a = a; return vm.runInContext('direccionComparable_(__a)', ctx); };
+ok(JSON.stringify(dirC('Gral. Manuel A. Rodriguez 1191')) === JSON.stringify({ calle: 'manuel a rodriguez', numero: 1191 }),
+   '"Gral. Manuel A. Rodriguez 1191" → calle "manuel a rodriguez", número 1191: ' + JSON.stringify(dirC('Gral. Manuel A. Rodriguez 1191')));
+ok(cmpDir('Gral. Manuel A. Rodriguez 1191', 'Manuel A. Rodríguez 1191, Sociedad de Fomento') === 'exacta', 'sin "Gral.", sin acento, cortando en la coma: EXACTA');
+ok(cmpDir('Gral. Manuel A. Rodriguez 1191', 'General Manuel A Rodriguez 1250') === 'parecida', 'misma calle, número a 59: PARECIDA');
+ok(cmpDir('Gral. Manuel A. Rodriguez 1191', 'Manuel Rodriguez 1191') === 'parecida', 'calle con 2 letras de diferencia y el mismo número: PARECIDA');
+ok(cmpDir('Av. Rivadavia 7000', 'Avenida Rivadavia 7000') === 'exacta' && cmpDir('Av. Rivadavia 7000', 'Rivadavia 7200') === 'no',
+   '"Av." = "Avenida"; número a 200: NO');
+ok(cmpDir('A CONFIRMAR (NO SE COMUNICA LA DIRECCIÓN)', 'Rivadavia 7000') === '' && cmpDir('', 'Rivadavia 7000') === '',
+   'sin calle y número: no evaluable');
+ok(dirC('25 de Mayo 1234').calle === '25 de mayo' && dirC('Serrano 1500 piso 2').numero === 1500 && dirC('Club Social, Serrano 1500').calle === 'serrano',
+   '"25 de Mayo 1234", "Serrano 1500 piso 2", y el nombre del lugar antes de la coma');
+
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

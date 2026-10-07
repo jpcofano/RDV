@@ -1704,6 +1704,10 @@ Importa porque la transición se dispara con `Asistentes`: **el estado de una re
 la cadena de asistentes (A2), no de la de inscriptos (B2)**, que es la que está rota. Son dos
 caminos independientes, y el que alimenta la transición es el que hoy funciona.
 
+> **07/10: la DIRECCIÓN** (`CRUCE_CONJUNTO_POR_DIRECCION`, apagada hasta medirla con el paso 45): con 2+ filas de la
+> figura ese día desempata primero la dirección (exacta o parecida, `compararDirecciones_`); y la figura de una
+> Seguridad en tu Barrio sale de fecha + dirección > fecha + barrio > fecha + comuna (docs/ESTADO.md, 0.z).
+>
 > **Desde el paso B (02/10) el sistema lee RDV CONJUNTO directo**, sin A2 (`cruzarAsistentes_`,
 > `20_UpsertDestino.js`). El cruce del legado (figura + barrio + fecha, con el nombre tal cual) daba **0
 > de 766**: RDV CONJUNTO escribe a la figura "Apellido Nombre(s)". Ahora: la figura por tokens del

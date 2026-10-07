@@ -567,6 +567,44 @@ function _figurasConPosicion_(t) {
 var _agendaTolerancia_ = [];
 
 /** Distancia de edición (Levenshtein). */
+// ===================== Comparar direcciones (07/10, cruce con RDV CONJUNTO) =====================
+
+const ABREV_DIRECCION_ = /\b(av|avda|avenida|gral|general|dr|doctor|pje|pasaje)\b/g;
+
+/**
+ * Una dirección como **calle + número** para comparar: minúsculas, sin acentos, sin "av./avenida/gral./general/dr./
+ * pje.", sin puntuación. Se toma la primera parte (separada por comas) que tenga calle y número —en el mail la línea
+ * es "Calle 123, Nombre del lugar"—. El número es el primero que tiene calle antes y no va seguido de "de" ("25 de
+ * Mayo 1234" → calle "25 de mayo", número 1234). `null` si no hay calle y número ("A CONFIRMAR", un nombre de lugar).
+ */
+function direccionComparable_(s) {
+  const partes = String(s == null ? '' : s).split(',');
+  for (let i = 0; i < partes.length; i++) {
+    const t = normalizeText_(partes[i]).replace(/[^a-z0-9 ]/g, ' ').replace(ABREV_DIRECCION_, ' ').replace(/\s+/g, ' ').trim();
+    const w = t ? t.split(' ') : [];
+    for (let k = 1; k < w.length; k++) {
+      if (/^\d{1,5}$/.test(w[k]) && w[k + 1] !== 'de') {
+        const calle = w.slice(0, k).join(' ');
+        if (/[a-z]/.test(calle)) return { calle: calle, numero: +w[k] };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Dos direcciones: **'exacta'** (misma calle y número), **'parecida'** (misma calle y número a ±DIRECCION_NUMERO_TOLERANCIA,
+ * o calle con 1-2 letras de diferencia y el mismo número), **'no'**; '' si alguna no tiene calle y número.
+ */
+function compararDirecciones_(a, b) {
+  const x = direccionComparable_(a), y = direccionComparable_(b);
+  if (!x || !y) return '';
+  if (x.calle === y.calle && x.numero === y.numero) return 'exacta';
+  if (x.calle === y.calle && Math.abs(x.numero - y.numero) <= DIRECCION_NUMERO_TOLERANCIA) return 'parecida';
+  if (x.numero === y.numero && _levenshtein_(x.calle, y.calle) <= 2) return 'parecida';
+  return 'no';
+}
+
 function _levenshtein_(a, b) {
   if (a === b) return 0;
   let prev = [];

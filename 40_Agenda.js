@@ -200,7 +200,8 @@ function indicesAgenda_(hdr) {
  */
 function planAgenda_(dest, r, A, alcance, opciones) {
   opciones = opciones || {};
-  const P = { A: A, filaDe: new Map(), duplicadasEnCorrida: [], duplicados: [], borradasEquipo: [], cancelacionSigue: [], yaCargadas: [], acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
+  const P = { A: A, filaDe: new Map(), duplicadasEnCorrida: [], duplicados: [], borradasEquipo: [], cancelacionSigue: [], yaCargadas: [],
+             figuraPorDireccion: [], acciones: [], ambiguas: [], editadas: [], noEnAgenda: [], reprogramadasNoMovibles: [], entreSemanas: [],
               saltadas60: [], noFuturas: [], viejasSinFila: [], figuraACompletar: [], eventoPorTipo: {}, barrio: {},
               alcance: alcance, r: r, A: A, resumen: {} };
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
@@ -519,12 +520,17 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   if (sinFigura.length) {
     const conj = opciones.conjunto || leerConjuntoPorFecha_();
     sinFigura.forEach(function (f) {
-      const res = figuraSeguridad_(f.fecha, f.barrio ? _canonBarrioAg_(f.barrio) || f.barrio : '', f.barrio ? _comunaBarrioAg_(f.barrio) : null, conj);
+      // 07/10: con la dirección de la fila; sin barrio, la comuna que dice el mail ("Lugar (mail)": caso 818, Comuna 6)
+      const comF = f.barrio ? _comunaBarrioAg_(f.barrio) : detectComuna_(str(val(f, 'Lugar (mail)')));
+      const res = figuraSeguridad_(f.fecha, f.barrio ? _canonBarrioAg_(f.barrio) || f.barrio : '', comF == null ? null : comF, conj,
+                                   str(val(f, 'Dirección')) || str(val(f, 'Dirección (mail)')));
       if (res.figura) {
         P.figuraNueva = P.figuraNueva || {};
         P.figuraNueva[f.fila] = res.figura;
         P.acciones.push({ tipo: 'figura', f: f, escrituras: [{ fila: f.fila, col: col('Figura'), valor: res.figura, esperado: '' }],
-                          detalle: res.figura + ' (RDV CONJUNTO fila ' + res.filas.join(', ') + ')' });
+                          detalle: res.figura + ' (RDV CONJUNTO fila ' + res.filas.join(', ') + (res.por ? '; por ' + res.por : '') +
+                                   (res.barrioConjunto ? '; el barrio de RDV CONJUNTO es "' + res.barrioConjunto + '"' : '') + ')' });
+        if (res.por && /^dirección/.test(res.por)) P.figuraPorDireccion.push({ f: f, res: res });
       } else {
         P.figuraACompletar.push({ f: f, motivo: res.motivo, filas: res.filas });
       }
@@ -801,13 +807,15 @@ function leerConjuntoPorFecha_() {
   const iFig = findIdxOr_(hdr, ['figura', 'persona', 'nombre'], true);
   const iBar = findIdxOr_(hdr, ['barrion', 'barrio'], true);
   const iFec = findIdxOr_(hdr, ['fecha', 'fecha (fecha)', 'fecha_evento', 'fecha reunion', 'fecha reunión', 'fecha evento'], true);
+  const iDir = findIdxOr_(hdr, ['direccion', 'dirección'], true);
   if (iFig == null || iFec == null) return porFecha;
   for (let i = 1; i < vals.length; i++) {
     const f = toDate_(vals[i][iFec]);
     if (!f) continue;
     const k = ymd_(f);
     if (!porFecha.has(k)) porFecha.set(k, []);
-    porFecha.get(k).push({ fila: i + 1, nombre: str(vals[i][iFig]), ubic: iBar != null ? str(vals[i][iBar]) : '' });
+    porFecha.get(k).push({ fila: i + 1, nombre: str(vals[i][iFig]), ubic: iBar != null ? str(vals[i][iBar]) : '',
+                           dir: iDir != null ? str(vals[i][iDir]) : '' });
   }
   return porFecha;
 }
@@ -817,12 +825,29 @@ function leerConjuntoPorFecha_() {
  * fecha cuyo barrio coincide (o, con "C5" / barrio de otra comuna, cuya comuna coincide). `{ figura, filas, motivo }`:
  * figura sólo si sale UNA (por tokens del nombre).
  */
-function figuraSeguridad_(fecha, barrio, comuna, porFecha) {
+function figuraSeguridad_(fecha, barrio, comuna, porFecha, direccion, conDireccion) {
   const comunaDe = function (t) {
     if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(t)) return detectComuna_(t);
     return _comunaBarrioAg_(t);
   };
-  const cand = (porFecha.get(ymd_(fecha)) || []).filter(function (x) {
+  const delDia = porFecha.get(ymd_(fecha)) || [];
+  // 07/10: primero fecha + DIRECCIÓN (exacta; si no hay, parecida). Si señala UNA sola fila de RDV CONJUNTO, ésa
+  // gana aunque el barrio no coincida (se avisa en `barrioConjunto`).
+  const usarDir = conDireccion === undefined ? CRUCE_CONJUNTO_POR_DIRECCION : conDireccion;
+  if (usarDir && direccion) {
+    const ex = delDia.filter(function (x) { return compararDirecciones_(direccion, x.dir) === 'exacta'; });
+    const porDir = ex.length ? ex : delDia.filter(function (x) { return compararDirecciones_(direccion, x.dir) === 'parecida'; });
+    if (porDir.length === 1) {
+      const fp = figuraPorTokens_(porDir[0].nombre);
+      if (fp.figura) {
+        const b = porDir[0].ubic, bc = b ? _canonBarrioAg_(b) : '';
+        const difiere = !!(barrio && bc && normalizeText_(bc) !== normalizeText_(barrio));
+        return { figura: fp.figura, filas: [porDir[0].fila], motivo: '', por: 'dirección ' + (ex.length ? 'exacta' : 'parecida'),
+                 barrioConjunto: difiere ? b : '' };
+      }
+    }
+  }
+  const cand = delDia.filter(function (x) {
     if (!x.ubic) return false;
     if (barrio) {
       const b = _canonBarrioAg_(x.ubic);
@@ -834,7 +859,7 @@ function figuraSeguridad_(fecha, barrio, comuna, porFecha) {
   cand.forEach(function (x) { const fp = figuraPorTokens_(x.nombre); figs[fp.figura || ('? ' + x.nombre)] = true; });
   const lista = Object.keys(figs);
   const filas = cand.map(function (x) { return x.fila; });
-  if (lista.length === 1 && lista[0].indexOf('? ') !== 0) return { figura: lista[0], filas: filas, motivo: '' };
+  if (lista.length === 1 && lista[0].indexOf('? ') !== 0) return { figura: lista[0], filas: filas, motivo: '', por: barrio ? 'barrio' : 'comuna' };
   if (!lista.length) return { figura: '', filas: filas, motivo: 'RDV CONJUNTO todavía no tiene la fila' };
   return { figura: '', filas: filas, motivo: lista.length > 1 ? 'ambigua: ' + lista.join(' / ') : 'nombre no reconocido: ' + lista[0].slice(2) };
 }
@@ -907,6 +932,10 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
     return !(plan.historial && plan.historial.yaCargadas && plan.historial.yaCargadas.has(x.id + '|' + x.f.fila));
   }).map(function (x) {
     return [corrida, 'ya_cargada', x.f.fila, '', '', 'ya cargada en la fila ' + x.f.fila + ' (fecha distinta)', x.id, '', ''];
+  })).concat((plan.figuraPorDireccion || []).map(function (x) {
+    // la figura de una Seguridad salió de la DIRECCIÓN (07/10): queda registrado, con el barrio de RDV CONJUNTO si difiere
+    return [corrida, 'figura_por_direccion', x.f.fila, '', '', x.res.barrioConjunto ? 'barrio RDV CONJUNTO: ' + x.res.barrioConjunto : '',
+            x.res.figura + ' (' + x.res.por + ', RDV CONJUNTO fila ' + x.res.filas.join(', ') + ')', '', str(x.f.valores[A.agenda_uid])];
   }));
   try {
     _registrarCorridaAntesDeEscribir_(corrida, plan, cambios, todas.length, borrar.length);
@@ -1039,6 +1068,11 @@ function logPlanAgenda_(P, dest) {
                s.cancelaciones, s.cancelacionSigue);
   }
   Logger.log('  YA CARGADAS en otra fila (fecha distinta: no se crean, no se pregunta, no se toca la fila): %s', s.yaCargadas);
+  P.figuraPorDireccion.forEach(function (x) {
+    Logger.log('    FIGURA POR DIRECCIÓN | fila %s | %s | %s → %s (RDV CONJUNTO fila %s, %s)%s', x.f.fila, fmtFecha_(x.f.fecha),
+               x.f.barrio || '(sin barrio)', x.res.figura, x.res.filas.join(', '), x.res.por,
+               x.res.barrioConjunto ? ' — el barrio de RDV CONJUNTO es "' + x.res.barrioConjunto + '"' : '');
+  });
   P.yaCargadas.forEach(function (x) {
     Logger.log('    YA CARGADA | %s %s | %s | %s → fila %s (%s, %s)%s', fmtFecha_(x.ev.fecha), x.ev.hora, x.ev.figuraFila, x.ev.lugar,
                x.f.fila, fmtFecha_(x.f.fecha), x.f.barrio, x.como === 'elegido' ? ' — lo eligió el equipo' : '');

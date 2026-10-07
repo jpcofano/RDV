@@ -1113,6 +1113,16 @@ const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Ya está cargada en
  */
 const AGENDA_CANCELACION_AUTOMATICA = false;
 const AGENDA_OPCIONES_CANCELACION = ['Se canceló: suspender/borrar', 'Sigue', 'No sé'];
+/**
+ * **La dirección en el cruce con RDV CONJUNTO** (07/10, dato del usuario: en general es la misma que la del destino/mail,
+ * aunque no siempre escrita igual). Con `true`: la figura de una Seguridad en tu Barrio sale primero de fecha +
+ * DIRECCIÓN (exacta o parecida), después fecha + barrio, después fecha + comuna; y en Asistentes/oradores, con 2+ filas
+ * de la figura ese día, se desempata primero por dirección. `false` hasta medirlo: `paso45_medirDireccionConjunto()`
+ * (sólo lectura) dice qué cruces cambiarían; tiene que dar 0 cambios en los que ya están bien.
+ */
+const CRUCE_CONJUNTO_POR_DIRECCION = false;
+/** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
+const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
 /**
  * **Llenar las columnas del equipo como las llena el equipo** (07/10, prompt 07, B). Valores iniciales: lo que la agenda

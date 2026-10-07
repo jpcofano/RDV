@@ -15,7 +15,8 @@ const vm = require('vm'), fs = require('fs'), path = require('path');
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
                   '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
-                  'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js'];
+                  'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js',
+                  'diagnostico/19_direccion_conjunto.js'];
 const HOY = new Date(2026, 9, 6, 12, 0, 0);
 /** UNA sola clase de fecha, la misma adentro y afuera del contexto: si no, `instanceof Date` falla adentro. */
 class D extends Date {
@@ -829,6 +830,44 @@ ok(m44.contradice === 1 && m44.resuelve === 0, 'si la fila ya es la de otra reun
 E = montar(true, filasMacri);
 r = correr(E, true, [{ fecha: new D(2026, 8, 25, 9, 0), asunto: ASUNTO_JM28, cuerpo: conOtra, truncado: false }]);
 ok(r.yaCargadas === 0, 'y el plan no usa la 805 para el 01/10 si ya la tomó la reunión del 29/09 en Belgrano (ya cargadas ' + r.yaCargadas + ')');
+
+console.log('[28] la DIRECCIÓN en el cruce con RDV CONJUNTO: la figura de la 818 (Seguridad, sin barrio, Comuna 6) y el desempate de asistentes');
+const filasDir = [function (r, C) {      // "818": Seguridad en tu Barrio que creó la agenda, sin barrio, Comuna 6
+  r[C('Figura')] = ''; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 1, 12); r[C('HORA')] = '18:00';
+  r[C('Dirección')] = 'Gral. Manuel A. Rodriguez 1191'; r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+  r[C('agenda_uid')] = 'c-818'; r[C('Lugar (mail)')] = 'Comuna 6'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 6';
+}, function (r, C) {                     // dos de Macri el 02/10
+  r[C('Figura')] = 'Jorge Macri'; r[C('Barrio')] = 'Belgrano'; r[C('FECHA')] = new D(2026, 9, 2, 12); r[C('Dirección')] = 'Cabildo 2000';
+}, function (r, C) {
+  r[C('Figura')] = 'Jorge Macri'; r[C('Barrio')] = 'Palermo'; r[C('FECHA')] = new D(2026, 9, 2, 12); r[C('Dirección')] = 'Av. Serrano 1500, Club';
+}];
+const conjuntoDir = [['Figura', 'Barrio', 'FECHA', 'Dirección', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron'],
+  ['Muzzio Clara', 'Almagro', new D(2026, 9, 1, 12), 'Manuel A. Rodríguez 1191', 80, 3, 2],     // la dirección de la 818; el barrio, otro
+  ['Tapia Gabino', 'Flores', new D(2026, 9, 1, 12), 'Rivadavia 7000', 60, '', ''],
+  ['Macri Jorge', '', new D(2026, 9, 2, 12), 'Serrano 1500', 120, '', '']];                      // sin barrio: hoy es ambigua
+const montarDir = function (flag) {
+  const X = montar(true, filasDir, { CRUCE_CONJUNTO_POR_DIRECCION: flag });
+  X.ssD.hojas['RDV CONJUNTO'] = new X.Hoja('RDV CONJUNTO', conjuntoDir);
+  return X;
+};
+E = montarDir('false');
+const med45 = E.run('medirDireccionConjunto()');
+ok(med45.conjunto === 3 && med45.conDireccion === 3 && med45.cambia === 0 && med45.resuelve === 1 && med45.seguridad === 1,
+   'paso 45: 3 con dirección; CAMBIA 0, RESUELVE 1 (Macri 02/10), Seguridad 1 (la 818) — ' + JSON.stringify(med45));
+r = correr(E, true, [V1]);
+ok(r.figura === 0, 'con CRUCE_CONJUNTO_POR_DIRECCION = false (hoy): la 818 no tiene figura (Comuna 6: nadie en RDV CONJUNTO)');
+const asisSin = E.run('(function () { const x = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); return { amb: x.ambiguas.length, n: x.porFila.size }; })()');
+ok(asisSin.amb === 1, 'y Macri 02/10 en Asistentes queda ambigua');
+E = montarDir('true');
+const i818 = E.D.v.findIndex(function (x) { return x[E.C('agenda_uid')] === 'c-818'; });
+const iPal = E.D.v.findIndex(function (x) { return x[E.C('Barrio')] === 'Palermo' && x[E.C('Figura')] === 'Jorge Macri' && x[E.C('FECHA')] instanceof Date && x[E.C('FECHA')].getMonth() === 9 && x[E.C('FECHA')].getDate() === 2; });
+r = correr(E, false, [V1]);
+ok(r.figura === 1 && celda(E, i818, 'Figura') === 'Clara Muzzio', 'con la dirección: la 818 → Clara Muzzio (fecha + dirección), aunque el barrio de RDV CONJUNTO sea otro');
+ok(E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'].v.some(function (x) { return x[1] === 'figura_por_direccion' && /Clara Muzzio \(dirección exacta/.test(x[6]); }),
+   'y queda registrado (figura_por_direccion)');
+const asisCon = E.run('(function () { const x = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); const p = x.porFila.get(' + (iPal + 1) + ');' +
+                      'return { amb: x.ambiguas.length, asis: p ? p.asis : null, dir: x.desempatadasPorDireccion.length }; })()');
+ok(asisCon.amb === 0 && asisCon.asis === 120 && asisCon.dir === 1, 'Asistentes: Macri 02/10 se desempata por dirección → la fila de Palermo (Serrano 1500), 120');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
