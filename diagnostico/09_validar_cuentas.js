@@ -42,6 +42,12 @@ function validarCuentas() {
   Logger.log('=== validarCuentas (PASO A) — sólo lectura, no escribe nada ===');
   Logger.log('  solapa destino: %s', descripcionHojaDestino_());
   const plan = calcularPlan_(true, null, { historial: true });
+  // 07/10: con columnas de B que faltan o sin mapear, las cuentas no valen (y el upsert no escribe los datos de B)
+  const cb = plan.cands && plan.cands.columnasB;
+  if (cb && cb.bloqueoGlobal.length) {
+    throw new Error('Faltan columnas o hay columnas sin mapear en "' + RDV_HOJA_B + '": ' + cb.bloqueoGlobal.join(' | ') +
+                    '. Corregir COLUMNAS_B / MAPEO_CANALES (paso46_chequearColumnasB).');
+  }
   const dest = plan.dest, porFila = plan.porFila;
 
   // Índices del destino para las 14 columnas.

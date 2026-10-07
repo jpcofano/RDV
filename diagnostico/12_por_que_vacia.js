@@ -75,6 +75,8 @@ function porQueVacia(desde, hasta) {
       else if (col === 'STATUS REUNIÓN') causa = _causaStatus_(f, v, d, ahora, dest);
       else if (col === 'Asistentes') causa = escribiria[k] ? null : _causaAsistentes_(f, asis, ambiguaDe, conflictoDe);
       else if (COLUMNAS_ORADORES.indexOf(col) >= 0) causa = escribiria[k] ? null : _causaOradores_(f, col, asis, ambiguaDe, conflictoDe);
+      // 07/10: el formulario está, pero sus datos de B no se escriben (no cierran o hay columnas de B sin mapear)
+      else if (!escribiria[k] && d.cand && d.cand.bloqueoB) causa = 'l) datos de B frenados (no cierran o columnas de B: paso 46)';
       else causa = escribiria[k] ? null : _causaDato_(f, col, pf, d, dest);
       if (!causa) {
         causa = 'f) DEBERÍA ESTAR ESCRITA';

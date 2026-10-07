@@ -1623,6 +1623,7 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial) {
 
   const plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
   logResumen_(plan);                 // ← ANTES de escribir nada
+  _logColumnasB_(plan.cands);
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
   plan.asistentes = cruzarAsistentes_(plan.dest, plan.comunas);
   Logger.log('--- Asistentes (RDV CONJUNTO, figura + fecha) ---');
@@ -4447,6 +4448,10 @@ function celdasDeDecision_(dest, d, valores, callar) {
   }
   if (c) {
     agregar(dest.T.clave, c.clave, 'traza');
+  }
+  // 07/10: los datos de B (Inscriptos, canales, desagregado) no se escriben si las columnas de B no cierran (faltan,
+  // sin mapear) o si este formulario no pasa el chequeo (problemasFormularioB_). La traza, Asistentes y STATUS, sí.
+  if (c && !c.bloqueoB) {
     const cu = c.cuentas || {};
     agregar(dest.D['Inscriptos'], cu['Inscriptos'], 'dato', INSCRIPTOS_CERO_ES_VACIO);
     CAMPOS_CANALES_.forEach(function (n) { agregar(dest.D[n], cu[n], 'dato'); });
@@ -4791,19 +4796,54 @@ function leerDestino_(nombreHoja) {
  * `Sin identificar = Inscriptos`). El mensaje dice cuáles faltan y qué encabezados hay.
  */
 function indicesB_(hdr) {
-  const out = {}, faltan = [];
+  const out = {}, faltan = [], faltanCruce = [];
   Object.keys(COLUMNAS_B).forEach(function (campo) {
     out[campo] = findIdxOr_(hdr, COLUMNAS_B[campo], true);
     if (out[campo] == null && COLUMNAS_B_OPCIONALES.indexOf(campo) < 0) {
-      faltan.push(campo + ' (' + COLUMNAS_B[campo].join(' / ') + ')');
+      (COLUMNAS_B_CRUCE.indexOf(campo) >= 0 ? faltanCruce : faltan).push(campo + ' (' + COLUMNAS_B[campo].join(' / ') + ')');
     }
   });
-  if (faltan.length) {
-    throw new Error('Faltan columnas en "' + RDV_HOJA_B + '": ' + faltan.join('; ') + '. No se calculó ni ' +
+  if (faltanCruce.length) {
+    throw new Error('Faltan columnas en "' + RDV_HOJA_B + '": ' + faltanCruce.join('; ') + '. No se calculó ni ' +
                     'se escribió nada. Si el origen cambió los nombres, corregir COLUMNAS_B en 00_Config.js. ' +
                     'Encabezados de B: ' + hdr.filter(String).join(' | '));
   }
+  // 07/10: una obligatoria de DATOS que falta, o una inscriptos_* que no está en el mapeo, frena sólo los datos de B
+  // (el cruce, la traza, Asistentes y STATUS siguen). Nunca se lee un 0 por un nombre que no existe.
+  const conocidas = {};
+  Object.keys(COLUMNAS_B).forEach(function (k) { COLUMNAS_B[k].forEach(function (n) { conocidas[normalizeHeader_(n)] = true; }); });
+  COLUMNAS_B_IGNORADAS.forEach(function (n) { conocidas[normalizeHeader_(n)] = true; });
+  out._faltan = faltan;
+  out._sinMapear = hdr.filter(function (h) { const n = normalizeHeader_(h); return /^inscriptos/.test(n) && !conocidas[n]; }).map(String);
+  out._canales = hdr.map(function (h, k) { return /^inscriptos[ _]canal/.test(normalizeHeader_(h)) ? k : -1; }).filter(function (k) { return k >= 0; });
+  out._crudas = hdr.map(function (h, k) { return /^inscriptos/.test(normalizeHeader_(h)) ? k : -1; }).filter(function (k) { return k >= 0; });
   return out;
+}
+
+/**
+ * **El chequeo de un formulario de B** (07/10), sobre lo que se escribiría: los cinco canales del destino suman lo mismo
+ * que TODOS los canales de B; Masculinos + Femeninos + Sin identificar = Inscriptos; la suma de las edades ≤ Inscriptos;
+ * y no hay Inscriptos > 0 con todo lo demás en 0 (señal de nombres mal leídos). Devuelve la lista de problemas.
+ */
+function problemasFormularioB_(ins, datos, cuentas, sumaCanalesB) {
+  const p = [];
+  const n0 = function (v) { return v === '' || v === null || v === undefined ? 0 : numOcero_(v); };
+  const suma5 = CAMPOS_CANALES_.reduce(function (s, k) { return s + n0(cuentas[k]); }, 0);
+  if (suma5 !== sumaCanalesB) p.push('canales: los 5 del destino suman ' + suma5 + ' y los de B ' + sumaCanalesB);
+  if (datos['Masculinos'] !== '' && datos['Femeninos'] !== '' && datos['Sin identificar'] !== '' &&
+      n0(datos['Masculinos']) + n0(datos['Femeninos']) + n0(datos['Sin identificar']) !== ins) {
+    p.push('sexo: Masculinos + Femeninos + Sin identificar = ' + (n0(datos['Masculinos']) + n0(datos['Femeninos']) +
+           n0(datos['Sin identificar'])) + ', Inscriptos ' + ins);
+  }
+  if (datos['Sin identificar'] !== '' && n0(datos['Sin identificar']) < 0) {
+    p.push('sexo: Masculinos + Femeninos (' + (n0(datos['Masculinos']) + n0(datos['Femeninos'])) + ') más que Inscriptos ' + ins);
+  }
+  const edades = Object.keys(EDADES_B).reduce(function (s, e) { return s + n0(datos[e]); }, 0);
+  if (edades > ins) p.push('edades: suman ' + edades + ', más que Inscriptos ' + ins);
+  if (ins > 0 && !suma5 && !n0(datos['Masculinos']) && !n0(datos['Femeninos']) && !edades) {
+    p.push('Inscriptos ' + ins + ' y todo lo demás en 0 (¿nombres de columnas mal leídos?)');
+  }
+  return p;
 }
 
 /** Candidatos desde `B`, el import crudo. Los `NO USAR` quedan afuera del todo. */
@@ -4814,7 +4854,11 @@ function leerCandidatos_() {
   const bloque = sh.getRange(1, 1, nFilas, sh.getLastColumn()).getValues();
   const hdr = bloque[0];
 
-  const iB = indicesB_(hdr);   // por COLUMNAS_B; tira error si falta una obligatoria (02/10)
+  const iB = indicesB_(hdr);   // por COLUMNAS_B; tira error si falta una de las del cruce (02/10; 07/10)
+  // 07/10: si faltan columnas de datos o hay una inscriptos_* sin mapear, NO se escriben los datos de B en esta corrida.
+  const bloqueoGlobal = [];
+  if (iB._faltan.length) bloqueoGlobal.push('faltan columnas de datos: ' + iB._faltan.join('; '));
+  if (iB._sinMapear.length) bloqueoGlobal.push('columnas inscriptos_* sin mapear: ' + iB._sinMapear.join(', '));
   const iNombre = iB.nombre, iFin = iB.fechaFin, iIns = iB.inscriptos;
   const val = function (r, campo) { return iB[campo] != null ? r[iB[campo]] : ''; };
 
@@ -4841,15 +4885,18 @@ function leerCandidatos_() {
               : DIVISOR_SEXO === 'M+F+X' ? sexo.M + sexo.F + sexo.X : sexo.identificados;
 
     const datos = {};
-    datos['Masculinos'] = div > 0 ? Math.round(ins * (sexo.M / div)) : '';
-    datos['Femeninos']  = div > 0 ? Math.round(ins * (sexo.F / div)) : '';
+    // 07/10: Masculinos + Femeninos + Sin identificar = Inscriptos, exacto (resto mayor: sexoYSinIdentificar_)
+    const sx = sexoYSinIdentificar_(ins, sexo.M, sexo.F, div);
+    datos['Masculinos'] = sx['Masculinos'];
+    datos['Femeninos']  = sx['Femeninos'];
     let sumaEdades = 0;
     Object.keys(EDADES_B).forEach(function (e) {
       const v = num(val(r, EDADES_B[e]));
       datos[e] = v;
       sumaEdades += numOcero_(v);
     });
-    datos['Sin identificar'] = ins > 0 ? Math.max(0, ins - sumaEdades) : '';
+    // 07/10 (decisión del usuario): Sin identificar = el resto del SEXO (Inscriptos − Masculinos − Femeninos)
+    datos['Sin identificar'] = sx['Sin identificar'];
 
     // Inscriptos y canales tal como vienen (sin cero por vacío), con MAPEO_CANALES. Hoy sólo los lee
     // el paso 17 (validarCuentas); el upsert todavía no los escribe (paso B).
@@ -4859,6 +4906,12 @@ function leerCandidatos_() {
       cuentas[dst] = vals.every(function (v) { return v === ''; }) ? ''
         : vals.reduce(function (s, v) { return s + numOcero_(v); }, 0);
     });
+
+    // 07/10: el chequeo de este formulario (si no cierra, no se escriben SUS datos); y lo crudo de B, para mostrarlo.
+    const sumaCanalesB = iB._canales.reduce(function (s, k) { return s + numOcero_(r[k]); }, 0);
+    const problemasB = problemasFormularioB_(ins, datos, cuentas, sumaCanalesB);
+    const crudoB = {};
+    iB._crudas.forEach(function (k) { crudoB[String(hdr[k])] = r[k]; });
 
     const limpio = limpiarPrefijos_(nombre);
     vivos.push({
@@ -4879,7 +4932,11 @@ function leerCandidatos_() {
       inscriptos: ins,
       datos: datos,
       cuentas: cuentas,
-      sexo: sexo                              // M, F, X e identificados crudos (paso 17: el divisor)
+      sexo: sexo,                             // M, F, X e identificados crudos (paso 17: el divisor)
+      problemasB: problemasB,
+      bloqueoB: bloqueoGlobal.length ? bloqueoGlobal.join(' | ') : (problemasB.length ? problemasB.join(' | ') : ''),
+      crudoB: crudoB,
+      sumaCanalesB: sumaCanalesB
     });
   }
   /*
@@ -4895,7 +4952,9 @@ function leerCandidatos_() {
   // Gemelos (02/10): mismo nombre y cierres a GEMELOS_MAX_DIAS o menos; regla 3 adentro del grupo.
   const gemelos = marcarGemelos_(vivos);
   return { vivos: vivos.filter(function (c) { return !c.descartadoRegla3; }), anulados: anulados,
-           formularios: formularios, porUid: porUid, gemelos: gemelos, huellaCruda: huellaCruda };
+           formularios: formularios, porUid: porUid, gemelos: gemelos, huellaCruda: huellaCruda,
+           columnasB: { encabezados: hdr.filter(String).length, faltan: iB._faltan, sinMapear: iB._sinMapear, bloqueoGlobal: bloqueoGlobal,
+                        conProblemas: vivos.filter(function (c) { return c.problemasB.length; }).length } };
 }
 
 /**
@@ -5112,4 +5171,19 @@ function _validaHora_(h, mi) {
 
 function redondear_(n) {
   return Math.round(n * 100) / 100;
+}
+
+/** El aviso de las columnas de B en el log de cada corrida (07/10): qué falta, qué no está mapeado, qué no cierra. */
+function _logColumnasB_(cands) {
+  const cb = cands && cands.columnasB;
+  if (!cb) return;
+  if (cb.bloqueoGlobal.length) {
+    Logger.log('>>> COLUMNAS DE B: %s. En esta corrida NO se escriben los datos de B (Inscriptos, canales, sexo, edades); la ' +
+               'traza, Asistentes y STATUS sí. Correr paso46_chequearColumnasB() y corregir COLUMNAS_B / MAPEO_CANALES.',
+               cb.bloqueoGlobal.join(' | '));
+  } else if (cb.conProblemas) {
+    Logger.log('  columnas de B: OK | formularios que no cierran (no se escriben sus datos): %s — paso46_chequearColumnasB()', cb.conProblemas);
+  } else {
+    Logger.log('  columnas de B: OK (todas reconocidas; todos los formularios cierran)');
+  }
 }

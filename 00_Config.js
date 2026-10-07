@@ -757,13 +757,27 @@ const COLUMNAS_B = {
   M:                 ['inscriptos_M', 'Inscriptos M'],
   F:                 ['inscriptos_F', 'Inscriptos F'],
   X:                 ['inscriptos_X'],                                       // nueva (02/10)
+  // Los canales (07/10: B cambió de columnas; los alias viejos se mantienen)
   canalMailing:      ['inscriptos_canal_Mailing', 'Inscriptos canal Mailing'],
-  canalFacebook:     ['inscriptos_canal_Facebook', 'Inscriptos canal Facebook'],
-  canalGoogle:       ['inscriptos_canal_Google', 'Inscriptos canal Google'],
   canalCallCenter:   ['inscriptos_canal_CallCenter', 'Inscriptos canal Call Center'],
-  canalDifusion:     ['inscriptos_canal_Difusion', 'Inscriptos canal Difusion'],
   canalIVR:          ['inscriptos_canal_IVR', 'Inscriptos canal IVR'],
+  canalInstagram:    ['inscriptos_canal_Instagram', 'Inscriptos canal Instagram'],
+  canalFacebook:     ['inscriptos_canal_Facebook', 'Inscriptos canal Facebook'],
+  canalWhatsApp:     ['inscriptos_canal_WhatsApp', 'Inscriptos canal WhatsApp'],
+  canalGoogle:       ['inscriptos_canal_Google', 'Inscriptos canal Google'],
+  canalWeb:          ['inscriptos_canal_Web', 'Inscriptos canal Web'],
+  canalLinkedIn:     ['inscriptos_canal_LinkedIn', 'Inscriptos canal LinkedIn'],
+  canalTikTok:       ['inscriptos_canal_TikTok', 'Inscriptos canal TikTok'],
+  canalTwitter:      ['inscriptos_canal_Twitter', 'Inscriptos canal Twitter'],
   canalProgrammatic: ['inscriptos_canal_Programmatic', 'Inscriptos canal Programmatic'],
+  canalSMS:          ['inscriptos_canal_SMS', 'Inscriptos canal SMS'],
+  canalRedes:        ['inscriptos_canal_Redes', 'Inscriptos canal Redes'],
+  canalDifusion:     ['inscriptos_canal_Difusion', 'Inscriptos canal Difusion'],
+  canalTerritorial:  ['inscriptos_canal_Territorial', 'Inscriptos canal Territorial'],
+  canalAppAsistentes: ['inscriptos_canal_AppAsistentes', 'Inscriptos canal AppAsistentes'],
+  canalAppFormulariosOffline: ['inscriptos_canal_AppFormulariosOffline', 'Inscriptos canal AppFormulariosOffline'],
+  canalQR:           ['inscriptos_canal_QR', 'Inscriptos canal QR'],
+  canalPrensa:       ['inscriptos_canal_Prensa', 'Inscriptos canal Prensa'],
   canalOtros:        ['inscriptos_canal_Otros', 'Inscriptos canal Otros'],
   edad18_24:         ['inscriptos_edades_18_24', 'Inscriptos edades 18-24'],
   edad25_39:         ['inscriptos_edades_25_39', 'Inscriptos edades 25-39'],
@@ -771,8 +785,18 @@ const COLUMNAS_B = {
   edad56_65:         ['inscriptos_edades_56_65', 'Inscriptos edades 56-65'],
   edad66:            ['inscriptos_edades_66plus', 'Inscriptos edades 66+']
 };
-/** Los campos de COLUMNAS_B que pueden faltar sin frenar nada. */
-const COLUMNAS_B_OPCIONALES = ['X'];
+/**
+ * Los campos de COLUMNAS_B que pueden faltar (07/10): X y los canales que no son Mail / Call Center / IVR (un canal que
+ * no está no suma nada; uno que aparece con otro nombre lo frena COLUMNAS_B_IGNORADAS: toda `inscriptos_*` tiene que
+ * estar mapeada o ignorada).
+ */
+const COLUMNAS_B_OPCIONALES = ['X', 'canalInstagram', 'canalFacebook', 'canalWhatsApp', 'canalGoogle', 'canalWeb', 'canalLinkedIn',
+  'canalTikTok', 'canalTwitter', 'canalProgrammatic', 'canalSMS', 'canalRedes', 'canalDifusion', 'canalTerritorial',
+  'canalAppAsistentes', 'canalAppFormulariosOffline', 'canalQR', 'canalPrensa', 'canalOtros'];
+/** Sin estas, no hay cruce: si falta una, la corrida no calcula nada (como antes). Las demás obligatorias frenan sólo los datos de B. */
+const COLUMNAS_B_CRUCE = ['nombre', 'fechaFin', 'inscriptos'];
+/** Columnas `inscriptos_*` de B que se conocen y NO se usan (07/10). Cualquier otra `inscriptos_*` sin mapear frena los datos de B. */
+const COLUMNAS_B_IGNORADAS = ['inscriptos_conMail', 'inscriptos_conCelular', 'inscriptos_conFijo'];
 
 /** Banda de edad del destino → campo de COLUMNAS_B. */
 const EDADES_B = {
@@ -797,8 +821,12 @@ const MAPEO_CANALES = {
   'Mail':        ['canalMailing'],
   'Call Center': ['canalCallCenter'],
   'IVR':         ['canalIVR'],
-  'RRSS':        ['canalFacebook', 'canalGoogle', 'canalProgrammatic'],
-  'Difusión':    ['canalDifusion', 'canalOtros']
+  // 07/10 (B cambió de columnas): todas las redes y medios digitales
+  'RRSS':        ['canalInstagram', 'canalFacebook', 'canalWhatsApp', 'canalGoogle', 'canalWeb', 'canalLinkedIn', 'canalTikTok',
+                  'canalTwitter', 'canalProgrammatic', 'canalSMS', 'canalRedes'],
+  // 07/10: "no usamos" (Territorial, Apps, QR, Prensa, Otros): si traen dato, van a Difusión
+  'Difusión':    ['canalDifusion', 'canalTerritorial', 'canalAppAsistentes', 'canalAppFormulariosOffline', 'canalQR', 'canalPrensa',
+                  'canalOtros']
 };
 
 /**
@@ -858,6 +886,37 @@ function sinIdentificar_(inscriptos, sumaBandas) {
   if (!(ins > 0)) return '';
   return Math.max(0, ins - numOcero_(sumaBandas));
 }
+
+/**
+ * **Sin identificar, desde el 07/10 (decisión del usuario, con las columnas nuevas de B): el resto del SEXO**:
+ *
+ *     Sin identificar = Inscriptos − Masculinos − Femeninos        (Masculinos y Femeninos escalados, DIVISOR_SEXO)
+ *
+ * así Masculinos + Femeninos + Sin identificar = Inscriptos. `inscriptos_X` (y los no identificados) quedan ahí, sin
+ * sumarlo de nuevo: con el divisor 'identificados' ya está adentro de la diferencia. Las edades se copian crudas y su
+ * suma tiene que ser ≤ Inscriptos. Antes del 07/10 era el resto de las EDADES (`sinIdentificar_`, que queda para leer
+ * lo publicado).
+ *
+ * **Y suman EXACTO Inscriptos** (07/10): Masculinos y Femeninos se redondean como siempre (Math.round, igual que B2) y
+ * Sin identificar es el resto. Sólo si el redondeo se pasa de Inscriptos (40,5 → 41 y 49,5 → 50 daban 91 sobre 90) se le
+ * resta 1 al que más subió al redondear, y Sin identificar queda en 0. Si M + F > divisor (el origen no cierra), el resto
+ * queda negativo: el chequeo lo marca. Sin divisor, vacío (no se escala).
+ */
+function sexoYSinIdentificar_(inscriptos, M, F, divisor) {
+  const ins = numOcero_(inscriptos), m = numOcero_(M), f = numOcero_(F), d = numOcero_(divisor);
+  if (!(d > 0)) return { Masculinos: '', Femeninos: '', 'Sin identificar': '' };
+  const ex = [ins * m / d, ins * f / d];
+  const r = ex.map(Math.round);
+  if (!(ins > 0)) return { Masculinos: r[0], Femeninos: r[1], 'Sin identificar': '' };
+  let resto = ins - r[0] - r[1];
+  if (resto < 0 && ins - ex[0] - ex[1] >= 0) {          // se pasó sólo por el redondeo
+    const k = (r[0] - ex[0]) >= (r[1] - ex[1]) ? 0 : 1;
+    r[k] += resto;                                       // resto es -1 (a lo sumo -1 con dos redondeos)
+    resto = 0;
+  }
+  return { Masculinos: r[0], Femeninos: r[1], 'Sin identificar': resto };
+}
+
 
 /**
  * Las columnas con las que queda B2 después del rediseño (CLAUDE.md 1.c).

@@ -754,6 +754,34 @@ primero** (y dentro de cada semana, por fecha y hora). Las dos se reescriben en 
 advertencia, con las mismas 23 columnas. La partición es por fecha en cada corrida (`partirCopiaAgenda_`): **el lunes, la
 semana que terminó pasa sola a "Agenda cerrada"**. Test agenda_escritura [29].
 
+#### B cambió de columnas (07/10, aplicado directo; no se había escrito nada)
+
+1. **Mapeo** (`COLUMNAS_B` / `MAPEO_CANALES`, 00_Config.js): Mail = Mailing; RRSS = Instagram + Facebook + WhatsApp +
+   Google + Web + LinkedIn + TikTok + Twitter + Programmatic + SMS + Redes; Difusión = Difusion + Territorial +
+   AppAsistentes + AppFormulariosOffline + QR + Prensa + Otros; Call Center = CallCenter; IVR = IVR. Edades: las 5 de
+   `inscriptos_edades_*`. Los nombres nuevos son `inscriptos_canal_<Nombre>` (como los que ya había); los alias viejos
+   siguen. `conMail` / `conCelular` / `conFijo`: ignoradas.
+2. **Sexo y Sin identificar** (decisión del usuario): Masculinos y Femeninos escalados como hasta ahora (`DIVISOR_SEXO =
+   'identificados'`); **Sin identificar = Inscriptos − Masculinos − Femeninos** (antes era el resto de las EDADES); X
+   queda adentro, sin sumarlo dos veces. Si el redondeo de los dos se pasa de Inscriptos (pasa con .5 y .5), se le resta
+   1 al que más subió: los tres suman exacto. En el test, Masculinos y Femeninos siguen iguales a B2 (210 de 210).
+3. **Protección** (cada corrida, antes de escribir): las columnas de B que hacen falta para el cruce (nombre, fecha_fin,
+   inscriptos) siguen frenando todo; una obligatoria de DATOS que falta o una `inscriptos_*` sin mapear **frena los datos
+   de B** (la traza, Asistentes, STATUS y la agenda siguen) y el log lo dice (">>> COLUMNAS DE B: …"); un formulario que
+   no cierra frena **sus** datos. El paso 20 lo muestra como "l) datos de B frenados". El paso 17 se frena.
+4. **`paso46_chequearColumnasB()`** (sólo lectura, diagnostico/20_columnas_b.js): columnas reconocidas / faltantes / sin
+   mapear; los formularios de los últimos 30 días que no cierran (canales, sexo, edades, "Inscriptos > 0 y todo en 0");
+   5 ejemplos de B → destino; y si la corrida de la hora escribe los datos de B.
+
+Tests: escritura_lote [10] (falta una de datos: no escribe datos de B y sigue; una `inscriptos_*` sin mapear: lo mismo)
+y [25] (B con los nombres nuevos: canales = suma de B, M + F + Sin identificar = Inscriptos, el formulario que no cierra
+no se escribe, el paso 46).
+
+**Predicción, anotada ANTES** de `paso46_chequearColumnasB()`: columnas: faltan 0, sin mapear 0 (si los nombres nuevos
+son `inscriptos_canal_<Nombre>`; si el origen usa otra forma, aparecen acá con el nombre exacto y se agrega el alias); los
+formularios de los últimos 30 días cierran; los 5 ejemplos con RRSS y Difusión iguales a la suma de sus canales en B.
+Si da eso, la corrida de la hora escribe los datos de B (sólo en celdas vacías). Si no, el log dice qué y no los escribe.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

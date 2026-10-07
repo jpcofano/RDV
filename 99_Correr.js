@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (10): B CAMBIÓ DE COLUMNAS: mapeo nuevo (COLUMNAS_B / MAPEO_CANALES), Sin identificar = Inscriptos − M − F,
+ *      protección (columnas de B que faltan o sin mapear, o formularios que no cierran → no se escriben esos datos).
+ *      Correr paso46_chequearColumnasB() (sólo lectura) ANTES de la corrida de la hora (ESTADO 0.z).
  *  >>> 07/10 (9): CRUCE_CONJUNTO_POR_DIRECCION = true (paso 45: exacta 88,7% + parecida 6,6%, CAMBIA 0). El archivo
  *      "Agenda" en dos solapas: "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron).
  *  >>> 07/10 (8): la DIRECCIÓN en el cruce con RDV CONJUNTO (figura de Seguridad; desempate de Asistentes/oradores),
@@ -947,6 +950,14 @@ function paso45_medirDireccionConjunto() {
              'NO escribe nada', 'el log: RDV CONJUNTO con dirección; exacta / parecida / distinta en los cruces de hoy; CAMBIA / ' +
              'RESUELVE / PIERDE con la dirección; la figura de las Seguridad');
   return medirDireccionConjunto();
+}
+
+/** PASO 46 — SÓLO LECTURA: las columnas de B (07/10, el origen cambió de columnas) y si cada formulario cierra. */
+function paso46_chequearColumnasB() {
+  _anunciar_('paso 46 — las columnas de B', 'chequearColumnasB()  [diagnostico/20_columnas_b.js]', 'NO escribe nada',
+             'el log: columnas reconocidas / faltantes / sin mapear; los formularios de los últimos 30 días que no cierran; ' +
+             '5 ejemplos de B → destino; si la corrida de la hora va a escribir los datos de B');
+  return chequearColumnasB();
 }
 
 /**

@@ -32,7 +32,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
-                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js'];
+                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -423,7 +423,7 @@ const HDR_B_VIEJO = ['Nombre', 'Fecha_Fin', 'Inscriptos', 'Inscriptos unicos ide
   'Inscriptos edades 18-24', 'Inscriptos edades 25-39', 'Inscriptos edades 40-55', 'Inscriptos edades 56-65',
   'Inscriptos edades 66+', 'Inscriptos canal Mailing', 'Inscriptos canal Facebook', 'Inscriptos canal Google',
   'Inscriptos canal Call Center', 'Inscriptos canal Difusion', 'Inscriptos canal IVR', 'Inscriptos canal Programmatic',
-  'Inscriptos canal Otros', 'Inscriptos X (no existía)'];
+  'Inscriptos canal Otros', '(columna vacía; X no existía)'];   // 07/10: una 'Inscriptos…' sin mapear frenaría los datos
 const HDR_CONJUNTO = ['Figura', 'Barrio', 'FECHA', 'HORA', 'Dirección', 'Asistentes', 'Oradores anotados',
                       'Oradores que hablaron', 'STATUS REUNIÓN'];
 const SEXO_EDADES = ['Masculinos', 'Femeninos', '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
@@ -868,7 +868,21 @@ function escenarioPasoA() {
     ok(c.comparables > 0 && c.exacto === c.comparables && c.b2IgualB === c.b2Comparables,
        n + ': exacto ' + c.exacto + ' de ' + c.comparables + ' | B = B2 ' + c.b2IgualB + ' de ' + c.b2Comparables);
   });
-  ['Masculinos', 'Femeninos', '18-24', '66+', 'Sin identificar'].forEach(function (n) {
+  // 07/10: 'Sin identificar' cambió de definición (el resto del sexo, decisión del usuario): ya no es la de B2. Y
+  // Masculinos / Femeninos difieren de B2 sólo donde el redondeo se pasaba de Inscriptos (se le resta 1 al que más subió).
+  const bv = m.ssI.hojas['B'].v, hb = bv[0];
+  let sePasan = 0;
+  bv.slice(1).forEach(function (r) {
+    const ins = Number(r[hb.indexOf('inscriptos')]), id = Number(r[hb.indexOf('inscriptos_identificados')]);
+    const M = Number(r[hb.indexOf('inscriptos_M')]), F = Number(r[hb.indexOf('inscriptos_F')]);
+    if (id > 0 && M + F <= id && Math.round(ins * M / id) + Math.round(ins * F / id) > ins) sePasan++;
+  });
+  ['Masculinos', 'Femeninos'].forEach(function (n) {
+    const c = x.porCol[n];
+    ok(c.b2Comparables > 0 && c.b2Comparables - c.b2IgualB <= sePasan, n + ' con los encabezados nuevos de B: B = B2 ' +
+       c.b2IgualB + ' de ' + c.b2Comparables + ' (difieren sólo los que el redondeo pasaba de Inscriptos: ' + sePasan + ')');
+  });
+  ['18-24', '66+'].forEach(function (n) {
     const c = x.porCol[n];
     ok(c.b2Comparables > 0 && c.b2IgualB === c.b2Comparables, n + ' con los encabezados nuevos de B: B = B2 ' +
        c.b2IgualB + ' de ' + c.b2Comparables);
@@ -907,11 +921,27 @@ function escenarioEncabezadosB() {
   m2.ssI.hojas['B'].v[0][HDR_B.indexOf('inscriptos_edades_40_55')] = 'otra cosa';
   const antes = JSON.stringify(foto(m2.ssD.hojas['RVD JM-CM - ES']));
   const r2 = E2.ejecutar('upsertDestino');
-  ok(r2.error && /Faltan columnas en "B"/.test(r2.error.message) && /edad40_55/.test(r2.error.message),
-     'falta una obligatoria: error — ' + (r2.error ? r2.error.message.slice(0, 120) : 'sin error'));
-  ok(JSON.stringify(foto(m2.ssD.hojas['RVD JM-CM - ES'])) === antes, 'y no escribió nada');
+  // 07/10: falta una obligatoria de DATOS → la corrida sigue (traza, uids, Asistentes, STATUS) pero NO escribe datos de B
+  const h2 = m2.ssD.hojas['RVD JM-CM - ES'];
+  const datosB = ['Inscriptos', 'Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'].concat(SEXO_EDADES).map(colD);
+  const antesV = JSON.parse(antes).v;
+  const tocadosB = h2.v.filter(function (f, i) { return i > 0 && datosB.some(function (k) { return f[k] !== antesV[i][k]; }); }).length;
+  ok(!r2.error && contarUid(h2) > 0 && tocadosB === 0,
+     'falta una obligatoria de datos (edad40_55): sin error, la corrida sigue (uids ' + contarUid(h2) + ') y NO escribe datos de B (' + tocadosB + ')' +
+     (r2.error ? ' — ' + r2.error.message : ''));
+  ok(r2.logs.some(function (l) { return />>> COLUMNAS DE B: faltan columnas de datos: edad40_55/.test(l); }), 'y el log lo avisa');
   const r3 = E2.ejecutar('validarCuentas');
-  ok(r3.error && /Faltan columnas/.test(r3.error.message), 'el paso 17 también se frena');
+  ok(r3.error && /Faltan columnas/.test(r3.error.message), 'el paso 17 se frena');
+  // una inscriptos_* que no está en el mapeo: lo mismo
+  const E3 = crearEntorno();
+  const m3 = montar(E3, 100, true);
+  m3.ssI.hojas['B'].v[0][HDR_B.indexOf('inscriptos_X')] = 'inscriptos_canal_Telegram';
+  const antes3 = JSON.parse(JSON.stringify(foto(m3.ssD.hojas['RVD JM-CM - ES']))).v;
+  const r4 = E3.ejecutar('upsertDestino');
+  const h3 = m3.ssD.hojas['RVD JM-CM - ES'];
+  ok(!r4.error && h3.v.every(function (f, i) { return i === 0 || datosB.every(function (k) { return f[k] === antes3[i][k]; }); }) &&
+     r4.logs.some(function (l) { return /sin mapear: inscriptos_canal_Telegram/.test(l); }),
+     'una inscriptos_* sin mapear (inscriptos_canal_Telegram): no se escriben datos de B, y el log lo dice');
 }
 
 /**
@@ -932,7 +962,8 @@ function escenarioMalEscritas() {
   // El bug: en 6 filas del hueco, Sin identificar = Inscriptos (azul, como lo escribió el sistema).
   const tocadas = [];
   for (let i = 1; i < hoja.v.length && tocadas.length < 6; i++) {
-    if ((i - 1) % 10 < 3 && hoja.v[i][colD('RDV_UID')]) {
+    // (07/10: sólo las que el sistema escribió: un formulario que no cierra —M + F > identificados— no se escribe)
+    if ((i - 1) % 10 < 3 && hoja.v[i][colD('RDV_UID')] && hoja.v[i][iSin] !== '' && esColorSistemaTest(hoja.bg[i][iSin])) {
       tocadas.push({ i: i, correcto: hoja.v[i][iSin] });
       hoja.v[i][iSin] = hoja.v[i][iIns];
     }
@@ -1647,6 +1678,74 @@ function escenarioAgendaEnUpsert() {
   ok(E.logs.some(function (l) { return /La agenda falló: .*Gmail/.test(l); }), 'y en el log');
 }
 
+// 07/10: B con los nombres NUEVOS (todas las redes, los "no usamos", conMail/conCelular/conFijo que se ignoran)
+const HDR_B_NUEVO = ['nombre', 'fecha_fin', 'inscriptos', 'inscriptos_identificados', 'inscriptos_M', 'inscriptos_F', 'inscriptos_X',
+  'inscriptos_conMail', 'inscriptos_conCelular', 'inscriptos_conFijo', 'inscriptos_canal_Mailing', 'inscriptos_canal_Instagram',
+  'inscriptos_canal_Facebook', 'inscriptos_canal_WhatsApp', 'inscriptos_canal_Google', 'inscriptos_canal_Web', 'inscriptos_canal_LinkedIn',
+  'inscriptos_canal_TikTok', 'inscriptos_canal_Twitter', 'inscriptos_canal_Programmatic', 'inscriptos_canal_SMS', 'inscriptos_canal_Redes',
+  'inscriptos_canal_Difusion', 'inscriptos_canal_Territorial', 'inscriptos_canal_AppAsistentes', 'inscriptos_canal_AppFormulariosOffline',
+  'inscriptos_canal_QR', 'inscriptos_canal_Prensa', 'inscriptos_canal_Otros', 'inscriptos_canal_CallCenter', 'inscriptos_canal_IVR',
+  'inscriptos_edades_18_24', 'inscriptos_edades_25_39', 'inscriptos_edades_40_55', 'inscriptos_edades_56_65', 'inscriptos_edades_66plus'];
+
+function escenarioColumnasNuevasB() {
+  console.log('\n[25] B con los nombres NUEVOS (07/10): el mapeo de canales, sexo y Sin identificar, el chequeo y la protección');
+  const E = crearEntorno();
+  const m = montar(E, 300, true);
+  const viejo = m.ssI.hojas['B'].v;
+  const get = function (row, n) { const k = HDR_B.indexOf(n); return k >= 0 && row[k] !== undefined ? row[k] : ''; };
+  const nueva = [HDR_B_NUEVO.slice()];
+  viejo.slice(1).forEach(function (o) {
+    const rr = numJs(get(o, 'inscriptos_canal_Facebook')), dif = numJs(get(o, 'inscriptos_canal_Difusion'));
+    const v = {};
+    HDR_B_NUEVO.forEach(function (h) { v[h] = 0; });
+    ['nombre', 'fecha_fin', 'inscriptos', 'inscriptos_identificados', 'inscriptos_M', 'inscriptos_F', 'inscriptos_canal_Mailing',
+     'inscriptos_canal_CallCenter', 'inscriptos_canal_IVR', 'inscriptos_edades_18_24', 'inscriptos_edades_25_39', 'inscriptos_edades_40_55',
+     'inscriptos_edades_56_65', 'inscriptos_edades_66plus'].forEach(function (h) { v[h] = get(o, h); });
+    v['inscriptos_conMail'] = 999; v['inscriptos_conCelular'] = 999; v['inscriptos_conFijo'] = 999;   // se ignoran
+    v['inscriptos_canal_Instagram'] = Math.floor(rr / 3); v['inscriptos_canal_WhatsApp'] = Math.floor(rr / 3);
+    v['inscriptos_canal_TikTok'] = rr - 2 * Math.floor(rr / 3);
+    v['inscriptos_canal_Territorial'] = Math.floor(dif / 2); v['inscriptos_canal_QR'] = dif - Math.floor(dif / 2);
+    nueva.push(HDR_B_NUEVO.map(function (h) { return v[h]; }));
+  });
+  m.ssI.hojas['B'].v = nueva;
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'];
+  // filas del destino con los canales vacíos (para ver lo que escribe) y una del hueco con un formulario que NO cierra
+  const canales = ['Mail', 'Call Center', 'IVR', 'RRSS', 'Difusión'];
+  const esperado = {};
+  for (let i = 1; i < hoja.v.length; i++) {
+    if (i % 10 !== 1) continue;      // (i - 1) % 10 === 0: también es del hueco de sexo y edades
+    esperado[i] = {};
+    canales.forEach(function (c) { esperado[i][c] = hoja.v[i][colD(c)]; hoja.v[i][colD(c)] = ''; });
+  }
+  const iMal = 11;                                                  // la fila 12: su formulario tendrá edades > inscriptos
+  const bMal = nueva.findIndex(function (r, k) { return k > 0 && numJs(r[2]) === numJs(hoja.v[iMal][colD('Inscriptos')]) &&
+    String(r[0]).indexOf(String(hoja.v[iMal][colD('Figura')]).toUpperCase()) === 0; });
+  nueva[bMal][HDR_B_NUEVO.indexOf('inscriptos_edades_18_24')] = 5000;
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error && r.logs.some(function (l) { return /columnas de B: OK/.test(l); }), 'todas las columnas reconocidas (log: "columnas de B: OK")' +
+     (r.error ? ' — ' + r.error.message : ''));
+  let canOk = 0, canN = 0, sexOk = 0, sexN = 0;
+  Object.keys(esperado).forEach(function (k) {
+    const i = +k;
+    if (i === iMal) return;
+    canales.forEach(function (c) { canN++; if (numJs(hoja.v[i][colD(c)]) === numJs(esperado[i][c])) canOk++; });
+    const ins = numJs(hoja.v[i][colD('Inscriptos')]), M = hoja.v[i][colD('Masculinos')], F = hoja.v[i][colD('Femeninos')], S = hoja.v[i][colD('Sin identificar')];
+    if (M !== '') { sexN++; if (numJs(M) + numJs(F) + numJs(S) === ins) sexOk++; }
+  });
+  ok(canN > 0 && canOk === canN, 'canales escritos = la suma de los de B (RRSS = Instagram + WhatsApp + TikTok; Difusión = Territorial + QR): ' + canOk + ' de ' + canN);
+  ok(sexN > 0 && sexOk === sexN, 'Masculinos + Femeninos + Sin identificar = Inscriptos: ' + sexOk + ' de ' + sexN);
+  ok(canales.concat(SEXO_EDADES).every(function (c) { return hoja.v[iMal][colD(c)] === ''; }),
+     'el formulario que no cierra (edades > Inscriptos): sus datos NO se escriben (la fila sigue vacía)');
+  const c46 = E.ejecutar('chequearColumnasB');
+  const x = c46.resultado;
+  ok(x && x.sinMapear === 0 && x.faltan === 0 && x.ejemplos === 5, 'paso 46: columnas reconocidas, 5 ejemplos — ' + JSON.stringify(x));
+  ok(c46.logs.some(function (l) { return /NO CIERRA \| B fila \d+ .*edades: suman 5\d\d\d/.test(l); }) || x.noCierran === 0,
+     'paso 46 lista el que no cierra (si es de los últimos 30 días)');
+  ok(c46.logs.some(function (l) { return /→ destino: Inscriptos \d+, Mail /.test(l); }), 'y muestra B → destino en los ejemplos');
+}
+
+function numJs(v) { return v === '' || v === null || v === undefined ? 0 : Number(v); }
+
 function escenarioFilaSinFigura() {
   console.log('\n[23] una fila sin Figura (Seguridad en tu Barrio de la agenda): el upsert y el paso 16 andan igual');
   const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true' } });
@@ -1988,7 +2087,8 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--historial') >= 0 || process.argv.indexOf('--activadores') >= 0 ||
     process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
     process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
-    process.argv.indexOf('--sinfigura') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
+    process.argv.indexOf('--columnasb') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2001,6 +2101,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--formato') >= 0) escenarioFormatoRevisar();
   else if (process.argv.indexOf('--sinfigura') >= 0) escenarioFilaSinFigura();
   else if (process.argv.indexOf('--agendaupsert') >= 0) escenarioAgendaEnUpsert();
+  else if (process.argv.indexOf('--columnasb') >= 0) escenarioColumnasNuevasB();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2040,6 +2141,7 @@ escenarioFichasEnDestino();
 escenarioFormatoRevisar();
 escenarioFilaSinFigura();
 escenarioAgendaEnUpsert();
+escenarioColumnasNuevasB();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);
