@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10 (2): las fichas con "esperando formulario" y las opciones cercanas, escritas y APAGADAS
+ *      (FICHAS_0810_ACTIVAS = false). Correr paso52_medirFichas() (SÓLO LECTURA: qué fichas salen, entran o cambian de
+ *      opciones; la escritura tiene que dar 0 diferencias). Si está bien: FICHAS_0810_ACTIVAS = true + clasp push.
  *  >>> 08/10: CAMBIOS_0710_ACTIVOS = true (el paso 51 de las 00:02 coincidió con la predicción). La corrida de la hora
  *      escribe 815–819 como mostró el paso 51; nada para correr a mano. Para mirar después: la 815 (Barrio Villa Crespo,
  *      formulario de la conjunta, 20) y el log ("de los próximos 7 días se cruzaron …", "conjuntas", "nota del eje").
@@ -1087,6 +1090,18 @@ function medir07() {
   }
   Logger.log('');
   Logger.log('########## medir07 — fin');
+}
+
+/**
+ * PASO 52 — SÓLO LECTURA (08/10): las fichas con "esperando formulario" y las opciones cercanas (FICHAS_0810_ACTIVAS),
+ * antes de prenderlas. Arma las fichas de hoy con las dos reglas apagadas y prendidas, en memoria, y lista qué fichas
+ * salen, cuáles entran y cuáles cambian de opciones; y controla que no cambie ninguna celda a escribir (tiene que dar 0).
+ */
+function paso52_medirFichas() {
+  _anunciar_('paso 52 — las fichas con "esperando formulario" y las opciones cercanas', 'medirFichasCercanas()  [diagnostico/23_fichas_cercanas.js]',
+             'NO escribe nada (las fichas, en memoria, dos veces)',
+             'el log: 1. escritura (tiene que dar 0) · 2. salen · 3. entran · 4. otras opciones / sin ninguna · 5. resumen');
+  return medirFichasCercanas();
 }
 
 /**

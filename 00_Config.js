@@ -603,6 +603,29 @@ const CONFIANZA_MEDIA = 0.6;
 const DIAS_CONTEXTO_FICHA = 7;
 
 /**
+ * **Las fichas del 08/10** (decisión del usuario): "esperando formulario" y las opciones cercanas. Rigen cuando este
+ * interruptor es `true`; con `false`, las fichas siguen como antes. Primero se mide: el **paso 52**
+ * (`paso52_medirFichas`, sólo lectura) arma las fichas con y sin las dos reglas y lista qué cambia; no cambia ningún
+ * cruce escrito (el mismo paso lo controla).
+ *
+ *   (1) **esperando formulario**: una fila de hasta DIAS_ESPERANDO_FORMULARIO días después de la reunión (o futura) que
+ *       iría a REVISAR_MATCH o a SIN_MATCH y no tiene ningún formulario LIBRE que pueda ser el suyo a
+ *       ±TOLERANCIA_REPROGRAMACION_DIAS (de su figura, o sin figura de su ubicación, como `sin_formulario_propio`; los
+ *       que ya tiene otra fila no cuentan) no va a las fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL: veredicto
+ *       `esperando_formulario`, se reevalúa en cada corrida y la causa está en el paso 20. Pasados esos días, ficha.
+ *       (Una futura CON formulario libre cerca que no alcanza sí es ficha: antes del 08/10, toda futura sin match quedaba
+ *       afuera.)
+ *   (2) **las opciones de una ficha**: sólo formularios a ±DIAS_OPCIONES_FICHA días de la reunión; uno que ya tiene otra
+ *       fila, sólo a ±DIAS_OPCION_USADA (como "a ±3" en el puntaje: un formulario sin fecha en el nombre, por su cierre);
+ *       nunca uno de una reunión cerrada (de antes de las filas activas, o que tiene una fila cerrada). Si no queda
+ *       ninguna: "No hay formulario cercano", y ELEGIR sólo con Ninguno / No sé.
+ */
+const FICHAS_0810_ACTIVAS = false;
+const DIAS_ESPERANDO_FORMULARIO = 3;
+const DIAS_OPCIONES_FICHA = 14;
+const DIAS_OPCION_USADA = 3;
+
+/**
  * Inscriptos mínimos para listar un formulario sin fila (sin ningún candidato) en
  * `listarFormulariosSinFila` (paso 13, "formularios sin fila: canceladas o reubicadas"). Los de menos
  * sólo se cuentan. Es informativo: un formulario sin fila no es un faltante a reclamar (regla 9).

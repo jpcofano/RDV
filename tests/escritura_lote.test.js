@@ -33,7 +33,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
                   '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
-                  'diagnostico/21_ubicacion.js'];
+                  'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -2339,6 +2339,142 @@ function escenarioTanda0710() {
      'con la tanda apagada (CAMBIOS_0710_ACTIVOS = false, como antes del 08/10): nada de esto se escribe');
 }
 
+function escenarioFichas0810() {
+  console.log('\n[29] las fichas del 08/10 (FICHAS_0810_ACTIVAS): "esperando formulario" y las opciones cercanas; paso 52');
+  // "hoy" es el 02/10/2026; DIAS_ACTIVOS = 30 (activas desde el 02/09). Las filas sintéticas terminan el 16/09.
+  const casos = function (E, datos) {
+    const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+    const nueva = function (fig, barrio, fecha, extra) {
+      const r = HDR_DESTINO.map(function () { return ''; });
+      r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = fecha; r[col('EVENTO')] = 'Encuentro con Vecinos';
+      r[col('STATUS REUNIÓN')] = 'en agenda';
+      Object.keys(extra || {}).forEach(function (k) { r[col(k)] = extra[k]; });
+      datos.dest.push(r);
+    };
+    const d = function (dia, mes) { return new D(2026, mes - 1, dia, 12, 0, 0); };
+    const formB = function (nombre, fin, ins) {
+      const id = Math.round(ins * 0.8), e = Math.floor(id / 5);
+      return [nombre, fin, ins, id, Math.floor(id / 2), id - Math.floor(id / 2), e, e, e, e, id - 4 * e, 10, 10, 0, 10, 10, 10, 0, 0, ''];
+    };
+    nueva('Lorena Paz', 'Palermo', d(1, 10));                       // a) ayer, sin ningún formulario: espera
+    nueva('Martín Ríos', 'Flores', d(2, 10));                       // b) hoy, con su formulario
+    nueva('Martín Ríos', 'Flores', d(4, 10));                       //    futura: su único formulario cercano lo tiene la de hoy
+    datos.b.push(formB('MARTÍN RÍOS - Encuentro con vecinos - Comuna 7 - 2/10', d(30, 9), 45));
+    nueva('Nora Vidal', 'Recoleta', d(24, 9));                      // c) hace 8 días; su único formulario, a 20 días
+    datos.b.push(formB('NORA VIDAL - Encuentro con vecinos - Comuna 2 - 4/9', d(2, 9), 35));
+    nueva('Olga Suárez', 'Belgrano', d(12, 9));                     // d) la ficha
+    nueva('Olga Suárez', 'Belgrano', d(10, 9));                     //    tiene el del 10/9 (a 2 días de la ficha: se ofrece)
+    nueva('Olga Suárez', 'Belgrano', d(6, 9));                      //    tiene el del 6/9 (a 6 días: no se ofrece)
+    datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 10/9', d(8, 9), 55));
+    datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 6/9', d(4, 9), 65));
+    datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 24/8', d(22, 8), 75));   // a 19 días: no
+    // e) el primer día activo (02/09): el del 30/8 lo tiene una fila CERRADA (con RDV_UID); el del 26/8 es de una reunión cerrada
+    nueva('Pablo Gil', 'Barracas', d(30, 8), { RDV_UID: 'uid-pablo-3008', form_origen: 'PABLO GIL - Encuentro con vecinos - Comuna 4 - 30/8' });
+    nueva('Pablo Gil', 'Barracas', d(2, 9));
+    datos.b.push(formB('PABLO GIL - Encuentro con vecinos - Comuna 4 - 30/8', d(28, 8), 25));
+    datos.b.push(formB('PABLO GIL - Encuentro con vecinos - Comuna 4 - 26/8', d(24, 8), 15));
+  };
+  const cfg = { DIAS_ACTIVOS: '30', REVISAR_COMO_FICHAS: 'true', SOLAPA_FICHAS_EN_DESTINO: 'true', REVISAR_FORMATO_NUEVO: 'true' };
+  const correr = function (prender) {
+    const E = crearEntorno({ config: Object.assign({ FICHAS_0810_ACTIVAS: prender ? 'true' : 'false' }, cfg) });
+    const m = montar(E, 300, true, casos);
+    const r = E.ejecutar('upsertDestino');
+    return { E: E, m: m, r: r, h: m.ssD.hojas['RVD JM-CM - ES'], rev: m.ssD.hojas['REVISAR_MATCH'] };
+  };
+  const on = correr(true), off = correr(false);
+  ok(!on.r.error && !off.r.error, 'upsert con y sin las reglas, sin error' + (on.r.error ? ': ' + on.r.error.stack : off.r.error ? ': ' + off.r.error.stack : ''));
+
+  // La fila del destino (1-based) de una figura y una fecha.
+  const nFila = function (h, fig, dia, mes) {
+    return h.v.findIndex(function (x, i) {
+      const f = x[colD('FECHA')];
+      return i > 0 && x[colD('Figura')] === fig && f instanceof Date && f.getDate() === dia && f.getMonth() === mes - 1;
+    }) + 1;
+  };
+  const AUX = on.E.cfg('AUX_FICHAS_'), ia = function (n) { return 13 + AUX.indexOf(n); };
+  // La ficha de una fila: la línea REUNIÓN, su "¿por qué?", sus opciones (nombres enteros) y el desplegable.
+  const ficha = function (x, n) {
+    const v = x.rev ? x.rev.v : [];
+    const k = v.findIndex(function (l) { return l[3] === 'REUNIÓN' && Number(l[4]) === n && l[ia('aux_linea')] === 'reunion'; });
+    if (k < 0) return null;
+    const ops = [];
+    for (let i = k + 1; i < v.length && v[i][3] !== 'REUNIÓN'; i++) if (/^Opción \d/.test(v[i][3])) ops.push({ nombre: v[i][ia('form_nombre')], usado: v[i][12] });
+    const dv = x.rev.dv && x.rev.dv[k] && x.rev.dv[k][0];
+    return { porque: v[k + 1][4], ops: ops, lista: dv ? dv.lista : null };
+  };
+  const enSinMatch = function (x, fig) {
+    const sm = x.E.planilla(x.E.cfg('RDV_SS_INTERMEDIA')).hojas[x.E.cfg('RDV_HOJA_SIN_MATCH')];
+    return !!sm && JSON.stringify(sm.v).indexOf(fig) >= 0;
+  };
+  const nLor = nFila(on.h, 'Lorena Paz', 1, 10), nMar4 = nFila(on.h, 'Martín Ríos', 4, 10), nNora = nFila(on.h, 'Nora Vidal', 24, 9);
+  const nOlga = nFila(on.h, 'Olga Suárez', 12, 9), nPablo = nFila(on.h, 'Pablo Gil', 2, 9);
+
+  // a) y b): esperando formulario
+  ok(!!ficha(off, nLor) && enSinMatch(off, 'Lorena Paz'), 'a) sin las reglas: la de ayer sin formulario es ficha y está en SIN_MATCH');
+  ok(!ficha(on, nLor) && !enSinMatch(on, 'Lorena Paz'), 'a) con las reglas: espera su formulario (ni ficha ni SIN_MATCH)');
+  ok(!!ficha(off, nMar4) && !ficha(on, nMar4),
+     'b) la futura cuyo único formulario cercano lo tiene otra fila: sin las reglas, ficha (formulario_compartido); con, espera');
+  ok(on.r.logs.some(function (l) { return /esperando formulario\s+2 \|\s+2\b/.test(l); }),
+     'el log del upsert cuenta las que esperan su formulario');
+
+  // c) ficha sin opciones
+  const nOff = ficha(off, nNora), nOn = ficha(on, nNora);
+  ok(nOff && nOff.ops.length === 1 && /NORA VIDAL/.test(nOff.ops[0].nombre), 'c) sin las reglas: la opción es su formulario a 20 días');
+  ok(nOn && nOn.ops.length === 0 && /^No hay formulario cercano/.test(nOn.porque) && /NORA VIDAL.*está a 20 días/.test(nOn.porque),
+     'c) con las reglas: "No hay formulario cercano" (y cuál quedó afuera): ' + (nOn && nOn.porque));
+  ok(nOn && JSON.stringify(nOn.lista) === JSON.stringify(['Ninguno', 'No sé']), 'c) ELEGIR sólo con Ninguno / No sé');
+
+  // d) opciones: usada a ±3 sí; usada a 6 días no; a 19 días no
+  const oOff = ficha(off, nOlga), oOn = ficha(on, nOlga);
+  const tiene = function (fx, txt) { return !!fx && fx.ops.some(function (o) { return o.nombre.indexOf(txt) >= 0; }); };
+  ok(tiene(oOff, '- 6/9') && tiene(oOff, '- 24/8'), 'd) sin las reglas: la del 6/9 (usada, a 6 días) y la del 24/8 (a 19) son opciones');
+  ok(tiene(oOn, '- 10/9') && !tiene(oOn, '- 6/9') && !tiene(oOn, '- 24/8'),
+     'd) con las reglas: la del 10/9 (usada, a 2 días) sí; la del 6/9 y la del 24/8, no: ' + (oOn ? oOn.ops.map(function (o) { return o.nombre; }).join(' / ') : '-'));
+  ok(oOn && oOn.ops.some(function (o) { return o.nombre.indexOf('- 10/9') >= 0 && /^fila /.test(o.usado); }), 'd) la del 10/9, con "ya usado por"');
+
+  // e) reuniones cerradas
+  const pOff = ficha(off, nPablo), pOn = ficha(on, nPablo);
+  ok(tiene(pOff, '- 30/8') && tiene(pOff, '- 26/8'), 'e) sin las reglas: la del 30/8 (de una fila cerrada) y la del 26/8 son opciones');
+  ok(pOn && !tiene(pOn, '- 30/8') && !tiene(pOn, '- 26/8') && /PABLO GIL - Encuentro con vecinos - Comuna 4 - 30\/8.*no está entre las opciones/.test(pOn.porque),
+     'e) con las reglas: ninguna de las dos; "¿por qué?" nombra la del 30/8 igual: ' + (pOn && pOn.porque));
+
+  // Ninguna escritura cambia: el destino queda igual con y sin las reglas (salvo los RDV_UID, que son al azar).
+  const sinUid = function (h) { return JSON.stringify(h.v.map(function (x) { return x.map(function (c, k) { return k === colD('RDV_UID') ? !!c : c; }); })); };
+  ok(sinUid(on.h) === sinUid(off.h) && JSON.stringify(on.h.bg) === JSON.stringify(off.h.bg),
+     'la escritura es la misma con y sin las reglas (valores y colores del destino)');
+
+  // Paso 20: la causa.
+  const p20 = on.E.ejecutar('porQueVacia');
+  ok(!p20.error && p20.logs.some(function (l) { return /Lorena Paz.*esperando formulario/.test(l); }),
+     'paso 20: la causa de la de ayer es "esperando formulario"' + (p20.error ? ': ' + p20.error.stack : ''));
+
+  // Paso 52, con el interruptor apagado (como queda en 00_Config.js hasta prenderlo): no escribe y dice lo mismo.
+  const E52 = crearEntorno({ config: cfg });
+  const m52 = montar(E52, 300, true, casos);
+  ok(!E52.ejecutar('upsertDestino').error, 'paso 52: el upsert de antes (apagado)');
+  const fotos = function () { return JSON.stringify([m52.ssD.hojas['RVD JM-CM - ES'].v, m52.ssD.hojas['REVISAR_MATCH'].v, m52.ssI.hojas['B'].v]); };
+  const antes = fotos();
+  const p52 = E52.ejecutar('medirFichasCercanas'), o = p52.resultado || {};
+  ok(!p52.error && fotos() === antes, 'paso 52: no escribe nada' + (p52.error ? ': ' + p52.error.stack : ''));
+  ok(o.escrituraDistinta && o.escrituraDistinta.length === 0, 'paso 52: la escritura no cambia (0 filas)');
+  const filasSalen = (o.salen || []).map(function (x) { return x.fila; });
+  ok(filasSalen.indexOf(nLor) >= 0 && filasSalen.indexOf(nMar4) >= 0,
+     'paso 52: salen la de ayer y la futura (' + filasSalen.join(', ') + ')');
+  const mar = (o.salen || []).find(function (x) { return x.fila === nMar4; });
+  ok(mar && mar.cercano && /MARTÍN RÍOS/.test(mar.cercano.nombre) && mar.cercano.de === nFila(on.h, 'Martín Ríos', 2, 10),
+     'paso 52: dice qué formulario cercano tiene la futura y quién lo tiene');
+  ok((o.sinOpciones || []).some(function (x) { return x.fila === nNora; }), 'paso 52: la de Nora, sin ninguna opción');
+  const ol = (o.cambian || []).find(function (x) { return x.fila === nOlga; });
+  ok(ol && ol.salen.some(function (s) { return /- 6\/9/.test(s.nombre) && /^ya lo tiene la fila \d+ .*a 6 días/.test(s.motivo); }) &&
+     ol.salen.some(function (s) { return /- 24\/8/.test(s.nombre) && /^está a 19 días/.test(s.motivo); }),
+     'paso 52: las opciones que salen de la de Olga, con su motivo: ' + JSON.stringify(ol && ol.salen));
+  const pg = (o.cambian || []).find(function (x) { return x.fila === nPablo; });
+  ok(pg && pg.salen.some(function (s) { return /- 30\/8/.test(s.nombre) && /una reunión cerrada/.test(s.motivo); }) &&
+     pg.salen.some(function (s) { return /- 26\/8/.test(s.nombre) && /^es de una reunión cerrada/.test(s.motivo); }),
+     'paso 52: las de Pablo, por reunión cerrada (la fila cerrada que tiene una, y la otra sin fila): ' + JSON.stringify(pg && pg.salen));
+  ok(p52.logs.some(function (l) { return /^--- 1\. ESCRITURA: .*: 0 /.test(l); }), 'paso 52: el log dice 0 en la escritura');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -2377,7 +2513,8 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
     process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
-    process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0 ||
+    process.argv.indexOf('--fichas0810') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2394,6 +2531,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--paso47') >= 0) escenarioPaso47();
   else if (process.argv.indexOf('--ubicacion') >= 0) escenarioUbicacionTresNiveles();
   else if (process.argv.indexOf('--tanda') >= 0) escenarioTanda0710();
+  else if (process.argv.indexOf('--fichas0810') >= 0) escenarioFichas0810();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2436,6 +2574,7 @@ escenarioAgendaEnUpsert();
 escenarioColumnasNuevasB();
 escenarioUbicacionTresNiveles();
 escenarioTanda0710();
+escenarioFichas0810();
 escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.

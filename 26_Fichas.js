@@ -79,7 +79,7 @@ function esHojaDeFichas_(hdr) {
  */
 function armarFichas_(plan, asis, opts) {
   opts = opts || {};
-  const dest = plan.dest, comunas = plan.comunas, vivos = plan.cands.vivos, porFila = plan.porFila;
+  const dest = plan.dest, comunas = plan.comunas, porFila = plan.porFila;
   const ctx = _contextoFichas_(plan, asis);
   const salida = [], formato = [], fichas = [], porMotivo = {};
   const ancho = COLS_FICHA_ARMADO_.length;
@@ -100,7 +100,7 @@ function armarFichas_(plan, asis, opts) {
   lista.forEach(function (f) {
     const pf = porFila[f.fila] || {};
     const primero = pf.cand || null;
-    const ops = listaOpcionesFila_(f, vivos, comunas, primero, OPCIONES_REVISION);
+    const op = opcionesDeFicha_(f, ctx, primero), ops = op.ops;
     const elec = _eleccionDeFicha_(ctx, f);
     const motivo = pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH' ? (pf.motivo || pf.veredicto)
                  : (pf.veredicto || 'sin_veredicto');
@@ -119,9 +119,10 @@ function armarFichas_(plan, asis, opts) {
           { negrita: true, bg: COLS_FICHA_ARMADO_.map(function () { return FICHA_COLOR_.reunion; }),
             desplegable: _opcionesDesplegable_(nOps) });
     // --- ¿por qué? ---
-    linea([FICHA_ETIQUETA_.porQue, _fraseMotivo_(f, pf, ops, ctx)]);
+    linea([FICHA_ETIQUETA_.porQue, _fraseMotivo_(f, pf, ops, ctx, op.excluidas)]);
     // --- las opciones ---
-    if (!nOps) linea(['', '(no hay ningún formulario para proponer)'], { fc: _gris_(ancho) });
+    if (!nOps) linea(['', fichas0810_() ? 'No hay formulario cercano' : '(no hay ningún formulario para proponer)'],
+                     { fc: _gris_(ancho) });
     ops.forEach(function (sc, k) {
       const c = sc.c, duenio = _duenio_(ctx, c, f);
       const colF = _colorFecha_(sc), colU = _colorUbic_(sc, f);
@@ -196,6 +197,50 @@ function _listaFichas_(plan, ctx, opts) {
     return (tb - ta) || (a.fila - b.fila);
   });
   return lista;
+}
+
+/**
+ * **Las opciones de una ficha**: las de `listaOpcionesFila_` (por puntaje, hasta OPCIONES_REVISION; la del plan,
+ * `primero`, siempre entre ellas). Con FICHAS_0810_ACTIVAS (08/10), sin las que no pueden ser de esta reunión
+ * (`_exclusionOpcion_`): a más de DIAS_OPCIONES_FICHA días, ya usadas por otra fila salvo a ±DIAS_OPCION_USADA, de una
+ * reunión cerrada. Devuelve `{ ops, excluidas: [{ sc, motivo }] }`; las excluidas, por puntaje (las nombra "¿por qué?",
+ * y las cuenta el paso 52).
+ */
+function opcionesDeFicha_(f, ctx, primero) {
+  const plan = ctx.plan, n = OPCIONES_REVISION;
+  if (!fichas0810_()) return { ops: listaOpcionesFila_(f, plan.cands.vivos, plan.comunas, primero, n), excluidas: [] };
+  const ok = [], excluidas = [];
+  listaOpcionesFila_(f, plan.cands.vivos, plan.comunas, null, 0).forEach(function (sc) {
+    const motivo = _exclusionOpcion_(ctx, f, sc);
+    if (motivo) excluidas.push({ sc: sc, motivo: motivo });
+    else ok.push(sc);
+  });
+  const ops = ok.slice(0, n);
+  if (primero && ops.length === n && !ops.some(function (sc) { return sc.c === primero; })) {
+    const sc = ok.find(function (x) { return x.c === primero; });
+    if (sc) ops[n - 1] = sc;
+  }
+  return { ops: ops, excluidas: excluidas };
+}
+
+/**
+ * Por qué una opción NO se ofrece en la ficha de `f` (08/10), en palabras —"está a 20 días", "es de una reunión
+ * cerrada", "ya lo tiene la fila 812 (03/10, Flores), a 6 días"—, o null si se ofrece. "A ±DIAS_OPCION_USADA" se mide
+ * como en el puntaje (`fechaCercana_`: un formulario sin fecha en el nombre, por su cierre). Lo de las reuniones
+ * cerradas vale para las fichas de filas activas (la vista previa del paso 21 puede pedir una cerrada).
+ */
+function _exclusionOpcion_(ctx, f, sc) {
+  const c = sc.c;
+  if (sc.dist === null) return 'no tiene fecha';
+  if (sc.dist > DIAS_OPCIONES_FICHA) return 'está a ' + sc.dist + ' días';
+  const activa = esFilaActiva_(f.fecha);
+  if (activa && !formularioDeReunionActiva_(c)) return 'es de una reunión cerrada';
+  const d = _duenio_(ctx, c, f);
+  if (d) {
+    if (activa && !esFilaActiva_(d.fecha)) return 'ya lo tiene la fila ' + _descFila_(d) + ', una reunión cerrada';
+    if (!fechaCercana_(f.fecha, c.det, DIAS_OPCION_USADA)) return 'ya lo tiene la fila ' + _descFila_(d) + ', a ' + sc.dist + ' días';
+  }
+  return null;
 }
 
 /**
@@ -313,6 +358,7 @@ function _otrasReuniones_(ctx, f) {
     else if (pf.veredicto === 'futura') estado = 'futura';
     else if (pf.veredicto === 'cerrada') estado = 'cerrada, sin formulario';
     else if (pf.veredicto === 'pendiente_barrio') estado = 'esperando el barrio';
+    else if (pf.veredicto === 'esperando_formulario') estado = 'esperando su formulario';
     else if (pf.veredicto === 'ninguno_por_persona') estado = '"ninguno" (lo decidió una persona)';
     else estado = pf.veredicto || '';
     return { f: o, d: diasEntre_(o.fecha, f.fecha), estado: estado };
@@ -326,28 +372,43 @@ function _otrasReuniones_(ctx, f) {
  * más puntaje), salvo los motivos que son de un formulario en particular —una posible reubicación, un
  * multi_figura, dos formularios con la misma clave, el único descalificado—: entonces lo nombra por su
  * número y, si no es la 1, agrega por qué la opción 1 no se escribe sola.
+ *
+ * Con las opciones cercanas (08/10, FICHAS_0810_ACTIVAS) el formulario del que habla el motivo puede no estar entre las
+ * opciones (`excluidas`: a más de 14 días, ya usado por otra fila a más de 3, de una reunión cerrada): se lo nombra igual
+ * —"El formulario «…» (a N días; no está entre las opciones)"—, y una ficha sin ninguna opción dice "No hay formulario
+ * cercano" (`_fraseSinOpciones_`).
  */
-function _fraseMotivo_(f, pf, ops, ctx) {
+function _fraseMotivo_(f, pf, ops, ctx, excluidas) {
   const m = pf.motivo || pf.veredicto;
   const comunas = ctx.plan.comunas;
   const fig = f.figura || 'la figura';
-  const Nom = function (k) { return 'La opción ' + (k + 1) + ', «' + ops[k].c.nombre + '»,'; };
+  excluidas = excluidas || [];
+  if (!ops.length && fichas0810_() && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH')) {
+    return _fraseSinOpciones_(f, pf, excluidas);
+  }
   // De qué opción habla el motivo: la 1, o la del formulario del motivo.
   let k = 0;
   if (['ubicacion_en_desacuerdo', 'multi_figura', 'clave_repetida', 'desacuerdo_y_resto_bajo'].indexOf(m) >= 0) {
     const i = ops.findIndex(function (x) { return x.c === pf.cand; });
     if (i >= 0) k = i;
   }
-  const sc = ops[k] || null;
+  const fuera = _formularioFueraDelMotivo_(m, pf, ops, excluidas, ctx, f);
+  const sc = fuera ? fuera.sc : (ops[k] || null);
   const c = sc ? sc.c : null;
   const dueno = c ? _duenio_(ctx, c, f) : null;
+  const Nom = function (k) {
+    return fuera ? 'El formulario «' + c.nombre + '» (' + (sc.dist === null ? 'sin fecha' : 'a ' + sc.dist + ' días') +
+                   '; no está entre las opciones)'
+                 : 'La opción ' + (k + 1) + ', «' + ops[k].c.nombre + '»,';
+  };
+  const laQue = fuera ? 'el que' : 'la que', laTiene = fuera ? 'lo tiene' : 'la tiene';
   let t;
   switch (m) {
     case 'formulario_compartido':
       if (!c) { t = 'Su formulario lo ganó otra reunión y no le quedó ninguno claro.'; break; }
       if (dueno) {
-        t = Nom(k) + ' es la que más coincide, pero ya la tiene la fila ' + _descFila_(dueno) +
-            ', que tenía más evidencia. Sin ésa, ninguna otra alcanza para escribirla sola.';
+        t = Nom(k) + ' es ' + laQue + ' más coincide, pero ya ' + laTiene + ' la fila ' + _descFila_(dueno) +
+            ', que tenía más evidencia. Sin ' + (fuera ? 'ése' : 'ésa') + ', ninguna otra alcanza para escribirla sola.';
       } else {
         const otras = _otrasConMismoFormulario_(ctx, f, c);
         t = Nom(k) + ' la reclaman esta reunión y ' + (otras.length ? 'la fila ' + otras.map(_descFila_).join(', la fila ') : 'otra') +
@@ -361,7 +422,7 @@ function _fraseMotivo_(f, pf, ops, ctx) {
             (dueno ? ', y la fila ' + _descFila_(dueno) + ' ya tiene uno. Una reunión no puede tener dos formularios iguales.'
                    : ', y no se puede saber cuál es el de esta reunión.');
       } else {
-        t = Nom(k) + ' es la que más coincide' + (dueno ? ', pero ya la tiene la fila ' + _descFila_(dueno) +
+        t = Nom(k) + ' es ' + laQue + ' más coincide' + (dueno ? ', pero ya ' + laTiene + ' la fila ' + _descFila_(dueno) +
             ' (un formulario con el mismo nombre es la misma reunión).' : ', pero tiene un gemelo con el mismo nombre en otra fila.');
       }
       break;
@@ -391,18 +452,18 @@ function _fraseMotivo_(f, pf, ops, ctx) {
         : 'Hay formularios casi igual de buenos y ninguno tiene más evidencia que el otro.';
       break;
     case 'score_bajo':
-      t = c ? Nom(k) + ' es la que más coincide, pero con confianza ' + _confianza_(sc.score) + ': ' +
+      t = c ? Nom(k) + ' es ' + laQue + ' más coincide, pero con confianza ' + _confianza_(sc.score) + ': ' +
               _queFalla_(f, sc, ctx) + '. No alcanza para escribirla sola.'
             : 'Ningún formulario alcanza para escribirla sola.';
       break;
     case 'sin_formulario_propio':
       t = 'No hay ningún formulario de ' + fig + ' a ' + TOLERANCIA_REPROGRAMACION_DIAS + ' días o menos de la reunión ' +
           '(ni uno sin figura de su comuna). Puede faltar en el origen o tener otra fecha.' +
-          (c ? ' La opción 1 es la más parecida (confianza ' + _confianza_(sc.score) + ').' : '');
+          (c && !fuera ? ' La opción 1 es la más parecida (confianza ' + _confianza_(sc.score) + ').' : '');
       break;
     case 'desacuerdo_y_resto_bajo':
-      t = c ? Nom(k) + ' es la única cercana, pero dice ' + _ubicForm_(c) + ' (la reunión: ' + _ubicFila_(f, comunas) +
-              ') y además ' + _queFalla_(f, sc, ctx) + '.'
+      t = c ? Nom(k) + ' es ' + (fuera ? 'el único cercano' : 'la única cercana') + ', pero dice ' + _ubicForm_(c) +
+              ' (la reunión: ' + _ubicFila_(f, comunas) + ') y además ' + _queFalla_(f, sc, ctx) + '.'
             : 'El único formulario cercano dice otra ubicación.';
       break;
     case 'sin_candidatos':
@@ -417,13 +478,16 @@ function _fraseMotivo_(f, pf, ops, ctx) {
       t = 'Todavía no pasó: no se empareja.'; break;
     case 'pendiente_barrio':
       t = 'Esperando el barrio: es de hoy o de ayer y RDV todavía no tiene el barrio. Se vuelve a mirar en la próxima corrida.'; break;
+    case 'esperando_formulario':
+      t = 'Esperando su formulario: la reunión es de hasta ' + DIAS_ESPERANDO_FORMULARIO + ' días atrás (o futura) y no hay ' +
+          'ninguno libre a ' + TOLERANCIA_REPROGRAMACION_DIAS + ' días o menos. No aparece en la solapa; pasados esos días, sí.'; break;
     case 'ninguno_por_persona':
       t = 'Una persona eligió "ninguno": no se propone ni se escribe.'; break;
     default:
       t = 'Motivo: ' + (m || '?') + '.';
   }
   // Si el motivo es de otra opción, por qué la 1 (la de más puntaje) no se escribe sola.
-  if (k > 0 && ops[0]) {
+  if (k > 0 && ops[0] && !fuera) {
     const s1 = ops[0], d1 = _duenio_(ctx, s1.c, f);
     t += ' La opción 1 tiene más puntaje (confianza ' + _confianza_(s1.score) + ')' +
          (d1 ? ', pero ya la tiene la fila ' + _descFila_(d1) + '.'
@@ -431,8 +495,50 @@ function _fraseMotivo_(f, pf, ops, ctx) {
           : s1.multiFigura ? ', pero nombra a varias figuras.'
           : !s1.nombraFigura ? ', pero no nombra a ' + fig + '.'
           : ': si es ésta, elegila.');
+  } else if (fuera && ops[0]) {
+    // 08/10: el del motivo no se ofrece; la opción 1 es la mejor de las que quedan.
+    const s1 = ops[0], d1 = _duenio_(ctx, s1.c, f);
+    t += ' Entre las opciones, la 1 (confianza ' + _confianza_(s1.score) + ')' +
+         (d1 ? ' ya la tiene la fila ' + _descFila_(d1) + '.'
+          : s1.desacuerdo ? ' dice otra ubicación (' + _ubicForm_(s1.c) + ').'
+          : s1.multiFigura ? ' nombra a varias figuras.'
+          : !s1.nombraFigura ? ' no nombra a ' + fig + '.'
+          : ': si es ésta, elegila.');
   }
   return t;
+}
+
+/**
+ * El formulario del que habla el motivo cuando NO está entre las opciones (08/10, FICHAS_0810_ACTIVAS), o null:
+ *   - los motivos de un formulario en particular (reubicación, multi_figura, clave repetida, el único descalificado): el
+ *     del plan (`pf.cand`), si quedó afuera;
+ *   - formulario_compartido / formulario_gemelo: el que perdió la fila —el de más puntaje entre los que no se ofrecen,
+ *     ya usado por otra fila—, si tiene más puntaje que la opción 1;
+ *   - score_bajo: el del plan, si quedó afuera y tiene más puntaje que la opción 1.
+ * Cada uno, `{ sc, motivo }` de `excluidas`.
+ */
+function _formularioFueraDelMotivo_(m, pf, ops, excluidas, ctx, f) {
+  if (!excluidas.length) return null;
+  const tope = ops[0] ? ops[0].score : -1;
+  const delPlan = pf.cand && !ops.some(function (x) { return x.c === pf.cand; })
+    ? excluidas.find(function (e) { return e.sc.c === pf.cand; }) || null : null;
+  if (['ubicacion_en_desacuerdo', 'multi_figura', 'clave_repetida', 'desacuerdo_y_resto_bajo'].indexOf(m) >= 0) return delPlan;
+  if (m === 'formulario_compartido' || m === 'formulario_gemelo') {
+    return excluidas.find(function (e) { return e.sc.score > tope && _duenio_(ctx, e.sc.c, f); }) || null;
+  }
+  if (m === 'score_bajo') return delPlan && delPlan.sc.score > tope ? delPlan : null;
+  return null;
+}
+
+/**
+ * "¿Por qué?" de una ficha sin ninguna opción (08/10, FICHAS_0810_ACTIVAS): no hay formulario cercano. Si el sistema
+ * tenía alguno que no se ofrece (el del plan, si no el de más puntaje), cuál y por qué; y qué elegir.
+ */
+function _fraseSinOpciones_(f, pf, excluidas) {
+  let t = 'No hay formulario cercano: ninguno a ' + DIAS_OPCIONES_FICHA + ' días o menos de la reunión que pueda ser el suyo.';
+  const x = excluidas.find(function (e) { return e.sc.c === pf.cand; }) || excluidas[0] || null;
+  if (x) t += ' El más parecido, «' + x.sc.c.nombre + '», ' + x.motivo + '.';
+  return t + ' Si no va a tener formulario, elegí «Ninguno»; si no sabés, «No sé».';
 }
 
 /** Las otras filas pendientes cuyo mejor formulario es el mismo (empate en formulario_compartido). */
@@ -653,12 +759,12 @@ const AUX_FICHAS_ = ['aux_linea', 'id_figura', 'id_fecha', 'id_barrio', 'aux_opc
  */
 function armarFichasFormato_(plan, asis, opts) {
   opts = opts || {};
-  const comunas = plan.comunas, vivos = plan.cands.vivos;
+  const comunas = plan.comunas;
   const ctx = _contextoFichas_(plan, asis);
   const porMotivo = {};
   const pendientes = _listaFichas_(plan, ctx, opts).map(function (f) {
     const pf = plan.porFila[f.fila] || {};
-    const ops = listaOpcionesFila_(f, vivos, comunas, pf.cand || null, OPCIONES_REVISION);
+    const op = opcionesDeFicha_(f, ctx, pf.cand || null), ops = op.ops;
     const motivo = pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH' ? (pf.motivo || pf.veredicto)
                  : (pf.veredicto || 'sin_veredicto');
     porMotivo[motivo] = (porMotivo[motivo] || 0) + 1;
@@ -669,11 +775,15 @@ function armarFichasFormato_(plan, asis, opts) {
       reunion: { fila: f.fila, figura: f.figura, fecha: _fechaLarga_(f.fecha),
                  barrio: _ubicFilaCelda_(f, comunas), tema: f.evento, inscriptos: ins == null ? null : ins },
       elegido: er.elegido, comentario: elec.comentario, resultado: er.resultado,
-      porque: _fraseMotivo_(f, pf, ops, ctx),
+      porque: _fraseMotivo_(f, pf, ops, ctx, op.excluidas),
       opciones: ops.map(function (sc) { return _opcionFormato_(f, sc, ctx); }),
       contexto: _contextoFormato_(ctx, f, ops),
       aux: { id_figura: f.figura, id_fecha: _fechaId_(f.fecha), id_barrio: f.barrio },
-      f: f, motivo: motivo, veredicto: pf.veredicto || ''
+      f: f, motivo: motivo, veredicto: pf.veredicto || '',
+      // las que no se ofrecen (08/10): no las dibuja nadie; las lista el paso 52
+      excluidas: op.excluidas.map(function (e) {
+        return { clave: e.sc.c.clave, nombre: e.sc.c.nombre, score: e.sc.score, motivo: e.motivo };
+      })
     };
   });
   const resueltas = _resueltas_(ctx).map(function (e) { return _resueltaFormato_(ctx, e); });
@@ -741,6 +851,7 @@ function _estadoCorto_(pf) {
     case 'futura': return 'futura';
     case 'cerrada': return 'cerrada, sin form.';
     case 'pendiente_barrio': return 'esperando barrio';
+    case 'esperando_formulario': return 'esperando form.';
     case 'ninguno_por_persona': return '"ninguno"';
     default: return pf.veredicto || '';
   }

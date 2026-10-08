@@ -1796,7 +1796,9 @@ function calcularPlan_(enSeco, entradas, opciones) {
                 // DIAS_ACTIVOS (03/10): filas activas, cerradas, y cerradas sin RDV_UID ("sin resolver").
                 activas: 0, cerradas: 0, cerradasSinResolver: 0, historial: historial,
                 // DIAS_FUTUROS_CRUCE (07/10): futuras que se cruzaron, y las que todavía no tienen formulario.
-                futurasCruzadas: 0, futurasSinFormulario: 0 };
+                futurasCruzadas: 0, futurasSinFormulario: 0,
+                // FICHAS_0810_ACTIVAS (08/10): "esperando formulario" (no van a las fichas ni a SIN_MATCH).
+                esperando: contador_() };
   const motivos = {};
 
   /*
@@ -1958,6 +1960,10 @@ function calcularPlan_(enSeco, entradas, opciones) {
   const desempateCnt = { senales: contador_(), distancia: contador_(), inscriptos: contador_(),
                          eje: contador_(), bajoUmbral: contador_() };
 
+  // 08/10 (FICHAS_0810_ACTIVAS): los formularios que no tiene ninguna fila —ni por RDV_UID ni porque se escriben en esta
+  // corrida—, para "esperando formulario": uno que ya tiene otra fila no es el de esta reunión.
+  const libres = fichas0810_() ? formulariosLibres_(evals, cands.vivos, tomadosGrupo) : null;
+
   /*
    * --- vuelta 2: con el resultado final de cada fila ---
    */
@@ -1976,9 +1982,22 @@ function calcularPlan_(enSeco, entradas, opciones) {
                           antes: r.antes };
       continue;   // no se escribe, no entra a los reportes; se reevalúa en la corrida siguiente
     }
+    // 08/10 (FICHAS_0810_ACTIVAS): "esperando formulario" — de hasta DIAS_ESPERANDO_FORMULARIO días después de la reunión
+    // (o futura) y sin ningún formulario LIBRE que pueda ser el suyo a ±TOLERANCIA_REPROGRAMACION_DIAS: no va a las fichas,
+    // ni a SIN_MATCH, ni a EMPAREJAR_MANUAL, y se reevalúa sola. Reemplaza a la regla de las futuras de abajo.
+    if (libres && (r.veredicto === 'SIN_MATCH' || r.veredicto === 'REVISAR_MATCH') &&
+        esperandoFormulario_(f, libres, comunas)) {
+      sumar_(res.esperando, ev);
+      if (f.fecha && ymd_(f.fecha) > ymd_(_hoy_())) res.futurasSinFormulario++;
+      porFila[f.fila] = { veredicto: 'esperando_formulario', motivo: 'esperando_formulario', antes: r.veredicto,
+                          motivoAntes: r.motivo || '', cand: r.mejor ? r.mejor.c : null,
+                          score: r.mejor ? r.mejor.score : null };
+      continue;
+    }
     // 07/10 (DIAS_FUTUROS_CRUCE): una fila FUTURA sin formulario todavía no es un hueco: no va a los reportes (ni a las
-    // fichas) y se reevalúa sola. Con formulario, se escribe o va a revisión como cualquiera.
-    if (r.veredicto === 'SIN_MATCH' && f.fecha && ymd_(f.fecha) > ymd_(_hoy_())) {
+    // fichas) y se reevalúa sola. Con formulario, se escribe o va a revisión como cualquiera. (Con FICHAS_0810_ACTIVAS
+    // la reemplaza "esperando formulario", arriba.)
+    if (!libres && r.veredicto === 'SIN_MATCH' && f.fecha && ymd_(f.fecha) > ymd_(_hoy_())) {
       sumar_(res.futuras, ev);
       res.futurasSinFormulario++;
       porFila[f.fila] = { veredicto: 'futura', motivo: 'sin formulario todavía',
@@ -2083,10 +2102,11 @@ function calcularPlan_(enSeco, entradas, opciones) {
     resueltas[d.fila.fila] = true;
     if (d.cand) tomadoPor[d.cand.fila] = d.fila.fila;
   });
-  // Las pendientes de barrio tampoco van a EMPAREJAR_MANUAL: se reevalúan solas.
+  // Las pendientes de barrio tampoco van a EMPAREJAR_MANUAL: se reevalúan solas (y las que esperan su formulario, 08/10).
   Object.keys(porFila).forEach(function (k) {
     // Y las cerradas (DIAS_ACTIVOS): no se proponen.
     if (porFila[k].veredicto === 'pendiente_barrio' || porFila[k].veredicto === 'ninguno_por_persona' ||
+        porFila[k].veredicto === 'esperando_formulario' ||
         porFila[k].veredicto === 'cerrada' || porFila[k].cerrada) resueltas[k] = true;
   });
   // Las opciones de cada fila a revisar: hasta OPCIONES_REVISION formularios, con sus puntajes.
@@ -2569,6 +2589,11 @@ function logResumen_(plan) {
   Logger.log('  sin match ........... %s', _dcp_(r.sinMatch, base));
   Logger.log('  pendiente de barrio . %s   (hoy/ayer sin barrio en RDV; no se escribe, se reevalúa)',
              _dcp_(r.pendienteBarrio, base));
+  if (fichas0810_()) {
+    Logger.log('  esperando formulario  %s   (de hasta %s días atrás o futuras, sin formulario libre a ±%s: no van a ' +
+               'las fichas ni a SIN_MATCH; causa en el paso 20)', _dcp_(r.esperando, base), DIAS_ESPERANDO_FORMULARIO,
+               TOLERANCIA_REPROGRAMACION_DIAS);
+  }
   Logger.log('  de las que escribiría, a 1-%s días (entran por la tolerancia de reprogramación; ' +
              'con la escala vieja quedaban abajo): %s', TOLERANCIA_REPROGRAMACION_DIAS,
              _dc_(plan.porTolerancia));
@@ -3501,6 +3526,29 @@ function cercanosDeFila_(f, vivos, comunas) {
   }
   r.propio = !!(r.conFig || r.sinFigMisma);
   return r;
+}
+
+/**
+ * Los formularios que no tiene ninguna fila (08/10, FICHAS_0810_ACTIVAS): sin los grupos de gemelos que ya tiene una fila
+ * por RDV_UID (todo el historial: `tomadosGrupo`) ni los de las filas que se escriben en esta corrida (`evals`, después
+ * del invariante y de las elecciones).
+ */
+function formulariosLibres_(evals, vivos, tomadosGrupo) {
+  const tomados = new Set();
+  tomadosGrupo.forEach(function (_, g) { tomados.add(g); });
+  evals.forEach(function (x) { if (x.r.veredicto === 'escribiria' && x.r.mejor) tomados.add(x.r.mejor.c.grupo); });
+  return vivos.filter(function (c) { return !tomados.has(c.grupo); });
+}
+
+/**
+ * **"Esperando formulario"** (08/10, FICHAS_0810_ACTIVAS): la reunión es de hasta DIAS_ESPERANDO_FORMULARIO días atrás (o
+ * futura) y no hay ningún formulario LIBRE (`libres`) que pueda ser el suyo a ±TOLERANCIA_REPROGRAMACION_DIAS: ni uno de
+ * su figura ni uno sin figura de su ubicación (`cercanosDeFila_`, el mismo criterio de `sin_formulario_propio`).
+ */
+function esperandoFormulario_(f, libres, comunas) {
+  if (!f.fecha) return false;
+  if (diasEntre_(_hoy_(), f.fecha) > DIAS_ESPERANDO_FORMULARIO) return false;   // hoy − reunión (negativo: futura)
+  return !cercanosDeFila_(f, libres, comunas).propio;
 }
 
 function _desvioBajo_(d, f, mejor, vivos, ev, comunas) {

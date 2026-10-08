@@ -2349,6 +2349,17 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    sección 0 es sobre la solapa `RVD JM-CM - ES`: esta otra solapa del mismo archivo es un reporte que el
    sistema reescribe entero (como los de la intermedia), y ninguna lectura del destino la toca.
 
+   **Esperando formulario y opciones cercanas (08/10, `FICHAS_0810_ACTIVAS`; apagado hasta medir con el paso 52).**
+   Decisión del usuario. (1) Una fila de hasta `DIAS_ESPERANDO_FORMULARIO` (3) días después de la reunión, o futura, que
+   iría a REVISAR_MATCH o a SIN_MATCH y no tiene ningún formulario **libre** que pueda ser el suyo a ±3 días (de su
+   figura, o sin figura de su ubicación, como `sin_formulario_propio`; uno que ya tiene otra fila no cuenta) no va a las
+   fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL: veredicto `esperando_formulario`, causa en el paso 20; pasados esos
+   días, ficha. (2) Las opciones de una ficha (`opcionesDeFicha_`): sólo formularios a ±`DIAS_OPCIONES_FICHA` (14) días;
+   uno que ya tiene otra fila, sólo a ±`DIAS_OPCION_USADA` (3, medido como en el puntaje); nunca uno de una reunión
+   cerrada (anterior a las filas activas, o que tiene una fila cerrada). Sin ninguna: "No hay formulario cercano" y
+   ELEGIR sólo con Ninguno / No sé; si el formulario del motivo quedó afuera, "¿por qué?" lo nombra igual. No cambia
+   ningún cruce escrito (lo controlan el paso 52 y el test [29]).
+
    **Lo viejo sin resolver no son fichas.** En la corrida de completar el historial (paso 22, decisión 13),
    lo que queda en revisión o sin match con más de `DIAS_ACTIVOS` días va a `HISTORICO_SIN_RESOLVER`
    (intermedia), **sólo informativa**: fila, figura, fecha, barrio, motivo y la mejor opción con su

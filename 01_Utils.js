@@ -243,6 +243,22 @@ function diasFuturosCruce_() { return cambios0710_() ? (DIAS_FUTUROS_CRUCE || 0)
 /** (5) Las conjuntas se cruzan solas. */
 function conjuntasAutomaticas_() { return cambios0710_() && !!CONJUNTAS_AUTOMATICAS; }
 
+// ===================== Las fichas del 08/10 (FICHAS_0810_ACTIVAS) =====================
+
+var _forzarFichas0810_ = null;
+
+/** ¿Rigen "esperando formulario" y las opciones cercanas de las fichas? FICHAS_0810_ACTIVAS, salvo que el paso 52 o un test lo fuercen. */
+function fichas0810_() {
+  return _forzarFichas0810_ === null ? !!FICHAS_0810_ACTIVAS : _forzarFichas0810_;
+}
+
+/** Corre `fn` con las fichas del 08/10 forzadas (true / false) y las deja como estaban. El paso 52 y los tests. */
+function conFichas0810_(valor, fn) {
+  const antes = _forzarFichas0810_;
+  _forzarFichas0810_ = !!valor;
+  try { return fn(); } finally { _forzarFichas0810_ = antes; }
+}
+
 /** El último día que se cruza: hoy + diasFuturosCruce_() (al mediodía). */
 function finActivas_() {
   const h = hoyMediodia_(), n = diasFuturosCruce_();

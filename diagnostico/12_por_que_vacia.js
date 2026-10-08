@@ -7,7 +7,7 @@
  * "Realizada"), da UNA causa:
  *
  *   a) la fila no tiene formulario: REVISAR_MATCH (con su motivo), SIN_MATCH, pendiente de barrio,
- *      "ninguno" de una persona, o RDV_UID con la traza ambigua;
+ *      esperando formulario (08/10: no va a las fichas), "ninguno" de una persona, o RDV_UID con la traza ambigua;
  *   b) B trae 0 o vacío en ese campo;
  *   c) desagregado retenido: Inscriptos del destino ≠ el de B;
  *   d) Asistentes y oradores (06/10): RDV CONJUNTO no tiene la fila / nombre con varias figuras o ninguna /
@@ -112,6 +112,11 @@ function _causaDato_(f, col, pf, d, dest) {
     if (pf.veredicto === 'REVISAR_MATCH') return 'a) sin formulario: REVISAR_MATCH (' + (pf.motivo || '?') + ')';
     if (pf.veredicto === 'SIN_MATCH') return 'a) sin formulario: SIN_MATCH (' + (pf.motivo || '?') + ')';
     if (pf.veredicto === 'pendiente_barrio') return 'a) sin formulario: pendiente de barrio';
+    // 08/10 (FICHAS_0810_ACTIVAS): no va a las fichas ni a SIN_MATCH; la causa se ve acá.
+    if (pf.veredicto === 'esperando_formulario') {
+      return 'a) sin formulario: esperando formulario (reunión de hasta ' + DIAS_ESPERANDO_FORMULARIO + ' días atrás o futura,' +
+             ' sin formulario libre a ±' + TOLERANCIA_REPROGRAMACION_DIAS + '; pasados esos días, ficha)';
+    }
     if (pf.veredicto === 'ninguno_por_persona') return 'a) sin formulario: "ninguno" de una persona';
     if (pf.veredicto === 'rdv_uid') return 'a) sin formulario: RDV_UID con la traza ambigua';
     return 'a) sin formulario: ' + (pf.veredicto || 'sin veredicto');

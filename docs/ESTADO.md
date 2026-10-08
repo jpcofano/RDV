@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, apagadas hasta el paso 52: 0.z, al final)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -984,6 +984,47 @@ cruce). Qué mirar después de esa corrida:
 
 Si algo no coincide: `CAMBIOS_0710_ACTIVOS = false` + clasp push vuelve los cuatro puntos a como antes del 07/10 (lo ya
 escrito queda, como cualquier escritura del sistema: sólo en celdas que estaban vacías).
+
+#### Las fichas del 08/10: "esperando formulario" y las opciones cercanas — escritas y APAGADAS hasta el paso 52
+
+Pedido del usuario (08/10, punto A). Detrás de **`FICHAS_0810_ACTIVAS = false`**; primero se mide.
+
+- **Esperando formulario**: una fila de hasta `DIAS_ESPERANDO_FORMULARIO` (3) días después de la reunión, o futura, que
+  iría a REVISAR_MATCH o a SIN_MATCH y **no tiene ningún formulario libre que pueda ser el suyo a ±3 días** no va a las
+  fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL (veredicto `esperando_formulario`; la causa, en el paso 20). Pasados esos
+  días, ficha (la reunión del lunes espera hasta el jueves; el viernes es ficha).
+  - "Que pueda ser el suyo": de su figura, o sin figura de su ubicación (`cercanosDeFila_`, el mismo criterio que
+    `sin_formulario_propio`). **"Libre"**: uno que ya tiene otra fila (por RDV_UID o porque se escribe en esta corrida)
+    no cuenta: si la figura tuvo otra reunión dos días antes, el formulario de ésa no es el de ésta.
+  - Reemplaza a la regla del 07/10 de las futuras ("toda futura sin match queda afuera"): una futura **con** un
+    formulario libre cerca que no alcanza ahora sí es ficha.
+- **Opciones de una ficha** (todas las fichas): sólo formularios a ±`DIAS_OPCIONES_FICHA` (14) días; uno que ya tiene otra
+  fila, sólo a ±`DIAS_OPCION_USADA` (3; un formulario sin fecha en el nombre, por su cierre, como en el puntaje); nunca uno
+  de una reunión cerrada (con fecha anterior a las filas activas, o que tiene una fila cerrada). Sin ninguna: "No hay
+  formulario cercano" en "¿por qué?" y ELEGIR sólo con Ninguno / No sé. Si el formulario del que habla el motivo quedó
+  afuera, "¿por qué?" lo nombra igual ("… no está entre las opciones").
+- No cambia ningún cruce escrito: las reglas tocan sólo qué fila es ficha y qué opciones muestra. Lo controla el paso 52
+  (celdas a escribir con y sin las reglas) y el test [29] (el destino queda igual, valores y colores).
+
+**Para correr: `paso52_medirFichas()`** (SÓLO LECTURA). Arma las fichas de hoy dos veces, con las reglas apagadas y
+prendidas, y lista: 1. escritura (filas cuyas celdas a escribir cambian: tiene que dar **0**); 2. las que salen (con su
+formulario cercano ya usado y por quién); 3. las que entran; 4. las que cambian de opciones (qué sale y por qué) y las que
+quedan sin ninguna; 5. el resumen, con de qué son las opciones que quedan.
+
+**Predicción, anotada antes de correrlo:**
+- escritura: **0**;
+- salen: **818 Giménez y 819 Landerreche** (08/10, si siguen sin formulario) y las de 05/10–07/10 sin formulario libre;
+  las futuras sin match ya estaban afuera, así que por ellas no cambia nada;
+- entran: **0 a 2**;
+- otras opciones: **varias** (las fichas con formularios de su figura a más de 14 días, o usados a más de 3);
+- sin ninguna opción: **pocas**.
+
+**Ojo, a decidir con el número del paso 52:** la regla de las usadas no mira la figura. Un formulario de **otra** figura
+que ya tiene su propia fila a ±3 días se sigue ofreciendo (antes casi nunca se veía: lo tapaban los de la misma figura,
+con más puntaje; con los lejanos afuera, ocupan su lugar). El resumen del paso 52 lo cuenta ("ya usadas por otra fila …,
+de ellas de otra figura N"). Si molesta, sacarlas es una línea en `_exclusionOpcion_`.
+
+Si está bien: `FICHAS_0810_ACTIVAS = true` + clasp push; la próxima corrida de la hora regenera REVISAR_MATCH.
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
