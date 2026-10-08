@@ -1065,6 +1065,42 @@ escribir, tres pruebas: A (el backup, modo compatible: idéntico), B (hoy, modo 
 diferencias sólo por esos motivos y la ID, con cantidades, ejemplos y las reuniones distintas que cuenta Datos_Unpivot
 antes y después). Y la página para el dueño.
 
+#### El tablero de Looker en el sistema: FASE 2 escrita y APAGADA (08/10) — primero las pruebas A, B y C
+
+**`44_Looker.js`, detrás de `LOOKER_EN_SISTEMA = false`.** Con el interruptor, la corrida de la hora, después de las
+derivadas: la ID es la **derivada 12** (`recalcDerivadas_` la escribe con las otras once: sólo donde cambió, sin color;
+con fórmula en la columna no se escribe) y **Datos_Unpivot** y **Aux_Maximos** se rehacen desde RVD (en bloque; si a
+una le falta una columna que usa, no se reescribe y el log lo dice). REGISTRO_UPSERT suma la columna `looker`.
+
+- **Modo compatible** = el script atado tal cual (la ID de la planilla, y la que él armaba con " | " si faltaba). Sólo
+  para las pruebas. **Probado contra el original corrido de verdad** (`tests/looker.test.js`, con la copia de
+  `_externo/`): las mismas 151 filas de Datos_Unpivot y 78 de Aux_Maximos, celda por celda, con casos raros (sin ID, sin
+  figura, texto, coma decimal, fechas como texto o serie, tres formatos de hora, sin Masculinos).
+- **Modo corregido** (la corrida de la hora) = las tres correcciones aprobadas y nada más (el mismo test: 0 diferencias
+  fuera de ellas). Una fila sin figura ya no entra (su ID nueva es vacía).
+- **Paso 54 (SÓLO LECTURA): `pruebasLooker()`** = A (`paso54a`, el backup del 04/10 contra sus solapas), B (`paso54b`, hoy
+  contra las solapas de hoy), C (`paso54c`, corregido contra compatible sobre la misma lectura de RVD: cada diferencia
+  con su motivo; "OTRA" tiene que dar 0; reuniones distintas antes y después; la ID nueva: celdas que cambian,
+  repetidas, fórmulas).
+
+**Predicción, anotada antes de correrlas:**
+- **A: IDÉNTICO** en las dos solapas (el backup es de las 00:20 del 04/10: nadie escribía a esa hora);
+- **B: IDÉNTICO**, salvo las filas que cambiaron en la base después de la última corrida del script atado (la prueba lo
+  lista por fila de RVD y dice las horas de las dos últimas corridas): hoy, por lo menos **816–821** si el script atado
+  no corrió después de las 17:09;
+- **C:** la ID cambia en **~830** filas de RVD; "Sin identificar" de género: mayormente **"sale"** (con el sexo escalado,
+  Inscriptos − M − F da 0) y algunos **"cambia"** / **"entra"**; P. Varon / P. Mujer **0**; **OTRA 0**; reuniones
+  distintas en Datos_Unpivot: **627 → ~820**; la ID nueva: **0** repetidas, **0** celdas con fórmula.
+
+**La activación** (cuando las tres den bien, y con el OK del dueño): en la misma sesión, (1) `LOOKER_EN_SISTEMA = true` +
+clasp push y (2) el script atado con las dos funciones vacías ("migrado al sistema RDV el <fecha>"), con clasp push
+desde una carpeta fuera del repo con su propio `.clasp.json` (el único push a ese proyecto); después, mirar la primera
+corrida de la hora (la columna `looker` de REGISTRO_UPSERT, y las dos solapas). Si no, los dos escribirían las mismas
+solapas.
+
+**La página para el dueño** (08/10): qué queda igual, qué cambia, las pruebas y lo que necesitamos de él (mirar en
+Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comparte el usuario.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

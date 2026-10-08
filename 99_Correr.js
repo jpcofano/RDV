@@ -17,6 +17,10 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10 (5): FASE 2 del tablero de Looker, escrita y APAGADA (LOOKER_EN_SISTEMA = false). SÓLO LECTURA:
+ *        pruebasLooker()  = paso54a_pruebaLookerBackup() → paso54b_pruebaLookerHoy() → paso54c_pruebaLookerCorregido()
+ *      A y B: IDÉNTICO (B, salvo lo que cambió RVD después de la última corrida del script atado); C: OTRA = 0. Si está bien:
+ *      LOOKER_EN_SISTEMA = true + clasp push, y A LA VEZ el script atado con las funciones vacías (docs/script-looker.md).
  *  >>> 08/10 (4): FICHAS_0810_ACTIVAS = true (paso 52 de las 17:09: escritura 0; y las opciones de OTRA figura que ya
  *      tienen su fila, fuera). Nada para correr a mano: la próxima corrida de la hora regenera REVISAR_MATCH.
  *  >>> 08/10 (3): SÓLO LECTURA, para la FASE 2 del script de Looker: paso53_investigarId() (la columna ID: formatos y quién
@@ -1118,6 +1122,48 @@ function paso53_investigarId() {
              'NO escribe nada', 'el log: 1. formatos · 2. los que cambiaron desde el 04/10 y qué los escribió · 3. guiones bajos · ' +
              '4. repetidos · 5. Datos_Unpivot y Aux_Maximos');
   return investigarColumnaId();
+}
+
+/**
+ * PASO 54 — SÓLO LECTURA (08/10): las pruebas de la FASE 2 del tablero de Looker (44_Looker.js), antes de prender
+ * LOOKER_EN_SISTEMA. A: el backup del 04/10, modo compatible, contra sus solapas (IDÉNTICO). B: hoy, modo compatible,
+ * contra las solapas de hoy (IDÉNTICO, salvo lo que cambió RVD después de la última corrida del script atado). C: hoy, modo
+ * corregido contra compatible (cada diferencia con su motivo; "otra" tiene que dar 0), las reuniones distintas antes y
+ * después, y la ID nueva.
+ */
+function paso54a_pruebaLookerBackup() {
+  _anunciar_('paso 54a — prueba A del tablero de Looker (el backup)', 'pruebaLookerBackup()  [diagnostico/25_looker_pruebas.js]',
+             'NO escribe nada', 'el log: Datos_Unpivot y Aux_Maximos, IDÉNTICO o las diferencias');
+  return pruebaLookerBackup();
+}
+function paso54b_pruebaLookerHoy() {
+  _anunciar_('paso 54b — prueba B del tablero de Looker (hoy, compatible)', 'pruebaLookerHoy()  [diagnostico/25_looker_pruebas.js]',
+             'NO escribe nada', 'el log: IDÉNTICO o las diferencias, por fila de RVD, y las horas de las últimas corridas');
+  return pruebaLookerHoy();
+}
+function paso54c_pruebaLookerCorregido() {
+  _anunciar_('paso 54c — prueba C del tablero de Looker (corregido contra compatible)', 'pruebaLookerCorregido()  [diagnostico/25_looker_pruebas.js]',
+             'NO escribe nada', 'el log: cada diferencia con su motivo (OTRA = 0), reuniones distintas antes y después, la ID nueva');
+  return pruebaLookerCorregido();
+}
+
+/** **pruebasLooker()** — las tres pruebas del paso 54 en una sola ejecución (A, B y C). Ninguna escribe. */
+function pruebasLooker() {
+  var pasos = [['paso54a_pruebaLookerBackup', paso54a_pruebaLookerBackup], ['paso54b_pruebaLookerHoy', paso54b_pruebaLookerHoy],
+               ['paso54c_pruebaLookerCorregido', paso54c_pruebaLookerCorregido]];
+  for (var i = 0; i < pasos.length; i++) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + pasos[i][0] + ' ##########');
+    try {
+      pasos[i][1]();
+      Logger.log('########## OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ERROR en ' + pasos[i][0] + ' (sigue con el próximo): ' + (e && e.stack ? e.stack : e));
+    }
+  }
+  Logger.log('');
+  Logger.log('########## pruebasLooker — fin');
 }
 
 /**

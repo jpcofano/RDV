@@ -1666,12 +1666,25 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   }
 
   // Las derivadas por script (05/10): en TODAS las filas, sólo donde cambió, sin color. En seco sólo cuenta.
+  // Con LOOKER_EN_SISTEMA (08/10), también la ID (la derivada 12).
+  let idListo = false;
   if (DERIVADAS_POR_SCRIPT) {
     try {
       const d = recalcDerivadas_(RDV_HOJA_DESTINO, !enSeco);
       plan.res.derivadas = d.total;
+      idListo = d.conFormula.indexOf(COLUMNA_ID) < 0;
     } catch (err) {
       Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
+    }
+  }
+  // El tablero de Looker (08/10, FASE 2 del script atado): Datos_Unpivot y Aux_Maximos, desde RVD con la ID ya recalculada.
+  // Sin la ID escrita (fórmula en la columna, o las derivadas fallaron) no se reescriben: quedarían con otra ID que RVD.
+  if (lookerEnSistema_() && !historial) {
+    if (!idListo) Logger.log('>>> Tablero de Looker: la ID (derivada 12) no se recalculó en esta corrida: %s y %s no se ' +
+                             'reescriben (quedan las de antes).', RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
+    else {
+      try { plan.res.looker = escribirSolapasLooker_(enSeco); }
+      catch (err) { Logger.log('>>> El tablero de Looker NO se reescribió: %s (el resto de la corrida sigue).', err); }
     }
   }
 
@@ -1729,7 +1742,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                         'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
                         'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
-                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas'];
+                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas', 'looker'];
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1745,7 +1758,10 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   w ? w.tandas : '', plan.huellas.entradas, plan.huellas.plan,
                   w ? JSON.stringify(w.porColumna) : '',
                   historial ? (historial === true ? 'historial (paso 22)' : String(historial)) : 'activas (' + DIAS_ACTIVOS + ' días)',
-                  DERIVADAS_POR_SCRIPT ? (r.derivadas || 0) : 'fórmulas']);
+                  DERIVADAS_POR_SCRIPT ? (r.derivadas || 0) : 'fórmulas',
+                  // 08/10: el tablero de Looker (LOOKER_EN_SISTEMA): filas de Datos_Unpivot y Aux_Maximos, y reuniones (ID distintos)
+                  r.looker ? RDV_HOJA_UNPIVOT + ' ' + r.looker.unpivot + ' | ' + RDV_HOJA_AUX_MAXIMOS + ' ' + r.looker.aux +
+                             ' | reuniones ' + r.looker.reuniones : '']);
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }

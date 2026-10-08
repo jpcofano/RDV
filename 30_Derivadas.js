@@ -226,10 +226,22 @@ function _letraDerivada_(n) {
  */
 function recalcDerivadas_(solapa, escribe) {
   const ctx = _ctxDerivadas_(solapa);
+  // La ID, la derivada 12 (LOOKER_EN_SISTEMA, 08/10): se calcula sobre todas las filas juntas (las que repiten llevan la hora).
+  const kId = lookerEnSistema_() ? findIdxOr_(ctx.hdr, [COLUMNA_ID], true) : null;
+  if (kId != null) ctx.cols[COLUMNA_ID] = kId;
   const fx = _formulasDerivadas_(ctx);
+  if (kId != null && !fx[COLUMNA_ID].tipo && ctx.vals.length > 1) {
+    // una fórmula por fila en cualquier fila (no sólo en la 2): la ID no se escribe hasta sacarla
+    const conF = ctx.sh.getRange(2, kId + 1, ctx.vals.length - 1, 1).getFormulas().filter(function (x) { return x[0]; }).length;
+    if (conF) fx[COLUMNA_ID] = { col: kId + 1, tipo: 'por_fila', formula: conF + ' celdas con fórmula' };
+  }
   const out = { total: 0, porCol: {}, conFormula: [] };
   const calc = [];
   for (let i = 1; i < ctx.vals.length; i++) calc.push(i < ctx.ultima ? calcularDerivadasFila_(ctx.vals[i], ctx) : null);
+  if (kId != null) {
+    const ids = idsDerivados_(ctx.vals);
+    for (let i = 1; i < ctx.vals.length; i++) if (calc[i - 1]) calc[i - 1][COLUMNA_ID] = ids[i];
+  }
   Object.keys(ctx.cols).forEach(function (n) {
     if (fx[n].tipo) { out.conFormula.push(n); return; }
     const k = ctx.cols[n], tramos = [];

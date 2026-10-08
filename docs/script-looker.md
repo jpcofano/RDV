@@ -154,3 +154,30 @@ granularidades, Inscriptos / Asistentes / ID vacías en Aux_Maximos, `Realizada_
 
 - **`paso53_investigarId()`**: los formatos (backup del 04/10 y hoy), qué escribió cada ID que cambió, los de guiones
   bajos, los ID repetidos, la última corrida del script atado y cuántos repetiría el formato propuesto.
+
+## 7. FASE 2 (08/10): escrita y apagada
+
+Aprobado por el usuario el 08/10: la ID `Figura - Barrio - dd/MM/yyyy` (sin barrio `Figura - dd/MM/yyyy`; vacía sin
+figura; `- HH:mm` si se repite), derivada 12, recalculada en cada corrida; "Sin identificar" de género = Inscriptos − M −
+F (si no da positivo, sin fila); sin el reemplazo por P. Varon / P. Mujer. **Queda igual:** una Suspendida con asistentes
+cuenta como realizada; las columnas vacías de Aux_Maximos.
+
+- **`44_Looker.js`**: `idsDerivados_` (la ID), `armarDatosUnpivot_` y `armarAuxMaximos_` (modo `compatible` = el script
+  atado tal cual; modo `corregido` = con las tres correcciones), `escribirSolapasLooker_` (la corrida de la hora, después de
+  las derivadas, con `LOOKER_EN_SISTEMA`). La ID la escribe `recalcDerivadas_` como las otras derivadas.
+- **La fidelidad, probada contra el original**: `tests/looker.test.js` corre `unpivotEventos` y `buildAuxMaximos` de la
+  copia de `_externo/` (sin subirla al repo) y el modo compatible da lo mismo, celda por celda.
+- **Las pruebas sobre los datos reales** (paso 54, sólo lectura): A (el backup), B (hoy), C (corregido contra compatible).
+- **La activación**: `LOOKER_EN_SISTEMA = true` y, el mismo día, el script atado con las dos funciones vacías:
+
+```js
+function unpivotEventos() {
+  Logger.log('unpivotEventos: migrado al sistema RDV el <fecha>. Datos_Unpivot la arma el sistema RDV cada hora; esto ya no escribe nada.');
+}
+function buildAuxMaximos() {
+  Logger.log('buildAuxMaximos: migrado al sistema RDV el <fecha>. Aux_Maximos la arma el sistema RDV cada hora; esto ya no escribe nada.');
+}
+```
+
+  El resto de los archivos de ese proyecto (todo comentado) queda como está. Sus activadores pueden quedar (llaman a las
+  funciones vacías) o los borra el dueño cuando quiera.

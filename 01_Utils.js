@@ -330,10 +330,31 @@ function esColumnaManual_(nombre) {
   return COLUMNAS_MANUALES.some(function (c) { return normalizeHeader_(c) === n; });
 }
 
-/** ¿Es una de las once derivadas? Hasta la Fase 3 son fórmulas de array: no se tocan. */
+/** ¿Es una de las derivadas (las once, y la ID con LOOKER_EN_SISTEMA)? Las calcula el sistema; nadie más las escribe. */
 function esColumnaDerivada_(nombre) {
   const n = normalizeHeader_(nombre);
-  return COLUMNAS_DERIVADAS.some(function (c) { return normalizeHeader_(c) === n; });
+  return columnasDerivadas_().some(function (c) { return normalizeHeader_(c) === n; });
+}
+
+// ===================== El tablero de Looker (LOOKER_EN_SISTEMA, 08/10) =====================
+
+var _forzarLooker_ = null;
+
+/** ¿El sistema arma el tablero de Looker (la ID como derivada 12, Datos_Unpivot, Aux_Maximos)? Salvo que un test lo fuerce. */
+function lookerEnSistema_() {
+  return _forzarLooker_ === null ? !!LOOKER_EN_SISTEMA : _forzarLooker_;
+}
+
+/** Corre `fn` con el tablero de Looker forzado (true / false) y lo deja como estaba. Los tests. */
+function conLooker_(valor, fn) {
+  const antes = _forzarLooker_;
+  _forzarLooker_ = !!valor;
+  try { return fn(); } finally { _forzarLooker_ = antes; }
+}
+
+/** Las derivadas que calcula el sistema: las once (COLUMNAS_DERIVADAS) y, con LOOKER_EN_SISTEMA, la ID (la 12). */
+function columnasDerivadas_() {
+  return lookerEnSistema_() ? COLUMNAS_DERIVADAS.concat([COLUMNA_ID]) : COLUMNAS_DERIVADAS;
 }
 
 // ===================== La solapa destino =====================

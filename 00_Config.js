@@ -152,6 +152,26 @@ const RDV_HOJA_RESPALDO_DERIVADAS = 'DERIVADAS_RESPALDO';
 /** La descripción de la protección (sólo advertencia) que se pone sobre las once columnas al quitar las fórmulas. */
 const DESC_PROTECCION_DERIVADAS = 'RDV: columna derivada, la calcula el sistema (no editar a mano)';
 
+/**
+ * **El tablero de Looker Studio, en el sistema** (08/10, FASE 2 del script atado a la base; docs/script-looker.md;
+ * 44_Looker.js). Con `true`, en cada corrida de la hora, después de las derivadas:
+ *   - la **ID** de RVD es la **derivada 12** (`idsDerivados_`): "Figura - Barrio - dd/MM/yyyy" ("Figura - dd/MM/yyyy" sin
+ *     barrio; vacía sin figura; "- HH:mm" a las que repiten), recalculada en todas las filas y escrita como las otras
+ *     once (`recalcDerivadas_` → `escribirDerivadas_`: sólo donde cambió, sin color). Con fórmula en la columna, no se
+ *     escribe (y tampoco las solapas);
+ *   - **Datos_Unpivot** y **Aux_Maximos** se rehacen desde RVD, con el mismo nombre, encabezados y orden de columnas que
+ *     las del script atado, y las correcciones aprobadas el 08/10 (la ID; "Sin identificar" de género = Inscriptos − M − F,
+ *     sin fila si no da positivo; sin el reemplazo por P. Varon / P. Mujer).
+ * Apagado hasta ver las pruebas A, B y C (paso 54). Se prende A LA VEZ que el script atado queda con las funciones vacías:
+ * si no, los dos escribirían las mismas solapas.
+ */
+const LOOKER_EN_SISTEMA = false;
+/** Las solapas del tablero, en el archivo del destino, con el nombre que lee Looker (no cambian). */
+const RDV_HOJA_UNPIVOT = 'Datos_Unpivot';
+const RDV_HOJA_AUX_MAXIMOS = 'Aux_Maximos';
+/** La columna ID de RVD: la derivada 12 con LOOKER_EN_SISTEMA. */
+const COLUMNA_ID = 'ID';
+
 // ===================== Ventana de análisis =====================
 
 /**

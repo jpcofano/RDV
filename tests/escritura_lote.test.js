@@ -34,7 +34,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
                   '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
                   'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js',
-                  'diagnostico/24_columna_id.js'];
+                  'diagnostico/24_columna_id.js', '44_Looker.js', 'diagnostico/25_looker_pruebas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -2550,6 +2550,125 @@ function escenarioInvestigarId() {
      'los formatos de hoy: ' + JSON.stringify(o.hoy && o.hoy.porFormato));
 }
 
+function escenarioLooker() {
+  console.log('\n[31] el tablero de Looker en el sistema (LOOKER_EN_SISTEMA): la ID (derivada 12), Datos_Unpivot y Aux_Maximos; paso 54');
+  const cfg = { DERIVADAS_POR_SCRIPT: 'true' };
+  const iId = colD('ID');
+  const preparar = function (E, m) {
+    const h = m.ssD.hojas['RVD JM-CM - ES'];
+    for (let i = 1; i < h.v.length; i++) h.v[i][iId] = i % 3 === 0 ? '' : 'vieja ' + i;   // IDs viejas, y vacías
+    return h;
+  };
+  const datosDe = function (h) { return h.v.map(function (r) { return r.slice(); }); };
+
+  // --- prendido: la corrida de la hora escribe la ID y las dos solapas ---
+  const E = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
+  const m = montar(E, 120, true);
+  const h = preparar(E, m);
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error, 'upsert con LOOKER_EN_SISTEMA, sin error' + (r.error ? ': ' + r.error.stack : ''));
+  E.ctx.__d = datosDe(h);
+  const esperadas = E.cfg('idsDerivados_(__d)');
+  const idsHoy = h.v.map(function (x) { return x[iId]; });
+  ok(idsHoy.slice(1).every(function (v, i) { return v === esperadas[i + 1]; }) &&
+     /^[^|]+ - [^|]+ - \d{2}\/\d{2}\/\d{4}$/.test(idsHoy[1]),
+     'la ID de RVD es la derivada 12 en todas las filas: ' + idsHoy[1]);
+  const du = m.ssD.hojas['Datos_Unpivot'], am = m.ssD.hojas['Aux_Maximos'];
+  ok(du && JSON.stringify(du.v[0]) === JSON.stringify(E.cfg('ENCABEZADO_UNPIVOT_')) && du.v.length > 100 &&
+     am && JSON.stringify(am.v[0]) === JSON.stringify(E.cfg('ENCABEZADO_AUX_MAXIMOS_')) && am.v.length > 10,
+     'Datos_Unpivot y Aux_Maximos, con su encabezado de siempre: ' + (du ? du.v.length - 1 : 0) + ' y ' + (am ? am.v.length - 1 : 0) + ' filas');
+  const enRvd = new Set(idsHoy.slice(1).filter(Boolean));
+  ok(du.v.slice(1).every(function (f) { return enRvd.has(f[0]); }), 'las ID de Datos_Unpivot son las de RVD');
+  ok(!du.v.slice(1).some(function (f) { return f[8] === 'Género' && f[9] === 'Sin identificar'; }) ||
+     du.v.slice(1).filter(function (f) { return f[8] === 'Género' && f[9] === 'Sin identificar'; }).every(function (f) { return f[10] > 0; }),
+     '"Sin identificar" de género: sólo positivos (Inscriptos − M − F)');
+  const reg = E.planilla(E.cfg('RDV_SS_INTERMEDIA')).hojas[E.cfg('RDV_HOJA_REGISTRO')];
+  ok(reg && /^Datos_Unpivot \d+ \| Aux_Maximos \d+ \| reuniones \d+$/.test(reg.v[reg.v.length - 1][reg.v[0].indexOf('looker')]),
+     'REGISTRO_UPSERT: la columna "looker" (' + (reg ? reg.v[reg.v.length - 1][reg.v[0].indexOf('looker')] : '-') + ')');
+  ok(E.cfg('esColumnaDerivada_("ID")') && !E.cfg('conLooker_(false, function () { return esColumnaDerivada_("ID"); })'),
+     'con el tablero en el sistema, la ID es derivada: no vuelve "tocada" una fila de la agenda (regla 7)');
+
+  // --- en seco: no escribe nada ---
+  const Es = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
+  const ms = montar(Es, 120, true);
+  const hs = preparar(Es, ms);
+  const antesS = JSON.stringify(hs.v.map(function (x) { return x[iId]; }));
+  const rs = Es.ejecutar('correrEnSeco');
+  ok(!rs.error && JSON.stringify(hs.v.map(function (x) { return x[iId]; })) === antesS && !ms.ssD.hojas['Datos_Unpivot'] &&
+     rs.logs.some(function (l) { return /tablero de Looker \(EN SECO/.test(l); }),
+     'en seco: ni la ID ni las solapas (el log dice cuántas filas tendrían)');
+
+  // --- apagado: nada ---
+  const Eoff = crearEntorno({ config: cfg });
+  const moff = montar(Eoff, 120, true);
+  const hoff = preparar(Eoff, moff);
+  const antesOff = JSON.stringify(hoff.v.map(function (x) { return x[iId]; }));
+  ok(!Eoff.ejecutar('upsertDestino').error && JSON.stringify(hoff.v.map(function (x) { return x[iId]; })) === antesOff &&
+     !moff.ssD.hojas['Datos_Unpivot'] && !moff.ssD.hojas['Aux_Maximos'], 'apagado (como está en 00_Config.js): ni la ID ni las solapas');
+
+  // --- una fórmula en la columna ID: ni la ID ni las solapas ---
+  const Ef = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
+  const mf = montar(Ef, 120, true);
+  const hf = preparar(Ef, mf);
+  hf.f = hf.f || {}; hf.f['40,' + (iId + 1)] = '=A40&" - "&B40';
+  const rf = Ef.ejecutar('upsertDestino');
+  ok(!rf.error && hf.v[1][iId] === 'vieja 1' && !mf.ssD.hojas['Datos_Unpivot'] &&
+     rf.logs.some(function (l) { return /no se reescriben/.test(l); }),
+     'con una fórmula en la columna ID (fila 40): no escribe la ID ni las solapas, y lo dice');
+
+  // --- falta una columna que usan las solapas: no se reescriben (quedan las de antes) ---
+  const Eh = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
+  const mh = montar(Eh, 120, true);
+  const hh = preparar(Eh, mh);
+  mh.ssD.hojas['Datos_Unpivot'] = new Eh.Hoja('Datos_Unpivot', [['ID', 'lo de antes']]);
+  hh.v[0][colD('Día de la semana')] = 'Dia';
+  const rh = Eh.ejecutar('upsertDestino');
+  ok(!rh.error && mh.ssD.hojas['Datos_Unpivot'].v[0][1] === 'lo de antes' &&
+     rh.logs.some(function (l) { return /Datos_Unpivot NO se reescribe: faltan columnas de base: Día de la semana/.test(l); }),
+     'sin "Día de la semana": Datos_Unpivot no se reescribe (queda la de antes) y el log lo dice');
+
+  // --- paso 54: las pruebas A, B y C ---
+  const E5 = crearEntorno({ config: cfg });
+  const m5 = montar(E5, 120, true);
+  const h5 = preparar(E5, m5);
+  // "lo que escribía el script atado": el modo compatible, sobre el backup y sobre hoy
+  const solapas = function (Ex, ss, hoja) {
+    Ex.ctx.__d = hoja.v.map(function (x) { return x.slice(); });
+    const u = Ex.cfg('armarDatosUnpivot_(__d, { modo: "compatible", fechaCarga: new Date(2026, 9, 2, 3, 0, 0) })');
+    const a = Ex.cfg('armarAuxMaximos_(__d, { modo: "compatible" })');
+    ss.hojas['Datos_Unpivot'] = new Ex.Hoja('Datos_Unpivot', [u.encabezado].concat(u.filas));
+    ss.hojas['Aux_Maximos'] = new Ex.Hoja('Aux_Maximos', [a.encabezado].concat(a.filas));
+  };
+  const ssB = E5.planilla(E5.cfg('RDV_SS_BACKUP_BASE'));
+  ssB.hojas['RVD JM-CM - ES'] = new E5.Hoja('RVD JM-CM - ES', h5.v.map(function (x) { return x.slice(); }));
+  solapas(E5, ssB, ssB.hojas['RVD JM-CM - ES']);
+  solapas(E5, m5.ssD, h5);
+  const duHoy = JSON.stringify(m5.ssD.hojas['Datos_Unpivot'].v), duBk = JSON.stringify(ssB.hojas['Datos_Unpivot'].v);
+  const pA = E5.ejecutar('pruebaLookerBackup'), oA = pA.resultado || {};
+  ok(!pA.error && oA.unpivot && oA.unpivot.identico && oA.aux && oA.aux.identico && oA.unpivot.encabezado && oA.aux.encabezado,
+     'prueba A (el backup): IDÉNTICO en las dos solapas' + (pA.error ? ': ' + pA.error.stack : ''));
+  const pB = E5.ejecutar('pruebaLookerHoy'), oB = pB.resultado || {};
+  ok(!pB.error && oB.unpivot.identico && oB.aux.identico && oB.fechaCarga === '02/10/2026 03:00', 'prueba B (hoy): IDÉNTICO; dice la última corrida del script atado');
+  // lo que cambió RVD después de la última corrida del script atado: aparece, con su fila
+  const mailAntes = h5.v[7][colD('Mail')];
+  h5.v[7][colD('Mail')] = 999;
+  const pB2 = E5.ejecutar('pruebaLookerHoy'), oB2 = pB2.resultado || {};
+  ok(!oB2.unpivot.identico && oB2.unpivot.soloA.length === 1 && oB2.unpivot.soloB.length === 1 &&
+     oB2.unpivot.filasRvd.some(function (x) { return x.fila === 8; }),
+     'prueba B: un Mail que cambió en RVD después aparece como diferencia, en la fila 8');
+  h5.v[7][colD('Mail')] = mailAntes;
+  const pC = E5.ejecutar('pruebaLookerCorregido'), oC = pC.resultado || {};
+  const mot = oC.unpivot ? oC.unpivot.motivos : {};
+  ok(!pC.error && mot.id && mot.id.filasRvd > 50 && mot.otra.filas === 0 && oC.reuniones.corregido === oC.reuniones.rvdConFigura,
+     'prueba C: la ID cambia en ' + (mot.id ? mot.id.filasRvd : '?') + ' filas; OTRA 0; reuniones distintas: hoy ' +
+     (oC.reuniones ? oC.reuniones.solapaHoy : '?') + ', corregido ' + (oC.reuniones ? oC.reuniones.corregido : '?') +
+     (pC.error ? ': ' + pC.error.stack : ''));
+  ok(mot.genero && mot.genero.cambia + mot.genero.sale + mot.genero.entra > 0 && oC.id && oC.id.repetidas === 0 && oC.id.conFormula === 0 &&
+     oC.aux && !oC.aux.otra, 'prueba C: "Sin identificar" de género clasificado; la ID nueva sin repetidas ni fórmulas; Aux sin "otra"');
+  ok(JSON.stringify(m5.ssD.hojas['Datos_Unpivot'].v) === duHoy && JSON.stringify(ssB.hojas['Datos_Unpivot'].v) === duBk,
+     'las pruebas no escriben: Datos_Unpivot igual (la de hoy y la del backup)');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -2589,7 +2708,8 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
     process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
     process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0 ||
-    process.argv.indexOf('--fichas0810') >= 0 || process.argv.indexOf('--id') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--fichas0810') >= 0 || process.argv.indexOf('--id') >= 0 ||
+    process.argv.indexOf('--looker') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2608,6 +2728,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--tanda') >= 0) escenarioTanda0710();
   else if (process.argv.indexOf('--fichas0810') >= 0) escenarioFichas0810();
   else if (process.argv.indexOf('--id') >= 0) escenarioInvestigarId();
+  else if (process.argv.indexOf('--looker') >= 0) escenarioLooker();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2652,6 +2773,7 @@ escenarioUbicacionTresNiveles();
 escenarioTanda0710();
 escenarioFichas0810();
 escenarioInvestigarId();
+escenarioLooker();
 escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
