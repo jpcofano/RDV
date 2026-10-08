@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (15): SÓLO LECTURA, antes de prender nada (predicción en ESTADO 0.z, "La ubicación en tres niveles"):
+ *        medir07()  = paso49_medirUbicacion() → paso49b_medirUbicacionAgenda() → paso50_columnaId()
+ *      (si se pasa de los 6 minutos, uno por uno). UBICACION_TRES_NIVELES sigue en false hasta ver CAMBIA 0.
+ *      La protección (bug "addEditor … isWarningOnly"): REVISAR_MATCH y AGENDA_DUPLICADOS quedan con la protección REAL en
+ *      la próxima corrida de la hora; GUÍA y LEER, volviendo a correr paso48_ayuda().
  *  >>> 07/10 (14): el backup de la BASE (RDV_SS_BACKUP_BASE; el anterior era una copia de la intermedia). Correr
  *      limpiar24() (o sus pasos uno por uno): paso 18 → 47 en seco → 47 → 47b en seco → 47b → paso 18. Predicción en ESTADO.
  *  >>> 07/10 (13): solapas de AYUDA: paso48_ayuda_enSeco() → paso48_ayuda()  ("GUÍA" en la base, "LEER" en "Agenda").
@@ -1016,6 +1021,52 @@ function paso48_ayuda() {
              'SÍ: escribe/reescribe SÓLO las solapas "' + AYUDA_SOLAPA_GUIA + '" (base RDV) y "' + AYUDA_SOLAPA_LEER + '" (archivo "Agenda"), ' +
              'las pone primeras y las protege; ninguna otra solapa', 'el log: filas escritas y la protección');
   return escribirSolapasAyuda(true);
+}
+
+/** PASO 49 — SÓLO LECTURA: la ubicación en tres niveles (UBICACION_TRES_NIVELES), con la regla de antes y la nueva. */
+function paso49_medirUbicacion() {
+  _anunciar_('paso 49 — la ubicación en tres niveles (formularios, asistentes y oradores, figura de Seguridad)',
+             'medirUbicacionTresNiveles()  [diagnostico/21_ubicacion.js]', 'NO escribe nada',
+             'el log: CAMBIA / PIERDE / RESUELVE en cada cruce (CAMBIA y PIERDE tienen que dar 0), y las filas escritas que cambiarían');
+  return medirUbicacionTresNiveles();
+}
+
+/** PASO 49b — SÓLO LECTURA: la agenda (el plan en seco) con la regla de antes y la de los tres niveles. */
+function paso49b_medirUbicacionAgenda() {
+  _anunciar_('paso 49b — la ubicación en tres niveles en la agenda', 'medirUbicacionAgenda()  [diagnostico/21_ubicacion.js]',
+             'NO escribe nada (lee los mails; la geocodificación, de la cache)',
+             'el log: acciones, casi duplicados, "ya cargadas", ambiguas y figuras a completar que cambian, una por una');
+  return medirUbicacionAgenda();
+}
+
+/** PASO 50 — SÓLO LECTURA: la columna ID (la fórmula en el backup de la base, los valores rotos, 3 ejemplos antes/después). */
+function paso50_columnaId() {
+  _anunciar_('paso 50 — la columna ID', 'inspeccionarColumnaId()  [diagnostico/21_ubicacion.js]', 'NO escribe nada',
+             'el log: la fórmula del backup (y la de hoy), cuántos ID están rotos, 3 ejemplos antes / después');
+  return inspeccionarColumnaId();
+}
+
+/**
+ * **medir07()** — los tres pasos de lectura del 07/10, en orden, en una sola ejecución: 49 (la ubicación: formularios,
+ * asistentes, figura de Seguridad), 49b (la agenda) y 50 (la columna ID). Ninguno escribe. Si se pasa de los 6 minutos de
+ * Apps Script, correrlos uno por uno (el log de lo que alcanzó a correr queda).
+ */
+function medir07() {
+  var pasos = [['paso49_medirUbicacion', paso49_medirUbicacion], ['paso49b_medirUbicacionAgenda', paso49b_medirUbicacionAgenda],
+               ['paso50_columnaId', paso50_columnaId]];
+  for (var i = 0; i < pasos.length; i++) {
+    var t = Date.now();
+    Logger.log('');
+    Logger.log('########## ' + pasos[i][0] + ' ##########');
+    try {
+      pasos[i][1]();
+      Logger.log('########## OK (' + Math.round((Date.now() - t) / 1000) + ' s)');
+    } catch (e) {
+      Logger.log('########## ERROR en ' + pasos[i][0] + ' (sigue con el próximo): ' + (e && e.stack ? e.stack : e));
+    }
+  }
+  Logger.log('');
+  Logger.log('########## medir07 — fin');
 }
 
 /**

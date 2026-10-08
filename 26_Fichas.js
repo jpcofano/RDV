@@ -479,8 +479,10 @@ function _lineaCoincide_(f, sc, ctx) {
   // fecha
   if (!sc.evaluables.fecha) p.push('⚪ fecha (no se puede comparar)');
   else p.push((sc.perdido.fecha === 0 ? '✅ fecha (' : '❌ fecha (a ' + sc.dist + ' días: ') + _detalleFecha_(f, c) + ')');
-  // ubicación
-  const tipo = (c.barrio && f.barrio) ? 'barrio' : 'comuna';
+  // ubicación (con UBICACION_TRES_NIVELES, el nivel en que se comparó: barrio, comuna, o el eje del mail)
+  const tipo = sc.ubic && sc.ubic.nivel
+    ? (sc.ubic.nivel === 'eje' ? 'eje (mail)' : sc.ubic.nivel === 'comuna' && sc.ubic.fila.deComuna === 'mail' ? 'comuna (mail)' : sc.ubic.nivel)
+    : (c.barrio && f.barrio) ? 'barrio' : 'comuna';
   const ej = _ejeFicha_(f, c);
   if (sc.desacuerdo) p.push('❌ ' + tipo + ' (' + _ubicForm_(c) + ', la reunión es ' + _ubicFila_(f, ctx.plan.comunas) + ')');
   else if (sc.evaluables.ubic) p.push((sc.perdido.ubic === 0 ? '✅ ' : '❌ ') + tipo + ' (' + _ubicForm_(c) + ')');
@@ -491,7 +493,7 @@ function _lineaCoincide_(f, sc, ctx) {
   }
   if (sc.evaluables.hora) p.push(sc.perdido.hora === 0 ? '✅ hora' : '❌ hora');
   // eje: sólo para la persona (EJE_COMO_UBICACION sigue apagado: no puntúa ni decide)
-  if (ej) p.push(ej.coincide ? '✅ Eje ' + ej.form : '⚠️ Eje ' + ej.form + ', la reunión está en el Eje ' + ej.fila);
+  if (ej) p.push(ej.coincide ? '✅ Eje ' + ej.form : '⚠️ Eje ' + ej.form + (ej.mail ? ', el mail dice Eje ' : ', la reunión está en el Eje ') + ej.fila);
   // ojo
   const d = _duenio_(ctx, c, f);
   if (d) p.push('⚠️ ya usado por la fila ' + _descFila_(d));
@@ -523,12 +525,25 @@ function _signo_(n) { return n === null || n === undefined ? '' : (n > 0 ? '+' +
 function _num_(x) { return x === null || x === undefined || x === '' ? '?' : String(Math.round(Number(x) * 100) / 100).replace('.', ','); }
 function _gris_(n) { const a = []; for (let i = 0; i < n; i++) a.push(FICHA_COLOR_.textoGris); return a; }
 
-/** "Flores (C7)", "Retiro (C1 Norte)", "(sin barrio)". */
+/**
+ * "Flores (C7)", "Retiro (C1 Norte)", "(sin barrio)". Con UBICACION_TRES_NIVELES, además lo del mail que cuenta: la
+ * comuna de una fila sin barrio ("(sin barrio; mail: Comuna 6)") y el eje ("Flores (C7) · mail: Eje Oeste").
+ */
 function _ubicFila_(f, comunas) {
-  if (!f.barrio) return '(sin barrio)';
+  const u = usarUbicacion3_() ? ubicacionDeFila_(f) : null;
+  if (!f.barrio) {
+    if (u && (u.comuna != null || u.eje)) return '(sin barrio; mail: ' + f.lugarMail + ')';
+    return '(sin barrio)';
+  }
   const com = comunas.get(normalizeText_(f.barrio));
   const sz = com === 1 ? subzonaDeBarrio_(f.barrio) : '';
-  return f.barrio + (com == null ? '' : ' (C' + com + (sz ? ' ' + sz : '') + ')');
+  return f.barrio + (com == null ? '' : ' (C' + com + (sz ? ' ' + sz : '') + ')') + (u && u.eje ? ' · mail: Eje ' + u.eje : '');
+}
+
+/** La celda "barrio / comuna" de la ficha: vacía si la fila no tiene barrio (y, con UBICACION_TRES_NIVELES, nada del mail). */
+function _ubicFilaCelda_(f, comunas) {
+  if (f.barrio) return _ubicFila_(f, comunas);
+  return usarUbicacion3_() && tieneUbicacion_(ubicacionDeFila_(f)) ? _ubicFila_(f, comunas) : '';
 }
 
 /** Lo que el formulario dice de su ubicación: barrio, "C6", "C1 Sur", "Eje Oeste", o "—". */
@@ -585,6 +600,14 @@ function _colorUbic_(sc, f) {
  * cambia el puntaje ni la decisión: EJE_COMO_UBICACION sigue apagado.
  */
 function _ejeFicha_(f, c) {
+  if (usarUbicacion3_()) {
+    // tres niveles: sólo contra el eje del MAIL (nunca uno deducido del barrio). Si la ubicación ya se comparó por el
+    // eje, está en la línea de la ubicación: no se repite.
+    if (!c.eje || c.eje.tipo !== 'eje') return null;
+    const uF = ubicacionDeFila_(f);
+    if (!uF.eje || compararUbicacion_(ubicacionDeFormulario_(c), uF).nivel === 'eje') return null;
+    return { form: c.eje.eje, fila: uF.eje, coincide: c.eje.eje === uF.eje, mail: true };
+  }
   if (!c.eje || c.eje.tipo !== 'eje' || !f.barrio) return null;
   const ejeFila = ejeDeBarrio_(f.barrio);
   if (!ejeFila) return null;
@@ -642,7 +665,7 @@ function armarFichasFormato_(plan, asis, opts) {
     const ins = _insDestino_(plan.dest, f);
     return {
       reunion: { fila: f.fila, figura: f.figura, fecha: _fechaLarga_(f.fecha),
-                 barrio: f.barrio ? _ubicFila_(f, comunas) : '', tema: f.evento, inscriptos: ins == null ? null : ins },
+                 barrio: _ubicFilaCelda_(f, comunas), tema: f.evento, inscriptos: ins == null ? null : ins },
       elegido: er.elegido, comentario: elec.comentario, resultado: er.resultado,
       porque: _fraseMotivo_(f, pf, ops, ctx),
       opciones: ops.map(function (sc) { return _opcionFormato_(f, sc, ctx); }),
@@ -696,7 +719,7 @@ function _contextoFormato_(ctx, f, ops) {
     const tiene = (pf.veredicto === 'escribiria' || pf.veredicto === 'rdv_uid') && pf.cand;
     const k = tiene ? ops.findIndex(function (sc) { return sc.c.grupo === pf.cand.grupo; }) : -1;
     return { fila: o.f.fila, figura: o.f.figura, fecha: _fechaLarga_(o.f.fecha),
-             barrio: o.f.barrio ? _ubicFila_(o.f, comunas) : '', tema: o.f.evento, dias: o.d,
+             barrio: _ubicFilaCelda_(o.f, comunas), tema: o.f.evento, dias: o.d,
              nota: k >= 0 ? 'tiene la opción ' + (k + 1) : _estadoCorto_(pf) };
   });
   const descartados = _descartadosCercanos_(ctx, f).map(function (x) {
@@ -731,7 +754,7 @@ function _resueltaFormato_(ctx, e) {
     comentario: e.comentario || '',
     resultado: _resultadoCorto_(e),
     fila: f ? f.fila : '', figura: e.figura, fecha: _fechaLarga_(e.fecha),
-    barrio: f ? (f.barrio ? _ubicFila_(f, comunas) : '') : (e.barrio || ''),
+    barrio: f ? _ubicFilaCelda_(f, comunas) : (e.barrio || ''),
     formulario: e.elegido === 'ninguno' ? '(ninguno)' : _nombreCorto_(e.formNombre),
     inscriptos: c && !esVacio_(c.inscriptos) ? c.inscriptos : null,
     dias: c && f ? _diasNum_(f, c) : null,
@@ -1010,6 +1033,9 @@ function _protegerFichas_(sh, filasReunion) {
   if (!pr) pr = sh.protect().setDescription(DESC_PROTECCION_FICHAS);
   pr.setUnprotectedRanges(filasReunion.map(function (f) { return sh.getRange(f, 1, 1, 2); }));
   try {
+    // 07/10: una protección que quedó de ADVERTENCIA (una corrida en que no se pudo poner la real) no acepta editores:
+    // addEditor falla ("… isWarningOnly") y volvía a quedar de advertencia para siempre. Primero se le saca.
+    if (pr.isWarningOnly()) pr.setWarningOnly(false);
     const yo = Session.getEffectiveUser();
     pr.addEditor(yo);
     const otros = pr.getEditors().filter(function (e) { return e.getEmail() !== yo.getEmail(); });

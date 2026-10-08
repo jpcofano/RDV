@@ -2007,6 +2007,22 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    | barrio, comuna **o eje** presentes y **distintos** | **descalifica** el candidato |
    | ni barrio, ni comuna, ni eje, ni evento | **no puntúa ni cuenta para el denominador** |
 
+   #### La ubicación en TRES NIVELES (07/10, `UBICACION_TRES_NIVELES`; apagado hasta medir)
+
+   Decisión del usuario: **una sola regla** para los formularios, RDV CONJUNTO y la agenda, `compararUbicacion_`
+   (`02_Parsing.js`). La fila tiene **barrio** (la columna Barrio: el equipo o la dirección), **comuna** (la del barrio
+   o, si no tiene barrio, la de "Lugar (mail)") y **eje** (SÓLO el de "Lugar (mail)"); cada fuente trae barrio, comuna
+   ("C2", "Comuna 2", "C1S") o eje. Se compara **en el nivel más preciso que tengan las dos**: barrio con barrio; si no,
+   comuna con comuna (la Comuna 1 con su subzona si las dos la tienen); si no, eje con **el eje del mail** — **nunca con
+   uno deducido del barrio** (30/09: los temáticos de un eje se hacen en barrios de otro; `EJE_COMO_UBICACION` sigue
+   apagado para eso). Pesos: barrio 0,25 · comuna 0,15 · eje 0,10; ausencia no puntúa, desacuerdo descalifica.
+   Detalles que no salen solos de la regla: un formulario SIN figura vale por barrio o comuna, nunca por el eje
+   (`SIN_FIGURA_POR_UBICACION`); el desempate por eje usa el eje del mail; en la agenda, las candidatas de una reunión
+   se comparan **sin** el "Lugar (mail)" de la fila (sería comparar el mail consigo mismo) y "ya cargada en otra fila"
+   exige el nivel barrio (la regla del usuario es "mismo barrio"). La traza dice de dónde salió: `comuna_mail`,
+   `eje_mail`. **Se prende después de medir** (pasos 49 y 49b: CAMBIA tiene que dar 0 en los cruces que hoy están
+   bien); con `false`, todo compara como antes. Detalle: docs/ESTADO.md, 0.z.
+
    #### Formularios sin figura, por ubicación (`SIN_FIGURA_POR_UBICACION`, desde el 26/09)
 
    Un formulario que **no nombra a nadie** (3.3, el formato de 09/2026) no puede sumar figura, y

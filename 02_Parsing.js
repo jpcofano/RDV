@@ -646,6 +646,154 @@ function comparaComuna_(barrioDestino, comunaDestino, c) {
   return { coincide: true, porSubzona: false, subzonaDestino: '' };
 }
 
+// ===================== La ubicación en tres niveles (07/10, UBICACION_TRES_NIVELES) =====================
+/*
+ * UNA sola regla para comparar ubicaciones: un formulario contra la fila (puntuar_), RDV CONJUNTO contra la fila
+ * (asistentes y oradores, la figura de Seguridad) y una reunión del mail contra la fila (la agenda: candidatas, casi
+ * duplicados, "ya cargada"). Una ubicación es `{ barrio, kb, comuna, subzona, eje, deComuna }`:
+ *
+ *   barrio    el canónico de Comunas (o el texto, si Comunas no lo tiene); '' si no hay. `kb`: su clave de comparación
+ *   comuna    número o null
+ *   subzona   'Norte' / 'Sur' de la Comuna 1, o ''
+ *   eje       'Norte', 'Sur', … o '': SÓLO el que se DIJO (el formulario, RDV CONJUNTO, el mail). Nunca se deduce del
+ *             barrio: los temáticos de un eje se hacen en barrios de otro eje (medición del 30/09)
+ *   deComuna  de dónde salió la comuna: 'barrio' | 'dicha' (el texto la dice) | 'mail' (fila sin barrio: la de
+ *             "Lugar (mail)") | ''
+ */
+
+var _forzarUbicacion3_ = null;
+
+/** ¿Rige la regla de los tres niveles? UBICACION_TRES_NIVELES, salvo que una medición la fuerce (`conUbicacion3_`). */
+function usarUbicacion3_() {
+  return _forzarUbicacion3_ === null ? !!UBICACION_TRES_NIVELES : _forzarUbicacion3_;
+}
+
+/** Corre `fn` con la regla forzada (true: tres niveles; false: la de antes) y la deja como estaba. Mediciones y tests. */
+function conUbicacion3_(valor, fn) {
+  const antes = _forzarUbicacion3_;
+  _forzarUbicacion3_ = !!valor;
+  try { return fn(); } finally { _forzarUbicacion3_ = antes; }
+}
+
+/** El barrio canónico (Comunas, con la otra grafía de Monserrat que acepta la agenda); '' si no se reconoce. */
+function canonBarrioUbic_(s) {
+  if (esVacio_(s)) return '';
+  return (typeof _canonBarrioAg_ === 'function' ? _canonBarrioAg_(s) : canonizarBarrio_(s)) || '';
+}
+
+/** Una ubicación con el barrio `b` (canónico o texto) y, si Comunas lo tiene, su comuna y su subzona. */
+function _ubicDeBarrio_(b) {
+  const u = { barrio: '', kb: '', comuna: null, subzona: '', eje: '', deComuna: '' };
+  const t = str(b);
+  if (!t) return u;
+  const canon = canonBarrioUbic_(t);
+  u.barrio = canon || t;
+  u.kb = _expandirAbreviaturas_(normalizeText_(u.barrio));
+  if (canon) {
+    u.comuna = comunaDeBarrio_(canon);
+    if (u.comuna != null) u.deComuna = 'barrio';
+    if (u.comuna === 1) u.subzona = subzonaDeBarrio_(canon) || '';
+  }
+  return u;
+}
+
+/** ¿Tiene algún nivel? */
+function tieneUbicacion_(u) { return !!(u && (u.barrio || u.comuna != null || u.eje)); }
+
+/**
+ * La ubicación de un texto suelto (RDV CONJUNTO, "Lugar (mail)"): una comuna si el texto ES una comuna ("C3",
+ * "Comuna 6", "C1N", "Comuna 1 Sur"); un eje si ES un eje ("Eje Oeste"; uno desconocido, nada); si no, un barrio.
+ */
+function ubicacionDeTexto_(texto) {
+  const t = str(texto);
+  if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(t)) {
+    const u = _ubicDeBarrio_('');
+    u.comuna = detectComuna_(t);
+    u.subzona = u.comuna === 1 ? (detectSubzonaComuna1_(t) || '') : '';
+    u.deComuna = u.comuna == null ? '' : 'dicha';
+    return u;
+  }
+  if (/^\s*eje\s+\S+\s*$/i.test(t)) {
+    const u = _ubicDeBarrio_(''), e = detectEje_(t);
+    u.eje = e && e.tipo === 'eje' ? e.eje : '';
+    return u;
+  }
+  return _ubicDeBarrio_(t);
+}
+
+/**
+ * La ubicación de una fila del destino (`f` de leerDestino_): el barrio de la columna Barrio (lo cargó el equipo o salió
+ * de la dirección); la comuna de ese barrio o, si la fila no tiene barrio, la de "Lugar (mail)" (`f.lugarMail`); el eje,
+ * SÓLO el de "Lugar (mail)". `sinMail`: sin lo del mail (para comparar contra una reunión del MISMO mail: la agenda).
+ */
+function ubicacionDeFila_(f, sinMail) {
+  if (!f) return _ubicDeBarrio_('');
+  const lugar = sinMail ? '' : str(f.lugarMail);
+  const k = str(f.barrio) + '|' + lugar;
+  const cache = sinMail ? '_ubic3sm' : '_ubic3';
+  if (f[cache] && f[cache + 'k'] === k) return f[cache];
+  const u = _ubicDeBarrio_(f.barrio);
+  if (lugar) {
+    const m = ubicacionDeTexto_(lugar);
+    u.eje = m.eje;
+    if (!u.barrio && m.comuna != null) { u.comuna = m.comuna; u.subzona = m.subzona; u.deComuna = 'mail'; }
+  }
+  f[cache] = u; f[cache + 'k'] = k;
+  return u;
+}
+
+/**
+ * La ubicación de un formulario de B: el barrio que nombra; la comuna que dice el texto o, si no dice, la de su barrio;
+ * la subzona de la Comuna 1 (la dicha o la de su barrio); el eje que dice el texto.
+ */
+function ubicacionDeFormulario_(c) {
+  if (!c) return _ubicDeBarrio_('');
+  const ejeC = c.eje && c.eje.tipo === 'eje' ? c.eje.eje : '';
+  const k = [c.barrio || '', c.comuna == null ? '' : c.comuna, c.subzona || '', ejeC].join('|');
+  if (c._ubic3 && c._ubic3k === k) return c._ubic3;
+  const u = _ubicDeBarrio_(c.barrio);
+  if (c.comuna != null) {
+    u.comuna = c.comuna; u.deComuna = 'dicha';
+    u.subzona = c.comuna === 1 ? (c.subzona || (u.barrio ? subzonaDeBarrio_(u.barrio) : '') || '') : '';
+  }
+  u.eje = ejeC;
+  c._ubic3 = u; c._ubic3k = k;
+  return u;
+}
+
+/**
+ * La ubicación de una reunión del mail: el barrio que nombra el mail (o `barrioExtra`: el que salió de la dirección);
+ * la comuna que dice el mail o, si no dice, la de ese barrio; la subzona; el eje que dice el mail.
+ */
+function ubicacionDeEvento_(ev, barrioExtra) {
+  if (!ev) return _ubicDeBarrio_('');
+  const u = _ubicDeBarrio_(str(ev.barrio) || str(barrioExtra));
+  if (ev.comuna != null) {
+    u.comuna = ev.comuna; u.deComuna = 'dicha';
+    u.subzona = ev.comuna === 1 ? (ev.subzona || (u.barrio ? subzonaDeBarrio_(u.barrio) : '') || '') : '';
+  }
+  u.eje = ev.eje ? (_canonEje_(String(ev.eje).replace(/^\s*eje\s+/i, '')) || '') : '';
+  return u;
+}
+
+/**
+ * **La comparación**, en el nivel más preciso que tengan LAS DOS ubicaciones: barrio con barrio; si no, comuna con
+ * comuna (en la Comuna 1, también la subzona si las dos la tienen; si una sola la tiene, alcanza la comuna); si no, eje
+ * con eje. Devuelve `{ nivel, coincide, porSubzona }`: nivel 'barrio' | 'comuna' | 'eje' | '' (no se puede comparar:
+ * coincide null). Ausencia no es desacuerdo.
+ */
+function compararUbicacion_(a, b) {
+  if (!a || !b) return { nivel: '', coincide: null, porSubzona: false };
+  if (a.barrio && b.barrio) return { nivel: 'barrio', coincide: a.kb === b.kb, porSubzona: false };
+  if (a.comuna != null && b.comuna != null) {
+    if (a.comuna !== b.comuna) return { nivel: 'comuna', coincide: false, porSubzona: false };
+    if (a.comuna === 1 && a.subzona && b.subzona) return { nivel: 'comuna', coincide: a.subzona === b.subzona, porSubzona: true };
+    return { nivel: 'comuna', coincide: true, porSubzona: false };
+  }
+  if (a.eje && b.eje) return { nivel: 'eje', coincide: a.eje === b.eje, porSubzona: false };
+  return { nivel: '', coincide: null, porSubzona: false };
+}
+
 /**
  * La fecha de la reunión: **la del nombre del formulario**, validada por la regla del mes
  * (CLAUDE.md 1.c y 3.3.c).

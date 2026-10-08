@@ -236,6 +236,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (x.fecha) x.figuras.forEach(function (fig) { nombradas.add(normalizeText_(fig) + '|' + ymd_(x.fecha)); });
   });
   const ubica = function (ev, f) {
+    // 07/10, UBICACION_TRES_NIVELES: la misma regla (compararUbicacion_), con la fila SIN lo del mail: "Lugar (mail)" de
+    // una fila salió de un mail, y compararlo con una reunión del mail sería comparar el mail consigo mismo (dos
+    // Seguridad en la misma comuna, sin barrio, quedarían como candidatas una de la otra).
+    if (usarUbicacion3_()) return compararUbicacion_(ubicacionDeEvento_(ev), ubicacionDeFila_(f, true)).coincide === true;
     if (!f.barrio) return false;
     if (ev.barrio) return normalizeText_(_canonBarrioAg_(ev.barrio) || ev.barrio) === normalizeText_(_canonBarrioAg_(f.barrio) || f.barrio);
     if (ev.comuna != null) {
@@ -289,13 +293,22 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const out = [];
     const figs = (ev.participan || ev.figuras).map(normalizeText_);   // "NO PARTICIPA" no cuenta
     const com = comunaDeEv(ev);
+    // 07/10, UBICACION_TRES_NIVELES: "la misma ubicación" con la regla de los tres niveles (barrio con barrio; si no,
+    // comuna con comuna, con la subzona de la Comuna 1; si no, eje con eje). `ev.ubic`: la de una fila de la agenda
+    // (el bloque "después de crear"). Las filas de acá son del equipo (sin agenda_uid): no tienen nada del mail.
+    const tres = usarUbicacion3_();
+    const uEv = tres ? (ev.ubic || ubicacionDeEvento_(ev)) : null;
+    const mismaUbic = function (f) {
+      if (tres) return compararUbicacion_(uEv, ubicacionDeFila_(f)).coincide === true;
+      return com != null && f.barrio && _comunaBarrioAg_(f.barrio) === com;
+    };
     dest.filas.forEach(function (f) {
       if (!f.fecha || !esVacio_(val(f, 'agenda_uid')) || usadas.has(f.fila)) return;
       const d = Math.abs(diasEntre_(f.fecha, ev.fecha));
       const mismaFig = f.figura && figs.indexOf(normalizeText_(f.figura)) >= 0;
       let dif = '';
       if (mismaFig && d <= AGENDA_DUP_DIAS && (incluirMismaFecha || d > 0)) dif = d ? 'fecha (' + d + ' día' + (d > 1 ? 's' : '') + ')' : 'misma figura y fecha';
-      else if (d === 0 && com != null && f.barrio && _comunaBarrioAg_(f.barrio) === com && !mismaFig &&
+      else if (d === 0 && mismaUbic(f) && !mismaFig &&
                !nombradas.has(normalizeText_(f.figura) + '|' + ymd_(f.fecha))) dif = f.figura ? 'figura (' + f.figura + ')' : 'figura (vacía)';
       if (!dif) return;
       const h = valorAgendaComparable_(val(f, 'HORA'), 'HORA');
@@ -304,6 +317,16 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     });
     // 07/10 (caso Macri 01/10): si alguna candidata tiene el MISMO BARRIO que la reunión, ésas son las candidatas; si
     // no, las de la misma comuna; si no, todas (y se muestran todas para elegir).
+    if (tres) {
+      const uB = ev.ubic || ubicacionDeEvento_(ev, barrioEv);
+      const enNivel = function (u) {
+        return out.filter(function (x) { return compararUbicacion_(u, ubicacionDeFila_(x.f)).coincide === true; });
+      };
+      const mismoBarrio = uB.barrio ? enNivel(uB) : [];
+      if (mismoBarrio.length) return mismoBarrio;
+      const mismaComuna = uB.comuna != null ? enNivel({ barrio: '', kb: '', comuna: uB.comuna, subzona: uB.subzona, eje: '', deComuna: uB.deComuna }) : [];
+      return mismaComuna.length ? mismaComuna : out;
+    }
     const bE = barrioEv ? normalizeText_(_canonBarrioAg_(barrioEv) || barrioEv) : '';
     const mismoB = bE ? out.filter(function (x) { return x.f.barrio && normalizeText_(_canonBarrioAg_(x.f.barrio) || x.f.barrio) === bE; }) : [];
     if (mismoB.length) return mismoB;
@@ -526,8 +549,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     sinFigura.forEach(function (f) {
       // 07/10: con la dirección de la fila; sin barrio, la comuna que dice el mail ("Lugar (mail)": caso 818, Comuna 6)
       const comF = f.barrio ? _comunaBarrioAg_(f.barrio) : detectComuna_(str(val(f, 'Lugar (mail)')));
+      // con UBICACION_TRES_NIVELES, la ubicación de la fila en tres niveles (la comuna o el eje del mail, si no tiene barrio)
       const res = figuraSeguridad_(f.fecha, f.barrio ? _canonBarrioAg_(f.barrio) || f.barrio : '', comF == null ? null : comF, conj,
-                                   str(val(f, 'Dirección')) || str(val(f, 'Dirección (mail)')));
+                                   str(val(f, 'Dirección')) || str(val(f, 'Dirección (mail)')), undefined,
+                                   ubicacionDeFila_(Object.assign({}, f, { lugarMail: str(val(f, 'Lugar (mail)')) })));
       if (res.figura) {
         P.figuraNueva = P.figuraNueva || {};
         P.figuraNueva[f.fila] = res.figura;
@@ -548,6 +573,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                      comuna: fa.barrio ? _comunaBarrioAg_(fa.barrio) : null, barrio: '' };
     const lugarMail = str(val(fa, 'Lugar (mail)'));
     if (evFila.comuna == null && lugarMail) evFila.comuna = detectComuna_(lugarMail);
+    // 07/10, UBICACION_TRES_NIVELES: la ubicación de la fila de la agenda en tres niveles (su barrio; la comuna del
+    // barrio o la del mail; el eje del mail), contra las filas del equipo.
+    if (usarUbicacion3_()) evFila.ubic = ubicacionDeFila_(Object.assign({}, fa, { lugarMail: lugarMail }));
     const casi = casiDuplicados(evFila, true).filter(function (x) { return x.f.fila !== fa.fila; });
     if (casi.length) P.duplicados.push({ tipo: 'despues', fAgenda: fa, candidatas: casi });
   });
@@ -829,11 +857,14 @@ function leerConjuntoPorFecha_() {
  * fecha cuyo barrio coincide (o, con "C5" / barrio de otra comuna, cuya comuna coincide). `{ figura, filas, motivo }`:
  * figura sólo si sale UNA (por tokens del nombre).
  */
-function figuraSeguridad_(fecha, barrio, comuna, porFecha, direccion, conDireccion) {
+function figuraSeguridad_(fecha, barrio, comuna, porFecha, direccion, conDireccion, ubicFila) {
   const comunaDe = function (t) {
     if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(t)) return detectComuna_(t);
     return _comunaBarrioAg_(t);
   };
+  // 07/10: con UBICACION_TRES_NIVELES y la ubicación de la fila (`ubicacionDeFila_`: barrio; comuna del barrio o del
+  // mail; eje del mail), la misma regla que el resto (`compararUbicacion_`); si no, la de antes (barrio, o comuna).
+  const tres = usarUbicacion3_() && ubicFila ? ubicFila : null;
   const delDia = porFecha.get(ymd_(fecha)) || [];
   // 07/10: primero fecha + DIRECCIÓN (exacta; si no hay, parecida). Si señala UNA sola fila de RDV CONJUNTO, ésa
   // gana aunque el barrio no coincida (se avisa en `barrioConjunto`).
@@ -845,14 +876,21 @@ function figuraSeguridad_(fecha, barrio, comuna, porFecha, direccion, conDirecci
       const fp = figuraPorTokens_(porDir[0].nombre);
       if (fp.figura) {
         const b = porDir[0].ubic, bc = b ? _canonBarrioAg_(b) : '';
-        const difiere = !!(barrio && bc && normalizeText_(bc) !== normalizeText_(barrio));
+        const difiere = tres ? !!(b && compararUbicacion_(ubicacionDeTexto_(b), tres).coincide === false)
+                             : !!(barrio && bc && normalizeText_(bc) !== normalizeText_(barrio));
         return { figura: fp.figura, filas: [porDir[0].fila], motivo: '', por: 'dirección ' + (ex.length ? 'exacta' : 'parecida'),
                  barrioConjunto: difiere ? b : '' };
       }
     }
   }
+  const niveles = {};
   const cand = delDia.filter(function (x) {
     if (!x.ubic) return false;
+    if (tres) {
+      const k = compararUbicacion_(ubicacionDeTexto_(x.ubic), tres);
+      if (k.coincide === true) niveles[k.nivel] = true;
+      return k.coincide === true;
+    }
     if (barrio) {
       const b = _canonBarrioAg_(x.ubic);
       if (b) return normalizeText_(b) === normalizeText_(barrio);
@@ -863,7 +901,8 @@ function figuraSeguridad_(fecha, barrio, comuna, porFecha, direccion, conDirecci
   cand.forEach(function (x) { const fp = figuraPorTokens_(x.nombre); figs[fp.figura || ('? ' + x.nombre)] = true; });
   const lista = Object.keys(figs);
   const filas = cand.map(function (x) { return x.fila; });
-  if (lista.length === 1 && lista[0].indexOf('? ') !== 0) return { figura: lista[0], filas: filas, motivo: '', por: barrio ? 'barrio' : 'comuna' };
+  const por = tres ? Object.keys(niveles).join(' / ') : (barrio ? 'barrio' : 'comuna');
+  if (lista.length === 1 && lista[0].indexOf('? ') !== 0) return { figura: lista[0], filas: filas, motivo: '', por: por };
   if (!lista.length) return { figura: '', filas: filas, motivo: 'RDV CONJUNTO todavía no tiene la fila' };
   return { figura: '', filas: filas, motivo: lista.length > 1 ? 'ambigua: ' + lista.join(' / ') : 'nombre no reconocido: ' + lista[0].slice(2) };
 }
@@ -1833,6 +1872,8 @@ function _protegerDuplicadosAgenda_(sh, editables) {
   const pr = sh.protect().setDescription(DESC_PROTECCION_DUPLICADOS);
   if (editables.length) pr.setUnprotectedRanges(editables);
   try {
+    // 07/10: si la protección es (o quedó) de ADVERTENCIA, addEditor falla ("… isWarningOnly"): primero se le saca.
+    if (pr.isWarningOnly()) pr.setWarningOnly(false);
     const yo = Session.getEffectiveUser();
     pr.addEditor(yo);
     const otros = pr.getEditors().filter(function (e) { return e.getEmail() !== yo.getEmail(); });
@@ -1858,10 +1899,16 @@ function yaCargadaAgenda_(ev, filas, barrio) {
   const out = { fila: null, anteriores: [], posteriores: [] };
   if (!ev.figuraFila || !ev.fecha || !barrio || !ev.mailFecha) return out;
   const b = normalizeText_(_canonBarrioAg_(barrio) || barrio), fig = normalizeText_(ev.figuraFila);
+  // 07/10, UBICACION_TRES_NIVELES: la misma comparación que el resto, y en el nivel BARRIO (la regla del usuario es
+  // "mismo barrio": dos reuniones de una figura en la misma comuna a dos días pueden ser distintas).
+  const uEv = usarUbicacion3_() ? _ubicDeBarrio_(barrio) : null;
   filas.forEach(function (f) {
     if (!f.fecha || !f.figura || !f.barrio || normalizeText_(f.figura) !== fig) return;
     if (ymd_(f.fecha) === ymd_(ev.fecha) || Math.abs(diasEntre_(f.fecha, ev.fecha)) > AGENDA_DUP_DIAS) return;
-    if (normalizeText_(_canonBarrioAg_(f.barrio) || f.barrio) !== b) return;
+    if (uEv) {
+      const k = compararUbicacion_(uEv, ubicacionDeFila_(f));
+      if (!(k.nivel === 'barrio' && k.coincide)) return;
+    } else if (normalizeText_(_canonBarrioAg_(f.barrio) || f.barrio) !== b) return;
     (ymd_(ev.mailFecha) < ymd_(f.fecha) ? out.anteriores : out.posteriores).push(f);
   });
   if (out.anteriores.length === 1) out.fila = out.anteriores[0];

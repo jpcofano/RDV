@@ -865,6 +865,65 @@ el script, **no se comparte** (docs/backup.md §8.3).
 **Predicción del usuario para `limpiar24()`, anotada ANTES:** el paso 47 vacía **22 filas (132 celdas**: las 5 edades y
 Sin identificar de cada una), el 47b las reescribe, y el paso 18 final lista **sólo la 399 y la 401**.
 
+#### La ubicación en tres niveles, la columna ID y la protección (07/10, decisiones del usuario) — PRIMERO MEDIR
+
+Pedido del 07/10, en este orden: **primero la medición del punto 1 (sólo lectura)**; con el resultado, lo demás (barrio
+desde la dirección con eje, `pendiente_barrio` sólo sin ninguna ubicación, `DIAS_FUTUROS_CRUCE = 7`, conjuntas, la ID como
+derivada 12). Lo hecho en esta tanda:
+
+- **La regla** (CLAUDE.md, decisión 2, "La ubicación en TRES NIVELES"): `compararUbicacion_` y sus ubicaciones
+  (`ubicacionDeFila_`, `ubicacionDeFormulario_`, `ubicacionDeTexto_`, `ubicacionDeEvento_`), en `02_Parsing.js`,
+  **detrás de `UBICACION_TRES_NIVELES = false`**. La usan, con el flag: el matcher de formularios (`puntuar_`, y lo que
+  sale de él: "¿por qué?", las fichas, EMPAREJAR), el cruce de asistentes y oradores (`_ubicConjuntoFila_`), la figura
+  de Seguridad (`figuraSeguridad_`, con la ubicación de la fila) y la agenda (candidatas, casi duplicados antes y después
+  de crear, "ya cargada"). `leerDestino_` lee "Lugar (mail)" (`f.lugarMail`). Con el flag apagado nada cambia: los tests
+  de siempre pasan igual.
+- **Lo que no sale solo de la regla, decidido así** (se puede revisar con la medición): un formulario SIN figura vale
+  por barrio o comuna, nunca sólo por el eje (con fecha ±1, cualquier fila del eje ese día lo ganaría); el desempate por
+  eje (`EJE_COMO_DESEMPATE`) mira el eje del mail, no el de Comunas; las candidatas de una reunión del mail se comparan
+  SIN el "Lugar (mail)" de la fila (comparar el mail consigo mismo juntaría dos Seguridad de la misma comuna sin barrio);
+  "ya cargada en otra fila" sigue exigiendo el mismo barrio (la regla del usuario); en la puerta de EMPAREJAR_MANUAL vale
+  la ubicación que coincide en cualquier nivel.
+- **La medición** (sólo lectura): `medir07()` = **paso 49** (`paso49_medirUbicacion`: formularios —el plan entero sin los
+  RDV_UID, todo el historial, con las dos reglas—, asistentes y oradores, figura de Seguridad), **paso 49b**
+  (`paso49b_medirUbicacionAgenda`: el plan de la agenda en seco con las dos reglas) y **paso 50** (`paso50_columnaId`).
+  Tests: tests/ubicacion.test.js (la regla), escritura_lote [27] (paso 49, la regla prendida, paso 50), agenda_escritura
+  [30] (paso 49b, la subzona en la figura de Seguridad).
+- **La columna ID** (punto 6): **nada de este proyecto la escribe** en "RVD JM-CM - ES" (revisado: el upsert, la agenda
+  —también el deshacer, que sólo restaura sus columnas—, las derivadas y el legado activo escriben otras columnas u otras
+  solapas). El valor roto ("… | Tue Oct 06 2026 12:00:00 GMT-0300 … | Sat Dec 30 1899 16:45:00 GMT-0416") es una fecha y
+  una hora pasadas a texto por **JavaScript**: una fórmula de Sheets daría números o el texto con formato; lo escribió un
+  script (atado al archivo del destino, que es otro proyecto) o una función personalizada. El paso 50 muestra la fórmula
+  del backup, si hoy hay fórmula en la columna, cuántas están rotas (y si son filas de la agenda) y 3 ejemplos antes /
+  después (el después, con la plantilla que se deduce de los valores buenos del backup). La derivada 12 se escribe
+  **después** de ver la fórmula, con su mismo resultado.
+- **La protección** (punto 7, bug "addEditor … isWarningOnly"): una protección que había quedado de ADVERTENCIA no acepta
+  editores, así que `addEditor` fallaba y volvía a quedar de advertencia para siempre. Ahora se le saca la advertencia
+  antes (`_protegerFichas_`, `_protegerDuplicadosAgenda_`, `_protegerAyuda_`). REVISAR_MATCH y AGENDA_DUPLICADOS quedan con
+  la protección real en la próxima corrida de la hora; GUÍA y LEER, con `paso48_ayuda()`. Tests: escritura_lote [21], agenda
+  [18], ayuda [5] (los mocks ahora fallan como Google con una de advertencia).
+
+**Predicción, anotada ANTES de correr `medir07()`:**
+
+- **paso 49 a) formularios** [activas | total]: **CAMBIA 0 | 0** y **PIERDE 0 | 0**; "escritas que cambiarían" **0**.
+  RESUELVE pocos o ninguno (0–3): casi todas las filas con "Lugar (mail)" tienen barrio, y las de hoy y ayer sin barrio
+  siguen en `pendiente_barrio` (eso cambia en el punto 3), así que la 815 todavía **no** aparece. Si aparece algo en el
+  total (cerradas), será por la canonización del barrio (una grafía que antes no daba comuna: Montserrat, Villa Gral.
+  Mitre) y cada uno, mirado.
+- **paso 49 b) asistentes y oradores**: CAMBIA **0**, PIERDE **0**; RESUELVE 0–2 (una figura con dos filas el mismo día y
+  una de ellas sin barrio, con la comuna del mail).
+- **paso 49 c) figura de Seguridad**: las del 08/10 (futuras) con la misma figura con las dos reglas, por la dirección:
+  **816 Piñeiro (Brandsen 567), 817 Tapia (H. Yrigoyen 3922), 818 Giménez (Gral. Manuel A. Rodriguez 1191), 819
+  Landerreche (Emilio Mitre 981)**; CAMBIA 0, PIERDE 0, contradice 0.
+- **paso 49b (agenda)**: **ninguna diferencia** en vincular / actualizar / mover / suspender / borrar; si hay alguna, sólo
+  casi duplicados de menos (barrio con barrio, la subzona) o figuras de Seguridad de más, cada una listada.
+- **paso 50 (ID)**: en el backup, la fórmula (el usuario dice que era una fórmula); hoy, sin fórmula o con otra; las rotas,
+  filas recientes (las que creó o tocó la agenda desde el 06/10).
+
+**Predicción del usuario para el final de todo el pedido (después de los puntos 2–6):** la 815 con barrio y su
+formulario de 20 inscriptos; 816 Piñeiro y 817 Tapia con formularios (138 y 110); 818 Giménez y 819 Landerreche con
+figura; la ID con el formato correcto; la protección real.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

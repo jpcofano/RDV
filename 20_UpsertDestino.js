@@ -2137,7 +2137,7 @@ function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
 function huellasDelPlan_(dest, cands, comunas, porFila) {
   const d = dest.filas.map(function (f) {
     return [f.fila, f.figura, f.barrio, f.fecha ? ymd_(f.fecha) : '', f.horaMin, f.evento,
-            f.uid ? 'u' : '', f.formOrigen, f.formClave].join('|');
+            f.uid ? 'u' : '', f.formOrigen, f.formClave, f.lugarMail || ''].join('|');
   }).join('\n');
   // B: la huella de B CRUDO, antes de cualquier descarte (leerCandidatos_). Si no está, la de los vivos.
   const b = cands.huellaCruda || cands.vivos.map(function (c) {
@@ -2241,7 +2241,11 @@ function _senalesTexto_(sc, f, comunas) {
   else if (sc.evaluables.ubic) {
     p.push('ubicación coincide (' + (/barrio/.test(sc.nivel) ? 'barrio' : /comuna/.test(sc.nivel) ? 'comuna' : 'eje') + ')');
   } else p.push('ubicación no evaluable');
-  if (sc.c.eje && sc.c.eje.tipo === 'eje') {
+  if (sc.c.eje && sc.c.eje.tipo === 'eje' && sc.ubic) {
+    // tres niveles: contra el eje del MAIL, nunca uno deducido del barrio
+    const ejeM = sc.ubic.fila.eje;
+    p.push('eje ' + sc.c.eje.eje + (!ejeM ? ' (el mail no dice eje)' : ejeM === sc.c.eje.eje ? ' = mail' : ' ≠ mail ' + ejeM));
+  } else if (sc.c.eje && sc.c.eje.tipo === 'eje') {
     const ejeF = ejeDeBarrio_(f.barrio);
     p.push('eje ' + sc.c.eje.eje + (!ejeF ? ' (RDV sin eje)' : sc.ejeCoincide ? ' = RDV' : ' ≠ RDV ' + ejeF));
   } else p.push('eje -');
@@ -3451,6 +3455,7 @@ function cercanosDeFila_(f, vivos, comunas) {
   const tol = TOLERANCIA_REPROGRAMACION_DIAS;
   const figNorm = normalizeText_(f.figura);
   const cDest = f.barrio ? comunas.get(normalizeText_(f.barrio)) : null;
+  const tres = usarUbicacion3_();
   const r = { conFig: null, sinFigMisma: null, sinFigOtra: null, otraFig: null };
   const tomar = function (k, c, x) { if (!r[k] || x < r[k].x) r[k] = { c: c, x: x }; };
   for (let j = 0; j < vivos.length; j++) {
@@ -3459,8 +3464,9 @@ function cercanosDeFila_(f, vivos, comunas) {
     if (x === null || !fechaCercana_(f.fecha, c.det, tol)) continue;   // asimétrica con fecha_fin
     if (c.figurasNorm.indexOf(figNorm) !== -1) tomar('conFig', c, x);
     else if (!c.figurasNorm.length) {
-      const cmp = comparaComuna_(f.barrio, cDest, c);
-      const otra = !!(cmp && !cmp.coincide);
+      // con los tres niveles (UBICACION_TRES_NIVELES): otra ubicación en el nivel que tengan los dos
+      const cmp = tres ? null : comparaComuna_(f.barrio, cDest, c);
+      const otra = tres ? _ubic3DelPar_(f, c).coincide === false : !!(cmp && !cmp.coincide);
       tomar(otra ? 'sinFigOtra' : 'sinFigMisma', c, x);
     } else tomar('otraFig', c, x);
   }
@@ -3756,8 +3762,34 @@ function _esReubicacion_(sc) {
   return !!(sc.desacuerdo && sc.nombraFigura && sc.dist !== null && sc.dist <= DIAS_REUBICACION);
 }
 
+/**
+ * La comparación en tres niveles de un par (UBICACION_TRES_NIVELES): `{ nivel, coincide, porSubzona, fila, form }`,
+ * con la ubicación de la fila (barrio; comuna del barrio o del mail; eje del mail) y la del formulario.
+ */
+function _ubic3DelPar_(f, c) {
+  const uF = ubicacionDeFila_(f), uC = ubicacionDeFormulario_(c);
+  const k = compararUbicacion_(uC, uF);
+  k.fila = uF; k.form = uC;
+  return k;
+}
+
+/** La señal de la traza (`form_nivel`) de una ubicación que coincide: 'barrio', 'comuna', 'comuna1_sur', y '_mail'
+ *  cuando lo de la fila salió de "Lugar (mail)" (la comuna de una fila sin barrio, o el eje). */
+function _senalUbic3_(k) {
+  if (k.nivel === 'barrio') return 'barrio';
+  if (k.nivel === 'eje') return 'eje_mail';
+  return (k.porSubzona ? 'comuna1_' + String(k.fila.subzona).toLowerCase() : 'comuna') + (k.fila.deComuna === 'mail' ? '_mail' : '');
+}
+
 /** "form dice Comuna 6 / RDV dice Flores (Comuna 7)", o barrio contra barrio. */
 function _detalleDesacuerdo_(f, c, comunas) {
+  if (usarUbicacion3_()) {
+    const k = _ubic3DelPar_(f, c), uC = k.form, uF = k.fila;
+    const com = function (u) { return u.comuna == null ? 'Comuna ?' : 'Comuna ' + u.comuna + (u.subzona ? ' ' + u.subzona : ''); };
+    if (k.nivel === 'barrio') return 'form dice ' + c.barrio + ' / RDV dice ' + f.barrio;
+    if (k.nivel === 'eje') return 'form dice Eje ' + uC.eje + ' / el mail dice Eje ' + uF.eje;
+    return 'form dice ' + com(uC) + ' / RDV dice ' + (f.barrio ? f.barrio + ' (' + com(uF) + ')' : '(sin barrio; el mail dice ' + com(uF) + ')');
+  }
   const bDest = normalizeText_(f.barrio), bCand = normalizeText_(c.barrio);
   const cDest = bDest ? comunas.get(bDest) : null;
   if (bDest && bCand) return 'form dice ' + c.barrio + ' / RDV dice ' + f.barrio;
@@ -3812,7 +3844,30 @@ function puntuar_(f, c, comunas) {
   const evc = coincideEvento_(f.evento, c.nombre);
   const eventoOk = !!(evc && (evc.sub || evc.palabras));
 
-  if (bCand && bDest) {
+  /*
+   * **La ubicación en tres niveles** (UBICACION_TRES_NIVELES, 07/10): la misma regla que RDV CONJUNTO y la agenda
+   * (`compararUbicacion_`). La fila: su barrio; la comuna del barrio o, sin barrio, la de "Lugar (mail)"; el eje, sólo
+   * el del mail. El formulario: su barrio, su comuna (la dicha o la del barrio), su eje. Se compara en el nivel más
+   * preciso que tengan los dos, con el peso de ese nivel (barrio 0,25 · comuna 0,15 · eje 0,10). Con la regla
+   * apagada, las cuatro vías de abajo, como antes.
+   */
+  const ubic3 = usarUbicacion3_() ? _ubic3DelPar_(f, c) : null;
+
+  if (ubic3) {
+    if (ubic3.nivel) {
+      pesoUbic = ubic3.nivel === 'barrio' ? PESOS_MATCH.barrioIgual
+               : ubic3.nivel === 'comuna' ? PESOS_MATCH.comunaSinBarrio : PESOS_MATCH.ejeSinComuna;
+      alcanzable += pesoUbic;
+      porSubzona = ubic3.porSubzona;
+      if (ubic3.coincide) { sUbic = pesoUbic; senales.push(_senalUbic3_(ubic3)); }
+      else desacuerdo = true;
+    } else if (eventoOk && EVENTO_COMO_UBICACION) {
+      pesoUbic = PESOS_MATCH.eventoIgual;
+      alcanzable += pesoUbic;
+      sUbic = pesoUbic;
+      senales.push('evento');
+    }
+  } else if (bCand && bDest) {
     pesoUbic = PESOS_MATCH.barrioIgual;
     alcanzable += pesoUbic;
     if (bDest === bCand) { sUbic = pesoUbic; senales.push('barrio'); }
@@ -3903,10 +3958,11 @@ function puntuar_(f, c, comunas) {
    * destino. Sigue siendo **Y** en la figura, que es lo que evitó los 1.883 pares.
    */
   const distOk   = (dist !== null && dist <= VENTANA_EMPAREJAR_DIAS);
-  const cmpOk = comparaComuna_(f.barrio, cDest, c);
-  const comunaOk = !!(cmpOk && cmpOk.coincide);
-  const ejeOk    = EJE_COMO_UBICACION && !!(c.eje && c.eje.tipo === 'eje' &&
-                   barrioEnEje_(f.barrio, c.eje.eje));
+  const cmpOk = ubic3 ? null : comparaComuna_(f.barrio, cDest, c);
+  // Con los tres niveles: la ubicación coincide en cualquier nivel (el eje, el del mail).
+  const comunaOk = ubic3 ? !!(ubic3.coincide === true && ubic3.nivel !== 'eje') : !!(cmpOk && cmpOk.coincide);
+  const ejeOk    = ubic3 ? !!(ubic3.coincide === true && ubic3.nivel === 'eje')
+                 : EJE_COMO_UBICACION && !!(c.eje && c.eje.tipo === 'eje' && barrioEnEje_(f.barrio, c.eje.eje));
   const proponible = (sFig > 0) && (distOk || comunaOk || ejeOk);
 
   /*
@@ -3920,8 +3976,10 @@ function puntuar_(f, c, comunas) {
    */
   const alcanzableBase = alcanzable;      // antes de la regla: lo usan las mediciones (pasos 6 y 8)
   const sinFigura = !c.figurasNorm.length;
+  // Con los tres niveles, la ubicación que vale para un formulario sin figura es barrio o comuna: un eje contiene
+  // varias comunas (sin figura y con fecha ±1, cualquier fila de ese eje ese día lo ganaría).
   const porSinFigura = SIN_FIGURA_POR_UBICACION && sinFigura && !desacuerdo &&
-                       pesoUbic > 0 && sUbic === pesoUbic &&
+                       pesoUbic > 0 && sUbic === pesoUbic && !(ubic3 && ubic3.nivel === 'eje') &&
                        dist !== null && dist <= DIAS_SIN_FIGURA_POR_UBICACION;
   if (porSinFigura) {
     alcanzable -= PESOS_MATCH.figura;
@@ -3961,8 +4019,11 @@ function puntuar_(f, c, comunas) {
     nombraFigura: sFig > 0,
     // Para el ÚLTIMO desempate (EJE_COMO_DESEMPATE): el eje del formulario coincide con el del
     // barrio de la fila. No puntúa ni descalifica: sólo lo lee _desempatePorEvidencia_.
-    ejeCoincide: !!(c.eje && c.eje.tipo === 'eje' && barrioEnEje_(f.barrio, c.eje.eje)),
+    // Con los tres niveles, con el eje del MAIL: nunca uno deducido del barrio.
+    ejeCoincide: ubic3 ? !!(ubic3.form.eje && ubic3.fila.eje && ubic3.form.eje === ubic3.fila.eje)
+                       : !!(c.eje && c.eje.tipo === 'eje' && barrioEnEje_(f.barrio, c.eje.eje)),
     porSubzona: porSubzona,
+    ubic: ubic3,          // la comparación en tres niveles (null con la regla apagada): la leen las fichas y el paso 49
     dist: dist,
     relevante: relevante,
     proponible: proponible,
@@ -4588,7 +4649,7 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     }
     if (f) { /* desempatada por dirección */ }
     else if (lista.length > 1) {
-      const coinciden = lista.filter(function (x) { return ubicacionCoincideConjunto_(bar, x, comunas); });
+      const coinciden = lista.filter(function (x) { return _ubicConjuntoFila_(bar, x, comunas) === true; });
       if (coinciden.length !== 1) {
         r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, nums: lista.map(function (x) { return x.fila; }),
                           filas: lista.map(function (x) { return x.fila + ' (' + (x.barrio || 'sin barrio') + ')'; }) });
@@ -4599,7 +4660,7 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     } else {
       f = lista[0];
       if (!f.barrio) r.destinoSinBarrio++;
-      else if (bar && !ubicacionCoincideConjunto_(bar, f, comunas)) r.barrioDifiere.push({ f: f, bar: bar });
+      if (bar && _ubicConjuntoFila_(bar, f, comunas) === false) r.barrioDifiere.push({ f: f, bar: bar });
     }
     r.encuentran++;
     r.parDe.set(i + 1, f.fila);                       // fila de RDV CONJUNTO → fila del destino (para medir, paso 45)
@@ -4648,12 +4709,24 @@ function _letraCol_(n) {
 }
 
 /**
+ * RDV CONJUNTO contra una fila del destino: true (coincide), false (otra ubicación) o null (no se puede comparar). Con
+ * UBICACION_TRES_NIVELES, `compararUbicacion_` (la fila: barrio; comuna del barrio o del mail; eje del mail); si no, la
+ * regla de antes (`ubicacionCoincideConjunto_`; sin barrio en la fila o sin texto, null).
+ */
+function _ubicConjuntoFila_(texto, f, comunas) {
+  if (usarUbicacion3_()) return compararUbicacion_(ubicacionDeTexto_(texto), ubicacionDeFila_(f)).coincide;
+  if (!str(texto) || !f.barrio) return null;
+  return ubicacionCoincideConjunto_(texto, f, comunas);
+}
+
+/**
  * ¿La ubicación que trae RDV CONJUNTO coincide con la fila del destino? Si es una comuna ("C3", "C1N",
  * "Comuna 1 Sur"), contra la comuna del barrio del destino (y la subzona en la Comuna 1); si no, barrio
  * contra barrio, canonizados ("Villa Gral. Mitre" = "Villa General Mitre"). Sin barrio en el destino o
  * sin ubicación en RDV CONJUNTO: no coincide.
  */
 function ubicacionCoincideConjunto_(texto, f, comunas) {
+  if (usarUbicacion3_()) return _ubicConjuntoFila_(texto, f, comunas) === true;
   const t = str(texto);
   if (!t || !f.barrio) return false;
   if (/^\s*(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?\s*$/i.test(t)) {
@@ -4771,6 +4844,9 @@ function leerDestino_(nombreHoja) {
     Logger.log('Columnas de traza: las %s presentes.', COLUMNAS_TRAZA.length);
   }
 
+  // "Lugar (mail)" (07/10): lo que dice el mail de la agenda del lugar ("Comuna 6", "Comuna 1 Sur", "Eje Oeste" o un
+  // barrio). Con UBICACION_TRES_NIVELES da la comuna de una fila sin barrio y el eje (compararUbicacion_).
+  const iLugarMail = findIdxOr_(hdr, aliasColumna_('Lugar (mail)'), true);
   const filas = [];
   for (let i = 1; i < bloque.length; i++) {
     const r = bloque[i];
@@ -4780,6 +4856,7 @@ function leerDestino_(nombreHoja) {
     if (!figura && !fecha && esVacio_(r[D['Inscriptos']])) continue;  // fila fantasma
     filas.push({
       fila: i + 1, valores: r, figura: figura, barrio: barrio, fecha: fecha,
+      lugarMail: iLugarMail != null ? str(r[iLugarMail]) : '',
       horaMin: D['HORA'] != null ? _horaEnMinutos_(r[D['HORA']]) : null,
       evento: D['EVENTO'] != null ? str(r[D['EVENTO']]) : '',
       uid: T.uid != null ? str(r[T.uid]) : '',

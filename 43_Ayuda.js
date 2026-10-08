@@ -152,6 +152,8 @@ function _escribirSolapaAyuda_(ss, nombre, def, escribe, dondeTexto) {
 function _protegerAyuda_(sh) {
   const pr = sh.protect().setDescription(DESC_PROTECCION_AYUDA);
   try {
+    // 07/10: si la protección es (o quedó) de ADVERTENCIA, addEditor falla ("… isWarningOnly"): primero se le saca.
+    if (pr.isWarningOnly()) pr.setWarningOnly(false);
     const yo = Session.getEffectiveUser();
     pr.addEditor(yo);
     const otros = pr.getEditors().filter(function (e) { return e.getEmail() !== yo.getEmail(); });

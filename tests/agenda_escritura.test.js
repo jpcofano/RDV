@@ -16,7 +16,7 @@ const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
                   '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
                   'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js',
-                  'diagnostico/19_direccion_conjunto.js'];
+                  'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js'];
 const HOY = new Date(2026, 9, 6, 12, 0, 0);
 /** UNA sola clase de fecha, la misma adentro y afuera del contexto: si no, `instanceof Date` falla adentro. */
 class D extends Date {
@@ -94,7 +94,10 @@ function crearEntorno(config) {
       const h = this;
       const pr = { setDescription: function (d) { h.proteccion = d; return pr; }, getDescription: function () { return h.proteccion; },
                    setWarningOnly: function (w) { h.advertencia = w; return pr; }, setUnprotectedRanges: function (r) { h.libres = r.length; return pr; },
-                   addEditor: function () { return pr; }, getEditors: function () { return []; }, removeEditors: function () { return pr; },
+                   isWarningOnly: function () { return !!h.advertencia; },
+                   // como Google (07/10): una protección de advertencia no acepta editores
+                   addEditor: function () { if (h.advertencia) throw new Error('Exception: isWarningOnly'); return pr; },
+                   getEditors: function () { return []; }, removeEditors: function () { return pr; },
                    canDomainEdit: function () { return false; }, setDomainEdit: function () { return pr; } };
       return pr;
     }
@@ -597,8 +600,10 @@ ok(dup.validaciones === 2 && dup.proteccion === E.run('DESC_PROTECCION_DUPLICADO
    'desplegable en las 2, protección real con ELEGIR/COMENTARIO libres');
 ok(/fecha \(1 día\)/.test(dup.v.map(function (x) { return x.join('|'); }).join('\n')) && /figura \(Ezequiel Sabor\)/.test(dup.v.map(function (x) { return x.join('|'); }).join('\n')),
    'la diferencia en palabras: "fecha (1 día)" y "figura (Ezequiel Sabor)"');
+dup.advertencia = true;     // 07/10: una protección que había quedado de ADVERTENCIA (bug "addEditor … isWarningOnly")
 r = correr(E, false, [V1]);
 ok(r.crear === 0 && r.duplicadosAntes === 2 && E.D.v.length === nFil + 3, 'sin elegir: sigue preguntando, no crea');
+ok(dup.advertencia === false, 'la protección que había quedado de advertencia vuelve a ser real (se le saca antes de addEditor)');
 const lMuz = dup.v.findIndex(function (x) { return /Clara Muzzio/.test(x.join('|')); });
 const lSeg = dup.v.findIndex(function (x, i) { return i > 0 && i !== lMuz; });
 dup.v[lMuz][0] = 'Es la misma: vincular'; dup.v[lMuz][1] = 'la cargamos con la fecha mal';
@@ -891,6 +896,51 @@ const pz = E.run('(function () { const p = planAgenda_(leerDestino_(), agendaDes
                  'const m = armarCopiaAgenda_(p, new Date()); const a = partirCopiaAgenda_(m, new Date(2026, 9, 6, 12)), b = partirCopiaAgenda_(m, new Date(2026, 9, 12, 12)); ' +
                  'return { hoyAb: a.abierta.length - 1, hoyCe: a.cerrada.length - 1, lunAb: b.abierta.length - 1, lunCe: b.cerrada.length - 1 }; })()');
 ok(pz.lunAb === 0 && pz.lunCe === pz.hoyAb + pz.hoyCe, 'el lunes 12/10, la semana del 05/10 ya está en "Agenda cerrada" (' + JSON.stringify(pz) + ')');
+
+console.log('[30] la ubicación en tres niveles en la agenda (paso 49b) y en la figura de Seguridad (paso 49, c)');
+E = montar(true, [function (r, C) {     // el equipo: Ezequiel Sabor el 08/10 en Núñez (Comuna 13)
+  r[C('Figura')] = 'Ezequiel Sabor'; r[C('Barrio')] = 'Núñez'; r[C('FECHA')] = new D(2026, 9, 8, 12); r[C('HORA')] = '17:00';
+  r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+}, function (r, C) {                     // una Seguridad en tu Barrio que creó la agenda, sin barrio: el mail dice "Comuna 1 Sur"
+  r[C('Figura')] = ''; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 5, 12); r[C('HORA')] = '18:00';
+  r[C('Dirección')] = 'Defensa 1000'; r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+  r[C('agenda_uid')] = 'c-seg1'; r[C('Lugar (mail)')] = 'Comuna 1 Sur'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 1 Sur';
+}]);
+E.ssD.hojas['RDV CONJUNTO'] = new E.Hoja('RDV CONJUNTO', [['Figura', 'Barrio', 'FECHA', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron'],
+  ['Tapia Gabino', 'C1N', new D(2026, 9, 5, 12), 40, '', ''], ['Muzzio Clara', 'C1S', new D(2026, 9, 5, 12), 55, '', '']]);
+// Tapia el 08/10 en BELGRANO (el mail dice el barrio): la fila de Sabor del mismo día es de Núñez (la misma Comuna 13)
+const MT = mail(2, 9, [['*Jueves 08/10*', 'Evento: Encuentro con Vecinos Gabino Tapia, Belgrano', 'Hora: 17:00h', 'Lugar: A CONFIRMAR']]);
+E.ctx.__mails = [MT]; E.ctx.__geo = geocodificador(E);
+antes = foto(E.D);
+const m49b = E.run('medirUbicacionAgenda({ mails: __mails, geocodificar: __geo })');
+const l49b = E.logs.join('\n');
+ok(m49b && !m49b.error && m49b.duplicados.soloAntes === 1 && m49b.duplicados.soloNueva === 0 &&
+   /SÓLO ANTES \| antes\|gabino tapia\|20261008.*\| \d+ \(figura \(Ezequiel Sabor\)\)/.test(l49b),
+   'paso 49b: con la regla de antes, Tapia (Belgrano) se pregunta contra Sabor (Núñez, misma comuna); con la nueva, no (otro barrio)');
+ok(m49b.acciones.soloNueva === 2 && /SÓLO NUEVA \| crear\|nueva\|gabino tapia/.test(l49b) && /SÓLO NUEVA \| figura\|\d+\|.*Clara Muzzio/.test(l49b) &&
+   m49b.acciones.soloAntes === 0 && m49b.figuraACompletar.soloAntes === 1,
+   'y con la nueva se crea la de Tapia, y la Seguridad de la Comuna 1 Sur tiene figura (la subzona separa C1N de C1S) — ' + JSON.stringify(m49b.acciones));
+ok(foto(E.D) === antes && !E.ssD.hojas['AGENDA_DUPLICADOS'], 'el paso 49b no escribió nada');
+const seg = E.run('_medirSeguridad_diag21(leerDestino_())');
+ok(seg.todas === 1 && seg.resuelve.length === 1 && seg.cambia.length === 0 && seg.pierde.length === 0 &&
+   /RESUELVE \| fila \d+ .*ambigua: .*nueva: Clara Muzzio \(comuna; RDV CONJUNTO fila 3\)/.test(E.logs.join('\n')),
+   'paso 49 (c): la Seguridad de la Comuna 1 Sur → Clara Muzzio (C1S), antes ambigua con Tapia (C1N)');
+r = correr(E, true, [MT]);
+ok(r.figura === 0 && r.duplicadosAntes === 1, 'y la agenda, con UBICACION_TRES_NIVELES = false, sigue como antes (sin figura; la pregunta)');
+E = montar(true, [function (r, C) {
+  r[C('Figura')] = 'Ezequiel Sabor'; r[C('Barrio')] = 'Núñez'; r[C('FECHA')] = new D(2026, 9, 8, 12); r[C('HORA')] = '17:00';
+  r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+}, function (r, C) {
+  r[C('Figura')] = ''; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 5, 12); r[C('HORA')] = '18:00';
+  r[C('Dirección')] = 'Defensa 1000'; r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+  r[C('agenda_uid')] = 'c-seg1'; r[C('Lugar (mail)')] = 'Comuna 1 Sur'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 1 Sur';
+}], { UBICACION_TRES_NIVELES: 'true' });
+E.ssD.hojas['RDV CONJUNTO'] = new E.Hoja('RDV CONJUNTO', [['Figura', 'Barrio', 'FECHA', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron'],
+  ['Tapia Gabino', 'C1N', new D(2026, 9, 5, 12), 40, '', ''], ['Muzzio Clara', 'C1S', new D(2026, 9, 5, 12), 55, '', '']]);
+const iSeg3 = E.D.v.findIndex(function (x) { return x[E.C('agenda_uid')] === 'c-seg1'; });
+r = correr(E, false, [MT]);
+ok(r.figura === 1 && celda(E, iSeg3, 'Figura') === 'Clara Muzzio' && r.duplicadosAntes === 0 && fila(E, 'Gabino Tapia', 8) > 0,
+   'con UBICACION_TRES_NIVELES = true: la Seguridad → Clara Muzzio, y Tapia 08/10 se crea (Belgrano no es Núñez)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

@@ -32,7 +32,8 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
-                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js'];
+                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
+                  'diagnostico/21_ubicacion.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -114,9 +115,13 @@ function crearEntorno(opts) {
     protect() {
       const h = this, pr = { tipo: 'SHEET', desc: '', warning: false, libres: [], editores: ['equipo@x', 'yo@x'], dominio: true,
         setDescription: function (d) { pr.desc = d; return pr; }, getDescription: function () { return pr.desc; },
-        setWarningOnly: function (w) { pr.warning = w; return pr; },
+        setWarningOnly: function (w) { pr.warning = w; return pr; }, isWarningOnly: function () { return pr.warning; },
         setUnprotectedRanges: function (l) { pr.libres = l.map(function (r) { return [r.r, r.c, r.nr, r.nc]; }); return pr; },
-        addEditor: function (u) { const e = u.getEmail ? u.getEmail() : u; if (pr.editores.indexOf(e) < 0) pr.editores.push(e); return pr; },
+        // como Google (07/10): una protección de advertencia no acepta editores
+        addEditor: function (u) {
+          if (pr.warning) throw new Error('Exception: no se pueden agregar editores: isWarningOnly');
+          const e = u.getEmail ? u.getEmail() : u; if (pr.editores.indexOf(e) < 0) pr.editores.push(e); return pr;
+        },
         removeEditors: function (l) { const q = l.map(function (u) { return u.getEmail(); }); pr.editores = pr.editores.filter(function (e) { return q.indexOf(e) < 0; }); return pr; },
         getEditors: function () { return pr.editores.map(function (e) { return { getEmail: function () { return e; } }; }); },
         canDomainEdit: function () { return pr.dominio; }, setDomainEdit: function (d) { pr.dominio = d; return pr; },
@@ -188,6 +193,28 @@ function crearEntorno(opts) {
     }
     getFormula() { return this.getFormulas()[0][0]; }
     getFormulaR1C1() { return this.getFormulas()[0][0]; }
+    // R1C1 (07/10, paso 50): las referencias A1 relativas a la celda, como Sheets (agrupa la misma fórmula copiada hacia abajo).
+    getFormulasR1C1() {
+      const r0 = this.r, c0 = this.c;
+      const num = function (l) { let n = 0; for (let k = 0; k < l.length; k++) n = n * 26 + l.charCodeAt(k) - 64; return n; };
+      return this.getFormulas().map(function (fila, i) {
+        return fila.map(function (f, j) {
+          return f ? f.replace(/\$?([A-Z]{1,2})\$?(\d+)/g, function (m, col, row) {
+            return 'R[' + (Number(row) - (r0 + i)) + ']C[' + (num(col) - (c0 + j)) + ']';
+          }) : '';
+        });
+      });
+    }
+    // Lo que se ve (07/10, paso 50): las fechas como dd/MM/yyyy; lo demás, como texto.
+    getDisplayValues() {
+      const p = function (n) { return ('0' + n).slice(-2); };
+      return this.getValues().map(function (r) {
+        return r.map(function (x) {
+          if (x instanceof Date) return p(x.getDate()) + '/' + p(x.getMonth() + 1) + '/' + x.getFullYear();
+          return x === null || x === undefined ? '' : String(x);
+        });
+      });
+    }
     setFormula(f) { escribir(1); this.h.f = this.h.f || {}; this.h.f[this.r + ',' + this.c] = f; }
     setFormulaR1C1(f) { escribir(this._celdas()); this.h.f = this.h.f || {};
       for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.h.f[(this.r + i) + ',' + (this.c + j)] = f; }
@@ -2019,6 +2046,13 @@ function escenarioFichasEnDestino() {
   const r4 = E.ejecutar('upsertDestino');
   const pr4 = (m.ssD.hojas['REVISAR_MATCH'].protecciones || []).filter(function (x) { return x.tipo === 'SHEET'; })[0];
   ok(!r4.error && pr4.warning && /quedó como ADVERTENCIA/.test(r4.logs.join('\n')), 'sin permisos: advertencia y aviso en el log');
+  // 07/10 (bug "addEditor … isWarningOnly"): con permisos otra vez, la que quedó de advertencia vuelve a ser REAL.
+  vm.runInContext('Session = { getEffectiveUser: function () { return { getEmail: function () { return "yo@x"; } }; } };', E.ctx);
+  const r5 = E.ejecutar('upsertDestino');
+  const pr5 = (m.ssD.hojas['REVISAR_MATCH'].protecciones || []).filter(function (x) { return x.tipo === 'SHEET'; });
+  ok(!r5.error && pr5.length === 1 && !pr5[0].warning && pr5[0].editores.join() === 'yo@x' &&
+     !/quedó como ADVERTENCIA/.test(r5.logs.join('\n')),
+     'la protección que quedó de advertencia vuelve a ser REAL (se le saca la advertencia antes de addEditor)');
 }
 
 function escenarioFormatoRevisar() {
@@ -2143,6 +2177,97 @@ function escenarioFormatoRevisar() {
      'aviso y encabezado: PENDIENTES (0), RESUELTAS (2)');
 }
 
+function escenarioUbicacionTresNiveles() {
+  console.log('\n[27] la ubicación en tres niveles (07/10): la medición (paso 49), la regla prendida, y la columna ID (paso 50)');
+  // Sobre los datos sintéticos, con "Lugar (mail)" al final del destino:
+  //  a) Zoe Arrieta 20/09, SIN barrio, el mail dice "Comuna 7"; dos formularios suyos ese día ("Comuna 7" y "Comuna 6"),
+  //     iguales en todo lo demás → con la regla de antes, margen chico (revisión); con los tres niveles, el de la Comuna 7;
+  //  b) dos filas de Yago Benítez el 21/09 (Palermo, y una sin barrio cuyo mail dice "Comuna 13") y RDV CONJUNTO dice
+  //     "Belgrano" → antes, sin desempate (no se escribe); con los tres niveles, la de la Comuna 13.
+  const casos = function (E, datos) {
+    const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+    datos.dest[0].push('Lugar (mail)');
+    for (let i = 1; i < datos.dest.length; i++) datos.dest[i].push('');
+    const nueva = function (fig, barrio, fecha, lugar) {
+      const r = HDR_DESTINO.map(function () { return ''; });
+      r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = fecha; r[col('EVENTO')] = 'Encuentro con Vecinos';
+      r[col('STATUS REUNIÓN')] = 'Realizada';
+      r.push(lugar);
+      datos.dest.push(r);
+    };
+    const d20 = new D(2026, 8, 20, 12, 0, 0), d21 = new D(2026, 8, 21, 12, 0, 0), fin = new D(2026, 8, 18, 12, 0, 0);
+    nueva('Zoe Arrieta', '', d20, 'Comuna 7');
+    const formB = function (nombre) { return [nombre, fin, 100, 80, 36, 44, 8, 24, 24, 16, 8, 10, 10, 0, 10, 10, 10, 0, 0, '']; };
+    datos.b.push(formB('ZOE ARRIETA - Encuentro con vecinos - Comuna 7 - 20/9'));
+    datos.b.push(formB('ZOE ARRIETA - Encuentro con vecinos - Comuna 6 - 20/9'));
+    nueva('Yago Benítez', 'Palermo', d21, '');
+    nueva('Yago Benítez', '', d21, 'Comuna 13');
+    datos.conjunto.push(['Benítez Yago', 'Belgrano', d21, '18:00', '', 45, 3, 2, 'Realizada']);
+  };
+  const filaDe = function (hoja, fig, barrio) {
+    return hoja.v.findIndex(function (x, i) { return i > 0 && x[colD('Figura')] === fig && x[colD('Barrio')] === barrio; });
+  };
+
+  // --- con la regla de antes (UBICACION_TRES_NIVELES = false): la medición, y el upsert como siempre ---
+  const E1 = crearEntorno();
+  const m1 = montar(E1, 300, true, casos);
+  const r1 = E1.ejecutar('medirUbicacionTresNiveles');
+  const x = r1.resultado || {}, fo = x.formularios || {}, as = x.asistentes || {};
+  ok(!r1.error, 'paso 49 sin error' + (r1.error ? ': ' + r1.error.stack : ''));
+  ok(fo.cambia === 0 && fo.pierde === 0 && fo.escritasDistintas === 0, 'formularios: CAMBIA 0, PIERDE 0, escritas que cambiarían 0 — ' + JSON.stringify(fo));
+  ok(fo.resuelve === 1 && r1.logs.some(function (l) { return /RESUELVE \| fila \d+ \| Zoe Arrieta .*Comuna 7 - 20\/9.*comuna_mail/.test(l); }),
+     'RESUELVE 1: Zoe Arrieta, con el formulario de la Comuna 7 (por la comuna del mail)');
+  ok(as.cambia === 0 && as.pierde === 0 && as.resuelve === 1 &&
+     r1.logs.some(function (l) { return /RESUELVE \| RDV CONJUNTO \d+ \| Benítez Yago \| Belgrano/.test(l); }),
+     'asistentes: CAMBIA 0, PIERDE 0, RESUELVE 1 (Yago Benítez → la fila sin barrio de la Comuna 13) — ' + JSON.stringify(as));
+  const u1 = E1.ejecutar('upsertDestino');
+  const h1 = m1.ssD.hojas['RVD JM-CM - ES'];
+  ok(!u1.error && !h1.v[filaDe(h1, 'Zoe Arrieta', '')][colD('form_origen')] && h1.v[filaDe(h1, 'Yago Benítez', '')][colD('Asistentes')] === '',
+     'con la regla de antes, el upsert no escribe ninguna de las dos (revisión; sin desempate)');
+
+  // --- con la regla prendida: el upsert escribe las dos ---
+  const E2 = crearEntorno({ config: { UBICACION_TRES_NIVELES: 'true' } });
+  const m2 = montar(E2, 300, true, casos);
+  const u2 = E2.ejecutar('upsertDestino');
+  const h2 = m2.ssD.hojas['RVD JM-CM - ES'], iZ = filaDe(h2, 'Zoe Arrieta', ''), iY = filaDe(h2, 'Yago Benítez', '');
+  ok(!u2.error && h2.v[iZ][colD('form_origen')] === 'ZOE ARRIETA - Encuentro con vecinos - Comuna 7 - 20/9' &&
+     /comuna_mail/.test(h2.v[iZ][colD('form_nivel')]) && h2.v[iZ][colD('Inscriptos')] === 100,
+     'con UBICACION_TRES_NIVELES: Zoe Arrieta se escribe con el formulario de la Comuna 7 (' + (h2.v[iZ] || [])[colD('form_nivel')] + ')');
+  ok(h2.v[iY][colD('Asistentes')] === 45 && h2.v[filaDe(h2, 'Yago Benítez', 'Palermo')][colD('Asistentes')] === '',
+     'y los asistentes de Yago Benítez van a la fila de la Comuna 13 (45), no a la de Palermo');
+  const fo2 = (E2.ejecutar('medirUbicacionTresNiveles').resultado || {}).formularios || {};
+  ok(fo2.cambia === 0 && fo2.escritasDistintas === 0, 'y la medición, con las filas ya escritas: CAMBIA 0, escritas que cambiarían 0');
+
+  // --- paso 50: la columna ID ---
+  const E3 = crearEntorno();
+  const m3 = montar(E3, 120, true);
+  const hoja = m3.ssD.hojas['RVD JM-CM - ES'], iId = colD('ID');
+  const pad2 = function (n) { return ('0' + n).slice(-2); };
+  const bueno = function (r) { const d = r[colD('FECHA')]; return r[colD('Figura')] + ' | ' + r[colD('Barrio')] + ' | ' + pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear(); };
+  const backup = new E3.Hoja('RVD JM-CM - ES', hoja.v.map(function (r) { return r.slice(); }));
+  backup.f = {};
+  for (let i = 1; i <= 100; i++) {
+    hoja.v[i][iId] = bueno(hoja.v[i]);
+    backup.v[i][iId] = bueno(backup.v[i]);
+    backup.f[(i + 1) + ',' + (iId + 1)] = '=A' + (i + 1) + '&" | "&B' + (i + 1) + '&" | "&TEXT(E' + (i + 1) + ';"dd/mm/yyyy")';
+  }
+  for (let i = 101; i <= 104; i++) {     // 4 rotas: la fecha como la escribe JavaScript
+    hoja.v[i][iId] = hoja.v[i][colD('Figura')] + ' | ' + hoja.v[i][colD('Barrio')] + ' | ' + String(hoja.v[i][colD('FECHA')]);
+  }
+  E3.planilla(E3.cfg('RDV_SS_BACKUP_BASE')).hojas['RVD JM-CM - ES'] = backup;
+  const r3 = E3.ejecutar('inspeccionarColumnaId');
+  const z = r3.resultado || {};
+  ok(!r3.error && z.backup && z.backup.conFormula === 100 && z.hoy.rotos === 4 && z.hoy.conFormula === 0,
+     'paso 50: la fórmula en el backup (100 celdas), 4 rotas hoy, ninguna fórmula hoy — ' + JSON.stringify(z));
+  ok(JSON.stringify(z.plantilla) === JSON.stringify(['Figura', 'Barrio', 'FECHA']) &&
+     r3.logs.some(function (l) { return /FÓRMULA \(en 100 celdas; la primera, Z2\): =A2&" \| "&B2/.test(l); }),
+     'la plantilla deducida: Figura | Barrio | FECHA; el log muestra la fórmula del backup');
+  const esperado = bueno(hoja.v[101]);
+  ok(r3.logs.some(function (l) { return l.indexOf('después: ' + esperado) >= 0 && /antes: .*GMT/.test(l); }),
+     '3 ejemplos antes / después: "' + esperado + '"');
+  ok(hoja.v.slice(101, 105).every(function (r) { return /GMT/.test(r[iId]); }), 'y no escribió nada (las rotas siguen rotas)');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -2180,7 +2305,8 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--derivadas') >= 0 || process.argv.indexOf('--oradores') >= 0 ||
     process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
-    process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
+    process.argv.indexOf('--ubicacion') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2195,6 +2321,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--agendaupsert') >= 0) escenarioAgendaEnUpsert();
   else if (process.argv.indexOf('--columnasb') >= 0) escenarioColumnasNuevasB();
   else if (process.argv.indexOf('--paso47') >= 0) escenarioPaso47();
+  else if (process.argv.indexOf('--ubicacion') >= 0) escenarioUbicacionTresNiveles();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2235,6 +2362,7 @@ escenarioFormatoRevisar();
 escenarioFilaSinFigura();
 escenarioAgendaEnUpsert();
 escenarioColumnasNuevasB();
+escenarioUbicacionTresNiveles();
 escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.

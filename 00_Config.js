@@ -306,6 +306,25 @@ const PESOS_MATCH = {
 const EJE_COMO_UBICACION = false;
 
 /**
+ * **La UBICACIÓN EN TRES NIVELES** (07/10, decisión del usuario): una sola regla para los formularios, RDV CONJUNTO
+ * y la agenda (`compararUbicacion_`, 02_Parsing.js). Cada fila del destino tiene:
+ *
+ *   barrio  el de la columna Barrio (lo cargó el equipo o salió de la dirección);
+ *   comuna  la del barrio (Comunas) o, si la fila no tiene barrio, la de "Lugar (mail)";
+ *   eje     el de "Lugar (mail)". **Nunca uno deducido del barrio** (medición del 30/09: los temáticos de un eje se
+ *           hacen en barrios de otro eje; EJE_COMO_UBICACION sigue apagado para eso).
+ *
+ * Cada fuente (formulario, RDV CONJUNTO, reunión del mail) trae barrio, comuna ("C2", "Comuna 2", "C1S") o eje, y se
+ * compara en el nivel más preciso que tengan LAS DOS: barrio con barrio; si no, comuna con comuna (la Comuna 1 con su
+ * subzona Norte/Sur cuando las dos la tienen); si no, eje con el eje DEL MAIL. Ausencia no puntúa; desacuerdo
+ * descalifica, como siempre. Con `false`, cada uno compara como antes del 07/10.
+ *
+ * Se prende después de medir: paso 49 (formularios, asistentes y oradores, figura de Seguridad) y 49b (la agenda):
+ * CAMBIA tiene que dar 0 en los cruces que hoy están bien.
+ */
+const UBICACION_TRES_NIVELES = false;
+
+/**
  * **Formularios sin figura, por ubicación** (la variante D-C del paso 8, implementada).
  *
  * Desde 09/2026 hay formularios que no nombran a nadie (`VÍNCULO CIUDADANO - Encuentro con

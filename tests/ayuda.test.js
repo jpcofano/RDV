@@ -38,7 +38,8 @@ function crearEntorno() {
       const h = this;
       const pr = { desc: '', aviso: null, editores: [{ getEmail: function () { return 'otro@x'; } }],
         setDescription: function (d) { pr.desc = d; return pr; }, getDescription: function () { return pr.desc; },
-        addEditor: function (u) { pr.editores.push(u); return pr; }, getEditors: function () { return pr.editores.slice(); },
+        addEditor: function (u) { if (pr.aviso) throw new Error('Exception: isWarningOnly'); pr.editores.push(u); return pr; },
+        getEditors: function () { return pr.editores.slice(); }, isWarningOnly: function () { return !!pr.aviso; },
         removeEditors: function (l) { pr.editores = pr.editores.filter(function (e) { return l.indexOf(e) < 0; }); return pr; },
         canDomainEdit: function () { return false; }, setDomainEdit: function () { return pr; },
         setWarningOnly: function (w) { pr.aviso = w; return pr; },
@@ -158,6 +159,16 @@ E.run('escribirSolapasAyuda(true)');
 ok(E.planilla(idDest).getSheets().filter(function (h) { return h.nombre === 'GUÍA'; }).length === 1 &&
    E.planilla(idDest).getSheetByName('GUÍA').protecciones.length === 1 && E.planilla(idDest).getSheets()[0].nombre === 'GUÍA',
    'una sola GUÍA, una sola protección, sigue primera');
+
+console.log('[5] una protección que quedó de ADVERTENCIA (07/10, bug "addEditor … isWarningOnly"): vuelve a ser real');
+const gg = E.planilla(idDest).getSheetByName('GUÍA');
+gg.protecciones.forEach(function (p) { p.aviso = true; p.desc = 'otra'; });   // de advertencia y con otra descripción
+const protOrig = gg.protect;
+gg.protect = function () { return gg.protecciones[0] || protOrig.call(gg); };   // como Google: devuelve la que ya tiene
+E.run('escribirSolapasAyuda(true)');
+ok(gg.protecciones.length === 1 && gg.protecciones[0].aviso === false &&
+   gg.protecciones[0].editores.every(function (e) { return e.getEmail() === 'yo@x'; }),
+   'la que había quedado de advertencia pasa a real (sólo quien corre el script)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
