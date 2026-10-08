@@ -2209,7 +2209,7 @@ function escenarioUbicacionTresNiveles() {
   };
 
   // --- con la regla de antes (UBICACION_TRES_NIVELES = false): la medición, y el upsert como siempre ---
-  const E1 = crearEntorno();
+  const E1 = crearEntorno({ config: { UBICACION_TRES_NIVELES: 'false' } });
   const m1 = montar(E1, 300, true, casos);
   const r1 = E1.ejecutar('medirUbicacionTresNiveles');
   const x = r1.resultado || {}, fo = x.formularios || {}, as = x.asistentes || {};
@@ -2268,6 +2268,76 @@ function escenarioUbicacionTresNiveles() {
   ok(hoja.v.slice(101, 105).every(function (r) { return /GMT/.test(r[iId]); }), 'y no escribió nada (las rotas siguen rotas)');
 }
 
+function escenarioTanda0710() {
+  console.log('\n[28] la tanda del 07/10 en el upsert (CAMBIOS_0710_ACTIVOS): futuras a 7 días, pendiente_barrio sin ubicación, conjuntas');
+  // "hoy" es el 02/10/2026. Filas nuevas al final, con "Lugar (mail)" y "Conjunta con" (las columnas de la agenda).
+  const casos = function (E, datos) {
+    const D = E.Date, col = function (n) { return HDR_DESTINO.indexOf(n); };
+    datos.dest[0].push('Lugar (mail)', 'Conjunta con');
+    for (let i = 1; i < datos.dest.length; i++) datos.dest[i].push('', '');
+    const nueva = function (fig, barrio, fecha, lugar, conjunta) {
+      const r = HDR_DESTINO.map(function () { return ''; });
+      r[col('Figura')] = fig; r[col('Barrio')] = barrio; r[col('FECHA')] = fecha; r[col('EVENTO')] = 'Encuentro con Vecinos';
+      r[col('STATUS REUNIÓN')] = 'en agenda';
+      r.push(lugar || '', conjunta || '');
+      datos.dest.push(r);
+    };
+    const d = function (dia, mes) { return new D(2026, mes - 1, dia, 12, 0, 0); };
+    const formB = function (nombre, fin, ins) {
+      const id = Math.round(ins * 0.8), e = Math.floor(id / 5);
+      return [nombre, fin, ins, id, Math.floor(id / 2), id - Math.floor(id / 2), e, e, e, e, id - 4 * e, 10, 10, 0, 10, 10, 10, 0, 0, ''];
+    };
+    nueva('Ana Pereyra', 'Palermo', d(1, 10), '', 'Bruno Salvatierra / Carla Montenegro');            // a) conjunta
+    datos.b.push(formB('PEREYRA-SALVATIERRA-MONTENEGRO - Comuna 14 - 1/10', d(30, 9), 60));
+    datos.conjunto.push(['Pereyra Ana - Salvatierra Bruno - Montenegro Carla', 'Palermo', d(1, 10), '18:00', '', 77, 3, 2, 'en agenda']);
+    nueva('Diego Ferrandi', 'Flores', d(1, 10), '', 'Elena Quintero / Fabián Rossetti');              // b) el formulario es un subconjunto
+    datos.b.push(formB('FERRANDI-QUINTERO - Comuna 7 - 1/10', d(30, 9), 40));
+    nueva('Gisela Arambarri', 'Belgrano', d(5, 10));                                                  // d) futura a 3 días, con formulario
+    datos.b.push(formB('GISELA ARAMBARRI - Encuentro con vecinos - Comuna 13 - 5/10', d(1, 10), 90));
+    nueva('Hugo Belmonte', 'Núñez', d(6, 10));                                                        // e) futura sin formulario
+    nueva('Inés Cardozo', 'Caballito', d(12, 10));                                                    // f) futura a 10 días
+    datos.b.push(formB('INÉS CARDOZO - Encuentro con vecinos - Comuna 6 - 12/10', d(1, 10), 30));
+    nueva('Julián Etcheverry', '', d(2, 10), 'Comuna 12');                                            // g) hoy, sin barrio, comuna del mail
+    datos.b.push(formB('JULIÁN ETCHEVERRY - Encuentro con vecinos - Comuna 12 - 2/10', d(30, 9), 70));
+    nueva('Karina Lozada', '', d(2, 10));                                                             // h) hoy, sin ninguna ubicación
+    datos.b.push(formB('KARINA LOZADA - Encuentro con vecinos - 2/10', d(30, 9), 50));
+  };
+  // las filas nuevas están al final (las sintéticas repiten las mismas figuras): se buscan desde el final
+  const fila = function (hoja, fig) { for (let i = hoja.v.length - 1; i > 0; i--) if (hoja.v[i][colD('Figura')] === fig) return i; return -1; };
+  const celda = function (hoja, fig, n) { return hoja.v[fila(hoja, fig)][colD(n)]; };
+
+  const Eon = crearEntorno({ config: { CAMBIOS_0710_ACTIVOS: 'true' } });
+  const mon = montar(Eon, 300, true, casos);
+  const ron = Eon.ejecutar('upsertDestino');
+  const h = mon.ssD.hojas['RVD JM-CM - ES'];
+  ok(!ron.error, 'upsert con la tanda prendida, sin error' + (ron.error ? ': ' + ron.error.stack : ''));
+  ok(celda(h, 'Ana Pereyra', 'form_origen') === 'PEREYRA-SALVATIERRA-MONTENEGRO - Comuna 14 - 1/10' &&
+     /\+conjunta/.test(celda(h, 'Ana Pereyra', 'form_nivel')) && celda(h, 'Ana Pereyra', 'Inscriptos') === 60,
+     'a) la conjunta: el formulario con exactamente sus tres figuras se escribe solo (' + celda(h, 'Ana Pereyra', 'form_nivel') + ')');
+  ok(celda(h, 'Ana Pereyra', 'Asistentes') === 77 && celda(h, 'Ana Pereyra', 'STATUS REUNIÓN') === 'Realizada',
+     'a) y la fila de RDV CONJUNTO con las tres figuras va a la conjunta (77; STATUS → Realizada)');
+  ok(celda(h, 'Diego Ferrandi', 'form_origen') === '', 'b) un formulario con sólo dos de las tres figuras: revisión, no se escribe');
+  ok(celda(h, 'Gisela Arambarri', 'Inscriptos') === 90 && celda(h, 'Gisela Arambarri', 'STATUS REUNIÓN') === 'en agenda',
+     'd) la futura a 3 días se cruza con su formulario (90) y STATUS sigue "en agenda"');
+  const sinMatch = JSON.stringify((Eon.planilla(Eon.cfg('RDV_SS_INTERMEDIA')).hojas[Eon.cfg('RDV_HOJA_SIN_MATCH')] || { v: [] }).v);
+  ok(celda(h, 'Hugo Belmonte', 'form_origen') === '' && sinMatch.indexOf('Hugo Belmonte') < 0,
+     'e) la futura sin formulario todavía: nada, y no va a SIN_MATCH');
+  ok(celda(h, 'Inés Cardozo', 'form_origen') === '' && celda(h, 'Inés Cardozo', 'Inscriptos') === '', 'f) la de dentro de 10 días: nada');
+  ok(celda(h, 'Julián Etcheverry', 'Inscriptos') === 70, 'g) hoy, sin barrio pero con la comuna del mail: se evalúa directo (70)');
+  ok(celda(h, 'Karina Lozada', 'form_origen') === '' && ron.logs.some(function (l) { return /pendiente/.test(l); }),
+     'h) hoy, sin ninguna ubicación: sigue pendiente de barrio');
+  ok(ron.logs.some(function (l) { return /futuras: \d+ \(de los próximos 7 días se cruzaron \d+; sin formulario todavía: \d+\)/.test(l); }),
+     'el log dice cuántas futuras se cruzaron');
+
+  const Eoff = crearEntorno();
+  const moff = montar(Eoff, 300, true, casos);
+  const roff = Eoff.ejecutar('upsertDestino');
+  const h0 = moff.ssD.hojas['RVD JM-CM - ES'];
+  ok(!roff.error && celda(h0, 'Ana Pereyra', 'form_origen') === '' && celda(h0, 'Ana Pereyra', 'Asistentes') === '' &&
+     celda(h0, 'Gisela Arambarri', 'Inscriptos') === '' && celda(h0, 'Julián Etcheverry', 'Inscriptos') === '',
+     'con la tanda apagada (como está en 00_Config.js hasta prenderla): nada de esto se escribe');
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -2306,7 +2376,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--fichasdestino') >= 0 || process.argv.indexOf('--formato') >= 0 ||
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
     process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
-    process.argv.indexOf('--ubicacion') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2322,6 +2392,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--columnasb') >= 0) escenarioColumnasNuevasB();
   else if (process.argv.indexOf('--paso47') >= 0) escenarioPaso47();
   else if (process.argv.indexOf('--ubicacion') >= 0) escenarioUbicacionTresNiveles();
+  else if (process.argv.indexOf('--tanda') >= 0) escenarioTanda0710();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2363,6 +2434,7 @@ escenarioFilaSinFigura();
 escenarioAgendaEnUpsert();
 escenarioColumnasNuevasB();
 escenarioUbicacionTresNiveles();
+escenarioTanda0710();
 escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.

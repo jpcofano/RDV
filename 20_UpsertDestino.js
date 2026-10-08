@@ -1703,6 +1703,16 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
 }
 
 /**
+ * ¿La corrida escribe en esta fila? No en una reunión futura más allá de los DIAS_FUTUROS_CRUCE días que se cruzan (la
+ * tanda del 07/10), ni en una cerrada (DIAS_ACTIVOS), salvo el paso 22 (`historial`). La usan la escritura
+ * (aplicarDecisiones_) y el paso 51: no pueden divergir.
+ */
+function filaQueSeEscribe_(f, historial) {
+  if (f.fecha && ymd_(f.fecha) > ymd_(finActivas_())) return false;
+  return !!historial || esFilaActiva_(f.fecha);
+}
+
+/**
  * Una línea por corrida en REGISTRO_UPSERT (intermedia): hora, modo, cuántas filas escribió (o
  * escribiría, en seco), celdas y uids escritos, pendientes de barrio, a revisar y sin match
  * [ventana | total]. Se acumula; no se limpia. Si falla, la corrida sigue: sólo lo loguea.
@@ -1784,7 +1794,9 @@ function calcularPlan_(enSeco, entradas, opciones) {
                 sinMatch: contador_(), futuras: contador_(), pendienteBarrio: contador_(), ningunoPersona: contador_(),
                 enVentana: 0, escritas: 0, uidsEstampados: 0,
                 // DIAS_ACTIVOS (03/10): filas activas, cerradas, y cerradas sin RDV_UID ("sin resolver").
-                activas: 0, cerradas: 0, cerradasSinResolver: 0, historial: historial };
+                activas: 0, cerradas: 0, cerradasSinResolver: 0, historial: historial,
+                // DIAS_FUTUROS_CRUCE (07/10): futuras que se cruzaron, y las que todavía no tienen formulario.
+                futurasCruzadas: 0, futurasSinFormulario: 0 };
   const motivos = {};
 
   /*
@@ -1869,8 +1881,9 @@ function calcularPlan_(enSeco, entradas, opciones) {
     const ev = enVentanaAnalisis_(f.fecha);
     if (ev) res.enVentana++;
 
-    // Reuniones futuras: no son hueco, todavía no corresponde completarlas.
-    if (f.fecha && f.fecha > _hoy_()) {
+    // Reuniones futuras: no son hueco, todavía no corresponde completarlas — salvo las de los próximos
+    // DIAS_FUTUROS_CRUCE días (07/10, la tanda del 07/10): sus formularios llegan cerrados a B y se cruzan ya.
+    if (f.fecha && ymd_(f.fecha) > ymd_(finActivas_())) {
       sumar_(res.futuras, ev); porFila[f.fila] = { veredicto: 'futura' }; continue;
     }
 
@@ -1879,6 +1892,7 @@ function calcularPlan_(enSeco, entradas, opciones) {
     const activa = esActiva(f);
     if (activa) res.activas++;
     else res.cerradas++;
+    if (f.fecha && ymd_(f.fecha) > ymd_(_hoy_())) res.futurasCruzadas++;
 
     if (f.uid) {
       // El formulario de una fila ya estampada: por la traza (form_clave, si no form_origen), no por
@@ -1920,12 +1934,16 @@ function calcularPlan_(enSeco, entradas, opciones) {
    * gana un formulario a otra fila. Una fila sin match sigue como hoy (sin match, se reevalúa sola).
    */
   if (PENDIENTE_BARRIO_RECIENTE) {
+    // 07/10 (PENDIENTE_BARRIO_SOLO_SIN_UBICACION, la tanda del 07/10): sólo las filas SIN NINGUNA ubicación (sin barrio,
+    // sin comuna, sin eje: ubicacionDeFila_); una fila con la comuna o el eje del mail se evalúa directo. Y las futuras
+    // que se cruzan (DIAS_FUTUROS_CRUCE) sin ubicación también esperan.
+    const soloSinUbic = pendienteSoloSinUbicacion_();
     evals.forEach(function (x) {
       const f = x.f;
-      if (f.barrio || !f.fecha) return;
+      if (!f.fecha || (soloSinUbic ? tieneUbicacion_(ubicacionDeFila_(f)) : f.barrio)) return;
       if (x.r.veredicto !== 'escribiria' && x.r.veredicto !== 'REVISAR_MATCH') return;
       const d = diasEntre_(_hoy_(), f.fecha);
-      if (d < 0 || d > DIAS_PENDIENTE_BARRIO) return;
+      if ((d < 0 && !diasFuturosCruce_()) || d > DIAS_PENDIENTE_BARRIO) return;
       x.r = { mejor: x.r.mejor, segundoScore: x.r.segundoScore, margen: x.r.margen,
               veredicto: 'pendiente_barrio', motivo: 'pendiente_barrio', antes: x.r.veredicto };
     });
@@ -1957,6 +1975,15 @@ function calcularPlan_(enSeco, entradas, opciones) {
                           cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null,
                           antes: r.antes };
       continue;   // no se escribe, no entra a los reportes; se reevalúa en la corrida siguiente
+    }
+    // 07/10 (DIAS_FUTUROS_CRUCE): una fila FUTURA sin formulario todavía no es un hueco: no va a los reportes (ni a las
+    // fichas) y se reevalúa sola. Con formulario, se escribe o va a revisión como cualquiera.
+    if (r.veredicto === 'SIN_MATCH' && f.fecha && ymd_(f.fecha) > ymd_(_hoy_())) {
+      sumar_(res.futuras, ev);
+      res.futurasSinFormulario++;
+      porFila[f.fila] = { veredicto: 'futura', motivo: 'sin formulario todavía',
+                          cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null };
+      continue;
     }
     if (r.desempate) sumar_(desempateCnt[r.desempate], ev);
     if (r.desempateBajoUmbral) sumar_(desempateCnt.bajoUmbral, ev);
@@ -2094,9 +2121,11 @@ function calcularPlan_(enSeco, entradas, opciones) {
   const invariante = { aplicacion: aplicacion,
                        chequeo: chequearFormularioUnico_(dest, cands.vivos, comunas, porFila) };
 
-  Logger.log('filas activas: %s (%s) | cerradas: %s (sin resolver, sin RDV_UID: %s) | futuras: %s',
+  Logger.log('filas activas: %s (%s) | cerradas: %s (sin resolver, sin RDV_UID: %s) | futuras: %s%s',
              res.activas, historial ? 'todo el historial' : descActivas_(), res.cerradas,
-             res.cerradasSinResolver, res.futuras.t);
+             res.cerradasSinResolver, res.futuras.t,
+             diasFuturosCruce_() ? ' (de los próximos ' + diasFuturosCruce_() + ' días se cruzaron ' + res.futurasCruzadas +
+               '; sin formulario todavía: ' + res.futurasSinFormulario + ')' : '');
 
   const huellas = huellasDelPlan_(dest, cands, comunas, porFila);
   Logger.log('Huella de entradas: %s  (destino %s | B %s | figuras %s | Comunas %s) — plan: %s',
@@ -2137,7 +2166,7 @@ function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
 function huellasDelPlan_(dest, cands, comunas, porFila) {
   const d = dest.filas.map(function (f) {
     return [f.fila, f.figura, f.barrio, f.fecha ? ymd_(f.fecha) : '', f.horaMin, f.evento,
-            f.uid ? 'u' : '', f.formOrigen, f.formClave, f.lugarMail || ''].join('|');
+            f.uid ? 'u' : '', f.formOrigen, f.formClave, f.lugarMail || '', f.conjuntaCon || ''].join('|');
   }).join('\n');
   // B: la huella de B CRUDO, antes de cualquier descarte (leerCandidatos_). Si no está, la de los vivos.
   const b = cands.huellaCruda || cands.vivos.map(function (c) {
@@ -3974,6 +4003,17 @@ function puntuar_(f, c, comunas) {
    * si no, puntúa como antes. Es la variante D-C del paso 8; el desempate a favor del que
    * nombra la figura vive en evaluarCandidatos_.
    */
+  /*
+   * --- la conjunta (CONJUNTAS_AUTOMATICAS, la tanda del 07/10) ---
+   * Una fila que la agenda anotó como conjunta ("Conjunta con") y un formulario que nombra EXACTAMENTE esas figuras (la
+   * de la fila y las otras, también las que no participan), a ±DIAS_CONJUNTA días y sin desacuerdo de ubicación: es SU
+   * formulario, no un multi_figura. Si no es exactamente ese conjunto, multi_figura (revisión) como siempre.
+   */
+  const conjunta = !!(conjuntasAutomaticas_() && f.figurasConjunta && f.figurasConjunta.length >= 2 &&
+                      c.figurasNorm.length >= 2 && mismoConjunto_(c.figurasNorm, f.figurasConjunta) &&
+                      dist !== null && dist <= DIAS_CONJUNTA && !desacuerdo);
+  if (conjunta) senales.push('conjunta');
+
   const alcanzableBase = alcanzable;      // antes de la regla: lo usan las mediciones (pasos 6 y 8)
   const sinFigura = !c.figurasNorm.length;
   // Con los tres niveles, la ubicación que vale para un formulario sin figura es barrio o comuna: un eje contiene
@@ -4030,7 +4070,8 @@ function puntuar_(f, c, comunas) {
     evento: evc,
     eventoOk: eventoOk,
     desacuerdo: desacuerdo,
-    multiFigura: c.figurasNorm.length >= 2,
+    multiFigura: c.figurasNorm.length >= 2 && !conjunta,
+    conjunta: conjunta,
     nivel: senales.join('+') || 'ninguna'
   };
 }
@@ -4377,7 +4418,6 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUid
   const iSt = dest.D['STATUS REUNIÓN'], iAs = dest.D['Asistentes'];
   const conStatus = iSt != null && iAs != null;
   const inicio = t0 ? t0.getTime() : Date.now();
-  const hoy = _hoy_();
 
   /*
    * Una decisión que NO se escribe (revisar, sin match) no escribe traza ni datos del formulario
@@ -4390,8 +4430,7 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUid
   const porDecision = decisionesPorFila_(decisiones);
   const pendientes = [];
   dest.filas.forEach(function (f) {
-    if (f.fecha && f.fecha > hoy) return;                          // reunión futura: no se toca
-    if (!historial && !esFilaActiva_(f.fecha)) return;             // cerrada (DIAS_ACTIVOS): no se toca, salvo el paso 22
+    if (!filaQueSeEscribe_(f, historial)) return;                  // futura (más allá de los que se cruzan) o cerrada
     if (soloUids && !soloUids.has(f.uid)) return;                  // paso 47b: sólo las filas que se vaciaron
     const d = decisionDeFila_(f, porDecision, asistentes);
     const c = celdasDeDecision_(dest, d, f.valores, true);
@@ -4578,7 +4617,7 @@ function cruzarAsistentes_(dest, comunas, opciones) {
               filas: 0, noAplica: 0, antes: 0, sinFecha: 0, sinFigura: [],
               variasFiguras: [], encuentran: 0, noEncuentran: [], ambiguas: [], desempatadas: [],
               barrioDifiere: [], destinoSinBarrio: 0, sinAsistentes: 0, filasSinAsis: {}, conflicto: [], minFecha: null,
-              desempatadasPorDireccion: [], parDe: new Map() };
+              desempatadasPorDireccion: [], parDe: new Map(), conjuntas: [] };
   // 07/10: con 2+ filas de la figura ese día, primero la DIRECCIÓN (CRUCE_CONJUNTO_POR_DIRECCION; la medición del
   // paso 45 lo fuerza con opciones.conDireccion para comparar).
   const usarDir = opciones && opciones.conDireccion !== undefined ? opciones.conDireccion : CRUCE_CONJUNTO_POR_DIRECCION;
@@ -4614,11 +4653,17 @@ function cruzarAsistentes_(dest, comunas, opciones) {
   r.iOradores = iOr; r.iAsi = iAsi;
   r.valores = vals; r.iFig = iFig;
   dest.filas.forEach(function (f) { if (f.fecha && (!r.minFecha || f.fecha < r.minFecha)) r.minFecha = f.fecha; });
-  const porFigFecha = new Map();
+  const porFigFecha = new Map(), conjuntasPorFecha = new Map();
   dest.filas.forEach(function (f) {
     const k = normalizeText_(f.figura) + '|' + (f.fecha ? ymd_(f.fecha) : '');
     if (!porFigFecha.has(k)) porFigFecha.set(k, []);
     porFigFecha.get(k).push(f);
+    // las filas conjuntas por fecha (CONJUNTAS_AUTOMATICAS): una fila de RDV CONJUNTO con varias figuras va a la suya
+    if (f.figurasConjunta && f.fecha) {
+      const kf = ymd_(f.fecha);
+      if (!conjuntasPorFecha.has(kf)) conjuntasPorFecha.set(kf, []);
+      conjuntasPorFecha.get(kf).push(f);
+    }
   });
   const conflictos = new Set(), conflictosOr = new Set();
   for (let i = 1; i < vals.length; i++) {
@@ -4631,11 +4676,14 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     if (!fec) { r.sinFecha++; continue; }
     if (r.minFecha && fec < r.minFecha) { r.antes++; continue; }
     const fp = figuraPorTokens_(nombre);
-    if (!fp.figura) {
+    // 07/10 (CONJUNTAS_AUTOMATICAS): con varias figuras (o ninguna por tokens), ¿es la de una fila conjunta de esa fecha?
+    const fConj = !fp.figura && conjuntasAutomaticas_() ? _filaConjuntaDeConjunto_(nombre, fp, fec, bar, conjuntasPorFecha, comunas) : null;
+    if (!fp.figura && !fConj) {
       (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas });
       continue;
     }
-    const lista = porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
+    if (fConj) r.conjuntas.push({ nombre: nombre, f: fConj });
+    const lista = fConj ? [fConj] : porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
     if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
     let f;
     if (lista.length > 1 && usarDir && iDir != null && iDirD != null && str(row[iDir])) {
@@ -4695,6 +4743,23 @@ function cruzarAsistentes_(dest, comunas, opciones) {
   return r;
 }
 
+/**
+ * La fila CONJUNTA de una fila de RDV CONJUNTO que nombra varias figuras (CONJUNTAS_AUTOMATICAS, 07/10): las figuras
+ * que nombra (por tokens, como "Apellido Nombre", y por nombre, variante o apellido único) son exactamente las de una
+ * fila conjunta de esa fecha (la suya + "Conjunta con"), con la ubicación compatible. Sólo si es una: si no, null.
+ */
+function _filaConjuntaDeConjunto_(nombre, fp, fec, bar, conjuntasPorFecha, comunas) {
+  const figs = {};
+  (fp.candidatas || []).forEach(function (n) { figs[normalizeText_(n)] = true; });
+  figurasEnTexto_(nombre).forEach(function (n) { figs[normalizeText_(n)] = true; });
+  const lista = Object.keys(figs);
+  if (lista.length < 2) return null;
+  const filas = (conjuntasPorFecha.get(ymd_(fec)) || []).filter(function (f) {
+    return mismoConjunto_(f.figurasConjunta, lista) && _ubicConjuntoFila_(bar, f, comunas) !== false;
+  });
+  return filas.length === 1 ? filas[0] : null;
+}
+
 /** Dos valores de oradores iguales: números iguales, o el mismo texto (sin espacios de más). */
 function _igualOrador_(a, b) {
   if (typeof a === 'number' && typeof b === 'number') return a === b;
@@ -4746,8 +4811,9 @@ function _logCruceAsistentes_(r, detalle) {
   if (r.error) { Logger.log('  Asistentes: %s', r.error); return; }
   Logger.log('  RDV CONJUNTO: %s filas | ignoradas: "No aplica" %s, antes del destino (< %s) %s, sin fecha %s',
              r.filas, r.noAplica, fmtFecha_(r.minFecha), r.antes, r.sinFecha);
-  Logger.log('  figura por tokens: sin ninguna %s | con varias %s (fuera, se listan)', r.sinFigura.length,
-             r.variasFiguras.length);
+  Logger.log('  figura por tokens: sin ninguna %s | con varias %s (fuera, se listan)%s', r.sinFigura.length,
+             r.variasFiguras.length, r.conjuntas && r.conjuntas.length
+               ? ' | a una fila CONJUNTA (varias figuras): ' + r.conjuntas.length : '');
   Logger.log('  figura + fecha: ENCUENTRAN %s (de ésas, 2+ filas desempatadas por barrio o comuna: %s) | no ' +
              'encuentran %s | 2+ filas sin desempate (no se escriben) %s', r.encuentran, r.desempatadas.length,
              r.noEncuentran.length, r.ambiguas.length);
@@ -4795,6 +4861,14 @@ function leerDestino_(nombreHoja) {
   if (!sh) throw new Error('No existe la hoja "' + hoja + '".');
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const bloque = sh.getRange(1, 1, nFilas, nCols).getValues();
+  return armarDestino_(sh, hoja, bloque);
+}
+
+/**
+ * El destino armado desde un bloque ya leído (encabezado + filas): lo de `leerDestino_`, y lo que usa el paso 51 para
+ * armar el destino "como quedaría" después de la agenda, sin escribirlo. Una sola definición de cada fila.
+ */
+function armarDestino_(sh, hoja, bloque) {
   const hdr = bloque[0];
   // Las figuras conocidas salen de este mismo bloque: el destino se lee una sola vez (02/10).
   usarFigurasDelBloque_(hdr, bloque.slice(1));
@@ -4847,6 +4921,9 @@ function leerDestino_(nombreHoja) {
   // "Lugar (mail)" (07/10): lo que dice el mail de la agenda del lugar ("Comuna 6", "Comuna 1 Sur", "Eje Oeste" o un
   // barrio). Con UBICACION_TRES_NIVELES da la comuna de una fila sin barrio y el eje (compararUbicacion_).
   const iLugarMail = findIdxOr_(hdr, aliasColumna_('Lugar (mail)'), true);
+  // "Conjunta con" (07/10): las otras figuras que nombra el mail (también las que no participan). Con
+  // CONJUNTAS_AUTOMATICAS, el formulario que nombra exactamente esas figuras es el de la fila (puntuar_).
+  const iConjunta = findIdxOr_(hdr, aliasColumna_('Conjunta con'), true);
   const filas = [];
   for (let i = 1; i < bloque.length; i++) {
     const r = bloque[i];
@@ -4854,9 +4931,14 @@ function leerDestino_(nombreHoja) {
     const barrio = D['Barrio'] != null ? str(r[D['Barrio']]) : '';
     const fecha = toDate_(r[D['FECHA']]);
     if (!figura && !fecha && esVacio_(r[D['Inscriptos']])) continue;  // fila fantasma
+    const conjuntaCon = iConjunta != null ? str(r[iConjunta]) : '';
     filas.push({
       fila: i + 1, valores: r, figura: figura, barrio: barrio, fecha: fecha,
       lugarMail: iLugarMail != null ? str(r[iLugarMail]) : '',
+      conjuntaCon: conjuntaCon,
+      // Las figuras de la conjunta, normalizadas: la de la fila + las de "Conjunta con". null si no es conjunta.
+      figurasConjunta: conjuntaCon && figura
+        ? [normalizeText_(figura)].concat(conjuntaCon.split(/\s*\/\s*/).map(normalizeText_).filter(Boolean)) : null,
       horaMin: D['HORA'] != null ? _horaEnMinutos_(r[D['HORA']]) : null,
       evento: D['EVENTO'] != null ? str(r[D['EVENTO']]) : '',
       uid: T.uid != null ? str(r[T.uid]) : '',

@@ -102,12 +102,13 @@ ok(cmp('ubicacionDeEvento_({ barrio: "", comuna: 13, subzona: null, eje: "" })',
    'la reunión del mail: comuna, barrio (con barrio en la fila, barrio con barrio) y eje');
 
 console.log('[4] el flag y la medición');
-ok(run('usarUbicacion3_()') === false, 'UBICACION_TRES_NIVELES = false: la regla de antes');
-ok(run('conUbicacion3_(true, function () { return usarUbicacion3_(); })') === true && run('usarUbicacion3_()') === false,
-   'conUbicacion3_ la fuerza y la deja como estaba');
+const porDefecto = run('UBICACION_TRES_NIVELES');
+ok(run('usarUbicacion3_()') === porDefecto, 'sin forzar: UBICACION_TRES_NIVELES (' + porDefecto + '; prendido el 07/10)');
+ok(run('conUbicacion3_(!UBICACION_TRES_NIVELES, function () { return usarUbicacion3_(); })') === !porDefecto &&
+   run('usarUbicacion3_()') === porDefecto, 'conUbicacion3_ la fuerza y la deja como estaba');
 let tiro = false;
-try { run('conUbicacion3_(true, function () { throw new Error("x"); })'); } catch (e) { tiro = true; }
-ok(tiro && run('usarUbicacion3_()') === false, 'también si la función tira');
+try { run('conUbicacion3_(!UBICACION_TRES_NIVELES, function () { throw new Error("x"); })'); } catch (e) { tiro = true; }
+ok(tiro && run('usarUbicacion3_()') === porDefecto, 'también si la función tira');
 
 console.log('[5] puntuar_: la regla de antes y la de los tres niveles');
 ctx.__fin = new Date(2026, 9, 5, 12);
@@ -158,6 +159,29 @@ ok(a.ejeCoincide && !b.ejeCoincide && !b.evaluables.ubic,
 const igual = form('JORGE MACRI - Encuentro con vecinos - Comuna 7 - 7/10');
 a = sc(false, flores, igual); b = sc(true, flores, igual);
 ok(a.score === b.score && a.nivel === b.nivel && a.desacuerdo === b.desacuerdo, 'una fila con barrio y un formulario con comuna: igual que antes (' + b.nivel + ')');
+
+console.log('[6] la tanda del 07/10: el barrio desde la dirección con el eje del mail, y la conjunta');
+const regla = function (on, res, ev) { ctx.__res = res; ctx.__ev = ev; return run('conCambios0710_(' + on + ', function () { return _reglaBarrio_(__res, __ev); })'); };
+const evEje = { eje: 'Oeste', comuna: null, barrio: '' };
+let rb = regla(true, { estado: 'ok', barrio: 'Parque Chacabuco', comuna: 7 }, evEje);
+ok(rb.cumple && /eje/.test(rb.por) && !rb.nota, 'el mail trae Eje Oeste y la dirección cae en un barrio del Eje Oeste: cumple, sin nota');
+rb = regla(true, { estado: 'ok', barrio: 'Flores', comuna: 7 }, evEje);
+ok(rb.cumple && /Flores es del Eje Sur .* el mail dice Eje Oeste/.test(rb.nota || ''),
+   'la dirección cae en Flores (Eje Sur en Comunas): cumple igual, y se anota (30/09)');
+ok(!regla(true, { estado: 'aproximada', barrio: 'Flores', comuna: 7 }, evEje).cumple, 'sin geocodificación "ok", no');
+ok(!regla(false, { estado: 'ok', barrio: 'Flores', comuna: 7 }, evEje).cumple, 'con la tanda apagada, como antes: el eje no alcanza');
+ok(run('mismoConjunto_(["a", "b", "c"], ["c", "a", "b", "a"])') && !run('mismoConjunto_(["a", "b"], ["a", "b", "c"])') &&
+   !run('mismoConjunto_([], [])'), 'mismoConjunto_: el mismo conjunto sin importar el orden; un subconjunto no');
+const conj = Object.assign(fila('Hernán Lombardi', '', 'Eje Oeste'),
+  { figurasConjunta: ['hernan lombardi', 'gabino tapia', 'clara muzzio'], conjuntaCon: 'Gabino Tapia / Clara Muzzio' });
+const fConj = form('RDV - Eje Oeste, Lombardi-Tapia-Muzzio - 7/10'), fSub = form('RDV - Eje Oeste, Lombardi-Tapia - 7/10');
+const scC = function (on, f, c) { ctx.__f = f; ctx.__c = c; return run('conCambios0710_(' + on + ', function () { return puntuar_(__f, __c, __comunas); })'); };
+a = scC(true, conj, fConj);
+ok(a.conjunta && !a.multiFigura && /conjunta/.test(a.nivel), 'la conjunta: exactamente sus tres figuras → no es multi_figura (' + a.nivel + ')');
+ok(scC(true, conj, fSub).multiFigura && !scC(true, conj, fSub).conjunta, 'dos de las tres figuras: multi_figura (revisión), como siempre');
+ok(scC(false, conj, fConj).multiFigura, 'con la tanda apagada: multi_figura, como antes');
+const conjLejos = Object.assign({}, conj, { fecha: new Date(2026, 9, 9, 12) });
+ok(!scC(true, conjLejos, fConj).conjunta, 'a más de ±1 día (DIAS_CONJUNTA): no es la conjunta');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

@@ -924,6 +924,49 @@ derivada 12). Lo hecho en esta tanda:
 formulario de 20 inscriptos; 816 Piñeiro y 817 Tapia con formularios (138 y 110); 818 Giménez y 819 Landerreche con
 figura; la ID con el formato correcto; la protección real.
 
+#### medir07() (07/10 23:16) y la tanda del 07/10, puntos 1 a 5
+
+**Resultado de medir07()** (lo pasó el usuario): paso 49 CAMBIA 0 / PIERDE 0 en formularios, asistentes y figura de
+Seguridad (816–819 iguales, por dirección exacta); paso 49b, 0 diferencias en la agenda. **APROBADO.**
+
+- **(1) `UBICACION_TRES_NIVELES = true`** — prendido.
+- **(2) a (5): escritos, detrás de `CAMBIOS_0710_ACTIVOS = false`.** El usuario pidió ver EN SECO qué escribiría en
+  815–827 antes de que se escriba: hasta que el interruptor pase a `true`, la corrida de la hora sigue como antes en esos
+  cuatro puntos. El **paso 51** (`paso51_previsualizarFilas`, `previsualizarFilas(815, 827)`) los prende en memoria y hace
+  lo mismo que la corrida —la agenda (con los mails), sus escrituras aplicadas a una copia del destino, el cruce con los
+  formularios y con RDV CONJUNTO— y lista fila por fila lo que escribiría. No escribe nada (tampoco la cache).
+  - (2) `BARRIO_DESDE_DIRECCION_CON_EJE`: el barrio desde la dirección cuando el mail trae eje (sin comuna ni barrio):
+    geocodificación "ok" y a más de 100 m de otro barrio. Si en Comunas ese barrio es de otro eje, no frena: queda una
+    "nota del eje" en el log de la agenda y en el paso 51 (`_reglaBarrio_`).
+  - (3) `PENDIENTE_BARRIO_SOLO_SIN_UBICACION`: `pendiente_barrio` sólo para las filas sin barrio, sin comuna y sin eje
+    (`ubicacionDeFila_`); las futuras sin ninguna ubicación también esperan.
+  - (4) `DIAS_FUTUROS_CRUCE = 7`: las filas de los próximos 7 días entran al cruce (el plan, la escritura, las elecciones
+    y la figura de Seguridad). Una futura sin formulario todavía no va a los reportes ni a las fichas (veredicto `futura`,
+    "sin formulario todavía"). STATUS sigue "en agenda" hasta que haya asistentes. Las filas activas
+    (`esFilaActiva_`) llegan hasta hoy + 7.
+  - (5) `CONJUNTAS_AUTOMATICAS`: el formulario que nombra exactamente las figuras de la fila (la suya + "Conjunta con",
+    que incluye las que no participan), a ±`DIAS_CONJUNTA` (1) día y sin desacuerdo de ubicación, deja de ser
+    `multi_figura` y se cruza solo (traza `+conjunta`); un subconjunto sigue a revisión. En RDV CONJUNTO, una fila que
+    nombra varias figuras va a la fila conjunta de esa fecha si es una sola (`_filaConjuntaDeConjunto_`).
+- **Hallazgo al probarlo:** la escritura (`aplicarDecisiones_`) tenía su propio filtro de futuras (`f.fecha > hoy`), aparte
+  del plan: con la tanda prendida, el plan habría decidido escribir las futuras y la escritura las habría salteado, mientras
+  el paso 51 decía "escribiría". Ahora las dos usan `filaQueSeEscribe_`. Lo mismo en las elecciones y el paso 20.
+- Tests: escritura_lote [28] (el upsert real, prendida y apagada: conjunta con formulario y con RDV CONJUNTO, subconjunto,
+  futuras dentro y fuera de los 7 días, sin formulario fuera de SIN_MATCH, pendiente_barrio con y sin ubicación);
+  agenda_escritura [31] (el paso 51 sin escribir nada; barrio con eje, figura de Seguridad de una futura, la del 15/10 no);
+  ubicacion [6].
+
+**Predicción del usuario para el paso 51 (07/10), anotada ANTES de correrlo:**
+- 815 Lombardi 07/10: barrio desde Casafoust 540 y el formulario "Lombardi-Tapia-Piragine - Eje Oeste - 7/10" (20
+  inscriptos, canales, sexo, edades);
+- 816 Piñeiro + formulario "Seguridad - Comuna 4 - 8/10" (138);
+- 817 Tapia + formulario "Seguridad - Comuna 5 - 8/10" (110);
+- 818 Giménez, 819 Landerreche (sin formulario todavía);
+- 824, 825, 827 (15/10): nada (RDV CONJUNTO no las tiene).
+
+Las figuras de 816–819 las pone la agenda (desde RDV CONJUNTO, por la dirección): en el paso 51 salen como "AGENDA:
+Figura ← …". Si el paso 51 coincide: `CAMBIOS_0710_ACTIVOS = true` + clasp push, y la corrida de la hora lo escribe.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

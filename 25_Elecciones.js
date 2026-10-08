@@ -224,7 +224,8 @@ function aplicarElecciones_(elec, dest, evals, cands, comunas, tomadosGrupo, por
     const lista = porFila[fila];
     if (lista.length > 1) { lista.forEach(function (e) { rechazar(e, 'dos elecciones para la misma fila'); }); return; }
     const e = lista[0], f = e.f;
-    if (f.fecha && f.fecha > _hoy_()) { rechazar(e, 'reunión futura'); return; }
+    // futura: sólo más allá de los DIAS_FUTUROS_CRUCE días que se cruzan (la tanda del 07/10)
+    if (f.fecha && ymd_(f.fecha) > ymd_(finActivas_())) { rechazar(e, 'reunión futura'); return; }
     if (e.elegido === 'ninguno') {
       const ahora = _clavesCercanas_(f, cands);
       // Las claves llevan "|" adentro (nombre|fecha): se guardan como JSON, no unidas.

@@ -700,6 +700,15 @@ function _ubicDeBarrio_(b) {
 /** ¿Tiene algún nivel? */
 function tieneUbicacion_(u) { return !!(u && (u.barrio || u.comuna != null || u.eje)); }
 
+/** ¿Dos listas de figuras (normalizadas) son el mismo conjunto? Sin importar el orden ni las repetidas. */
+function mismoConjunto_(a, b) {
+  const sa = {}, sb = {};
+  (a || []).forEach(function (x) { if (x) sa[x] = true; });
+  (b || []).forEach(function (x) { if (x) sb[x] = true; });
+  const ka = Object.keys(sa), kb = Object.keys(sb);
+  return ka.length > 0 && ka.length === kb.length && ka.every(function (x) { return sb[x]; });
+}
+
 /**
  * La ubicación de un texto suelto (RDV CONJUNTO, "Lugar (mail)"): una comuna si el texto ES una comuna ("C3",
  * "Comuna 6", "C1N", "Comuna 1 Sur"); un eje si ES un eje ("Eje Oeste"; uno desconocido, nada); si no, un barrio.

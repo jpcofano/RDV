@@ -43,7 +43,6 @@ function porQueVacia(desde, hasta) {
   const ambiguaDe = {}, conflictoDe = {};
   asis.ambiguas.forEach(function (x) { (x.nums || []).forEach(function (n) { ambiguaDe[n] = x; }); });
   asis.conflicto.forEach(function (x) { conflictoDe[x.f.fila] = x; });
-  const hoy = _hoy_();
 
   const causas = {}, deberia = [], lineas = [];
   const sumar = function (c) { causas[c] = (causas[c] || 0) + 1; };
@@ -56,7 +55,7 @@ function porQueVacia(desde, hasta) {
     const ahora = celdasDeDecision_(dest, d, f.valores, true);
     const escribiria = {};
     ahora.celdas.forEach(function (x) { escribiria[x.col - 1] = true; });
-    const futura = f.fecha && f.fecha > hoy;
+    const futura = f.fecha && ymd_(f.fecha) > ymd_(finActivas_());   // con la tanda del 07/10, más allá de DIAS_FUTUROS_CRUCE
 
     COLUMNAS_PASO20_.forEach(function (col) {
       const k = dest.D[col];

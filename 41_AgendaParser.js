@@ -776,6 +776,18 @@ function _reglaBarrio_(res, ev) {
                                      : { cumple: false, motivo: '(b) otra comuna que la del mail' };
   }
   if (ev.barrio) return { cumple: false, motivo: '(b) otro barrio que el del mail' };
+  // 07/10 (BARRIO_DESDE_DIRECCION_CON_EJE, la tanda del 07/10): el mail trae EJE (sin comuna ni barrio): alcanza con (a)
+  // y el margen (c). Si el barrio tiene en Comunas otro eje, no frena (30/09: los temáticos de un eje se hacen en
+  // barrios de otro): se anota.
+  const ejeMail = ev.eje ? (_canonEje_(String(ev.eje).replace(/^\s*eje\s+/i, '')) || '') : '';
+  if (ejeMail && barrioConEje_()) {
+    const r = { cumple: true, por: 'el mail trae eje (Eje ' + ejeMail + ')' };
+    const x = ejeInfoDeBarrio_(res.barrio);
+    if (x.ejes.length && x.ejes.indexOf(ejeMail) < 0) {
+      r.nota = res.barrio + ' es del Eje ' + x.eje + ' en Comunas y el mail dice Eje ' + ejeMail + ' (no frena; se anota)';
+    }
+    return r;
+  }
   return { cumple: false, motivo: '(b) el mail no trae comuna ni barrio' + (ev.eje ? ' (trae eje)' : '') };
 }
 

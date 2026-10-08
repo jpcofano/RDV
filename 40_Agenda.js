@@ -540,9 +540,11 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   });
 
   // --- 8. Seguridad en tu Barrio: la Figura desde RDV CONJUNTO, en las filas de la agenda que todavía no la tienen ---
+  // 07/10 (DIAS_FUTUROS_CRUCE, la tanda del 07/10): también las de los próximos días (RDV CONJUNTO ya trae las programadas).
+  const finSeguridad = finActivas_();
   const sinFigura = dest.filas.filter(function (f) {
     // Seguridad en tu Barrio: el EVENTO es "Encuentro con Vecinos" (como lo escribe el equipo): se reconoce por la Figura vacía.
-    return !f.figura && !esVacio_(val(f, 'agenda_uid')) && f.fecha && f.fecha <= hoyMediodia_();
+    return !f.figura && !esVacio_(val(f, 'agenda_uid')) && f.fecha && ymd_(f.fecha) <= ymd_(finSeguridad);
   });
   if (sinFigura.length) {
     const conj = opciones.conjunto || leerConjuntoPorFecha_();
@@ -821,7 +823,12 @@ function _barrioAgenda_(opciones, P) {
     }
     const res = _barrioDeGeo_(g, poligonos);
     const regla = _reglaBarrioConMargen_(res, ev, poligonos, BARRIO_MARGEN_M);
-    if (regla.cumple) { sumar('escrito (cumple la regla)'); return { barrio: res.barrio, motivo: 'cumple' }; }
+    if (regla.cumple) {
+      sumar(regla.por && /eje/.test(regla.por) ? 'escrito (el mail trae eje)' : 'escrito (cumple la regla)');
+      // 07/10: el barrio de otro eje que el del mail no frena, pero queda anotado (log del plan y paso 51)
+      if (regla.nota) (P.notasEje = P.notasEje || []).push({ ev: ev, barrio: res.barrio, nota: regla.nota });
+      return { barrio: res.barrio, motivo: 'cumple', por: regla.por || '', nota: regla.nota || '' };
+    }
     sumar('vacío: ' + regla.motivo.replace(/\d+ m/, 'N m'));
     return { barrio: '', motivo: regla.motivo, res: res };
   }
@@ -1048,6 +1055,10 @@ function logPlanAgenda_(P, dest) {
              s.noFuturas, Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100), s.saltadas60, s.reprogramadasNoMovibles, s.entreSemanas);
   Logger.log('  barrio (regla de confianza, margen %s m): %s', BARRIO_MARGEN_M,
              Object.keys(s.barrio).map(function (k) { return k + ' ' + s.barrio[k]; }).join(' · ') || '—');
+  // 07/10: el barrio que salió con el eje del mail y que en Comunas es de otro eje: no frenó, se anota.
+  (P.notasEje || []).forEach(function (x) {
+    Logger.log('    nota del eje | %s %s | %s', fmtFecha_(x.ev.fecha), x.ev.figuraFila || x.ev.tipo || '', x.nota);
+  });
   const linea = function (a) {
     const ev = a.ev || {};
     return a.tipo.toUpperCase() + ' | fila ' + (a.fila || (a.f && a.f.fila)) + ' | ' + (ev.fecha ? fmtFecha_(ev.fecha) + ' ' + (ev.hora || '') : '') +

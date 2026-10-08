@@ -321,8 +321,44 @@ const EJE_COMO_UBICACION = false;
  *
  * Se prende después de medir: paso 49 (formularios, asistentes y oradores, figura de Seguridad) y 49b (la agenda):
  * CAMBIA tiene que dar 0 en los cruces que hoy están bien.
+ *
+ * **PRENDIDO el 07/10** (decisión del usuario, con medir07() de las 23:16: CAMBIA 0 / PIERDE 0 en formularios,
+ * asistentes y figura de Seguridad —816 a 819 iguales, por dirección exacta—; 0 diferencias en la agenda).
  */
-const UBICACION_TRES_NIVELES = false;
+const UBICACION_TRES_NIVELES = true;
+
+/**
+ * **La tanda del 07/10, puntos 2 a 5** (decisión del usuario, "APROBADO" después del paso 49). Los cuatro quedan
+ * escritos con los valores decididos (abajo) y **rigen cuando este interruptor es `true`**. Mientras es `false`, la
+ * corrida de la hora sigue como antes en esos cuatro puntos; el **paso 51** muestra EN SECO, con los cuatro prendidos,
+ * qué escribiría en las filas que se le pidan (815–827). Lo pide el usuario: ver antes de escribir.
+ */
+const CAMBIOS_0710_ACTIVOS = false;
+/**
+ * (2) **El barrio desde la dirección cuando el mail trae EJE** (sin comuna ni barrio): geocodificación "ok" y a más de
+ * BARRIO_MARGEN_M de otro barrio (la condición "misma comuna que el mail" no se puede aplicar: no hay comuna). Si el
+ * barrio calculado tiene en Comunas un eje distinto del del mail, **no frena** (30/09: los temáticos de un eje se hacen
+ * en barrios de otro): se anota. Caso: 815, Casafoust 540.
+ */
+const BARRIO_DESDE_DIRECCION_CON_EJE = true;
+/** (3) **pendiente_barrio sólo para las filas SIN NINGUNA ubicación** (sin barrio, sin comuna, sin eje): una fila con la
+ *  comuna o el eje del mail se evalúa directo. */
+const PENDIENTE_BARRIO_SOLO_SIN_UBICACION = true;
+/**
+ * (4) **Filas futuras**: hasta DIAS_FUTUROS_CRUCE días adelante entran al cruce con los formularios (los datos de B llegan
+ * cerrados) y a la figura de Seguridad desde RDV CONJUNTO. STATUS sigue "en agenda" hasta que haya asistentes. Una futura
+ * sin formulario todavía no va a los reportes (se reevalúa sola); sin ninguna ubicación, espera (pendiente_barrio).
+ */
+const DIAS_FUTUROS_CRUCE = 7;
+/**
+ * (5) **Conjuntas**: el formulario que nombra EXACTAMENTE las figuras de la fila —la suya y las de "Conjunta con", que
+ * incluye a las que NO PARTICIPAN (están nombradas)—, a ±DIAS_CONJUNTA días y con la ubicación compatible (en el nivel
+ * que tengan los dos), se cruza solo; si no, revisión como hoy (multi_figura). Igual RDV CONJUNTO: una fila que nombra
+ * varias figuras va a la fila de la conjunta de esa fecha. Caso: 815 Lombardi 07/10 Eje Oeste ↔ "Lombardi-Tapia-Piragine -
+ * Eje Oeste - 7/10" (20 inscriptos).
+ */
+const CONJUNTAS_AUTOMATICAS = true;
+const DIAS_CONJUNTA = 1;
 
 /**
  * **Formularios sin figura, por ubicación** (la variante D-C del paso 8, implementada).

@@ -201,20 +201,52 @@ function inicioActivas_() {
 }
 
 /**
- * ¿La fila es activa? FECHA entre hoy − DIAS_ACTIVOS y hoy, por día. Sin fecha: no. Con
- * `DIAS_ACTIVOS = null`, todas (salvo las futuras, que nunca lo son).
+ * ¿La fila es activa? FECHA entre hoy − DIAS_ACTIVOS y el último día que se cruza (`finActivas_`: hoy, o hoy +
+ * DIAS_FUTUROS_CRUCE con la tanda del 07/10), por día. Sin fecha: no. Con `DIAS_ACTIVOS = null`, todas hasta ese día.
  */
 function esFilaActiva_(fecha) {
-  if (DIAS_ACTIVOS == null) return !(fecha && ymd_(fecha) > ymd_(hoyMediodia_()));
+  if (DIAS_ACTIVOS == null) return !(fecha && ymd_(fecha) > ymd_(finActivas_()));
   if (!fecha) return false;
   const d = ymd_(fecha);
-  return d >= ymd_(inicioActivas_()) && d <= ymd_(hoyMediodia_());
+  return d >= ymd_(inicioActivas_()) && d <= ymd_(finActivas_());
 }
 
 /** "de dd/MM/yyyy a dd/MM/yyyy" (o "todas"), para los logs. */
 function descActivas_() {
-  return DIAS_ACTIVOS == null ? 'todas (DIAS_ACTIVOS = null)'
-    : 'de ' + fmtFecha_(inicioActivas_()) + ' a ' + fmtFecha_(hoyMediodia_()) + ', hoy − ' + DIAS_ACTIVOS;
+  const fut = diasFuturosCruce_() ? ' y + ' + diasFuturosCruce_() + ' (futuras)' : '';
+  return DIAS_ACTIVOS == null ? 'todas (DIAS_ACTIVOS = null)' + fut
+    : 'de ' + fmtFecha_(inicioActivas_()) + ' a ' + fmtFecha_(finActivas_()) + ', hoy − ' + DIAS_ACTIVOS + fut;
+}
+
+// ===================== La tanda del 07/10 (CAMBIOS_0710_ACTIVOS) =====================
+
+var _forzarCambios0710_ = null;
+
+/** ¿Rigen los puntos 2 a 5 del 07/10? CAMBIOS_0710_ACTIVOS, salvo que el paso 51 (en seco) o un test los fuercen. */
+function cambios0710_() {
+  return _forzarCambios0710_ === null ? !!CAMBIOS_0710_ACTIVOS : _forzarCambios0710_;
+}
+
+/** Corre `fn` con la tanda del 07/10 forzada (true / false) y la deja como estaba. El paso 51 y los tests. */
+function conCambios0710_(valor, fn) {
+  const antes = _forzarCambios0710_;
+  _forzarCambios0710_ = !!valor;
+  try { return fn(); } finally { _forzarCambios0710_ = antes; }
+}
+
+/** (2) El barrio desde la dirección cuando el mail trae eje. */
+function barrioConEje_() { return cambios0710_() && !!BARRIO_DESDE_DIRECCION_CON_EJE; }
+/** (3) pendiente_barrio sólo sin ninguna ubicación. */
+function pendienteSoloSinUbicacion_() { return cambios0710_() && !!PENDIENTE_BARRIO_SOLO_SIN_UBICACION; }
+/** (4) Cuántos días adelante se cruzan las filas futuras (0: ninguna, como antes). */
+function diasFuturosCruce_() { return cambios0710_() ? (DIAS_FUTUROS_CRUCE || 0) : 0; }
+/** (5) Las conjuntas se cruzan solas. */
+function conjuntasAutomaticas_() { return cambios0710_() && !!CONJUNTAS_AUTOMATICAS; }
+
+/** El último día que se cruza: hoy + diasFuturosCruce_() (al mediodía). */
+function finActivas_() {
+  const h = hoyMediodia_(), n = diasFuturosCruce_();
+  return n ? new Date(h.getFullYear(), h.getMonth(), h.getDate() + n, 12, 0, 0) : h;
 }
 
 /**

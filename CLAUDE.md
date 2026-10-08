@@ -181,6 +181,9 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 - **una celda se pisa sólo si todavía tiene lo que escribió el sistema** (lo anotado en `agenda_*_escrita`), con
   lectura fresca. Si alguien del equipo la cambió, no se toca nunca más ("editada por el equipo"). Al vincular una
   fila del equipo, una celda que replica lo que dice el mail se anota como del sistema;
+- **el barrio desde la dirección**, con la regla de confianza: geocodificación "ok", el barrio (o la comuna) que dice el
+  mail, y a más de 100 m de otro barrio. Con la tanda del 07/10 (`BARRIO_DESDE_DIRECCION_CON_EJE`), también cuando el
+  mail trae sólo un eje (sin la condición de comuna); un barrio que en Comunas es de otro eje no frena, se anota;
 - **STATUS sólo por `AGENDA_TRANSICIONES_STATUS`**: '' → en agenda, en agenda → Suspendida (desapareció del mail
   siendo futura), Suspendida → en agenda (volvió, y el "Suspendida" lo había puesto el sistema). Ver 3.4;
 - las filas nuevas van **al final**; todo lo que escribe va en `COLOR_SISTEMA`; **deshacer** (paso 38) borra las
@@ -2020,8 +2023,10 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    (`SIN_FIGURA_POR_UBICACION`); el desempate por eje usa el eje del mail; en la agenda, las candidatas de una reunión
    se comparan **sin** el "Lugar (mail)" de la fila (sería comparar el mail consigo mismo) y "ya cargada en otra fila"
    exige el nivel barrio (la regla del usuario es "mismo barrio"). La traza dice de dónde salió: `comuna_mail`,
-   `eje_mail`. **Se prende después de medir** (pasos 49 y 49b: CAMBIA tiene que dar 0 en los cruces que hoy están
-   bien); con `false`, todo compara como antes. Detalle: docs/ESTADO.md, 0.z.
+   `eje_mail`. **Prendido el 07/10**, después de medir (pasos 49 y 49b, 23:16: CAMBIA 0 / PIERDE 0 en formularios,
+   asistentes y figura de Seguridad; 0 diferencias en la agenda); con `false`, todo compara como antes. En las fichas, el
+   eje del mail se compara contra el del formulario; sin eje del mail, queda la pista del 03/10 (el de Comunas, sólo a
+   la vista). Detalle: docs/ESTADO.md, 0.z.
 
    #### Formularios sin figura, por ubicación (`SIN_FIGURA_POR_UBICACION`, desde el 26/09)
 
@@ -2197,6 +2202,12 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    > compartida entre las reuniones que la comparten. ¿Se duplica el total en cada una? ¿Se
    > divide? ¿Se asigna a una sola? **No lo resuelve el pipeline por su cuenta.** Hasta que haya
    > una respuesta, estos casos quedan en `REVISAR_MATCH` sin escribir nada.
+
+   **La conjunta no es `multi_figura` (07/10, `CONJUNTAS_AUTOMATICAS`, con la tanda del 07/10).** Cuando la agenda
+   anotó la fila como conjunta ("Conjunta con": las otras figuras del mail, también las que no participan), el
+   formulario que nombra **exactamente** esas figuras, a ±`DIAS_CONJUNTA` (1) día y sin desacuerdo de ubicación, es el
+   de esa reunión y se cruza solo (traza `+conjunta`); un subconjunto u otro conjunto sigue a revisión. Igual RDV
+   CONJUNTO: una fila que nombra varias figuras va a la fila conjunta de esa fecha, si es una sola.
 
    **El veto se evalúa sobre el GANADOR, no sobre cualquier empatado (01/10, regresión de la
    801).** Gabino Tapia 24/09 Núñez tenía su formulario propio (`Seguridad - Comuna 13 - 24/9`, 0
@@ -2583,6 +2594,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 13. **Filas activas: el sistema trabaja sólo sobre los últimos `DIAS_ACTIVOS` (30) días** (decisión
     del usuario, 03/10). Una fila es **activa** si su `FECHA` está entre hoy − 30 y hoy (las futuras
     siguen afuera). **Lo anterior está cerrado y no se toca.**
+
+    > **07/10, la tanda del 07/10 (`CAMBIOS_0710_ACTIVOS`, escrita y apagada hasta ver el paso 51):** con
+    > `DIAS_FUTUROS_CRUCE = 7`, las filas de los próximos 7 días también son activas (`finActivas_`): entran al cruce
+    > con los formularios (llegan cerrados a `B`) y a la figura de Seguridad. Una futura sin formulario todavía no va a
+    > los reportes. Plan y escritura usan el mismo filtro (`filaQueSeEscribe_`).
 
     | sólo sobre filas activas | sobre TODO el historial, sin cambios |
     |---|---|
@@ -3482,6 +3498,8 @@ origen", que llevan a trabajos completamente distintos.
   Va antes del invariante (no le gana un formulario a otra fila) y no entra a los reportes. Una fila
   sin match sigue como antes. Caso: `Comuna 1 Sur - 1/10`, que calzaba con Retiro y Monserrat
   todavía sin barrio; con los barrios cargados, la subzona (regla 10) la manda a Monserrat.
+  **07/10 (`PENDIENTE_BARRIO_SOLO_SIN_UBICACION`, con la tanda del 07/10):** sólo para filas sin ninguna
+  ubicación (sin barrio, sin comuna, sin eje); una fila con la comuna o el eje del mail se evalúa directo.
 - **Una corrida por vez** (`LockService`, `ESPERA_BLOQUEO_MS`): si otra corrida tiene el bloqueo,
   ésta no hace nada y lo loguea. **Cada corrida deja una línea en `REGISTRO_UPSERT`** (intermedia):
   hora, modo, filas y celdas escritas, uids, escribiría, pendientes, a revisar y sin match

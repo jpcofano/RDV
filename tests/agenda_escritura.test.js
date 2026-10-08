@@ -10,13 +10,14 @@
  */
 'use strict';
 process.env.TZ = 'America/Argentina/Buenos_Aires';
-const vm = require('vm'), fs = require('fs'), path = require('path');
+const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
                   '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
                   'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js',
-                  'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js'];
+                  'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js', '25_Elecciones.js',
+                  'diagnostico/22_previsualizar.js'];
 const HOY = new Date(2026, 9, 6, 12, 0, 0);
 /** UNA sola clase de fecha, la misma adentro y afuera del contexto: si no, `instanceof Date` falla adentro. */
 class D extends Date {
@@ -119,7 +120,12 @@ function crearEntorno(config) {
     Logger: { log: function () { const a = Array.prototype.slice.call(arguments); let s = String(a.shift()); s = s.replace(/%s/g, function () { return String(a.shift()); }).replace(/%%/g, '%'); E.logs.push(s); } },
     Utilities: {
       formatDate: function (d, tz, f) { return f.replace('yyyy', d.getFullYear()).replace('MM', pad(d.getMonth() + 1)).replace('dd', pad(d.getDate())).replace('HH', pad(d.getHours())).replace('mm', pad(d.getMinutes())).replace('ss', pad(d.getSeconds())); },
-      getUuid: function () { E.uuid++; return 'uuid-' + E.uuid + '-xxxx'; }, sleep: function (ms) { (E.esperas = E.esperas || []).push(ms); }
+      getUuid: function () { E.uuid++; return 'uuid-' + E.uuid + '-xxxx'; }, sleep: function (ms) { (E.esperas = E.esperas || []).push(ms); },
+      // el hash de las huellas del plan (07/10: el paso 51 corre el cruce acá)
+      DigestAlgorithm: { MD5: 'md5' }, Charset: { UTF_8: 'utf8' },
+      computeDigest: function (alg, t) {
+        return Array.from(crypto.createHash('md5').update(String(t), 'utf8').digest()).map(function (b) { return b > 127 ? b - 256 : b; });
+      }
     },
     SpreadsheetApp: { openById: function (id) { if (E.fallarAbrir && E.fallarAbrir(id)) throw new Error('Service Spreadsheets timed out'); return E.planilla(id); },
                       flush: function () {}, ProtectionType: { SHEET: 'SHEET', RANGE: 'RANGE' },
@@ -905,7 +911,7 @@ E = montar(true, [function (r, C) {     // el equipo: Ezequiel Sabor el 08/10 en
   r[C('Figura')] = ''; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 5, 12); r[C('HORA')] = '18:00';
   r[C('Dirección')] = 'Defensa 1000'; r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
   r[C('agenda_uid')] = 'c-seg1'; r[C('Lugar (mail)')] = 'Comuna 1 Sur'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 1 Sur';
-}]);
+}], { UBICACION_TRES_NIVELES: 'false' });   // la regla de antes (desde el 07/10, prendida por defecto)
 E.ssD.hojas['RDV CONJUNTO'] = new E.Hoja('RDV CONJUNTO', [['Figura', 'Barrio', 'FECHA', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron'],
   ['Tapia Gabino', 'C1N', new D(2026, 9, 5, 12), 40, '', ''], ['Muzzio Clara', 'C1S', new D(2026, 9, 5, 12), 55, '', '']]);
 // Tapia el 08/10 en BELGRANO (el mail dice el barrio): la fila de Sabor del mismo día es de Núñez (la misma Comuna 13)
@@ -941,6 +947,88 @@ const iSeg3 = E.D.v.findIndex(function (x) { return x[E.C('agenda_uid')] === 'c-
 r = correr(E, false, [MT]);
 ok(r.figura === 1 && celda(E, iSeg3, 'Figura') === 'Clara Muzzio' && r.duplicadosAntes === 0 && fila(E, 'Gabino Tapia', 8) > 0,
    'con UBICACION_TRES_NIVELES = true: la Seguridad → Clara Muzzio, y Tapia 08/10 se crea (Belgrano no es Núñez)');
+
+console.log('[31] la tanda del 07/10 (CAMBIOS_0710_ACTIVOS): barrio con el eje del mail, figura de Seguridad de las futuras, conjunta; paso 51');
+// B (la intermedia), con los encabezados del origen: los formularios de la semana.
+const HDR_B31 = ['nombre', 'fecha_fin', 'inscriptos', 'inscriptos_identificados', 'inscriptos_M', 'inscriptos_F',
+  'inscriptos_edades_18_24', 'inscriptos_edades_25_39', 'inscriptos_edades_40_55', 'inscriptos_edades_56_65', 'inscriptos_edades_66plus',
+  'inscriptos_canal_Mailing', 'inscriptos_canal_Facebook', 'inscriptos_canal_Google', 'inscriptos_canal_CallCenter',
+  'inscriptos_canal_Difusion', 'inscriptos_canal_IVR', 'inscriptos_canal_Programmatic', 'inscriptos_canal_Otros', 'inscriptos_X'];
+const formB = function (nombre, fin, ins) {   // un formulario que cierra: canales = ins, edades = 80 %, sexo = identificados
+  const id = Math.round(ins * 0.8), e = Math.floor(id / 5);
+  return [nombre, fin, ins, id, Math.floor(id / 2), id - Math.floor(id / 2), e, e, e, e, id - 4 * e,
+          ins - 3, 1, 0, 1, 1, 0, 0, 0, ''];
+};
+const montar31 = function (config) {
+  const X = montar(true, [function (r, C) {      // "815": Lombardi hoy, sin barrio; el mail dice Eje Oeste; conjunta
+    r[C('Figura')] = 'Hernán Lombardi'; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 6, 12); r[C('HORA')] = '19:00';
+    r[C('Dirección')] = 'Rivadavia 7000, Club'; r[C('EVENTO')] = 'Encuentro Temático'; r[C('STATUS REUNIÓN')] = 'en agenda';
+    r[C('agenda_uid')] = 'c-815'; r[C('agenda_hora_escrita')] = '19:00'; r[C('agenda_direccion_escrita')] = 'Rivadavia 7000, Club';
+    r[C('agenda_fecha_escrita')] = new D(2026, 9, 6, 12); r[C('agenda_status_escrito')] = 'en agenda';
+    r[C('Lugar (mail)')] = 'Eje Oeste'; r[C('Conjunta con')] = 'Gabino Tapia / Clara Muzzio'; r[C('No participa')] = 'Gabino Tapia';
+  }, function (r, C) {                            // "816": Seguridad del 08/10 (futura), sin figura; Comuna 5
+    r[C('Figura')] = ''; r[C('Barrio')] = ''; r[C('FECHA')] = new D(2026, 9, 8, 12); r[C('HORA')] = '18:00';
+    r[C('Dirección')] = 'Bulnes 1000, Escuela'; r[C('EVENTO')] = 'Encuentro con Vecinos'; r[C('STATUS REUNIÓN')] = 'en agenda';
+    r[C('agenda_uid')] = 'c-816'; r[C('agenda_direccion_escrita')] = 'Bulnes 1000, Escuela'; r[C('agenda_hora_escrita')] = '18:00';
+    r[C('agenda_fecha_escrita')] = new D(2026, 9, 8, 12); r[C('agenda_status_escrito')] = 'en agenda';
+    r[C('Lugar (mail)')] = 'Comuna 5'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 5';
+  }, function (r, C) {                            // "818": Seguridad del 09/10, RDV CONJUNTO todavía no la tiene
+    r[C('Figura')] = ''; r[C('FECHA')] = new D(2026, 9, 9, 12); r[C('Dirección')] = 'Cabildo 2000'; r[C('STATUS REUNIÓN')] = 'en agenda';
+    r[C('agenda_uid')] = 'c-818'; r[C('Lugar (mail)')] = 'Comuna 13'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 13';
+  }, function (r, C) {                            // "824": Seguridad del 15/10: más allá de 7 días
+    r[C('Figura')] = ''; r[C('FECHA')] = new D(2026, 9, 15, 12); r[C('Dirección')] = 'Serrano 1500'; r[C('STATUS REUNIÓN')] = 'en agenda';
+    r[C('agenda_uid')] = 'c-824'; r[C('Lugar (mail)')] = 'Comuna 14'; r[C('Evento (mail)')] = 'Seguridad en tu Barrio, Comuna 14';
+  }], config);
+  X.ssD.hojas['RDV CONJUNTO'] = new X.Hoja('RDV CONJUNTO', [['Figura', 'Barrio', 'FECHA', 'Dirección', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron'],
+    ['Tapia Gabino', 'Almagro', new D(2026, 9, 8, 12), 'Bulnes 1000', '', '', ''],            // programada: sin asistentes
+    ['Sabor Ezequiel', 'Palermo', new D(2026, 9, 15, 12), 'Serrano 1500', '', '', '']]);     // la del 15/10: fuera de los 7 días
+  X.ssI.hojas['B'] = new X.Hoja('B', [HDR_B31,
+    formB('RDV - Eje Oeste, Lombardi-Tapia-Muzzio - 6/10', new D(2026, 9, 5, 12), 20),
+    formB('VÍNCULO CIUDADANO - Encuentro con vecinos sobre Seguridad - Comuna 5 - 8/10', new D(2026, 9, 6, 12), 110)]);
+  return X;
+};
+// el mail de la semana: la temática de Lombardi en el Eje Oeste (con la dirección) y la Seguridad de la Comuna 5
+const M31 = mail(5, 9, [['*Martes 06/10*', 'Evento: Encuentro Temático Hernán Lombardi, Gabino Tapia (NO PARTICIPA) y Clara Muzzio, Eje Oeste',
+                         'Hora: 19:00h', 'Lugar: Rivadavia 7000, Club'], EV.seguridad]);
+E = montar31();
+const fila31 = function (X, uid) { return X.D.v.findIndex(function (x) { return x[X.C('agenda_uid')] === uid; }); };
+const i815 = fila31(E, 'c-815'), i816 = fila31(E, 'c-816');
+E.ctx.__mails = [M31]; E.ctx.__geo = geocodificador(E);
+antes = foto(E.D);
+const fotoB = JSON.stringify(E.ssI.hojas['B'].v);
+const pv = E.run('previsualizarFilas(' + (i815 + 1) + ', ' + (i815 + 4) + ', { mails: __mails, geocodificar: __geo })');
+const lpv = E.logs.join('\n');
+ok(foto(E.D) === antes && JSON.stringify(E.ssI.hojas['B'].v) === fotoB && !E.ssD.hojas['AGENDA_DUPLICADOS'],
+   'paso 51: no escribió nada (ni el destino, ni B, ni AGENDA_DUPLICADOS)');
+const x815 = pv.filas[i815 + 1] || {}, x816 = pv.filas[i816 + 1] || {};
+ok(x815.agenda.some(function (t) { return /^Barrio ← "Flores"/.test(t); }) && /Lombardi-Tapia-Muzzio/.test(x815.formulario) &&
+   x815.veredicto === 'escribiria' && x815.celdas.some(function (t) { return /^Inscriptos 20$/.test(t); }) &&
+   /\+conjunta/.test(lpv) && /eje_mail/.test(lpv),
+   '"815": el barrio desde la dirección con el eje del mail (Flores) y el formulario de la conjunta (20 inscriptos) — ' +
+   JSON.stringify(x815));
+ok(x816.agenda.some(function (t) { return /^Figura ← "Gabino Tapia"/.test(t); }) && x816.veredicto === 'escribiria' &&
+   x816.celdas.some(function (t) { return /^Inscriptos 110$/.test(t); }) && !x816.status,
+   '"816" (futura): la figura desde RDV CONJUNTO (dirección exacta) y su formulario (110); STATUS queda — ' + JSON.stringify(x816));
+const x818 = pv.filas[fila31(E, 'c-818') + 1] || {}, x824 = pv.filas[fila31(E, 'c-824') + 1] || {};
+ok(x818.veredicto === 'futura' && !x818.celdas.length && !x818.agenda.length &&
+   /figura de Seguridad: no \(RDV CONJUNTO todavía no tiene la fila\)/.test(lpv),
+   '"818" (futura, sin formulario ni RDV CONJUNTO): nada');
+ok(x824.veredicto === 'futura' && !x824.celdas.length && !x824.agenda.length, '"824" (15/10, más allá de 7 días): nada');
+// con la tanda apagada (como está en 00_Config.js hasta que se prenda), el mismo paso muestra lo de antes
+const pv0 = E.run('previsualizarFilas(' + (i815 + 1) + ', ' + (i815 + 2) + ', { cambios: false, mails: __mails, geocodificar: __geo })');
+ok((pv0.filas[i815 + 1] || {}).veredicto === 'pendiente_barrio' && !(pv0.filas[i815 + 1] || {}).agenda.length &&
+   (pv0.filas[i816 + 1] || {}).veredicto === 'futura',
+   'con la tanda apagada: la "815" queda pendiente de barrio y la "816" no se cruza (futura)');
+// la agenda real con la tanda prendida: el barrio y la figura se escriben
+E = montar31({ CAMBIOS_0710_ACTIVOS: 'true' });
+r = correr(E, false, [M31]);
+ok(celda(E, fila31(E, 'c-815'), 'Barrio') === 'Flores' && celda(E, fila31(E, 'c-816'), 'Figura') === 'Gabino Tapia' &&
+   celda(E, fila31(E, 'c-824'), 'Figura') === '',
+   'la agenda con CAMBIOS_0710_ACTIVOS: Barrio de la "815" (eje) y Figura de la "816" (futura); la del 15/10, no');
+E = montar31();
+r = correr(E, false, [M31]);
+ok(celda(E, fila31(E, 'c-815'), 'Barrio') === '' && celda(E, fila31(E, 'c-816'), 'Figura') === '',
+   'y con la tanda apagada, la agenda no los escribe (como antes)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

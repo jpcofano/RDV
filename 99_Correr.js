@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 07/10 (16): UBICACION_TRES_NIVELES = true (medir07: CAMBIA 0). La TANDA DEL 07/10 (puntos 2 a 5: barrio con el eje
+ *      del mail, pendiente_barrio sin ubicación, futuras a 7 días, conjuntas) está escrita y APAGADA
+ *      (CAMBIOS_0710_ACTIVOS = false): la corrida de la hora no la aplica. Correr paso51_previsualizarFilas() (SÓLO
+ *      LECTURA: qué escribiría en 815–827 con la tanda prendida; predicción en ESTADO 0.z). Si coincide:
+ *      CAMBIOS_0710_ACTIVOS = true + clasp push.
  *  >>> 07/10 (15): SÓLO LECTURA, antes de prender nada (predicción en ESTADO 0.z, "La ubicación en tres niveles"):
  *        medir07()  = paso49_medirUbicacion() → paso49b_medirUbicacionAgenda() → paso50_columnaId()
  *      (si se pasa de los 6 minutos, uno por uno). UBICACION_TRES_NIVELES sigue en false hasta ver CAMBIA 0.
@@ -1044,6 +1049,18 @@ function paso50_columnaId() {
   _anunciar_('paso 50 — la columna ID', 'inspeccionarColumnaId()  [diagnostico/21_ubicacion.js]', 'NO escribe nada',
              'el log: la fórmula del backup (y la de hoy), cuántos ID están rotos, 3 ejemplos antes / después');
   return inspeccionarColumnaId();
+}
+
+/**
+ * PASO 51 — SÓLO LECTURA: qué escribiría la corrida de la hora en las filas 815 a 827 con la tanda del 07/10 PRENDIDA
+ * en memoria (barrio con eje, pendiente_barrio sin ubicación, futuras a 7 días, conjuntas). Para otro rango, cambiar los
+ * dos números de la llamada.
+ */
+function paso51_previsualizarFilas() {
+  _anunciar_('paso 51 — qué escribiría en 815–827 (con la tanda del 07/10)', 'previsualizarFilas(815, 827)  [diagnostico/22_previsualizar.js]',
+             'NO escribe nada (la agenda y el cruce, en memoria; lee los mails)',
+             'el log: por fila, lo de la agenda (figura, barrio), el formulario y las celdas que escribiría el upsert, Asistentes y STATUS');
+  return previsualizarFilas(815, 827);
 }
 
 /**

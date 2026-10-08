@@ -471,6 +471,7 @@ function _lineaCoincide_(f, sc, ctx) {
   const c = sc.c, p = [];
   // figura
   if (sc.multiFigura && sc.nombraFigura) p.push('⚠️ nombra a ' + c.figurasNorm.length + ' figuras (' + _figurasDe_(c) + ')');
+  else if (sc.conjunta) p.push('✅ figuras: las de la conjunta (' + _figurasDe_(c) + ')');
   else if (sc.nombraFigura) {
     p.push('✅ figura' + (/figura_por_apellido/.test(sc.nivel) ? ' (por el apellido)'
                        : /figura_por_variante/.test(sc.nivel) ? ' (escrita distinto)' : ''));
@@ -600,13 +601,14 @@ function _colorUbic_(sc, f) {
  * cambia el puntaje ni la decisión: EJE_COMO_UBICACION sigue apagado.
  */
 function _ejeFicha_(f, c) {
-  if (usarUbicacion3_()) {
-    // tres niveles: sólo contra el eje del MAIL (nunca uno deducido del barrio). Si la ubicación ya se comparó por el
-    // eje, está en la línea de la ubicación: no se repite.
-    if (!c.eje || c.eje.tipo !== 'eje') return null;
+  if (usarUbicacion3_() && c.eje && c.eje.tipo === 'eje') {
+    // tres niveles: si la fila tiene el eje del MAIL, contra ése (y si la ubicación ya se comparó por el eje, está en la
+    // línea de la ubicación: no se repite). Sin eje del mail, la pista del 03/10 de abajo (el de Comunas, sólo a la vista).
     const uF = ubicacionDeFila_(f);
-    if (!uF.eje || compararUbicacion_(ubicacionDeFormulario_(c), uF).nivel === 'eje') return null;
-    return { form: c.eje.eje, fila: uF.eje, coincide: c.eje.eje === uF.eje, mail: true };
+    if (uF.eje) {
+      if (compararUbicacion_(ubicacionDeFormulario_(c), uF).nivel === 'eje') return null;
+      return { form: c.eje.eje, fila: uF.eje, coincide: c.eje.eje === uF.eje, mail: true };
+    }
   }
   if (!c.eje || c.eje.tipo !== 'eje' || !f.barrio) return null;
   const ejeFila = ejeDeBarrio_(f.barrio);
