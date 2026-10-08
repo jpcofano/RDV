@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10 (4): FICHAS_0810_ACTIVAS = true (paso 52 de las 17:09: escritura 0; y las opciones de OTRA figura que ya
+ *      tienen su fila, fuera). Nada para correr a mano: la próxima corrida de la hora regenera REVISAR_MATCH.
  *  >>> 08/10 (3): SÓLO LECTURA, para la FASE 2 del script de Looker: paso53_investigarId() (la columna ID: formatos y quién
  *      escribió los que cambiaron desde el 04/10).
  *  >>> 08/10 (2): las fichas con "esperando formulario" y las opciones cercanas, escritas y APAGADAS

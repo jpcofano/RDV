@@ -352,20 +352,26 @@ function inspeccionarColumnaId() {
     const despues = pl ? pl.partes.map(function (p) { return p.col == null ? '?' : String(hoy.disp[fila - 1][_colEnHoy_diag21(base, hoy, p.col)] || '').trim(); }).join(' | ') : '(sin plantilla)';
     Logger.log('    fila %s\n      antes:   %s\n      después: %s', fila, antes, despues);
   });
-  // Los valores del backup que hoy cambiaron (misma figura + fecha), si el backup se leyó.
+  // Los valores del backup que hoy cambiaron (misma figura + fecha), si el backup se leyó. 08/10: contra la MISMA fila del
+  // backup si tiene esa figura y fecha; si no, la primera con ellas. Antes, siempre la primera: con dos reuniones de la
+  // misma figura el mismo día comparaba reuniones distintas (los "7 que cambiaron" del 07/10; el paso 53 da 0).
   if (backup) {
     const enBackup = new Map();
-    backup.vals.slice(1).forEach(function (r) {
+    backup.vals.slice(1).forEach(function (r, j) {
       const k = claveNatural_(str(r[backup.iFig]), toDate_(r[backup.iFec]));
-      if (k && !enBackup.has(k)) enBackup.set(k, r[backup.iId]);
+      if (!k) return;
+      if (!enBackup.has(k)) enBackup.set(k, []);
+      enBackup.get(k).push(j + 1);
     });
     let iguales = 0, distintas = 0;
     const ej = [];
     hoy.vals.slice(1).forEach(function (r, i) {
       const k = claveNatural_(str(r[hoy.iFig]), toDate_(r[hoy.iFec]));
       if (!k || !enBackup.has(k)) return;
-      if (String(enBackup.get(k)) === String(r[hoy.iId])) iguales++;
-      else { distintas++; if (ej.length < 5) ej.push('fila ' + (i + 2) + ': backup "' + enBackup.get(k) + '" / hoy "' + r[hoy.iId] + '"'); }
+      const filas = enBackup.get(k), j = filas.indexOf(i + 1) >= 0 ? i + 1 : filas[0];
+      const antes = backup.vals[j][backup.iId];
+      if (String(antes) === String(r[hoy.iId])) iguales++;
+      else { distintas++; if (ej.length < 5) ej.push('fila ' + (i + 2) + ': backup "' + antes + '" / hoy "' + r[hoy.iId] + '"'); }
     });
     Logger.log('--- las filas que están en el backup (por figura + fecha): ID igual %s | distinto %s ---', iguales, distintas);
     ej.forEach(function (t) { Logger.log('    %s', t); });

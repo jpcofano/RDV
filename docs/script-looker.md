@@ -85,6 +85,11 @@ Lo que está mal o es frágil:
 | con `" \| "` y `GMT` | `unpivotEventos` (1.1) |
 | con guiones bajos | **ningún código que tenemos**: ni el nuestro, ni el legado, ni lo archivado, ni el script atado, ni "CODIGOS Ajuste RDV" (ése arma `persona\|yyyyMMdd` y escribe en Para Revisar). Una persona u otro script |
 
+> **Resuelto con el paso 53 (08/10 17:12): ningún ID cambió desde el 04/10.** Los "7 que cambiaron" eran de la medición
+> del paso 50, que comparaba cada fila con la primera del backup de la misma figura y fecha (corregido). Nada más escribe
+> la ID. Hay **26 ID repetidos** (`Jorge Macri | | | | |` en 78 filas): Datos_Unpivot cuenta **627 ID distintos para
+> ~827 reuniones**. El formato propuesto da **0 repetidos**. Lo que sigue es cómo se planteó antes de medir.
+
 **Qué más la escribe (los 7 que cambiaron desde el 04/10).** Nada de este proyecto escribe la columna ID, salvo el paso 5
 del legado (`Sinc Base usuario.js`), que sigue en el proyecto pero sin activador en nuestra cuenta desde el 24/09; un
 activador de **otra cuenta** no se ve desde acá. Quedan tres posibilidades, y el **paso 53** las separa celda por celda:

@@ -2369,6 +2369,8 @@ function escenarioFichas0810() {
     datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 10/9', d(8, 9), 55));
     datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 6/9', d(4, 9), 65));
     datos.b.push(formB('OLGA SUÁREZ - Encuentro con vecinos - Comuna 13 - 24/8', d(22, 8), 75));   // a 19 días: no
+    // una "Seguridad" sin figura, libre, de su comuna a 2 días: se ofrece (08/10: sólo salen las de otra figura ya usadas)
+    datos.b.push(formB('VÍNCULO CIUDADANO - Encuentro con vecinos sobre Seguridad - Comuna 13 - 14/9', d(12, 9), 40));
     // e) el primer día activo (02/09): el del 30/8 lo tiene una fila CERRADA (con RDV_UID); el del 26/8 es de una reunión cerrada
     nueva('Pablo Gil', 'Barracas', d(30, 8), { RDV_UID: 'uid-pablo-3008', form_origen: 'PABLO GIL - Encuentro con vecinos - Comuna 4 - 30/8' });
     nueva('Pablo Gil', 'Barracas', d(2, 9));
@@ -2432,6 +2434,8 @@ function escenarioFichas0810() {
   ok(tiene(oOn, '- 10/9') && !tiene(oOn, '- 6/9') && !tiene(oOn, '- 24/8'),
      'd) con las reglas: la del 10/9 (usada, a 2 días) sí; la del 6/9 y la del 24/8, no: ' + (oOn ? oOn.ops.map(function (o) { return o.nombre; }).join(' / ') : '-'));
   ok(oOn && oOn.ops.some(function (o) { return o.nombre.indexOf('- 10/9') >= 0 && /^fila /.test(o.usado); }), 'd) la del 10/9, con "ya usado por"');
+  ok(tiene(oOn, 'sobre Seguridad - Comuna 13 - 14/9') && !tiene(oOn, 'ROCÍO TABOADA') && !tiene(oOn, 'PABLO SARMIENTO'),
+     'd) la "Seguridad" sin figura (libre) sí; las de otra figura que ya tienen su fila, no (08/10)');
 
   // e) reuniones cerradas
   const pOff = ficha(off, nPablo), pOn = ficha(on, nPablo);
@@ -2449,8 +2453,8 @@ function escenarioFichas0810() {
   ok(!p20.error && p20.logs.some(function (l) { return /Lorena Paz.*esperando formulario/.test(l); }),
      'paso 20: la causa de la de ayer es "esperando formulario"' + (p20.error ? ': ' + p20.error.stack : ''));
 
-  // Paso 52, con el interruptor apagado (como queda en 00_Config.js hasta prenderlo): no escribe y dice lo mismo.
-  const E52 = crearEntorno({ config: cfg });
+  // Paso 52, con el upsert de antes (el interruptor apagado): no escribe y dice lo mismo.
+  const E52 = crearEntorno({ config: Object.assign({ FICHAS_0810_ACTIVAS: 'false' }, cfg) });
   const m52 = montar(E52, 300, true, casos);
   ok(!E52.ejecutar('upsertDestino').error, 'paso 52: el upsert de antes (apagado)');
   const fotos = function () { return JSON.stringify([m52.ssD.hojas['RVD JM-CM - ES'].v, m52.ssD.hojas['REVISAR_MATCH'].v, m52.ssI.hojas['B'].v]); };
@@ -2474,6 +2478,8 @@ function escenarioFichas0810() {
      pg.salen.some(function (s) { return /- 26\/8/.test(s.nombre) && /^es de una reunión cerrada/.test(s.motivo); }),
      'paso 52: las de Pablo, por reunión cerrada (la fila cerrada que tiene una, y la otra sin fila): ' + JSON.stringify(pg && pg.salen));
   ok(p52.logs.some(function (l) { return /^--- 1\. ESCRITURA: .*: 0 /.test(l); }), 'paso 52: el log dice 0 en la escritura');
+  ok(o.otraFiguraUsada === 0 && o.quitadas['de otra figura, ya usada por su fila'] > 0,
+     'paso 52: ninguna opción de otra figura ya usada; las que salen por eso, contadas aparte: ' + JSON.stringify(o.quitadas));
 }
 
 function escenarioInvestigarId() {

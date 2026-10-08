@@ -1010,9 +1010,9 @@ ok(x816.agenda.some(function (t) { return /^Figura ← "Gabino Tapia"/.test(t); 
    x816.celdas.some(function (t) { return /^Inscriptos 110$/.test(t); }) && !x816.status,
    '"816" (futura): la figura desde RDV CONJUNTO (dirección exacta) y su formulario (110); STATUS queda — ' + JSON.stringify(x816));
 const x818 = pv.filas[fila31(E, 'c-818') + 1] || {}, x824 = pv.filas[fila31(E, 'c-824') + 1] || {};
-ok(x818.veredicto === 'futura' && !x818.celdas.length && !x818.agenda.length &&
+ok(x818.veredicto === 'esperando_formulario' && !x818.celdas.length && !x818.agenda.length &&   // 08/10: espera su formulario
    /figura de Seguridad: no \(RDV CONJUNTO todavía no tiene la fila\)/.test(lpv),
-   '"818" (futura, sin formulario ni RDV CONJUNTO): nada');
+   '"818" (futura, sin formulario ni RDV CONJUNTO): nada; espera su formulario (FICHAS_0810_ACTIVAS)');
 ok(x824.veredicto === 'futura' && !x824.celdas.length && !x824.agenda.length, '"824" (15/10, más allá de 7 días): nada');
 // con la tanda apagada (CAMBIOS_0710_ACTIVOS = false, como antes del 08/10), el mismo paso muestra lo de antes
 const pv0 = E.run('previsualizarFilas(' + (i815 + 1) + ', ' + (i815 + 2) + ', { cambios: false, mails: __mails, geocodificar: __geo })');

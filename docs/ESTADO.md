@@ -985,9 +985,10 @@ cruce). Qué mirar después de esa corrida:
 Si algo no coincide: `CAMBIOS_0710_ACTIVOS = false` + clasp push vuelve los cuatro puntos a como antes del 07/10 (lo ya
 escrito queda, como cualquier escritura del sistema: sólo en celdas que estaban vacías).
 
-#### Las fichas del 08/10: "esperando formulario" y las opciones cercanas — escritas y APAGADAS hasta el paso 52
+#### Las fichas del 08/10: "esperando formulario" y las opciones cercanas — PRENDIDAS el 08/10
 
-Pedido del usuario (08/10, punto A). Detrás de **`FICHAS_0810_ACTIVAS = false`**; primero se mide.
+Pedido del usuario (08/10, punto A). **`FICHAS_0810_ACTIVAS = true` desde el 08/10** (abajo, el paso 52 y la regla que se
+sumó); antes, apagado hasta medir.
 
 - **Esperando formulario**: una fila de hasta `DIAS_ESPERANDO_FORMULARIO` (3) días después de la reunión, o futura, que
   iría a REVISAR_MATCH o a SIN_MATCH y **no tiene ningún formulario libre que pueda ser el suyo a ±3 días** no va a las
@@ -1026,6 +1027,13 @@ de ellas de otra figura N"). Si molesta, sacarlas es una línea en `_exclusionOp
 
 Si está bien: `FICHAS_0810_ACTIVAS = true` + clasp push; la próxima corrida de la hora regenera REVISAR_MATCH.
 
+**Resultado del paso 52 (08/10 17:09, lo pasó el usuario):** escritura **0**; sale la **813** (esperando formulario); en
+la **778** y la **787** entraban **5 formularios de OTRA figura ya usados por su propia fila**. Decisión del usuario: esos
+salen de las opciones **a cualquier distancia** (`_exclusionOpcion_`: "es de otra figura (…) y ya lo tiene la fila …"; el
+paso 52 los cuenta aparte); los libres —p. ej. una "Seguridad" sin figura— se siguen ofreciendo. Sin opciones: "No hay
+formulario cercano" con Ninguno / No sé. Con eso, **`FICHAS_0810_ACTIVAS = true`** + clasp push: la próxima corrida de la
+hora regenera REVISAR_MATCH. Test [29] (la "Seguridad" libre sí, las de otra figura ya usadas no).
+
 #### El script atado a la base (Looker): FASE 1, el informe (08/10) — esperando la aprobación del usuario
 
 Pedido del usuario (08/10, punto B: sólo informe, sin cambiar nada). El informe, entero:
@@ -1042,6 +1050,20 @@ las dos correcciones de datos a aprobar. No se tocó el script ni la base.
   "P. Varon" / "P. Mujer"; mirar en Looker si algo parte la ID, la filtra o combina por ella.
 - **FASE 2** (después de aprobar): las dos funciones a nuestro proyecto (dentro de `upsertDiario`, después de las
   derivadas), la ID como derivada 12, en seco primero, y el script atado con funciones vacías.
+
+**Resultado del paso 53 (08/10 17:12, lo pasó el usuario):** **ningún ID cambió desde el 04/10** — los "7 que cambiaron"
+del paso 50 eran de la medición: comparaba cada fila con la PRIMERA del backup de la misma figura y fecha, y con dos
+reuniones de la misma figura el mismo día comparaba reuniones distintas (corregido: ahora, la misma fila). Así que nada
+más escribe la ID. **26 ID repetidos** (`Jorge Macri | | | | |` en 78 filas): Datos_Unpivot cuenta **627 ID distintos
+para ~827 reuniones**. **El formato propuesto da 0 repetidos.**
+
+**Aprobado por el usuario (08/10) para la FASE 2:** la ID `Figura - Barrio - dd/MM/yyyy` (sin barrio
+`Figura - dd/MM/yyyy`; vacía sin figura; `- HH:mm` si se repite), derivada 12, recalculada en cada corrida; "Sin
+identificar" de género = Inscriptos − M − F, y si da negativo esa fila no se escribe; sin el reemplazo por P. Varon /
+P. Mujer. **Queda igual:** una Suspendida con asistentes cuenta como realizada; las columnas vacías de Aux_Maximos. Antes de
+escribir, tres pruebas: A (el backup, modo compatible: idéntico), B (hoy, modo compatible: idéntico), C (modo corregido:
+diferencias sólo por esos motivos y la ID, con cantidades, ejemplos y las reuniones distintas que cuenta Datos_Unpivot
+antes y después). Y la página para el dueño.
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

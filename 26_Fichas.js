@@ -225,7 +225,9 @@ function opcionesDeFicha_(f, ctx, primero) {
 
 /**
  * Por qué una opción NO se ofrece en la ficha de `f` (08/10), en palabras —"está a 20 días", "es de una reunión
- * cerrada", "ya lo tiene la fila 812 (03/10, Flores), a 6 días"—, o null si se ofrece. "A ±DIAS_OPCION_USADA" se mide
+ * cerrada", "es de otra figura (…) y ya lo tiene la fila 790 (…)", "ya lo tiene la fila 812 (03/10, Flores), a 6
+ * días"—, o null si se ofrece. Una de otra figura que ya tiene su fila no se ofrece a ninguna distancia; una libre, sí
+ * (p. ej. una "Seguridad" sin figura). "A ±DIAS_OPCION_USADA" se mide
  * como en el puntaje (`fechaCercana_`: un formulario sin fecha en el nombre, por su cierre). Lo de las reuniones
  * cerradas vale para las fichas de filas activas (la vista previa del paso 21 puede pedir una cerrada).
  */
@@ -238,6 +240,10 @@ function _exclusionOpcion_(ctx, f, sc) {
   const d = _duenio_(ctx, c, f);
   if (d) {
     if (activa && !esFilaActiva_(d.fecha)) return 'ya lo tiene la fila ' + _descFila_(d) + ', una reunión cerrada';
+    // 08/10 (decisión del usuario, con el paso 52): uno de OTRA figura que ya tiene su fila, a cualquier distancia.
+    if (c.figurasNorm.length && c.figurasNorm.indexOf(normalizeText_(f.figura)) < 0) {
+      return 'es de otra figura (' + _figurasDe_(c) + ') y ya lo tiene la fila ' + _descFila_(d);
+    }
     if (!fechaCercana_(f.fecha, c.det, DIAS_OPCION_USADA)) return 'ya lo tiene la fila ' + _descFila_(d) + ', a ' + sc.dist + ' días';
   }
   return null;

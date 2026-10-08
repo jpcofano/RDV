@@ -98,6 +98,7 @@ function _compararFichas_diag23(entradas, asis, A, B) {
     b.excluidas.forEach(function (e) {
       const k = /^está a /.test(e.motivo) ? 'a más de ' + DIAS_OPCIONES_FICHA + ' días'
               : /reunión cerrada/.test(e.motivo) ? 'de una reunión cerrada'
+              : /^es de otra figura/.test(e.motivo) ? 'de otra figura, ya usada por su fila'
               : /^ya lo tiene/.test(e.motivo) ? 'ya usada por otra fila, a más de ' + DIAS_OPCION_USADA + ' días'
               : e.motivo;
       out.quitadas[k] = (out.quitadas[k] || 0) + 1;

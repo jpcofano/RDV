@@ -2354,14 +2354,15 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    sección 0 es sobre la solapa `RVD JM-CM - ES`: esta otra solapa del mismo archivo es un reporte que el
    sistema reescribe entero (como los de la intermedia), y ninguna lectura del destino la toca.
 
-   **Esperando formulario y opciones cercanas (08/10, `FICHAS_0810_ACTIVAS`; apagado hasta medir con el paso 52).**
+   **Esperando formulario y opciones cercanas (08/10, `FICHAS_0810_ACTIVAS`; prendido el 08/10, con el paso 52).**
    Decisión del usuario. (1) Una fila de hasta `DIAS_ESPERANDO_FORMULARIO` (3) días después de la reunión, o futura, que
    iría a REVISAR_MATCH o a SIN_MATCH y no tiene ningún formulario **libre** que pueda ser el suyo a ±3 días (de su
    figura, o sin figura de su ubicación, como `sin_formulario_propio`; uno que ya tiene otra fila no cuenta) no va a las
    fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL: veredicto `esperando_formulario`, causa en el paso 20; pasados esos
    días, ficha. (2) Las opciones de una ficha (`opcionesDeFicha_`): sólo formularios a ±`DIAS_OPCIONES_FICHA` (14) días;
    uno que ya tiene otra fila, sólo a ±`DIAS_OPCION_USADA` (3, medido como en el puntaje); nunca uno de una reunión
-   cerrada (anterior a las filas activas, o que tiene una fila cerrada). Sin ninguna: "No hay formulario cercano" y
+   cerrada (anterior a las filas activas, o que tiene una fila cerrada); nunca uno de **otra figura que ya tiene su
+   fila**, a ninguna distancia (los libres, como una "Seguridad" sin figura, sí). Sin ninguna: "No hay formulario cercano" y
    ELEGIR sólo con Ninguno / No sé; si el formulario del motivo quedó afuera, "¿por qué?" lo nombra igual. No cambia
    ningún cruce escrito (lo controlan el paso 52 y el test [29]).
 

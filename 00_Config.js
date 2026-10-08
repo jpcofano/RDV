@@ -617,10 +617,14 @@ const DIAS_CONTEXTO_FICHA = 7;
  *       afuera.)
  *   (2) **las opciones de una ficha**: sólo formularios a ±DIAS_OPCIONES_FICHA días de la reunión; uno que ya tiene otra
  *       fila, sólo a ±DIAS_OPCION_USADA (como "a ±3" en el puntaje: un formulario sin fecha en el nombre, por su cierre);
- *       nunca uno de una reunión cerrada (de antes de las filas activas, o que tiene una fila cerrada). Si no queda
- *       ninguna: "No hay formulario cercano", y ELEGIR sólo con Ninguno / No sé.
+ *       nunca uno de una reunión cerrada (de antes de las filas activas, o que tiene una fila cerrada); nunca uno de
+ *       OTRA figura que ya tiene su fila, a ninguna distancia (08/10, con el paso 52: en la 778 y la 787 entraban 5; los
+ *       libres, p. ej. una "Seguridad" sin figura, sí se ofrecen). Si no queda ninguna: "No hay formulario cercano", y
+ *       ELEGIR sólo con Ninguno / No sé.
+ *
+ * Paso 52 (08/10 17:09): escritura 0; sale la 813 (esperando formulario). Prendido ese día, con esa regla sumada.
  */
-const FICHAS_0810_ACTIVAS = false;
+const FICHAS_0810_ACTIVAS = true;   // PRENDIDO el 08/10, con el paso 52 de las 17:09 y la regla de las de otra figura (abajo)
 const DIAS_ESPERANDO_FORMULARIO = 3;
 const DIAS_OPCIONES_FICHA = 14;
 const DIAS_OPCION_USADA = 3;
