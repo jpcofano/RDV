@@ -118,8 +118,9 @@ function _previsualizar_diag22(desde, hasta, opciones) {
   (P ? P.acciones : []).filter(function (a) { return a.tipo === 'crear'; }).forEach(function (a) {
     Logger.log('  la agenda CREARÍA la fila %s | %s %s %s', a.fila, a.ev.figuraFila || a.ev.tipo || '', fmtFecha_(a.ev.fecha), a.ev.hora || '');
   });
-  Logger.log('>>> en el rango: %s filas con algo que escribir. Nada se escribió: para que la corrida de la hora lo haga, ' +
-             'CAMBIOS_0710_ACTIVOS = true + clasp push.', out.conEscrituras);
+  Logger.log('>>> en el rango: %s filas con algo que escribir. Nada se escribió%s', out.conEscrituras,
+             CAMBIOS_0710_ACTIVOS ? ': la corrida de la hora lo escribe (CAMBIOS_0710_ACTIVOS = true desde el 08/10).'
+                                  : ': para que la corrida de la hora lo haga, CAMBIOS_0710_ACTIVOS = true + clasp push.');
   return out;
 }
 

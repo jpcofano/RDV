@@ -1291,7 +1291,8 @@ function escenarioFichas() {
   const r = E.ejecutar('upsertDestino');
   ok(!r.error, 'el upsert termina sin error' + (r.error ? ': ' + r.error.stack : ''));
   const log = r.logs.join('\n');
-  const mAct = /filas activas: (\d+) \(de 02\/09\/2026 a 02\/10\/2026, hoy − 30\) \| cerradas: (\d+) \(sin resolver, sin RDV_UID: (\d+)\) \| futuras: (\d+)/.exec(log);
+  // con la tanda del 07/10 (prendida el 08/10) las activas llegan hasta hoy + DIAS_FUTUROS_CRUCE (7): 02/10 → 09/10
+  const mAct = /filas activas: (\d+) \(de 02\/09\/2026 a 09\/10\/2026, hoy − 30 y \+ 7 \(futuras\)\) \| cerradas: (\d+) \(sin resolver, sin RDV_UID: (\d+)\) \| futuras: (\d+)/.exec(log);
   ok(!!mAct, 'el log dice filas activas, cerradas (sin resolver) y futuras: ' + (mAct ? mAct[0] : '(no está)'));
   ok(/tiempo de corrida: [\d.]+ s/.test(log), 'el log dice el tiempo de corrida');
   let cerradasTocadas = 0, activasEscritas = 0;
@@ -2329,13 +2330,13 @@ function escenarioTanda0710() {
   ok(ron.logs.some(function (l) { return /futuras: \d+ \(de los próximos 7 días se cruzaron \d+; sin formulario todavía: \d+\)/.test(l); }),
      'el log dice cuántas futuras se cruzaron');
 
-  const Eoff = crearEntorno();
+  const Eoff = crearEntorno({ config: { CAMBIOS_0710_ACTIVOS: 'false' } });
   const moff = montar(Eoff, 300, true, casos);
   const roff = Eoff.ejecutar('upsertDestino');
   const h0 = moff.ssD.hojas['RVD JM-CM - ES'];
   ok(!roff.error && celda(h0, 'Ana Pereyra', 'form_origen') === '' && celda(h0, 'Ana Pereyra', 'Asistentes') === '' &&
      celda(h0, 'Gisela Arambarri', 'Inscriptos') === '' && celda(h0, 'Julián Etcheverry', 'Inscriptos') === '',
-     'con la tanda apagada (como está en 00_Config.js hasta prenderla): nada de esto se escribe');
+     'con la tanda apagada (CAMBIOS_0710_ACTIVOS = false, como antes del 08/10): nada de esto se escribe');
 }
 
 function escenarioSecoIgualReal() {

@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-06 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -930,7 +930,8 @@ figura; la ID con el formato correcto; la protección real.
 Seguridad (816–819 iguales, por dirección exacta); paso 49b, 0 diferencias en la agenda. **APROBADO.**
 
 - **(1) `UBICACION_TRES_NIVELES = true`** — prendido.
-- **(2) a (5): escritos, detrás de `CAMBIOS_0710_ACTIVOS = false`.** El usuario pidió ver EN SECO qué escribiría en
+- **(2) a (5): escritos, detrás de `CAMBIOS_0710_ACTIVOS`** (en `false` hasta ver el paso 51; **`true` desde el 08/10**,
+  abajo). El usuario pidió ver EN SECO qué escribiría en
   815–827 antes de que se escriba: hasta que el interruptor pase a `true`, la corrida de la hora sigue como antes en esos
   cuatro puntos. El **paso 51** (`paso51_previsualizarFilas`, `previsualizarFilas(815, 827)`) los prende en memoria y hace
   lo mismo que la corrida —la agenda (con los mails), sus escrituras aplicadas a una copia del destino, el cruce con los
@@ -966,6 +967,23 @@ Seguridad (816–819 iguales, por dirección exacta); paso 49b, 0 diferencias en
 
 Las figuras de 816–819 las pone la agenda (desde RDV CONJUNTO, por la dirección): en el paso 51 salen como "AGENDA:
 Figura ← …". Si el paso 51 coincide: `CAMBIOS_0710_ACTIVOS = true` + clasp push, y la corrida de la hora lo escribe.
+
+**Resultado del paso 51 (08/10 00:02, lo pasó el usuario): coincide con la predicción.** 815 Villa Crespo + el formulario
+de la conjunta (20); 816 Piñeiro + `Comuna 4` (138); 817 Tapia + `Comuna 5` (110: el desempate eligió bien); 818 Giménez
+y 819 Landerreche con figura; 820–827 sin nada. Canales, sexo y edades cierran contra `B`.
+
+→ **08/10: `CAMBIOS_0710_ACTIVOS = true`** (decisión del usuario) + clasp push. Nada para correr a mano: **la corrida de
+la hora escribe 815–819 como mostró el paso 51** (la agenda primero —Barrio de la 815, figuras de 816–819—, después el
+cruce). Qué mirar después de esa corrida:
+
+- la 815: `Barrio` = Villa Crespo (en `COLOR_SISTEMA`), Inscriptos 20 con canales, sexo y edades, traza con `+conjunta`;
+- 816 y 817: Inscriptos 138 y 110 con su desagregado; STATUS sigue "en agenda" (todavía no hay asistentes);
+- el log: "de los próximos 7 días se cruzaron …", "conjuntas", y en la agenda la "nota del eje" si la hubo;
+- REVISAR_MATCH: la 815 ya no tiene que aparecer como `multi_figura`; las futuras sin formulario (818, 819, 820–827) no
+  aparecen como fichas.
+
+Si algo no coincide: `CAMBIOS_0710_ACTIVOS = false` + clasp push vuelve los cuatro puntos a como antes del 07/10 (lo ya
+escrito queda, como cualquier escritura del sistema: sólo en celdas que estaban vacías).
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

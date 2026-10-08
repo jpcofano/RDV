@@ -2595,7 +2595,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     del usuario, 03/10). Una fila es **activa** si su `FECHA` está entre hoy − 30 y hoy (las futuras
     siguen afuera). **Lo anterior está cerrado y no se toca.**
 
-    > **07/10, la tanda del 07/10 (`CAMBIOS_0710_ACTIVOS`, escrita y apagada hasta ver el paso 51):** con
+    > **07/10, la tanda del 07/10 (`CAMBIOS_0710_ACTIVOS`, prendida el 08/10 después de ver el paso 51):** con
     > `DIAS_FUTUROS_CRUCE = 7`, las filas de los próximos 7 días también son activas (`finActivas_`): entran al cruce
     > con los formularios (llegan cerrados a `B`) y a la figura de Seguridad. Una futura sin formulario todavía no va a
     > los reportes. Plan y escritura usan el mismo filtro (`filaQueSeEscribe_`).

@@ -332,8 +332,12 @@ const UBICACION_TRES_NIVELES = true;
  * escritos con los valores decididos (abajo) y **rigen cuando este interruptor es `true`**. Mientras es `false`, la
  * corrida de la hora sigue como antes en esos cuatro puntos; el **paso 51** muestra EN SECO, con los cuatro prendidos,
  * qué escribiría en las filas que se le pidan (815–827). Lo pide el usuario: ver antes de escribir.
+ *
+ * **PRENDIDO el 08/10** (decisión del usuario, con el paso 51 de las 00:02 igual a la predicción: 815 Villa Crespo +
+ * la conjunta (20), 816 Piñeiro + Comuna 4 (138), 817 Tapia + Comuna 5 (110), 818 y 819 con figura, 820–827 sin nada;
+ * canales, sexo y edades cierran contra B). Con `false`, los cuatro puntos vuelven a como antes del 07/10.
  */
-const CAMBIOS_0710_ACTIVOS = false;
+const CAMBIOS_0710_ACTIVOS = true;
 /**
  * (2) **El barrio desde la dirección cuando el mail trae EJE** (sin comuna ni barrio): geocodificación "ok" y a más de
  * BARRIO_MARGEN_M de otro barrio (la condición "misma comuna que el mail" no se puede aplicar: no hay comuna). Si el

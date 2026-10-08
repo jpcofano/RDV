@@ -1014,7 +1014,7 @@ ok(x818.veredicto === 'futura' && !x818.celdas.length && !x818.agenda.length &&
    /figura de Seguridad: no \(RDV CONJUNTO todavía no tiene la fila\)/.test(lpv),
    '"818" (futura, sin formulario ni RDV CONJUNTO): nada');
 ok(x824.veredicto === 'futura' && !x824.celdas.length && !x824.agenda.length, '"824" (15/10, más allá de 7 días): nada');
-// con la tanda apagada (como está en 00_Config.js hasta que se prenda), el mismo paso muestra lo de antes
+// con la tanda apagada (CAMBIOS_0710_ACTIVOS = false, como antes del 08/10), el mismo paso muestra lo de antes
 const pv0 = E.run('previsualizarFilas(' + (i815 + 1) + ', ' + (i815 + 2) + ', { cambios: false, mails: __mails, geocodificar: __geo })');
 ok((pv0.filas[i815 + 1] || {}).veredicto === 'pendiente_barrio' && !(pv0.filas[i815 + 1] || {}).agenda.length &&
    (pv0.filas[i816 + 1] || {}).veredicto === 'futura',
@@ -1025,7 +1025,7 @@ r = correr(E, false, [M31]);
 ok(celda(E, fila31(E, 'c-815'), 'Barrio') === 'Flores' && celda(E, fila31(E, 'c-816'), 'Figura') === 'Gabino Tapia' &&
    celda(E, fila31(E, 'c-824'), 'Figura') === '',
    'la agenda con CAMBIOS_0710_ACTIVOS: Barrio de la "815" (eje) y Figura de la "816" (futura); la del 15/10, no');
-E = montar31();
+E = montar31({ CAMBIOS_0710_ACTIVOS: 'false' });
 r = correr(E, false, [M31]);
 ok(celda(E, fila31(E, 'c-815'), 'Barrio') === '' && celda(E, fila31(E, 'c-816'), 'Figura') === '',
    'y con la tanda apagada, la agenda no los escribe (como antes)');

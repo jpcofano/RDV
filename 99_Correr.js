@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10: CAMBIOS_0710_ACTIVOS = true (el paso 51 de las 00:02 coincidió con la predicción). La corrida de la hora
+ *      escribe 815–819 como mostró el paso 51; nada para correr a mano. Para mirar después: la 815 (Barrio Villa Crespo,
+ *      formulario de la conjunta, 20) y el log ("de los próximos 7 días se cruzaron …", "conjuntas", "nota del eje").
  *  >>> 07/10 (16): UBICACION_TRES_NIVELES = true (medir07: CAMBIA 0). La TANDA DEL 07/10 (puntos 2 a 5: barrio con el eje
  *      del mail, pendiente_barrio sin ubicación, futuras a 7 días, conjuntas) está escrita y APAGADA
  *      (CAMBIOS_0710_ACTIVOS = false): la corrida de la hora no la aplica. Correr paso51_previsualizarFilas() (SÓLO

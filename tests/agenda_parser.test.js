@@ -236,7 +236,11 @@ ok(regla({ estado: 'ok', barrio: 'Almagro', comuna: 5 }, { comuna: 5, barrio: ''
 ok(!regla({ estado: 'ok_parcial', barrio: 'Almagro', comuna: 5 }, { comuna: 5 }).cumple, 'ok_parcial → no cumple (a)');
 ok(/otra comuna/.test(regla({ estado: 'ok', barrio: 'Flores', comuna: 7 }, { comuna: 5 }).motivo), 'otra comuna que la del mail → no cumple (b)');
 ok(regla({ estado: 'ok', barrio: 'Belgrano', comuna: 13 }, { comuna: null, barrio: 'Belgrano' }).cumple, 'mismo barrio que el mail → cumple');
-ok(/no trae/.test(regla({ estado: 'ok', barrio: 'Flores', comuna: 7 }, { comuna: null, barrio: '', eje: 'Sur' }).motivo), 'el mail sólo trae eje → no cumple');
+ok(/eje/.test(regla({ estado: 'ok', barrio: 'Flores', comuna: 7 }, { comuna: null, barrio: '', eje: 'Sur' }).por || ''),
+   'el mail sólo trae eje → cumple (la tanda del 07/10, prendida el 08/10; el detalle, en ubicacion [6])');
+ctx.__a = { estado: 'ok', barrio: 'Flores', comuna: 7 }; ctx.__b = { comuna: null, barrio: '', eje: 'Sur' };
+ok(/no trae/.test(vm.runInContext('conCambios0710_(false, function () { return _reglaBarrio_(__a, __b); })', ctx).motivo),
+   'con la tanda apagada, como antes: el mail sólo trae eje → no cumple');
 const noDir = function (d) { return vm.runInContext('_noEsDireccion_(' + JSON.stringify(d) + ')', ctx); };
 ok(noDir('https://maps.app.goo.gl/abc123') && noDir('Plaza Sin Número') && !noDir('Armenia 1322') && !noDir('Chile 1769, Casa'),
    'links y nombres sin altura no son direcciones; "Armenia 1322" sí');
