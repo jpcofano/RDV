@@ -1026,6 +1026,23 @@ de ellas de otra figura N"). Si molesta, sacarlas es una línea en `_exclusionOp
 
 Si está bien: `FICHAS_0810_ACTIVAS = true` + clasp push; la próxima corrida de la hora regenera REVISAR_MATCH.
 
+#### El script atado a la base (Looker): FASE 1, el informe (08/10) — esperando la aprobación del usuario
+
+Pedido del usuario (08/10, punto B: sólo informe, sin cambiar nada). El informe, entero:
+**[script-looker.md](script-looker.md)** — qué hacen `unpivotEventos` y `buildAuxMaximos`, lo que está mal, los riesgos con
+lo nuestro, la ID (formatos, quién la escribe, la propuesta, si Looker la usa como clave), qué cambia y qué queda igual, y
+las dos correcciones de datos a aprobar. No se tocó el script ni la base.
+
+- **Para correr: `paso53_investigarId()`** (SÓLO LECTURA, `diagnostico/24_columna_id.js`): los formatos de la ID (backup
+  del 04/10 y hoy), qué escribió cada ID que cambió (fórmula / script atado / paso 5 del legado / una persona), los de
+  guiones bajos, los ID repetidos, las celdas `#4F81BD` de toda la base (backup / hoy), la última corrida del script atado
+  (`FechaCarga`) y cuántos ID repetiría el formato propuesto.
+- **A decidir (usuario):** el formato único de la ID (propuesta: `Figura - Barrio - dd/MM/yyyy`, con `- HH:mm` sólo si dos
+  filas repiten); "Sin identificar" de género = Inscriptos − M − F (y si da negativo, ¿0 o sin fila?); sacar los alias
+  "P. Varon" / "P. Mujer"; mirar en Looker si algo parte la ID, la filtra o combina por ella.
+- **FASE 2** (después de aprobar): las dos funciones a nuestro proyecto (dentro de `upsertDiario`, después de las
+  derivadas), la ID como derivada 12, en seco primero, y el script atado con funciones vacías.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

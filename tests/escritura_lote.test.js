@@ -33,7 +33,8 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
                   '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
-                  'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js'];
+                  'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js',
+                  'diagnostico/24_columna_id.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */
@@ -2475,6 +2476,74 @@ function escenarioFichas0810() {
   ok(p52.logs.some(function (l) { return /^--- 1\. ESCRITURA: .*: 0 /.test(l); }), 'paso 52: el log dice 0 en la escritura');
 }
 
+function escenarioInvestigarId() {
+  console.log('\n[30] paso 53: la columna ID — formatos, quién escribió los que cambiaron, guiones bajos, repetidos, el script atado');
+  const E = crearEntorno();
+  const m = montar(E, 60, true);
+  const hoja = m.ssD.hojas['RVD JM-CM - ES'], iId = colD('ID');
+  const pad2 = function (n) { return ('0' + n).slice(-2); };
+  const bueno = function (r) {
+    const d = r[colD('FECHA')];
+    return [r[colD('Figura')], r[colD('Barrio')], pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear()]
+      .filter(Boolean).join(' - ');
+  };
+  const gmt = function (r) { return r[colD('Figura')] + ' | ' + r[colD('Barrio')] + ' | ' + String(r[colD('FECHA')]); };
+  hoja.f = hoja.f || {};
+  for (let i = 1; i <= 50; i++) {             // las de siempre: el formato bueno, con fórmula
+    hoja.v[i][iId] = bueno(hoja.v[i]);
+    hoja.f[(i + 1) + ',' + (iId + 1)] = '=A' + (i + 1) + '&" - "&B' + (i + 1) + '&" - "&TEXT(E' + (i + 1) + ';"dd/mm/yyyy")';
+  }
+  hoja.v[54][iId] = 'Fig_Barrio_20260101';     // e) guiones bajos
+  hoja.v[55][iId] = bueno(hoja.v[56]);         // f) la fila 56 con el ID de la 57
+  hoja.v[56][iId] = bueno(hoja.v[56]);
+  // g) dos reuniones de la misma figura, barrio y día, a distinta hora: el formato propuesto repite; la hora desempata
+  ['Figura', 'Barrio', 'FECHA'].forEach(function (c) { hoja.v[59][colD(c)] = hoja.v[58][colD(c)]; });
+  hoja.v[58][colD('HORA')] = '10:00'; hoja.v[59][colD('HORA')] = '19:30';
+  const backup = new E.Hoja('RVD JM-CM - ES', hoja.v.map(function (r) { return r.slice(); }));
+  backup.f = Object.assign({}, hoja.f);
+  // a) la fórmula se recalculó: en el backup la fila no tenía barrio
+  backup.v[3][colD('Barrio')] = ''; backup.v[3][iId] = bueno(backup.v[3]);
+  // b) en el backup "GMT"; hoy, el formato bueno, sin fórmula ni color
+  backup.v[51][iId] = gmt(hoja.v[51]); hoja.v[51][iId] = bueno(hoja.v[51]);
+  // c) vacía en el backup; hoy "GMT"
+  backup.v[52][iId] = ''; hoja.v[52][iId] = gmt(hoja.v[52]);
+  // d) vacía en el backup; hoy el del legado, en #4F81BD, y el mismo en Para Revisar
+  backup.v[53][iId] = ''; hoja.v[53][iId] = bueno(hoja.v[53]); hoja.bg[53][iId] = '#4F81BD';
+  m.ssD.hojas['Para Revisar'] = new E.Hoja('Para Revisar', [['Figura', 'Barrio', 'FECHA', 'ID'],
+    [hoja.v[53][colD('Figura')], hoja.v[53][colD('Barrio')], hoja.v[53][colD('FECHA')], bueno(hoja.v[53])]]);
+  E.planilla(E.cfg('RDV_SS_BACKUP_BASE')).hojas['RVD JM-CM - ES'] = backup;
+  m.ssD.hojas['Datos_Unpivot'] = new E.Hoja('Datos_Unpivot', [
+    ['ID', 'Figura', 'Barrio', 'EVENTO', 'Día de la semana', 'FECHA', 'HORA', 'STATUS REUNIÓN', 'CategoriaGrupo', 'Categoria', 'Valor', 'FechaCarga'],
+    [hoja.v[1][iId], 'x', 'y', 'z', 'lunes', new E.Date(2026, 8, 1, 12), '18:00', 'Realizada', 'Canal', 'Mail', 5, new E.Date(2026, 9, 2, 14, 5, 0)],
+    [hoja.v[1][iId], 'x', 'y', 'z', 'lunes', new E.Date(2026, 8, 1, 12), '18:00', 'Realizada', 'Canal', 'IVR', 3, new E.Date(2026, 9, 2, 14, 5, 0)]]);
+  m.ssD.hojas['Aux_Maximos'] = new E.Hoja('Aux_Maximos', [
+    ['Figura', 'Barrio', 'EVENTO', 'Día de la semana', 'FECHA', 'HORA', 'STATUS REUNIÓN', 'Inscriptos', 'Asistentes', 'ID', 'Granularidad',
+     'Nivel', 'Clave', 'Max_Asistentes', 'Tot_Asistentes', 'Tot_Inscriptos', 'Cant_Reuniones', 'Realizada_Flag'],
+    ['x', 'y', '', 'lunes', new E.Date(2026, 8, 1, 12), '18:00', 'Realizada', '', '', '', 'MaxPorFechaStatus', 'Barrio', 'y', 30, '', '', '', '1']]);
+  const foto = function () { return JSON.stringify([hoja.v, hoja.bg, backup.v, m.ssD.hojas['Datos_Unpivot'].v]); };
+  const antes = foto();
+  const r = E.ejecutar('investigarColumnaId'), o = r.resultado || {};
+  ok(!r.error && foto() === antes, 'paso 53: corre y no escribe nada' + (r.error ? ': ' + r.error.stack : ''));
+  const por = function (fila) { return (o.cambios || []).find(function (x) { return x.fila === fila; }) || {}; };
+  ok((o.cambios || []).length === 4, 'cambiaron 4 ID desde el backup: ' + (o.cambios || []).map(function (x) { return x.fila; }).join(', '));
+  ok(/fórmula/.test(por(4).quien) && por(4).otras.some(function (t) { return /^Barrio: ""/.test(t); }),
+     'a) la fórmula, que se recalculó porque se cargó el barrio: ' + por(4).quien);
+  ok(/una persona/.test(por(52).quien) && por(52).esLegado && !por(52).formulaHoy,
+     'b) de "GMT" al formato bueno, sin fórmula ni color: una persona (o un script de otra cuenta): ' + por(52).quien);
+  ok(/unpivotEventos/.test(por(53).quien), 'c) vacía → "GMT": el script atado: ' + por(53).quien);
+  ok(/paso 5 del legado/.test(por(54).quien) && por(54).enParaRevisar, 'd) en #4F81BD y en Para Revisar: el paso 5 del legado: ' + por(54).quien);
+  ok((o.guionesBajos || []).length === 1 && o.guionesBajos[0].fila === 55, 'e) los de guiones bajos, uno por uno');
+  ok((o.repetidos || []).some(function (x) { return x.filas.join() === '56,57'; }), 'f) el ID repetido en dos reuniones');
+  ok(o.unpivot && o.unpivot.ultima === '02/10/2026 14:05' && o.unpivot.filas === 2 && o.aux && o.aux.idsConValor === 0,
+     'el script atado: la última corrida de Datos_Unpivot y la columna ID de Aux_Maximos, vacía: ' + JSON.stringify([o.unpivot, o.aux]));
+  ok(o.propuesto && o.propuesto.filas === 60 && o.propuesto.repetidos.length === 1 && o.propuesto.repetidos[0].filas.join() === '59,60' &&
+     o.propuesto.laHoraDesempata === 1, 'g) el formato propuesto repetiría 1 ID (misma figura, barrio y día), y la hora lo desempata');
+  ok(o.hoy && o.hoy.azulesViejos === 1 && o.backup && o.backup.azulesViejos === 0,
+     'el azul viejo (#4F81BD) en toda la solapa: backup 0, hoy 1 (la del paso 5)');
+  ok(o.hoy && o.hoy.conFormula === 50 && o.hoy.porFormato['Figura - Barrio - dd/MM/yyyy'] >= 50,
+     'los formatos de hoy: ' + JSON.stringify(o.hoy && o.hoy.porFormato));
+}
+
 function escenarioSecoIgualReal() {
   console.log('\n[6] seco y real, con las mismas entradas, dan el mismo plan (punto 3)');
   const E = crearEntorno();
@@ -2514,7 +2583,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--sinfigura') >= 0 || process.argv.indexOf('--agendaupsert') >= 0 ||
     process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
     process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0 ||
-    process.argv.indexOf('--fichas0810') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--fichas0810') >= 0 || process.argv.indexOf('--id') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2532,6 +2601,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--ubicacion') >= 0) escenarioUbicacionTresNiveles();
   else if (process.argv.indexOf('--tanda') >= 0) escenarioTanda0710();
   else if (process.argv.indexOf('--fichas0810') >= 0) escenarioFichas0810();
+  else if (process.argv.indexOf('--id') >= 0) escenarioInvestigarId();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2575,6 +2645,7 @@ escenarioColumnasNuevasB();
 escenarioUbicacionTresNiveles();
 escenarioTanda0710();
 escenarioFichas0810();
+escenarioInvestigarId();
 escenarioPaso47();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.

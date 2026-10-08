@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10 (3): SÓLO LECTURA, para la FASE 2 del script de Looker: paso53_investigarId() (la columna ID: formatos y quién
+ *      escribió los que cambiaron desde el 04/10).
  *  >>> 08/10 (2): las fichas con "esperando formulario" y las opciones cercanas, escritas y APAGADAS
  *      (FICHAS_0810_ACTIVAS = false). Correr paso52_medirFichas() (SÓLO LECTURA: qué fichas salen, entran o cambian de
  *      opciones; la escritura tiene que dar 0 diferencias). Si está bien: FICHAS_0810_ACTIVAS = true + clasp push.
@@ -1102,6 +1104,18 @@ function paso52_medirFichas() {
              'NO escribe nada (las fichas, en memoria, dos veces)',
              'el log: 1. escritura (tiene que dar 0) · 2. salen · 3. entran · 4. otras opciones / sin ninguna · 5. resumen');
   return medirFichasCercanas();
+}
+
+/**
+ * PASO 53 — SÓLO LECTURA (08/10): la columna ID, antes de la FASE 2. Los formatos (backup del 04/10 y hoy), QUIÉN escribió
+ * los que cambiaron (fórmula / script atado / paso 5 del legado / una persona), los de guiones bajos, los ID repetidos y
+ * cuándo corrió por última vez el script atado (FechaCarga de Datos_Unpivot).
+ */
+function paso53_investigarId() {
+  _anunciar_('paso 53 — la columna ID: formatos y quién la escribe', 'investigarColumnaId()  [diagnostico/24_columna_id.js]',
+             'NO escribe nada', 'el log: 1. formatos · 2. los que cambiaron desde el 04/10 y qué los escribió · 3. guiones bajos · ' +
+             '4. repetidos · 5. Datos_Unpivot y Aux_Maximos');
+  return investigarColumnaId();
 }
 
 /**

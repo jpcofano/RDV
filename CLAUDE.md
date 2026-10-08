@@ -250,6 +250,11 @@ Solapas que importan:
   que se borre (docs/ESTADO.md, 0.f y 0.s).
 - **(1) `RDV CONJUNTO`** → origen de asistentes (12 col).
 - **(1) `Comunas`** → tabla de lookup, A:H. Estable, no cambia.
+- **(1) `Datos_Unpivot` y `Aux_Maximos`** → las arma un **script atado al archivo de la base** (otro proyecto, del dueño
+  del archivo; `unpivotEventos` y `buildAuxMaximos`) para el tablero de Looker Studio. Ese script además **escribe la
+  columna `ID`** de `RVD JM-CM - ES` donde está vacía, con fechas de JavaScript (el formato roto, "GMT"). Decisión del
+  usuario (07/10): pasa a nuestro sistema, con la ID como derivada 12. FASE 1, el informe:
+  [docs/script-looker.md](docs/script-looker.md); la FASE 2, cuando el usuario lo apruebe.
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
   (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
   El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
