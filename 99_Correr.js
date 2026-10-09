@@ -17,9 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
- *  >>> 08/10 (6): LOOKER_EN_SISTEMA = true (pruebasLooker de las 19:00, aprobado). El script atado: Migrado.js (las dos
- *      funciones vacías) y LEGACY.js (todo comentado), PREPARADOS en script-atado-base/ (al lado del repo): la cuenta de
- *      clasp no lo puede editar, lo sube el usuario; y borra su activador. Después de la primera corrida de la hora:
+ *  >>> 08/10 (6): LOOKER_EN_SISTEMA = true (pruebasLooker de las 19:00, aprobado). El script atado, VACÍO desde las 21:22:
+ *      Migrado.js (las dos funciones vacías) y LEGACY.js (todo comentado), subidos desde script-atado-base/ (al lado del
+ *      repo); sus activadores los borró el usuario. Después de la primera corrida de la hora:
  *      REGISTRO_UPSERT (columna "looker": "reuniones 795"), Datos_Unpivot (FechaCarga nueva) y paso53_investigarId() (la ID
  *      nueva, sin "GMT" ni repetidas). Lista completa en ESTADO 0.z.
  *  >>> 08/10 (5): FASE 2 del tablero de Looker, escrita y APAGADA (LOOKER_EN_SISTEMA = false). SÓLO LECTURA:

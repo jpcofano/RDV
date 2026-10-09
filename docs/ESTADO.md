@@ -1114,17 +1114,18 @@ Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comp
 - **Lo nuestro: `LOOKER_EN_SISTEMA = true`** + clasp push. Si la corrida de la hora ya lleva más de 4 minutos al llegar
   al tablero, no lo rehace en ésa (`LOOKER_TIEMPO_MAX_MS`): lo hace la próxima. Sin la columna ID en la base, no se
   escribe el tablero.
-- **El script atado, PREPARADO pero sin subir**: el código viejo de los siete archivos, todo comentado, en un solo
-  `LEGACY.js` (con qué hacía, la fecha y dónde vive ahora), y `unpivotEventos` / `buildAuxMaximos` vacías en
-  `Migrado.js` (sólo registran "migrado al sistema RDV el 08/10/2026"). Está en **`script-atado-base/`** (al lado del
-  repo, fuera de él, con su propio `.clasp.json`). **El push falló: la cuenta de clasp de esta máquina puede leer el
-  script atado pero no editarlo** (`Drive ACL permission denied … CAN_EDIT: false`); nada cambió allá (un clon posterior
-  da los ocho archivos de siempre). Lo aplica el usuario con una cuenta editora: (a) en el editor de Apps Script del
-  archivo de la base, crear `LEGACY` y `Migrado` con el contenido de esos dos archivos y borrar los otros siete; o (b)
-  `clasp login --user editor` con esa cuenta y `clasp push -f --user editor` desde `script-atado-base/`.
-- **El activador del script atado lo borra el usuario** (lo armó él). Hasta que esté borrado o subido `Migrado.js`, el
-  script viejo puede volver a escribir Datos_Unpivot y Aux_Maximos con la lógica vieja entre dos corridas de la hora (la
-  base no: la ID ya la completa el sistema).
+- **El script atado, VACÍO desde el 08/10 a las 21:22**: el código viejo de los siete archivos, todo comentado, en un
+  solo `LEGACY.js` (con qué hacía, la fecha y dónde vive ahora), y `unpivotEventos` / `buildAuxMaximos` vacías en
+  `Migrado.js` (sólo registran "migrado al sistema RDV el 08/10/2026"). El primer push falló (la cuenta de clasp de esta
+  máquina podía leerlo pero no editarlo: `CAN_EDIT: false`); el usuario le dio permiso de edición sobre el archivo de la
+  base y se subió con `clasp push -f` desde **`script-atado-base/`** (al lado del repo, fuera de él, con su propio
+  `.clasp.json`). Antes del push, un clon del remoto dio los ocho archivos de siempre, iguales a la copia de
+  `_externo/base-script/`; después, otro clon dio **sólo `LEGACY.js`, `Migrado.js` y `appsscript.json`, idénticos a la
+  carpeta**. Cargado como lo carga Apps Script (todos los archivos en un solo alcance, sin SpreadsheetApp), define **sólo
+  `unpivotEventos` y `buildAuxMaximos`**, y cada una hace un único `Logger.log`; `LEGACY.js` tiene los siete originales
+  enteros, comentados línea por línea, sin ninguna línea ejecutable.
+- **Los activadores del script atado los borró el usuario** (08/10, antes del push). Si quedara alguno, `Migrado.js` no
+  escribe nada.
 - Antes de los push, un agente revisor (sólo lectura): todo PASS — las dos solapas se arman con las mismas funciones y
   parámetros que la prueba C; los encabezados, iguales a los del original; `LEGACY.js` sin ninguna sentencia ejecutable y
   con los siete originales enteros; `Migrado.js`, sólo las dos funciones con un `Logger.log`. Encontró un test viejo (el
@@ -1141,9 +1142,9 @@ Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comp
    repite); vacía sin figura; ningún "GMT". `paso53_investigarId()`: en la sección 1 de hoy, sólo ese formato y "vacío";
    repetidos (sección 4) **0**. El log de la corrida: en las derivadas, `ID` con ~830 celdas la primera vez (después, sólo
    las que cambian).
-5. **Que el script viejo no escribió**: en el proyecto del script atado → Ejecuciones, si el activador corrió, dice
-   "migrado al sistema RDV el 08/10/2026"; la `FechaCarga` de Datos_Unpivot es la de nuestra corrida (no la del horario
-   viejo); y no aparece ninguna ID nueva con "GMT".
+5. **Que el script viejo no escribió**: en el proyecto del script atado → Ejecuciones, ninguna nueva (los activadores
+   están borrados; si algo llamara a esas funciones, dirían "migrado al sistema RDV el 08/10/2026"); la `FechaCarga` de
+   Datos_Unpivot es la de nuestra corrida; y no aparece ninguna ID nueva con "GMT".
 6. **En Looker**: si cuenta reuniones por ID, sube de 627 a ~795; el gráfico de género ya no suma más que los
    inscriptos.
 

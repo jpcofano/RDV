@@ -167,11 +167,11 @@ const DESC_PROTECCION_DERIVADAS = 'RDV: columna derivada, la calcula el sistema 
  *
  * **PRENDIDO el 08/10** (pruebasLooker de las 19:00, aprobado por el usuario: A — Aux_Maximos idéntico, Datos_Unpivot sólo la
  * fila 6, corregida entre el 02/10 y el 04/10; B — sólo 816, 819, 820, 821, escritas después de la última corrida del script
- * atado, y 4 filas sin ID; C — OTRA 0, reuniones distintas 627 → 795, ID repetidas 0). El script atado: preparado ese día
- * (Migrado.js con las dos funciones vacías, LEGACY.js con el código viejo comentado; carpeta script-atado-base/, al lado del
- * repo), pero la cuenta de clasp no puede editarlo: lo sube el usuario con una cuenta editora, y borra su activador.
+ * atado, y 4 filas sin ID; C — OTRA 0, reuniones distintas 627 → 795, ID repetidas 0). El script atado, vacío el mismo
+ * día (21:22: Migrado.js con las dos funciones vacías y LEGACY.js con el código viejo comentado, subidos desde
+ * script-atado-base/, al lado del repo); sus activadores los borró el usuario.
  */
-const LOOKER_EN_SISTEMA = true;   // PRENDIDO el 08/10 (pruebas A, B y C de las 19:00: aprobado); el script atado: lo vacía el usuario
+const LOOKER_EN_SISTEMA = true;   // PRENDIDO el 08/10 (pruebas A, B y C de las 19:00: aprobado); el script atado, vacío (Migrado.js)
 /** Si la corrida de la hora ya lleva más que esto al llegar al tablero, no lo rehace (lo hace la próxima): no la lleva al límite de 6 min. */
 const LOOKER_TIEMPO_MAX_MS = 4 * 60 * 1000;
 /** Las solapas del tablero, en el archivo del destino, con el nombre que lee Looker (no cambian). */

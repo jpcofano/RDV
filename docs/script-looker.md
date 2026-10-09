@@ -170,10 +170,10 @@ cuenta como realizada; las columnas vacías de Aux_Maximos.
 - **Las pruebas sobre los datos reales** (paso 54, 08/10 19:00): **A** — Aux_Maximos idéntico, Datos_Unpivot sólo la
   fila 6 (corregida en la base después de la última corrida del script atado); **B** — sólo 816, 819, 820 y 821 (escritas
   después) y 4 filas sin ID; **C** — OTRA 0, reuniones distintas 627 → 795, ID repetidas 0. **Aprobado.**
-- **Prendido el 08/10** (`LOOKER_EN_SISTEMA = true`). El script atado, preparado ese día en `script-atado-base/` (al lado
-  del repo, con su propio `.clasp.json`; la copia del original sigue en `_externo/base-script/`). **La cuenta de clasp no
-  puede editarlo** (`CAN_EDIT: false`): lo sube el usuario con una cuenta editora (en el editor, o con `clasp login --user`
-  y `clasp push --user`). Queda así:
+- **Prendido el 08/10** (`LOOKER_EN_SISTEMA = true`). **El script atado, vacío el mismo día** (21:22): subido con
+  `clasp push -f` desde `script-atado-base/` (al lado del repo, con su propio `.clasp.json`; la copia del original sigue en
+  `_externo/base-script/`), cuando el usuario le dio permiso de edición a la cuenta de clasp (antes: `CAN_EDIT: false`).
+  Verificado con un clon posterior: el remoto es exactamente esa carpeta. Quedó así:
   - **`Migrado.js`**: las dos funciones activas, vacías —no leen ni escriben ninguna planilla—, por si el activador todavía
     las llama:
 
@@ -189,6 +189,5 @@ function buildAuxMaximos() {
   - **`LEGACY.js`**: todo el código viejo de los siete archivos (`Unpivot2.js`, `Auxiliar.js`, `Código.js`,
     `Unpivot.js`, `Graficos.js`, `Sin título.js`, `Sin título 2.js`), comentado línea por línea, con un encabezado: qué
     hacía, la fecha de la migración, dónde vive ahora (este repo, `44_Looker.js`) y que no se descomenta;
-  - los siete archivos, borrados. El activador lo borra el usuario (lo armó él); hasta entonces, el script viejo puede
-    volver a escribir las dos solapas entre corridas de la hora.
+  - los siete archivos, borrados. Los activadores los borró el usuario (los había armado él).
 - Qué mirar después de la primera corrida de la hora: docs/ESTADO.md, 0.z ("El tablero de Looker: PRENDIDO el 08/10").

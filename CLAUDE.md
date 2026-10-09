@@ -263,10 +263,11 @@ Solapas que importan:
   usuario (07/10): pasa a nuestro sistema, con la ID como derivada 12. FASE 1, el informe:
   [docs/script-looker.md](docs/script-looker.md). **Desde el 08/10 las arma el sistema** (`44_Looker.js`,
   `LOOKER_EN_SISTEMA = true`): la corrida de la hora las rehace después de las derivadas, con el mismo nombre, encabezados
-  y orden de columnas, y las tres correcciones aprobadas (pruebas A, B y C del paso 54, aprobadas). El script atado,
-  preparado ese día: las dos funciones vacías (`Migrado.js`) y el código viejo, todo comentado, en `LEGACY.js` (carpeta
-  `script-atado-base/`, al lado del repo, con su propio `.clasp.json`). **La cuenta de clasp no puede editarlo**
-  (`CAN_EDIT: false`): lo sube el usuario con una cuenta editora, y borra su activador.
+  y orden de columnas, y las tres correcciones aprobadas (pruebas A, B y C del paso 54, aprobadas). **El script atado
+  quedó vacío el 08/10** (21:22, `clasp push -f` desde `script-atado-base/`, al lado del repo, con su propio
+  `.clasp.json`, cuando el usuario le dio permiso de edición a la cuenta de clasp): sólo las dos funciones vacías
+  (`Migrado.js`) y el código viejo, todo comentado, en `LEGACY.js`; los siete archivos viejos, borrados. Sus activadores
+  los borró el usuario. Nada más se toca de ese proyecto.
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
   (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
   El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
