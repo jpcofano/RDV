@@ -388,8 +388,9 @@ console.log('[6] Funcionario vacío, "JM", "Seguridad en tu barrio" o sin nadie 
 {
   const textos = ['', '   ', 'JM', 'Jorge Macri', 'Macri Jorge', 'JORGE MACRI', 'jorge macri', 'Funcionario X', 'Seguridad en tu barrio', 'Jorge Macri, Fulano De Tal'];
   const porSolapa = [true, true, true, false, false, false, false, true, true, false];
-  const macri = textos.map(function (t, i) { return M('Belgrano', EV, D(1 + i, 10)); });
-  const regs = textos.map(function (t, i) { return reg('FUN-' + i, t, 'Belgrano', 'Encuentro con vecinos', D(1 + i, 10)); });
+  // del 21/09 al 30/09: reuniones que ya pasaron (un ID se escribe recién cuando la reunión pasó; hoy = 08/10)
+  const macri = textos.map(function (t, i) { return M('Belgrano', EV, D(21 + i, 9)); });
+  const regs = textos.map(function (t, i) { return reg('FUN-' + i, t, 'Belgrano', 'Encuentro con vecinos', D(21 + i, 9)); });
   const E = entorno(macri, lista(regs));
   const res = correr(E, false), tr = registro(E);
   textos.forEach(function (t, i) {
@@ -672,7 +673,12 @@ console.log('[9] el caso del usuario: 3735-SEPJDGAG (Macri, Belgrano, 01/10) es 
   f = fut([M('Belgrano', EV, D(5, 10))], D(7, 10));
   ok(f.d.estado === 'escribe' && f.d.nivel === 'fecha_distinta' && f.d.fila === FILA0, 'planeada AYER (07/10) y una fila a −2 días (05/10): ya pasó → cruza por ±3');
   f = fut([M('Belgrano', EV, D(8, 10))], D(8, 10));
-  ok(f.d.estado === 'escribe' && f.d.nivel === 'misma_fecha', 'planeada HOY y la fila del día (08/10): cruza por la misma fecha (la espera es sólo para ±3)');
+  ok(f.d.cruzaCon === FILA0 && f.d.nivel === 'misma_fecha' && f.d.estado === 'fuera' && f.d.motivo === 'reunion_futura' &&
+     !sinCruzar(f.E).some(function (x) { return x.id === 'H-1'; }),
+     'planeada HOY y la fila del día (08/10): cruza por la misma fecha, pero se escribe cuando la reunión pasó (reunion_futura, no se lista)');
+  const fMan = entorno([M('Belgrano', EV, D(8, 10))], lista([reg('H-1', 'Jorge Macri', 'Belgrano', 'Encuentro con vecinos', D(8, 10))]),
+                       { hoy: new Date(2026, 9, 9, 9, 0, 0) });
+  ok(decidio(correr(fMan, true), 'H-1').estado === 'escribe', '   y al día siguiente (09/10) se escribe');
   f = fut([M('Flores', EV, D(1, 9))], D(12, 10));
   ok(f.d.motivo === 'futura_sin_fila' && /reunión futura: todavía no hay fila/.test(f.d.detalle) && f.res.conteo.futuraSinFila === 1 && sinCruzar(f.E).length === 0,
      'planeada futura sin nada cerca: futura_sin_fila (se cuenta aparte y no va a IDS_SIN_CRUZAR)');
@@ -823,11 +829,17 @@ console.log('[11] el invariante (reglas 9 y 10): un ID en una fila, una fila con
   ok(decidio(res, '3735-SEPJDGAG').estado === 'ya_estaba' && celda(E, 805, cc.id) === '3735-sepjdgag' &&
      E.base().escrituras.filter(function (w) { return w.col === cc.id + 1; }).length === 0,
      'el ID ya está en esa fila, con otras mayúsculas: ya_estaba, no se toca (queda "3735-sepjdgag")');
-  E = entorno([HXrow('Belgrano', D(29, 9), { 'ID cuentas': 'OTRO-ID' })], lista([r3735]), { columnasExtra: EXTRA });
+  E = entorno([HXrow('Belgrano', D(29, 9), { 'ID cuentas': 'OTRO-9' })], lista([r3735]), { columnasExtra: EXTRA });
   res = correr(E, false);
-  ok(decidio(res, '3735-SEPJDGAG').motivo === 'fila_con_otro_id' && celda(E, 805, colsBase(E).id) === 'OTRO-ID' &&
-     sinCruzar(E).some(function (s) { return s.motivo === 'fila_con_otro_id' && s.id === '3735-SEPJDGAG' && /la fila 805 ya tiene el ID OTRO-ID/.test(s.detalle); }),
+  ok(decidio(res, '3735-SEPJDGAG').motivo === 'fila_con_otro_id' && celda(E, 805, colsBase(E).id) === 'OTRO-9' &&
+     sinCruzar(E).some(function (s) { return s.motivo === 'fila_con_otro_id' && s.id === '3735-SEPJDGAG' && /la fila 805 ya tiene el ID OTRO-9/.test(s.detalle); }),
      'la fila ya tiene OTRO ID: fila_con_otro_id, no se toca y se lista con el ID que tiene');
+  // "no" a mano (para que no vuelva un ID borrado): la fila no se toca, y el motivo lo explica
+  E = entorno([HXrow('Belgrano', D(29, 9), { 'ID cuentas': 'no' })], lista([r3735]), { columnasExtra: EXTRA });
+  res = correr(E, false);
+  ok(decidio(res, '3735-SEPJDGAG').motivo === 'fila_con_otro_id' && celda(E, 805, colsBase(E).id) === 'no' &&
+     /dice "NO" en "ID cuentas" \(no es un ID: lo puso el equipo para que no se escriba\)/.test(decidio(res, '3735-SEPJDGAG').detalle),
+     '"no" escrito a mano en la fila: no se toca ("' + decidio(res, '3735-SEPJDGAG').detalle + '")');
 }
 
 // ===================================================================================================================
@@ -898,11 +910,11 @@ console.log('[12] en seco no escribe la base; en serio escribe sólo en celdas v
   const w = E.run('escribirIdsBase_(__d.sh, __d.hdr, __r)');
   ok(celda(E, 805, c.id) === 'TIPEADO-POR-EL-EQUIPO' && !E.base().fondos['805:' + (c.id + 1)] && celda(E, 806, c.env) === '03/03/2026' && !E.base().fondos['806:' + (c.env + 1)],
      'si el equipo carga una celda después del cálculo y antes de escribir, no se pisa (ni se le pone color)');
-  ok(w.saltadas === 2 && w.ids === 2 && celda(E, 806, c.id) === 'R-2' && celda(E, 807, c.id) === 'R-3',
-     '   y lo demás se escribe: 2 IDs (806 y 807) y 2 pedidas saltadas (' + w.saltadas + ')');
-  // DECISIÓN: cada celda se decide por separado: la 805 quedó con el ID del equipo y la fecha de envío del R-1
-  ok(dmy(celda(E, 805, c.env)) === '10/09/2026',
-     '   DECISIÓN: la fecha de envío de la 805 se escribe aunque su ID lo haya cargado el equipo (cada celda se decide por separado; es una carrera de segundos)');
+  ok(w.saltadas === 3 && w.ids === 2 && celda(E, 806, c.id) === 'R-2' && celda(E, 807, c.id) === 'R-3' && dmy(celda(E, 807, c.env)) === '12/09/2026',
+     '   y lo demás se escribe: 2 IDs (806 y 807), la fecha de la 807, y 3 pedidas que no se escribieron (' + w.saltadas + ')');
+  // DECISIÓN (segunda revisión, 08/10): la fecha de envío va sólo al lado de un ID que quedó escrito (o ya estaba)
+  ok(!celda(E, 805, c.env),
+     '   DECISIÓN: la fecha de envío de la 805 NO se escribe: el ID que quedó es el del equipo, no el R-1 (antes se escribía al lado)');
 }
 {
   // Una columna que ya tiene FÓRMULAS no se escribe (regla 14)
@@ -919,14 +931,14 @@ console.log('[12] en seco no escribe la base; en serio escribe sólo en celdas v
 
   let m = montar([{ fila: 806, col: 'id', f: '=SI(A806="";"";"x")' }]);
   let res = correr(m.E, false);
-  ok(ids(m) === ',,' && envs(m) === '10/09/2026,11/09/2026,12/09/2026' && res.formulas['ID cuentas'] === 1 && res.formulas['Fecha envío campañas'] === 0,
-     'una celda con FÓRMULA en "ID cuentas": esa columna no se escribe (IDs "' + ids(m) + '") y la otra sí (envíos ' + envs(m) + ')');
+  ok(ids(m) === ',,' && envs(m) === 'vacía,vacía,vacía' && res.formulas['ID cuentas'] === 1 && res.formulas['Fecha envío campañas'] === 0,
+     'una celda con FÓRMULA en "ID cuentas": esa columna no se escribe (IDs "' + ids(m) + '"), y la fecha de envío tampoco: no va al lado ' +
+     'de un ID que no está (envíos ' + envs(m) + ')');
   ok(/"ID cuentas" tiene 1 celdas con FÓRMULA/.test(m.E.log()) && /no se escribe esa columna/.test(m.E.log()) && /3 escrituras sacadas/.test(m.E.log()),
      '   el log lo dice: "ID cuentas" tiene 1 celdas con FÓRMULA: no se escribe esa columna (3 escrituras sacadas)');
-  ok(m.E.base().escrituras.every(function (e) { return e.col === m.c.env + 1; }), '   y las únicas escrituras de la base son de "Fecha envío campañas"');
+  ok(m.E.base().escrituras.length === 0, '   y no hay ninguna escritura en la base');
   const trz = registro(m.E);
-  ok(trz.length === 3 && trz.every(function (t) { return /no escrito: la columna tiene fórmulas/.test(t.id) && !/ya estaba/.test(t.id); }),
-     '   y REGISTRO_IDS no dice "(ya estaba)" de un ID que no se escribió: dice "(no escrito: la columna tiene fórmulas)" [' + (trz[0] ? trz[0].id : '') + ']');
+  ok(trz.length === 0, '   y REGISTRO_IDS no anota nada (no se escribió nada) [' + trz.length + ']');
 
   m = montar([{ fila: 1, col: 'id', f: '={"ID cuentas"; ARRAYFORMULA(SI(A2:A="";"";"x"))}' }]);
   res = correr(m.E, false);
@@ -963,14 +975,18 @@ console.log('[13] futuras y pasadas sin fila; la corrida de la hora no escribe e
      'una reunión FUTURA sin fila (20/10): futura_sin_fila, se cuenta aparte y NO va a IDS_SIN_CRUZAR (la agenda crea la fila cuando llega el mail)');
   ok(decidio(res, 'PAS-1').motivo === 'sin_fila' && res.conteo.sinFila === 1 && sinCruzar(E).some(function (x) { return x.id === 'PAS-1' && x.motivo === 'sin_fila' && /ninguna fila a ±3 días/.test(x.detalle); }),
      'una PASADA sin fila (20/09): sin_fila y SÍ va a IDS_SIN_CRUZAR ("ninguna fila a ±3 días")');
-  // las filas futuras: a +7 días (15/10) se escribe; a +8 (16/10) y a +12 (20/10), no todavía
-  [['a +7 días (15/10)', D(15, 10), 'escribe'], ['a +8 días (16/10)', D(16, 10), 'fuera'], ['a +12 días (20/10)', D(20, 10), 'fuera']].forEach(function (f) {
+  // las filas futuras (segunda revisión, 08/10): cruzan, pero NINGUNA se escribe todavía —ni a +1 ni a +7—: reunion_futura,
+  // no va a IDS_SIN_CRUZAR. Antes de que pase la reunión puede faltar la fila buena (la agenda la crea con el mail).
+  [['a +1 día (09/10)', D(9, 10)], ['a +7 días (15/10)', D(15, 10)], ['a +8 días (16/10)', D(16, 10)], ['a +12 días (20/10)', D(20, 10)]].forEach(function (f) {
     E = entorno([M('Belgrano', EV, f[1])], lista([reg1('FUT-2', f[1])]));
     res = correr(E, true);
     const d = decidio(res, 'FUT-2');
-    ok(d.estado === f[2] && d.cruzaCon === FILA0 && (f[2] === 'escribe' || d.motivo === 'fila_fuera_de_esta_corrida'),
-       'la fila de Macri ' + f[0] + ': cruza con la ' + FILA0 + ' y ' + (f[2] === 'escribe' ? 'se escribe' : 'NO se escribe todavía (fila_fuera_de_esta_corrida: "' + d.detalle + '")'));
+    ok(d.estado === 'fuera' && d.cruzaCon === FILA0 && d.motivo === 'reunion_futura' && res.conteo.reunionFutura === 1 &&
+       !sinCruzar(E).some(function (x) { return x.id === 'FUT-2'; }),
+       'la fila de Macri ' + f[0] + ': cruza con la ' + FILA0 + ' y NO se escribe todavía (reunion_futura: "' + d.detalle + '")');
   });
+  E = entorno([M('Belgrano', EV, D(15, 10))], lista([reg1('FUT-2', D(15, 10))]), { hoy: new Date(2026, 9, 16, 9, 0, 0) });
+  ok(decidio(correr(E, true), 'FUT-2').estado === 'escribe', 'y cuando la reunión pasó (hoy = 16/10), la del 15/10 se escribe');
 }
 {
   // la corrida de la hora (regla 11): sólo filas activas; una fila CERRADA no recibe nada, ni siquiera la fecha de envío de un "ya_estaba"

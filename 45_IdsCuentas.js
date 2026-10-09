@@ -30,10 +30,14 @@
  *      subzona de la Comuna 1; si no, el eje del mail). Un DESACUERDO descarta la fila; un lugar que no se puede
  *      comparar no descarta (salvo en Seguridad), pero tampoco suma.
  *   3. CUÁNDO. La fecha de la lista es la PLANEADA (dato del usuario). Primero, las filas de ESA fecha. Si no hay
- *      ninguna, a ±IDS_DIAS_FECHA_DISTINTA días, SÓLO si es UNA sola fila posible (las que el lugar no descarta) y en ésa
- *      la figura es exacta y el lugar coincide (traza "fecha distinta"); y sólo cuando la fecha planeada ya pasó (antes,
- *      se espera la fila de ese día). Si las filas de ese día no tienen lugar comparable y a ±N hay una con el lugar
- *      exacto: ambiguo.
+ *      ninguna, a ±IDS_DIAS_FECHA_DISTINTA días, SÓLO si es UNA sola fila posible (las que el lugar no descarta; en
+ *      Seguridad, también una de Seguridad de ese día sin lugar comparable) y en ésa la figura es exacta y el lugar
+ *      coincide (traza "fecha distinta"); y sólo cuando la fecha planeada ya pasó (antes, se espera la fila de ese día).
+ *      Si las filas de ese día no tienen lugar comparable y a ±N hay una con el lugar exacto: ambiguo.
+ *      Y un ID se ESCRIBE recién cuando la reunión de su fila YA PASÓ (FECHA anterior a hoy; segunda revisión, 08/10):
+ *      antes puede faltar la fila buena —la agenda la crea con el mail de esa semana— y el ID quedaría para siempre en
+ *      otra fila de ese día (el invariante lo volvería permanente). Motivo `reunion_futura`: no se lista; lo escribe una
+ *      corrida posterior.
  *   4. Varias filas el mismo día: primero la de la figura exacta (no la conjunta donde está), después la del lugar que
  *      coincide, después el Tipo (sólo "Agenda JM") contra el EVENTO. Si siguen varias, o si el Tipo contradice lo que
  *      eligió el lugar: ambiguo.
@@ -45,16 +49,18 @@
  * --- Cuándo corre ---
  *   paso 55  medirIds()          SÓLO LECTURA (diagnostico/26_ids_cuentas.js): todo al log.
  *   paso 56  idsHistorial(true)  el historial EN SECO: no toca la base; escribe IDS_SIN_CRUZAR (intermedia).
- *   paso 57  idsHistorial(false) el historial, UNA vez: agrega las dos columnas si faltan y escribe en TODAS las filas.
- *   después  IDS_EN_LA_HORA = true: dentro de la corrida de la hora (después de la agenda), sólo filas activas.
+ *   paso 57  idsHistorial(false) el historial, UNA vez: agrega las dos columnas si faltan y escribe en TODAS las filas
+ *                                cuya reunión ya pasó.
+ *   después  IDS_EN_LA_HORA = true: dentro de la corrida de la hora (después de la agenda), sólo filas activas que ya
+ *            pasaron (las de los últimos DIAS_ACTIVOS días).
  */
 
 // ===================== Puntos de entrada =====================
 
 /**
- * **El historial** (pasos 56 y 57): el cruce sobre TODAS las filas de la base (hasta las futuras que se cruzan,
- * `filaQueSeEscribe_`), con su propio bloqueo (una corrida por vez, como el upsert). `enSeco`: calcula, loguea y escribe
- * IDS_SIN_CRUZAR; no toca la base. En serio: agrega las dos columnas si faltan, escribe, registra.
+ * **El historial** (pasos 56 y 57): el cruce sobre TODAS las filas de la base (se escribe en las que ya pasaron), con su
+ * propio bloqueo (una corrida por vez, como el upsert). `enSeco`: calcula, loguea y escribe IDS_SIN_CRUZAR; no toca la
+ * base. En serio: agrega las dos columnas si faltan, escribe, registra.
  */
 function idsHistorial(enSeco) {
   const lock = LockService.getScriptLock();
@@ -95,7 +101,7 @@ function _correrIds_(enSeco, historial) {
         : 'no se escribe nada hasta que las agregue la corrida del historial (paso 57).');
     }
   }
-  const res = cruzarIds_(lista.registros, dest, { historial: historial });
+  const res = cruzarIds_(lista.registros, dest, { historial: historial, idsFantasma: idsEnFilasFantasmaIds_(dest) });
   // Una columna que ya estaba y tiene FÓRMULAS (de quien la creó) no se escribe: pisaría su resultado vacío.
   res.formulas = formulasEnColumnasIds_(dest.sh, res.cols);
   _sacarColumnasConFormulaIds_(res);
@@ -104,8 +110,8 @@ function _correrIds_(enSeco, historial) {
   let w = null;
   if (!enSeco && res.cols[COLUMNA_ID_CUENTAS] != null) {
     w = escribirIdsBase_(dest.sh, dest.hdr, res);
-    Logger.log('>>> Escritos en "%s": %s IDs y %s fechas de envío (%s celdas pedidas que ya no estaban vacías: no se tocaron).',
-               RDV_HOJA_DESTINO, w.ids, w.fechas, w.saltadas);
+    Logger.log('>>> Escritos en "%s": %s IDs y %s fechas de envío (%s celdas pedidas que no se escribieron: ya no estaban vacías, ' +
+               'o la fecha de envío de un ID que no quedó escrito; no se tocaron).', RDV_HOJA_DESTINO, w.ids, w.fechas, w.saltadas);
     try { registrarIds_(res, w.hechas, corrida); }
     catch (err) { Logger.log('>>> No se pudo escribir %s: %s (lo escrito en la base queda igual).', RDV_HOJA_REGISTRO_IDS, err); }
   } else if (enSeco) {
@@ -270,9 +276,19 @@ function _columnasConNombreIds_(hdr, nombres) {
   return out;
 }
 
-/** Un ID para comparar: sin espacios en los bordes, en mayúsculas ("3735-sepjdgag" = "3735-SEPJDGAG"). */
+/** Un ID para comparar: sin espacios en los bordes, en mayúsculas ("3735-sepjdgag" = "3735-SEPJDGAG"), sin el apóstrofo de texto. */
 function normIdIds_(v) {
-  return str(v).replace(/\s+/g, ' ').toUpperCase();
+  return str(v).replace(/^'/, '').replace(/\s+/g, ' ').toUpperCase();
+}
+
+/**
+ * El valor que se escribe en una celda para un ID: tal cual, salvo que Sheets lo pueda leer como número o fecha (sólo
+ * dígitos y separadores: "03735", "12-10"); ahí, con el apóstrofo adelante, que lo deja como TEXTO (no se ve ni es parte
+ * del valor). Sin eso, "03735" quedaría 3735 y "12-10" una fecha.
+ */
+function valorCeldaIdIds_(texto) {
+  const t = str(texto);
+  return /^[\d\s.,:\/+-]+$/.test(t) ? "'" + t : t;
 }
 
 /**
@@ -403,7 +419,10 @@ function lugarDeListaIds_(texto) {
   const t = str(texto);
   const vacia = _ubicDeBarrio_('');
   if (!t || /^[-–—\s]+$/.test(t) || /^#/.test(t)) return { u: vacia, reconocido: false, vacio: true };
-  const tl = t.replace(/[-–—(),.;:\/]/g, ' ').replace(/\s+/g, ' ').trim();
+  // "C 13", "C 1 N", "C1 Sur", "C 01 - Norte": la comuna con espacios y la subzona (detectComuna_ y detectSubzonaComuna1_ leen
+  // "C13" y "C1N"/"C1S"). Sobre el texto CRUDO, antes de pasar "/" a espacio: "c/ 9 de Julio" no es la comuna 9.
+  const tl = t.replace(/\bc\s+(\d{1,2})\b/gi, 'C$1').replace(/[-–—(),.;:\/]/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b(c0?1)\s*(n|s)(?:orte|ur)?\b/gi, '$1$2');
   if (/^(c|comuna)\s*0?\d{1,2}\s*(n|s|norte|sur)?$/i.test(tl) || /^eje\s+\S+$/i.test(tl)) {
     const u = ubicacionDeTexto_(tl);
     return { u: u, reconocido: tieneUbicacion_(u), vacio: false };
@@ -423,7 +442,8 @@ function lugarDeListaIds_(texto) {
     return { u: u, reconocido: u.comuna != null, vacio: false, varios: barrios };
   }
   if (barrios.length === 1) return { u: _ubicDeBarrio_(barrios[0]), reconocido: true, vacio: false };
-  const canon = canonBarrioUbic_(t);   // la otra grafía de Monserrat que acepta la agenda
+  // la otra grafía de Monserrat que acepta la agenda; y las variantes del legado ("Lugano", "Pompeya", "Paternal", "Vélez")
+  const canon = canonBarrioUbic_(t) || barrioPorVariante_(t);
   if (canon) return { u: _ubicDeBarrio_(canon), reconocido: true, vacio: false };
   if (c != null) {
     const u = _ubicDeBarrio_('');
@@ -523,7 +543,12 @@ function filasParaIds_(dest, cols) {
 function cruzarIds_(registros, dest, opciones) {
   const o = opciones || {};
   const historial = !!o.historial;
-  const escribeFila = o.escribeFila || function (f) { return filaQueSeEscribe_(f, historial); };
+  // Dónde escribe esta corrida (`filaQueSeEscribe_`: todas, o las activas) Y que la reunión de la fila YA PASÓ: antes puede
+  // faltar la fila buena (la agenda la crea con el mail de esa semana) y el ID quedaría para siempre en otra.
+  const enCorrida = o.escribeFila || function (f) { return filaQueSeEscribe_(f, historial); };
+  const hoyYmd = ymd_(hoyMediodia_());
+  const reunionPaso = function (f) { return !!f.fecha && ymd_(f.fecha) < hoyYmd; };
+  const escribeFila = function (f) { return enCorrida(f) && reunionPaso(f); };
   const cols = o.cols || columnasIdsEnBase_(dest.hdr);
   const filas = filasParaIds_(dest, cols);
   const porFigura = new Map(), seguridad = [], porId = new Map(), porFila = {};
@@ -533,12 +558,33 @@ function cruzarIds_(registros, dest, opciones) {
     if (x.seguridad) seguridad.push(x);
     if (x.idActual) { if (!porId.has(x.idActual)) porId.set(x.idActual, []); porId.get(x.idActual).push(x.f.fila); }
   });
+  // los IDs de las filas que el destino no arma (sin Figura, FECHA ni Inscriptos): también están ocupados
+  (o.idsFantasma || []).forEach(function (x) { if (!porId.has(x.id)) porId.set(x.id, []); porId.get(x.id).push(x.fila); });
   // Una figura que en la base aparece SÓLO en "Conjunta con" (nunca como Figura de una fila) no está en la lista de figuras
   // del parser: las partes del Funcionario que no se reconocieron se buscan también entre esos nombres.
   const nombresBase = Array.from(porFigura.keys());
   registros.forEach(function (r) { _completarQuienIds_(r, nombresBase); });
   const items = registros.map(function (r) { return { r: r, ev: evaluarRegistroIds_(r, { porFigura: porFigura, seguridad: seguridad }) }; });
-  return _resolverIds_(items, { porId: porId, porFila: porFila, filas: filas, cols: cols, escribeFila: escribeFila, historial: historial });
+  return _resolverIds_(items, { porId: porId, porFila: porFila, filas: filas, cols: cols, escribeFila: escribeFila,
+                                reunionPaso: reunionPaso, historial: historial });
+}
+
+/**
+ * Los IDs que ya están en filas que `armarDestino_` no arma (las "fantasma": sin Figura, sin FECHA y sin Inscriptos): un ID
+ * que quedó en una fila vaciada sigue ocupado (el invariante). Sólo lee la columna. `[{ fila, id }]`.
+ */
+function idsEnFilasFantasmaIds_(dest) {
+  const c = columnasIdsEnBase_(dest.hdr)[COLUMNA_ID_CUENTAS];
+  const n = dest.sh.getLastRow();
+  if (c == null || n < 2) return [];
+  const armadas = {};
+  dest.filas.forEach(function (f) { armadas[f.fila] = true; });
+  const out = [];
+  dest.sh.getRange(2, c + 1, n - 1, 1).getValues().forEach(function (v, i) {
+    const id = normIdIds_(v[0]);
+    if (id && !armadas[i + 2]) out.push({ fila: i + 2, id: id });
+  });
+  return out;
 }
 
 /**
@@ -665,7 +711,10 @@ function evaluarRegistroIds_(r, idx) {
   }
   // 2) la fecha distinta: a ±N días, UNA sola fila posible (las que el lugar no descarta), y en ésa la figura es exacta y
   //    el lugar coincide. Sólo cuando la fecha planeada ya pasó: antes, se espera la fila de ese día.
-  const posibles = cerca.filter(function (e) { return e.lug.coincide !== false; });
+  // En Seguridad, una fila de Seguridad de ESE día sin lugar comparable también es posible (no entró por la misma fecha
+  // porque Seguridad exige el lugar): con ella, ya no hay "una sola" (segunda revisión, 08/10).
+  const delDiaSinLugar = r.quien.seguridad ? mismas.filter(function (e) { return e.lug.coincide === null; }) : [];
+  const posibles = cerca.filter(function (e) { return e.lug.coincide !== false; }).concat(delDiaSinLugar);
   const fuertesCerca = fuertes(posibles);
   if (fuertesCerca.length && ymd_(r.fecha) >= ymd_(hoy)) {
     return { estado: 'sin_fila', motivo: 'futura_sin_fila', cands: posibles,
@@ -675,7 +724,10 @@ function evaluarRegistroIds_(r, idx) {
     return { estado: 'cruza', nivel: 'fecha_distinta', e: fuertesCerca[0], desempate: [], cands: cerca };
   }
   if (fuertesCerca.length) {
-    return { estado: 'ambiguo', motivo: 'ambiguo', detalle: posibles.length + ' filas posibles a ±' + N + ' días', cands: posibles };
+    return { estado: 'ambiguo', motivo: 'ambiguo', cands: posibles,
+             detalle: delDiaSinLugar.length
+               ? delDiaSinLugar.length + ' fila(s) de Seguridad ese día sin lugar comparable y ' + fuertesCerca.length + ' a ±' + N + ' días con el mismo lugar'
+               : posibles.length + ' filas posibles a ±' + N + ' días' };
   }
   // 3) ninguna
   if (mismas.length) {
@@ -752,7 +804,13 @@ function _resolverIds_(items, c) {
               normalizeText_(it.r.lugarTexto)].join('|');
     };
     const iguales = lista.every(function (it) { return firma(it) === firma(lista[0]); });
-    const queda = iguales ? lista.reduce(function (m, it) { return rangoCruce(it) > rangoCruce(m) ? it : m; }, lista[0]) : null;
+    // el de mejor cruce; a igual cruce, el texto del ID que va primero ("3735-SEPJDGAG" antes que "3735-sepjdgag"): así el
+    // texto que se escribe no depende del orden de la lista
+    const cmp = function (x, y) { return x < y ? -1 : x > y ? 1 : 0; };
+    const queda = iguales ? lista.slice().sort(function (a, b) {
+      return rangoCruce(b) - rangoCruce(a) || cmp(String(a.r.idTexto || a.r.id), String(b.r.idTexto || b.r.id)) ||
+             cmp(String(a.r.solapa), String(b.r.solapa)) || a.r.filaLista - b.r.filaLista;
+    })[0] : null;
     if (iguales) {
       const fechas = {};
       lista.forEach(function (it) { if (it.r.envio.estado === 'ok') fechas[ymd_(it.r.envio.fecha)] = it.r.envio; });
@@ -782,7 +840,11 @@ function _resolverIds_(items, c) {
   items.forEach(function (it) {
     if (it.final || it.ev.estado !== 'cruza') return;
     const x = it.ev.e.x;
-    if (x.idActual && x.idActual !== it.r.id) fin(it, { estado: 'no', motivo: 'fila_con_otro_id', detalle: 'la fila ' + x.f.fila + ' ya tiene el ID ' + x.idActual });
+    if (x.idActual && x.idActual !== it.r.id) {
+      fin(it, { estado: 'no', motivo: 'fila_con_otro_id', detalle: esIdValidoIds_(x.idActual)
+        ? 'la fila ' + x.f.fila + ' ya tiene el ID ' + x.idActual
+        : 'la fila ' + x.f.fila + ' dice "' + x.idActual + '" en "' + COLUMNA_ID_CUENTAS + '" (no es un ID: lo puso el equipo para que no se escriba)' });
+    }
   });
   // 3) dos IDs para la misma fila: gana la misma fecha sobre la fecha distinta, y la figura exacta sobre la conjunta donde
   //    está; si empatan, ninguno
@@ -814,9 +876,11 @@ function _resolverIds_(items, c) {
     if (it.ev.estado !== 'cruza') { fin(it, { estado: 'no', motivo: it.ev.motivo, detalle: it.ev.detalle }); return; }
     const x = it.ev.e.x;
     if (!c.escribeFila(x.f)) {
-      fin(it, { estado: 'fuera', motivo: 'fila_fuera_de_esta_corrida', fila: x.f.fila,
-                detalle: 'cruza con la fila ' + x.f.fila + (c.historial ? ' (futura: se escribe cuando entre en las activas)'
-                                                                     : ' (cerrada: la escribe la corrida del historial, paso 57)') });
+      // la reunión todavía no pasó: se espera (no se lista); si ya pasó, es una fila que esta corrida no escribe (cerrada)
+      const futura = c.reunionPaso ? !c.reunionPaso(x.f) : false;
+      fin(it, { estado: 'fuera', motivo: futura ? 'reunion_futura' : 'fila_fuera_de_esta_corrida', fila: x.f.fila,
+                detalle: 'cruza con la fila ' + x.f.fila + (futura ? ' (la reunión todavía no pasó: se escribe en una corrida después)'
+                                                                   : ' (cerrada: la escribe la corrida del historial, paso 57)') });
       return;
     }
     fin(it, { estado: 'escribe', fila: x.f.fila });
@@ -837,7 +901,7 @@ function _resolverIds_(items, c) {
     if (['id_repetido', 'id_en_otra_fila', 'fila_con_otro_id', 'fila_tomada', 'fila_disputada'].indexOf(f.motivo) >= 0) s.conflicto++;
     if (f.estado === 'ya_estaba') s.yaEstaba++;
     if (f.estado === 'ya_en_la_base') s.yaEnLaBase++;
-    if (f.estado === 'fuera') s.fuera++;
+    if (f.estado === 'fuera') s[f.motivo === 'reunion_futura' ? 'reunionFutura' : 'fuera']++;
     if (f.estado === 'ya_estaba' || f.estado === 'ya_en_la_base') res.filasConId[f.fila] = r.id;
 
     if (f.estado === 'escribe' || f.estado === 'ya_estaba') {
@@ -848,7 +912,7 @@ function _resolverIds_(items, c) {
       if (f.estado === 'escribe') {
         s.escribeId++;
         res.filasConId[x.f.fila] = r.id;
-        if (iId != null) res.escrituras.push({ fila: x.f.fila, col: iId + 1, valor: r.idTexto || r.id, campo: 'id', it: it });
+        if (iId != null) res.escrituras.push({ fila: x.f.fila, col: iId + 1, valor: valorCeldaIdIds_(r.idTexto || r.id), campo: 'id', it: it });
       }
       if (env.estado === 'ok' && (iEnv == null || esVacio_(x.envioActual)) && c.escribeFila(x.f)) {
         s.escribeFecha++;
@@ -863,7 +927,7 @@ function _resolverIds_(items, c) {
         : 'el ID está repetido con fechas de envío distintas (' + env.textos.join(' / ') + ')') + '. El ID sí ' +
         (f.estado === 'ya_estaba' ? 'ya estaba' : f.estado === 'fuera' ? 'cruza' : 'se escribe') + ' (fila ' + f.fila + ').'));
     }
-    if ((f.estado === 'no' || f.estado === 'fuera') && f.motivo !== 'futura_sin_fila') {
+    if ((f.estado === 'no' || f.estado === 'fuera') && f.motivo !== 'futura_sin_fila' && f.motivo !== 'reunion_futura') {
       res.sinCruzar.push(_lineaSinCruzarIds_(it, f.motivo, f.detalle));
     }
   });
@@ -879,7 +943,7 @@ function _resolverIds_(items, c) {
 
 function _conteoSolapaIds_() {
   return { registros: 0, mismaFecha: 0, fechaDistinta: 0, ambiguo: 0, sinFila: 0, futuraSinFila: 0, conflicto: 0, noReconocido: 0,
-           sinFecha: 0, repetido: 0, yaEstaba: 0, yaEnLaBase: 0, fuera: 0, escribeId: 0, escribeFecha: 0, envioDescartado: 0 };
+           sinFecha: 0, repetido: 0, yaEstaba: 0, yaEnLaBase: 0, fuera: 0, reunionFutura: 0, escribeId: 0, escribeFecha: 0, envioDescartado: 0 };
 }
 
 /** Encabezado de IDS_SIN_CRUZAR. */
@@ -890,7 +954,7 @@ function _lineaSinCruzarIds_(it, motivo, detalle) {
   const r = it.r;
   const cands = (it.ev.cands || []).slice(0, 4).map(_descCandidataIds_).join(' · ');
   return { orden: r.fecha ? Number(ymd_(r.fecha)) : 0,
-           linea: [motivo, detalle || '', r.solapa, r.filaLista, r.idTexto || r.id, r.funcionario, r.lugarTexto, r.tipoTexto,
+           linea: [motivo, detalle || '', r.solapa, r.filaLista, valorCeldaIdIds_(r.idTexto || r.id), r.funcionario, r.lugarTexto, r.tipoTexto,
                    r.fecha ? fmtFecha_(r.fecha) : r.fechaTexto, r.envioTexto, cands] };
 }
 
@@ -915,6 +979,8 @@ function comoCruzoIds_(it) {
   if (r.quien.porSolapa) s += ' · figura por la solapa';
   if (e.x.status === 'suspendida') s += ' · fila Suspendida';
   if (e.lug.nivel) s += ' · lugar: ' + e.lug.nivel;
+  else s += ' · lugar NO comparable';
+  if (r.tipo && e.x.tipo !== r.tipo) s += ' · Tipo distinto (la lista: ' + r.tipo + '; la fila: ' + (e.x.tipo || 'sin tipo') + ')';
   if (it.ev.desempate && it.ev.desempate.length) s += ' · desempate: ' + it.ev.desempate.join(', ');
   return s;
 }
@@ -927,7 +993,23 @@ function comoCruzoIds_(it) {
  */
 function escribirIdsBase_(sh, hdr, res) {
   if (!res.escrituras.length) return { hechas: [], ids: 0, fechas: 0, saltadas: 0 };
-  const hechas = setSiDelSistemaLote_(sh, hdr, res.escrituras);
+  // Primero los IDs. La fecha de envío, sólo en las filas donde el ID quedó escrito ahora o ya estaba: si alguien llenó la
+  // celda del ID entre el cálculo y la escritura (la lectura fresca lo ve y no la pisa), la fecha no va al lado de otro ID.
+  const deId = res.escrituras.filter(function (e) { return e.campo === 'id'; });
+  const hechasId = deId.length ? setSiDelSistemaLote_(sh, hdr, deId) : [];
+  const conId = new Set(hechasId.map(function (e) { return e.it; }));
+  let deEnvio = res.escrituras.filter(function (e) {
+    return e.campo === 'envio' && (conId.has(e.it) || e.it.final.estado === 'ya_estaba');
+  });
+  // y, con una lectura fresca de la columna del ID, sólo donde la celda dice ESE ID (si alguien lo cambió en el medio, no)
+  const iId = res.cols[COLUMNA_ID_CUENTAS];
+  if (deEnvio.length && iId != null) {
+    const f1 = Math.min.apply(null, deEnvio.map(function (e) { return e.fila; }));
+    const f2 = Math.max.apply(null, deEnvio.map(function (e) { return e.fila; }));
+    const fresca = sh.getRange(f1, iId + 1, f2 - f1 + 1, 1).getValues();
+    deEnvio = deEnvio.filter(function (e) { return normIdIds_(fresca[e.fila - f1][0]) === e.it.r.id; });
+  }
+  const hechas = hechasId.concat(deEnvio.length ? setSiDelSistemaLote_(sh, hdr, deEnvio) : []);
   const fechas = hechas.filter(function (e) { return e.campo === 'envio'; });
   if (fechas.length) formatoFechaEnvioIds_(sh, fechas);
   return { hechas: hechas, ids: hechas.filter(function (e) { return e.campo === 'id'; }).length, fechas: fechas.length,
@@ -954,7 +1036,7 @@ function registrarIds_(res, hechas, corrida) {
     const f = it.ev.e.x.f, r = it.r;
     const id = r.idTexto || r.id;
     filas.push([ahora, corrida, r.solapa, r.filaLista,
-                x.id ? id : (it.final.estado === 'ya_estaba' ? '(ya estaba) ' : '(no escrito: la columna tiene fórmulas) ') + id, f.fila, f.figura,
+                x.id ? valorCeldaIdIds_(id) : (it.final.estado === 'ya_estaba' ? '(ya estaba) ' : '(no escrito) ') + id, f.fila, f.figura,
                 f.fecha || '', f.barrio, r.fecha || '', r.lugarTexto, comoCruzoIds_(it), x.envio || '']);
   });
   const ss = ssIntermedia_();
@@ -1004,8 +1086,8 @@ function logIds_(res) {
                nombre, s.registros, s.mismaFecha, IDS_DIAS_FECHA_DISTINTA, s.fechaDistinta, s.ambiguo, s.sinFila, s.futuraSinFila,
                s.conflicto, s.noReconocido, s.sinFecha, s.repetido);
     Logger.log('     → se escriben %s IDs y %s fechas de envío | ya estaban en su fila %s | ya en la base (sin cruce) %s | cruzan ' +
-               'con una fila fuera de esta corrida %s | fecha de envío descartada %s',
-               s.escribeId, s.escribeFecha, s.yaEstaba, s.yaEnLaBase, s.fuera, s.envioDescartado);
+               'con una reunión que todavía no pasó %s (se escriben después) | con una fila fuera de esta corrida %s | fecha de envío ' +
+               'descartada %s', s.escribeId, s.escribeFecha, s.yaEstaba, s.yaEnLaBase, s.reunionFutura, s.fuera, s.envioDescartado);
   };
   Logger.log('--- el cruce (%s) ---', res.historial ? 'TODAS las filas' : 'filas activas: ' + descActivas_());
   Object.keys(res.porSolapa).forEach(function (k) { lin('"' + k + '"', res.porSolapa[k]); });

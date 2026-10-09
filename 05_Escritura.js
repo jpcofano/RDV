@@ -798,28 +798,36 @@ function formatearColumnasAgenda_(sh, hdr, filas) {
 
 /**
  * **Paso 43** (07/10): saca el fondo de las celdas VACÍAS de las columnas del sistema —las de la agenda
- * (`COLUMNAS_AGENDA`) y las de traza (`COLUMNAS_TRAZA`)—, en todo el destino. Las de la agenda lo heredaron de form_clave
- * al agregarse; en una celda sin valor no hay nada de qué marcar la procedencia. Las celdas con valor no se tocan. En
- * seco, sólo cuenta, y lista una por una las de traza (pocas). Es la única limpieza de fondos que hace el sistema, y
- * sólo en sus columnas.
+ * (`COLUMNAS_AGENDA`), las de traza (`COLUMNAS_TRAZA`) y, desde el 08/10, las de los IDs (`COLUMNAS_IDS`, por su
+ * encabezado o sus alias: si el equipo borra un ID, la celda queda con el fondo del sistema)—, en todo el destino. Las de
+ * la agenda lo heredaron de form_clave al agregarse; en una celda sin valor no hay nada de qué marcar la procedencia. Las
+ * celdas con valor no se tocan. En seco, sólo cuenta, y lista una por una las de traza (pocas). Es la única limpieza de
+ * fondos que hace el sistema, y sólo en sus columnas.
  */
 function limpiarFondoAgendaVacias(escribe) {
   const sh = verificarHojaDestino_(ssDestino_());
   const nCols = sh.getLastColumn(), nFilas = sh.getMaxRows();
-  const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0].map(normalizeHeader_);
-  Logger.log('=== fondo de las celdas vacías de las columnas del sistema: agenda y traza (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
+  const crudo = sh.getRange(1, 1, 1, nCols).getValues()[0];
+  const hdr = crudo.map(normalizeHeader_);
+  Logger.log('=== fondo de las celdas vacías de las columnas del sistema: agenda, traza e IDs (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
   let total = 0;
   const porCol = {}, deTraza = [];
   const esTraza = COLUMNAS_TRAZA.map(normalizeHeader_);
-  COLUMNAS_AGENDA.concat(COLUMNAS_TRAZA).forEach(function (n) {
-    const k = hdr.indexOf(normalizeHeader_(n));
+  const columnas = COLUMNAS_AGENDA.concat(COLUMNAS_TRAZA).map(function (n) { return { n: n, k: hdr.indexOf(normalizeHeader_(n)) }; })
+    .concat(COLUMNAS_IDS.map(function (n) {
+      const k = findIdxOr_(crudo, IDS_ALIAS_COLUMNAS[n] || [n], true);
+      return { n: n, k: k == null ? -1 : k };
+    }));
+  columnas.forEach(function (x) {
+    const n = x.n, k = x.k;
     if (k < 0 || nFilas < 2) return;
     const rg = sh.getRange(2, k + 1, nFilas - 1, 1);
-    const v = rg.getValues(), bg = rg.getBackgrounds();
+    const v = rg.getValues(), bg = rg.getBackgrounds(), fo = rg.getFormulas();
     const a1 = [];
     for (let i = 0; i < v.length; i++) {
       const b = String(bg[i][0] || '').toLowerCase();
-      if (esVacio_(v[i][0]) && b && b !== '#ffffff') {
+      // una celda con FÓRMULA no está vacía aunque dé "": no se toca (p. ej. "ID cuentas" con fórmulas del equipo)
+      if (esVacio_(v[i][0]) && !fo[i][0] && b && b !== '#ffffff') {
         a1.push(_a1_(i + 2, k + 1));
         if (esTraza.indexOf(normalizeHeader_(n)) >= 0) deTraza.push({ fila: i + 2, columna: n, fondo: b });
       }

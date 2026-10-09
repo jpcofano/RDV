@@ -5,10 +5,14 @@
  * Lee la lista ("Agenda JM" y "Agenda funcionarios") y la base, y corre EL MISMO cruce que van a correr el paso 57 (todas
  * las filas) y la corrida de la hora (filas activas): `cruzarIds_`. Dice, por solapa: cuántos cruzan por la misma fecha y
  * cuántos por fecha distinta (±IDS_DIAS_FECHA_DISTINTA), los ambiguos, los sin fila y los conflictos del invariante; lista
- * TODOS los de fecha distinta; el caso de control (IDS_CASO_CONTROL: 3735-SEPJDGAG → fila 805); lo que no se reconoce
- * (Funcionario, Barrio / Comuna, Tipo); las fechas de envío; y las filas de la base que quedarían sin ID, por mes y figura.
+ * TODOS los de fecha distinta y los de la misma fecha con el lugar NO comparable; el caso de control (IDS_CASO_CONTROL:
+ * 3735-SEPJDGAG → fila 805, y que SE ESCRIBA); lo que no se reconoce (Funcionario, Barrio / Comuna, Tipo); las fechas de
+ * envío; y las filas de la base que quedarían sin ID, por mes y figura.
+ * `opciones.tope` (lo usa manana()): cuántas líneas por motivo de "lo que NO se cruza" y de "misma fecha, lugar no
+ * comparable" (el resto, contado; todas van a IDS_SIN_CRUZAR con el paso 56). Sin tope: todas.
  */
-function medirIds() {
+function medirIds(opciones) {
+  const tope = (opciones && opciones.tope) || null;
   const t0 = Date.now();
   Logger.log('=== paso 55 — los IDs de los encuentros: MEDICIÓN (sólo lectura: no escribe nada) ===');
   Logger.log('  base: %s', descripcionHojaDestino_());
@@ -21,8 +25,10 @@ function medirIds() {
     : 'están las dos ("' + COLUMNA_ID_CUENTAS + '" y "' + COLUMNA_FECHA_ENVIO + '")');
   _logIdsNoValidos_diag26(lista);
 
-  const res = cruzarIds_(lista.registros, dest, { historial: true });
-  const resHora = cruzarIds_(lista.registros, dest, { historial: false });
+  const fantasma = idsEnFilasFantasmaIds_(dest);
+  if (fantasma.length) Logger.log('  IDs en filas "fantasma" (sin Figura, FECHA ni Inscriptos: cuentan como ocupados): %s', fantasma.length);
+  const res = cruzarIds_(lista.registros, dest, { historial: true, idsFantasma: fantasma });
+  const resHora = cruzarIds_(lista.registros, dest, { historial: false, idsFantasma: fantasma });
   const formulas = formulasEnColumnasIds_(dest.sh, res.cols);
   Object.keys(formulas).forEach(function (n) {
     if (formulas[n]) Logger.log('  >>> "%s" ya existe y tiene %s celdas con FÓRMULA: el paso 57 NO escribe esa columna.', n, formulas[n]);
@@ -30,24 +36,27 @@ function medirIds() {
   logIds_(res);
 
   _logFechaDistinta_diag26(res);
+  _logLugarNoComparable_diag26(res, tope);
   const control = _logCasoControl_diag26(res);
-  _logNoCruzan_diag26(res);
+  _logNoCruzan_diag26(res, tope);
   _logNoReconocidos_diag26(lista, res);
   _logTipos_diag26(lista, res);
   _logEnvios_diag26(lista, res);
   _logSinId_diag26(lista, res);
 
   Logger.log('--- qué escribiría ---');
-  Logger.log('  el paso 57 (el historial, TODAS las filas): %s IDs y %s fechas de envío%s', res.conteo.escribeId, res.conteo.escribeFecha,
-             col.faltan.length ? ' (después de agregar ' + col.faltan.join(' y ') + ')' : '');
-  Logger.log('  la corrida de la hora (filas activas, %s), si se prendiera HOY sin el paso 57: %s IDs y %s fechas de envío; ' +
-             '%s cruzan con filas cerradas (las deja para el paso 57)', descActivas_(), resHora.conteo.escribeId, resHora.conteo.escribeFecha,
-             resHora.conteo.fuera);
+  Logger.log('  el paso 57 (el historial, TODAS las filas que ya pasaron): %s IDs y %s fechas de envío%s; %s cruzan con una reunión ' +
+             'que todavía no pasó (las escribe la corrida de la hora, después)', res.conteo.escribeId, res.conteo.escribeFecha,
+             col.faltan.length ? ' (después de agregar ' + col.faltan.join(' y ') + ')' : '', res.conteo.reunionFutura);
+  Logger.log('  la corrida de la hora (filas activas, %s, que ya pasaron), si se prendiera HOY sin el paso 57: %s IDs y %s fechas ' +
+             'de envío; %s cruzan con filas cerradas (las deja para el paso 57); %s con una reunión que todavía no pasó',
+             descActivas_(), resHora.conteo.escribeId, resHora.conteo.escribeFecha, resHora.conteo.fuera, resHora.conteo.reunionFutura);
   Logger.log('  IDS_SIN_CRUZAR tendría %s líneas (el paso 56 en seco la escribe en la intermedia).', res.sinCruzar.length);
   Logger.log('  Qué NO dice esto:');
   Logger.log('   - "sin fila" no quiere decir que la reunión no se hizo: la Fecha de la lista es la PLANEADA. Puede ser una');
   Logger.log('     reunión que se movió más de ±%s días, que cambió de lugar o que se canceló; la lista sale con el motivo.', IDS_DIAS_FECHA_DISTINTA);
   Logger.log('   - las futuras sin fila no se cuentan como sin fila: la agenda crea la fila cuando llega el mail de esa semana.');
+  Logger.log('   - un ID se escribe recién cuando la reunión de su fila ya pasó (antes de eso puede faltar la fila buena).');
   Logger.log('tiempo: %s s', ((Date.now() - t0) / 1000).toFixed(1));
   return { conteo: res.conteo, porSolapa: res.porSolapa, hora: resHora.conteo, sinCruzar: res.sinCruzar.length, control: control,
            solapasSinLeer: lista.solapas.filter(function (s) { return s.error; }).map(function (s) { return s.solapa + ': ' + s.error; }),
@@ -65,7 +74,7 @@ function _descFinal_diag26(it) {
   const f = it.final;
   if (f.estado === 'escribe') return 'SE ESCRIBE';
   if (f.estado === 'ya_estaba') return 'ya estaba en esa fila';
-  if (f.estado === 'fuera') return 'cruza, fuera de esta corrida';
+  if (f.estado === 'fuera') return f.motivo === 'reunion_futura' ? 'cruza; se escribe cuando la reunión pase' : 'cruza, fuera de esta corrida';
   return 'NO se escribe: ' + f.motivo + (f.detalle ? ' (' + f.detalle + ')' : '');
 }
 
@@ -82,7 +91,9 @@ function _logFechaDistinta_diag26(res) {
 
 function _logCasoControl_diag26(res) {
   const k = IDS_CASO_CONTROL;
-  const it = res.items.filter(function (x) { return x.r.id === normIdIds_(k.id); })[0];
+  // el registro con ese ID que no quedó como copia "repetido" (el mismo ID dos veces en la lista: vale uno)
+  const conId = res.items.filter(function (x) { return x.r.id === normIdIds_(k.id); });
+  const it = conId.filter(function (x) { return x.final.estado !== 'repetido'; })[0] || conId[0];
   // la reunión de control (por si la fila se movió de número): figura + fecha + barrio
   const reunion = res.filas.filter(function (x) {
     return normalizeText_(x.f.figura) === normalizeText_(k.figura) && x.f.fecha && ymd_(x.f.fecha) === k.fecha.replace(/-/g, '') &&
@@ -101,11 +112,14 @@ function _logCasoControl_diag26(res) {
   Logger.log('  → fila %s (%s, %s, %s) por %s | %s', f.fila, f.figura, fmtFecha_(f.fecha), f.barrio || 'sin barrio', comoCruzoIds_(it),
              _descFinal_diag26(it));
   const okFila = f.fila === k.fila, okReunion = reunion.indexOf(f.fila) >= 0;
-  const texto = okFila && okReunion ? 'OK: es la fila ' + k.fila + '.'
+  // que cruce no alcanza: tiene que quedar escrito (o ya estar); si otro ID le gana la fila, no se escribe
+  const seEscribe = it.final.estado === 'escribe' || it.final.estado === 'ya_estaba';
+  const texto = okReunion && !seEscribe ? 'CRUZA con la fila ' + f.fila + ' pero NO se escribe (' + _descFinal_diag26(it) + ').'
+    : okFila && okReunion ? 'OK: es la fila ' + k.fila + '.'
     : okReunion ? 'OK por la reunión (fila ' + f.fila + '; la ' + k.fila + ' se movió de número).'
     : 'DISTINTO: da la fila ' + f.fila + ' y se esperaba la ' + k.fila + '.';
   Logger.log('  >>> %s', texto);
-  return { ok: okReunion, fila: f.fila, texto: texto + ' (' + comoCruzoIds_(it) + ')' };
+  return { ok: okReunion && seEscribe, fila: f.fila, texto: texto + ' (' + comoCruzoIds_(it) + ')' };
 }
 
 /** Lo que en la columna ID no es un ID, y los IDs con una forma que no es la de siempre (número-letras). */
@@ -120,7 +134,24 @@ function _logIdsNoValidos_diag26(lista) {
   });
 }
 
-function _logNoCruzan_diag26(res) {
+/**
+ * Los cruces de la MISMA fecha con el lugar NO comparable (la lista no dice un lugar que se reconozca, o la fila no tiene
+ * barrio ni comuna): se escriben —la figura y la fecha alcanzan—, pero conviene verlos. Con `tope`, los primeros.
+ */
+function _logLugarNoComparable_diag26(res, tope) {
+  const l = res.items.filter(function (it) {
+    return it.ev.estado === 'cruza' && it.ev.nivel === 'misma_fecha' && !it.r.quien.seguridad && it.ev.e.lug.coincide === null;
+  }).sort(function (a, b) { return b.r.fecha - a.r.fecha; });
+  Logger.log('--- los cruces de la MISMA fecha con el lugar NO comparable (la figura y la fecha alcanzan): %s ---', l.length);
+  (tope ? l.slice(0, tope) : l).forEach(function (it) {
+    const f = it.ev.e.x.f;
+    Logger.log('  %s → fila %s (%s, %s, %s) | %s', _descRegistro_diag26(it.r), f.fila, f.figura || 'sin figura', fmtFecha_(f.fecha),
+               f.barrio || 'sin barrio', _descFinal_diag26(it));
+  });
+  if (tope && l.length > tope) Logger.log('  (y %s más)', l.length - tope);
+}
+
+function _logNoCruzan_diag26(res, tope) {
   const grupos = {};
   res.items.forEach(function (it) {
     const f = it.final;
@@ -130,18 +161,24 @@ function _logNoCruzan_diag26(res) {
   const orden = ['ambiguo', 'fila_disputada', 'fila_tomada', 'fila_con_otro_id', 'id_en_otra_fila', 'id_repetido', 'lugar_distinto',
                  'seguridad_sin_lugar', 'fecha_distinta_sin_lugar', 'fecha_distinta_conjunta', 'conjunta_sin_fila', 'fila_reprogramada',
                  'sin_fila', 'funcionario_en_parte', 'funcionario_no_reconocido', 'fecha_imposible', 'sin_fecha'];
-  Logger.log('--- lo que NO se cruza, por motivo (todo: es lo que va a IDS_SIN_CRUZAR) ---');
+  Logger.log('--- lo que NO se cruza, por motivo (es lo que va a IDS_SIN_CRUZAR%s) ---',
+             tope ? '; acá, los primeros ' + tope + ' de cada motivo, sin las candidatas: todos, con el paso 56' : '');
   Object.keys(grupos).sort(function (a, b) { return orden.indexOf(a) - orden.indexOf(b); }).forEach(function (m) {
     const l = grupos[m].sort(function (a, b) { return (b.r.fecha || 0) - (a.r.fecha || 0); });
     Logger.log('  %s: %s', m, l.length);
-    l.forEach(function (it) {
+    (tope ? l.slice(0, tope) : l).forEach(function (it) {
+      if (tope) { Logger.log('    %s — %s', _descRegistro_diag26(it.r), it.final.detalle || ''); return; }
       Logger.log('    %s\n       %s%s', _descRegistro_diag26(it.r), it.final.detalle || '',
                  (it.ev.cands || []).length ? ' | candidatas: ' + it.ev.cands.slice(0, 4).map(_descCandidataIds_).join(' · ') : '');
     });
+    if (tope && l.length > tope) Logger.log('    (y %s más)', l.length - tope);
   });
   const fut = res.items.filter(function (it) { return it.final.motivo === 'futura_sin_fila'; });
   Logger.log('  futuras, todavía sin fila (no van a IDS_SIN_CRUZAR): %s%s', fut.length,
              fut.length ? ' — de ' + fmtFecha_(fut.map(function (it) { return it.r.fecha; }).sort(function (a, b) { return a - b; })[0]) + ' en adelante' : '');
+  const esp = res.items.filter(function (it) { return it.final.motivo === 'reunion_futura'; });
+  Logger.log('  cruzan con una reunión que todavía no pasó (se escriben después; no van a IDS_SIN_CRUZAR): %s%s', esp.length,
+             esp.length ? ' — filas ' + esp.map(function (it) { return it.final.fila; }).sort(function (a, b) { return a - b; }).join(', ') : '');
 }
 
 function _contar_diag26(m, k) { m[k] = (m[k] || 0) + 1; }
@@ -234,7 +271,7 @@ function _logSinId_diag26(lista, res) {
   res.filas.forEach(function (x) {
     const f = x.f;
     if (!f.fecha) { if (!res.filasConId[f.fila]) sinFecha++; return; }
-    if (ymd_(f.fecha) > hoy) return;   // las futuras todavía no tienen por qué tener ID
+    if (ymd_(f.fecha) >= hoy) return;   // las de hoy y las futuras todavía no tienen por qué tener ID (se escribe cuando pasó)
     const m = Utilities.formatDate(f.fecha, RDV_TZ, 'yyyy-MM');
     if (m < desde) { antes++; return; }
     const g = meses[m] = meses[m] || { filas: 0, con: 0, sin: 0, figuras: {} };

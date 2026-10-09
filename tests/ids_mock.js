@@ -117,7 +117,9 @@ function crearHoja(nombre, valores, opciones) {
       setValues: function (m) {
         if (m.length !== nr || m[0].length !== nc) throw new Error('setValues: ' + m.length + 'x' + m[0].length + ' en un rango de ' + nr + 'x' + nc);
         asegurar(r + nr - 1, c + nc - 1);
-        celdas(function (fi, co, i, j) { h.valores[fi - 1][co - 1] = m[i][j]; h.escrituras.push({ fila: fi, col: co, valor: m[i][j] }); });
+        // como Sheets: un texto que empieza con apóstrofo queda como TEXTO, sin el apóstrofo ("'03735" → "03735")
+        const comoSheets = function (v) { return typeof v === 'string' && v.charAt(0) === "'" ? v.slice(1) : v; };
+        celdas(function (fi, co, i, j) { h.valores[fi - 1][co - 1] = comoSheets(m[i][j]); h.escrituras.push({ fila: fi, col: co, valor: m[i][j] }); });
       },
       setValue: function (v) { asegurar(r, c); h.valores[r - 1][c - 1] = v; h.escrituras.push({ fila: r, col: c, valor: v }); },
       getBackgrounds: function () { const out = []; for (let i = 0; i < nr; i++) { const f = []; for (let j = 0; j < nc; j++) f.push(h.fondos[(r + i) + ':' + (c + j)] || '#ffffff'); out.push(f); } return out; },

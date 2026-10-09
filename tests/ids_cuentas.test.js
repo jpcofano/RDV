@@ -217,7 +217,7 @@ ok(valor(E8, 805, c8.id) === '3735-SEPJDGAG' && fecha(valor(E8, 805, c8.env)) ==
 ok(/huso horario de la lista: GMT \(distinto del script/.test(E8.log()), 'el log dice el huso de la lista');
 
 // ---------------------------- [9] una columna que ya existe con fórmulas ----------------------------
-console.log('[9] "ID cuentas" ya existe y tiene fórmulas: esa columna no se escribe (la otra sí)');
+console.log('[9] "ID cuentas" ya existe y tiene fórmulas: esa columna no se escribe (y la fecha de envío, sólo al lado de un ID que ya está)');
 const E9 = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
 const c9 = cols(E9);
 E9.base().formulasCelda['300:' + (c9.id + 1)] = '=IFERROR(VLOOKUP(A300;X!A:B;2;0);"")';
@@ -225,7 +225,23 @@ E9.run('idsHistorial(false)');
 let idsEscritos9 = 0;
 E9.base().valores.slice(1).forEach(function (r) { if (r[c9.id]) idsEscritos9++; });
 ok(idsEscritos9 === 0, 'una fórmula en una fila: ningún ID escrito (' + idsEscritos9 + ')');
-ok(fecha(valor(E9, 805, c9.env)) === '25/9/2026', 'la fecha de envío, sí (su columna no tiene fórmulas)');
+ok(!valor(E9, 805, c9.env), 'y la fecha de envío tampoco: no va al lado de un ID que no quedó escrito (segunda revisión)');
+// la fórmula ya da el ID de la 805 ("ya estaba"): la fecha de envío sí
+const E9c = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
+const c9c = cols(E9c);
+E9c.base().formulasCelda['805:' + (c9c.id + 1)] = '=IFERROR(VLOOKUP(A805;X!A:B;2;0);"")';
+E9c.base().valores[804][c9c.id] = '3735-SEPJDGAG';
+E9c.run('idsHistorial(false)');
+ok(fecha(valor(E9c, 805, c9c.env)) === '25/9/2026', 'si la fórmula ya da el ID de la fila ("ya estaba"), la fecha de envío sí se escribe');
+// la carrera: alguien carga OTRO ID en la 805 entre el cálculo y la escritura → ni el ID ni la fecha de envío
+const E9d = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
+const c9d = cols(E9d);
+E9d.run('var __dest = leerDestino_(); var __res = cruzarIds_(leerListaIds_().registros, __dest, { historial: true });');
+E9d.base().valores[804][c9d.id] = '9999-AMANO';
+const w9d = E9d.run('escribirIdsBase_(__dest.sh, __dest.hdr, __res)');
+ok(valor(E9d, 805, c9d.id) === '9999-AMANO' && !valor(E9d, 805, c9d.env) && w9d.saltadas >= 2,
+   'un ID cargado a mano en el medio: no se pisa, y la fecha de envío no se escribe al lado (saltadas ' + w9d.saltadas + ')');
+ok(w9d.hechas.every(function (e) { return e.fila !== 805; }), '   (nada escrito en la 805)');
 ok(/"ID cuentas" tiene 1 celdas con FÓRMULA: no se escribe esa columna/.test(E9.log()), 'el log lo dice');
 const E9b = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
 E9b.base().formulasCelda['1:' + (cols(E9b).env + 1)] = '={"Fecha envío campañas"; ARRAYFORMULA(…)}';
@@ -254,6 +270,56 @@ const l11 = E11.run('leerListaIds_()').solapas[1];
 ok(l11.idNoValido.length === 3 && l11.registros.length === 1, '3 que no son IDs (con su fila) y 1 registro');
 E11.run('idsHistorial(false)');
 ok(valor(E11, 810, cols(E11).id) === '3702-tapiaaaa', 'se escribe el ID como viene en la lista (recortado), no en mayúsculas');
+
+// ---------------------------- [12] la tercera vuelta del revisor (09/10) ----------------------------
+console.log('[12] la tercera revisión: la subzona de la Comuna 1, "c/ 9", un ID de dígitos, la carrera en "ya estaba", el control repetido');
+const E12 = entorno();
+const lug = function (t) { return E12.run('(function () { var l = lugarDeListaIds_(' + JSON.stringify(t) + '); return [l.u.comuna, l.u.subzona, l.reconocido]; })()'); };
+[['C1 Sur', [1, 'Sur', true]], ['C 1 Sur', [1, 'Sur', true]], ['C1 - Norte', [1, 'Norte', true]], ['C 01 sur', [1, 'Sur', true]], ['C 1 S', [1, 'Sur', true]],
+ ['Comuna 1 Sur', [1, 'Sur', true]], ['C 13', [13, '', true]], ['C10 Sur', [10, '', true]]].forEach(function (c) {
+  ok(JSON.stringify(lug(c[0])) === JSON.stringify(c[1]), '"' + c[0] + '" → comuna ' + c[1][0] + (c[1][1] ? ', subzona ' + c[1][1] : '') + ' (dio ' + JSON.stringify(lug(c[0])) + ')');
+});
+ok(lug('Sede c/ 9 de Julio')[0] === null && lug('c/ 3 comunas')[0] === null, '"Sede c/ 9 de Julio" y "c/ 3 comunas" no son una comuna');
+// Seguridad "C 1 Sur" con una sola fila de Seguridad ese día, en Retiro (Comuna 1 NORTE): no cruza
+const b12 = baseEscenario();
+b12.push(filaBase({ Figura: '', Barrio: 'Retiro', EVENTO: 'Encuentro con Vecinos', FECHA: D(3, 9), 'Evento (mail)': 'Seguridad en tu Barrio' }));   // 813
+const E12b = crearEntornoIds({ base: b12, jm: JM.slice(0, 2), funcionarios: FUN.slice(0, 2).concat([['3900-SEGC1SUR', 'Seguridad en tu barrio', 'C 1 Sur', D(3, 9), '', '', '']]),
+                               maxColsBase: hdrBase().length });
+const r12b = E12b.run('idsHistorial(false)');
+const it12 = r12b.items.filter(function (x) { return x.r.id === '3900-SEGC1SUR'; })[0];
+ok(it12.final.estado === 'no' && it12.final.motivo === 'lugar_distinto' && !valor(E12b, 813, cols(E12b).id),
+   'Seguridad "C 1 Sur" contra la única de ese día en Retiro (Comuna 1 Norte): lugar_distinto, no se escribe (dio ' + it12.final.motivo + ')');
+// un ID sólo de dígitos se escribe como texto (con el apóstrofo: Sheets no lo convierte en 3735)
+const E12c = crearEntornoIds({ base: baseEscenario(), jm: JM.slice(0, 2).concat([['03735', 'Jorge Macri', 'Belgrano', 'Encuentro con vecinos', D(29, 9), '', '', '', '', '']]),
+                               funcionarios: FUN.slice(0, 2), maxColsBase: hdrBase().length });
+E12c.run('idsHistorial(false)');
+ok(valor(E12c, 805, cols(E12c).id) === '03735' && E12c.base().escrituras.some(function (e) { return e.valor === "'03735"; }),
+   'un ID sólo de dígitos ("03735") se escribe como texto: con el apóstrofo, y la celda dice "03735" (' + valor(E12c, 805, cols(E12c).id) + ')');
+const r12c2 = E12c.run('idsHistorial(false)');
+ok(r12c2.items[0].final.estado === 'ya_estaba' && r12c2.conteo.escribeId === 0, '   y la corrida siguiente lo reconoce: ya_estaba (no "fila_con_otro_id")');
+// la carrera en "ya estaba": alguien cambia el ID de la celda entre el cálculo y la escritura → la fecha de envío no va al lado
+const E12d = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
+const c12d = cols(E12d);
+E12d.base().valores[804][c12d.id] = '3735-SEPJDGAG';
+E12d.run('var __d12 = leerDestino_(); var __r12 = cruzarIds_(leerListaIds_().registros, __d12, { historial: true });');
+E12d.base().valores[804][c12d.id] = '9999-AMANO';
+E12d.run('escribirIdsBase_(__d12.sh, __d12.hdr, __r12)');
+ok(valor(E12d, 805, c12d.id) === '9999-AMANO' && !valor(E12d, 805, c12d.env), '"ya estaba" y el ID cambia en el medio: la fecha de envío no se escribe al lado del ID nuevo');
+// el caso de control con el mismo ID dos veces (una copia "repetido"): sigue OK
+const E12e = crearEntornoIds({ base: baseEscenario(), jm: JM.slice(0, 2).concat([JM[2]]), funcionarios: FUN.slice(0, 2).concat([['3735-sepjdgag', 'Jorge Macri', 'Belgrano', D(1, 10), D(25, 9), '', '']]),
+                               maxColsBase: hdrBase().length });
+const m12 = E12e.run('medirIds()');
+ok(m12.control.ok === true && /OK: es la fila 805/.test(m12.control.texto), 'el 3735 dos veces (otra grafía, en la otra solapa): el control sigue OK (' + m12.control.texto + ')');
+
+// el paso 43 no le saca el fondo a una celda con FÓRMULA (que da "") de "ID cuentas"; a una vacía de verdad, sí
+const E12f = entorno({ columnasExtra: ['ID cuentas', 'Fecha envío campañas'], maxColsBase: hdrBase().length + 2 });
+const c12f = cols(E12f);
+E12f.base().formulasCelda['300:' + (c12f.id + 1)] = '=IFERROR(VLOOKUP(A300;X!A:B;2;0);"")';
+E12f.base().fondos['300:' + (c12f.id + 1)] = '#FFF2CC';
+E12f.base().fondos['301:' + (c12f.id + 1)] = '#CFE2F3';
+E12f.run('limpiarFondoAgendaVacias(true)');
+ok(E12f.base().fondos['300:' + (c12f.id + 1)] === '#FFF2CC' && !E12f.base().fondos['301:' + (c12f.id + 1)],
+   'paso 43: la celda con fórmula conserva su fondo; la vacía de "ID cuentas" con el color del sistema lo pierde');
 
 console.log(fallas ? '\n' + fallas + ' FALLAS' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

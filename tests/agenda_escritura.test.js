@@ -45,6 +45,7 @@ function crearEntorno(config) {
         getValue: function () { return leer(h.v)[0][0]; },
         getBackgrounds: function () { return leer(h.bg); },
         getFormula: function () { return ''; },
+        getFormulas: function () { const o = []; for (let i = 0; i < nf; i++) { const r = []; for (let j = 0; j < nc; j++) r.push(''); o.push(r); } return o; },
         setValues: function (m) { h._asegurar(f + nf - 1, c + nc - 1); for (let i = 0; i < nf; i++) for (let j = 0; j < nc; j++) {
           let x = m[i][j];
           // como Sheets en español: "3 de 3" se lee como el 3 de marzo (46084), salvo en una celda con formato texto

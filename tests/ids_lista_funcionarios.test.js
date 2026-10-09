@@ -704,7 +704,12 @@ console.log('[8] la fecha distinta (±3 días): figura y lugar coinciden y UNA s
   let sc = caso('−3 días (la fila es del 02/10 y la lista dice el 05/10): cruza por fecha distinta', { t: T(f2) }, [fila('X-1', 'Gabino Tapia', 'Retiro', f5, '')], 'escribe');
   igual(cruce(sc, 'X-1'), [sc.n.t, 'exacta', 'fecha_distinta'], '    …con nivel fecha_distinta');
   ok(lineasRegistro(sc).some(function (r) { return /fecha distinta \(−3 días: la lista dice 05\/10\/2026\)/.test(r[11]); }), '    la traza dice "fecha distinta (−3 días: la lista dice 05/10/2026)"');
-  caso('+3 días: cruza', { t: T(D(8, 10)) }, [fila('X-1', 'Gabino Tapia', 'Retiro', f5, '')], 'escribe');
+  caso('+3 días (la fila es del 05/10 y la lista dice el 02/10): cruza', { t: T(f5) }, [fila('X-1', 'Gabino Tapia', 'Retiro', f2, '')], 'escribe');
+  // la fila de HOY (08/10) a +3 de la lista: cruza, pero el ID se escribe recién cuando la reunión pasó (segunda revisión)
+  caso('+3 días con la fila de HOY (08/10): cruza y espera (reunion_futura, no se lista)', { t: T(D(8, 10)) }, [fila('X-1', 'Gabino Tapia', 'Retiro', f5, '')],
+       'fuera/reunion_futura', function (s) {
+         igual([cruce(s, 'X-1')[2], lineaSC(s, 'X-1'), idDe(s, 't')], ['fecha_distinta', null, ''], '    …por fecha distinta, sin línea en IDS_SIN_CRUZAR y sin escribir');
+       });
   caso('4 días: no cruza (sin_fila)', { t: T(f1) }, [fila('X-1', 'Gabino Tapia', 'Retiro', f5, '')], 'no/sin_fila', function (s) {
     ok(/fila 2 \(Gabino Tapia, 01\/10\/2026, Retiro, −4 días\)/.test(lineaSC(s, 'X-1')[10]), '    y la fila a 4 días aparece como candidata en IDS_SIN_CRUZAR');
   });
@@ -1006,6 +1011,7 @@ console.log('[10] el invariante: un ID en una fila, una fila con un ID');
 console.log('[11] la corrida de la hora (sólo filas activas) y el historial (todas)');
 {
   // hoy = 08/10/2026 → activas del 08/09 al 15/10 (hoy + 7). Cerrada: 07/09. Primer día activo: 08/09. Último que se cruza: 15/10. Futura: 16/10.
+  // Se ESCRIBE sólo en las que ya pasaron (segunda revisión, 08/10): la del 15/10 y la del 16/10 cruzan y esperan (reunion_futura).
   const T = function (fecha_) { return { Figura: 'Gabino Tapia', Barrio: 'Retiro', FECHA: fecha_ }; };
   const specs = { cerr: T(D(7, 9)), prim: T(D(8, 9)), ult: T(D(15, 10)), fut: T(D(16, 10)), vieja: T(D(1, 8)) };
   const fun = [fila('T-1', 'Gabino Tapia', 'Retiro', D(7, 9), D(1, 9)), fila('T-2', 'Gabino Tapia', 'Retiro', D(8, 9), D(2, 9)),
@@ -1013,24 +1019,30 @@ console.log('[11] la corrida de la hora (sólo filas activas) y el historial (to
                fila('T-5', 'Gabino Tapia', 'Retiro', D(1, 8), D(25, 7))];
   let sc = escenario(specs, fun);
   correr(sc, 'hora');
-  igual(escritos(sc), { prim: 'T-2', ult: 'T-3' }, 'la hora: sólo las activas (08/09 y 15/10, los dos bordes); la del 07/09 (cerrada), la del 01/08 y la del 16/10 (futura), no');
-  igual([estado(sc, 'T-1'), estado(sc, 'T-4'), estado(sc, 'T-5')], ['fuera/fila_fuera_de_esta_corrida', 'fuera/fila_fuera_de_esta_corrida', 'fuera/fila_fuera_de_esta_corrida'],
-        'las que no escribe: fila_fuera_de_esta_corrida');
+  igual(escritos(sc), { prim: 'T-2' }, 'la hora: sólo las activas que ya pasaron (08/09); la del 07/09 (cerrada), la del 01/08, la del 15/10 y la del 16/10 (futuras), no');
+  igual([estado(sc, 'T-1'), estado(sc, 'T-3'), estado(sc, 'T-4'), estado(sc, 'T-5')],
+        ['fuera/fila_fuera_de_esta_corrida', 'fuera/reunion_futura', 'fuera/reunion_futura', 'fuera/fila_fuera_de_esta_corrida'],
+        'las que no escribe: las cerradas, fila_fuera_de_esta_corrida; las futuras, reunion_futura');
   ok(/cerrada: la escribe la corrida del historial, paso 57/.test(lineaSC(sc, 'T-1', 'fila_fuera_de_esta_corrida')[1]) && lineaSC(sc, 'T-5', 'fila_fuera_de_esta_corrida') !== null,
-     'y se listan en IDS_SIN_CRUZAR, con el motivo (cerrada: la escribe el historial)');
-  igual([envioDe(sc, 'prim'), envioDe(sc, 'ult'), envioDe(sc, 'cerr'), envioDe(sc, 'fut')], ['02/09/2026', '08/10/2026', '', ''], 'las fechas de envío, sólo en las activas');
-  igual(sc.res.conteo.fuera, 3, 'el conteo: 3 fuera de esta corrida');
-  // el historial: todas hasta hoy + 7; la futura de más adelante sigue afuera
+     'y las cerradas se listan en IDS_SIN_CRUZAR, con el motivo (cerrada: la escribe el historial)');
+  ok(lineaSC(sc, 'T-3') === null && lineaSC(sc, 'T-4') === null, 'las futuras NO se listan (esperan: se escriben cuando la reunión pase)');
+  igual([envioDe(sc, 'prim'), envioDe(sc, 'ult'), envioDe(sc, 'cerr'), envioDe(sc, 'fut')], ['02/09/2026', '', '', ''], 'las fechas de envío, sólo en las activas que ya pasaron');
+  igual([sc.res.conteo.fuera, sc.res.conteo.reunionFutura], [2, 2], 'el conteo: 2 fuera de esta corrida (cerradas) y 2 que esperan que la reunión pase');
+  // el historial: todas las que ya pasaron; las futuras siguen esperando
   sc = escenario(specs, fun);
   correr(sc, 'historial');
-  igual(escritos(sc), { cerr: 'T-1', prim: 'T-2', ult: 'T-3', vieja: 'T-5' }, 'el historial: también las cerradas (07/09 y 01/08); la del 16/10 no (futura: cuando entre en las activas)');
-  ok(/futura: se escribe cuando entre en las activas/.test(lineaSC(sc, 'T-4', 'fila_fuera_de_esta_corrida')[1]), 'y la futura se lista con ese motivo');
+  igual(escritos(sc), { cerr: 'T-1', prim: 'T-2', vieja: 'T-5' }, 'el historial: también las cerradas (07/09 y 01/08); la del 15/10 y la del 16/10 no (futuras)');
+  igual([estado(sc, 'T-3'), estado(sc, 'T-4'), lineaSC(sc, 'T-4')], ['fuera/reunion_futura', 'fuera/reunion_futura', null], 'y las futuras esperan, sin listarse');
   // la hora y después el historial: se completan, sin pisarse
   sc = escenario(specs, fun);
   correr(sc, 'hora');
   correr(sc, 'historial');
-  igual(escritos(sc), { cerr: 'T-1', prim: 'T-2', ult: 'T-3', vieja: 'T-5' }, 'la hora y después el historial: queda todo lo del historial, y lo de la hora no se vuelve a tocar');
+  igual(escritos(sc), { cerr: 'T-1', prim: 'T-2', vieja: 'T-5' }, 'la hora y después el historial: queda todo lo del historial, y lo de la hora no se vuelve a tocar');
   igual(sc.E.base().escrituras.filter(function (e) { return e.fila === sc.n.prim && sc.E.base().valores[0][e.col - 1] === 'ID cuentas'; }).length, 1, '    (la fila de la hora se escribió una sola vez)');
+  // cuando pasan (hoy = 17/10): la hora escribe la del 15/10 y la del 16/10
+  sc = escenario(specs, fun, { hoy: new Date(2026, 9, 17, 9, 0, 0) });
+  correr(sc, 'hora');
+  igual([idDe(sc, 'ult'), idDe(sc, 'fut')], ['T-3', 'T-4'], 'con hoy = 17/10, la hora escribe las del 15/10 y el 16/10 (ya pasaron)');
   // sin las columnas: la hora no las agrega ni escribe; el historial sí las agrega
   sc = escenario({ t: T(f3) }, [fila('T-1', 'Gabino Tapia', 'Retiro', f3, D(1, 10))], { sinColumnas: true });
   correr(sc, 'hora');
@@ -1198,8 +1210,9 @@ console.log('[15] una columna de la base con fórmulas no se escribe');
   const escrituras = function (sc, col) { return sc.E.base().escrituras.filter(function (e) { return e.fila > 1 && e.col === col; }).length; };
   ['historial', 'hora'].forEach(function (modo) {
     let sc = armar(['ID cuentas'], modo);
-    igual([idDe(sc, 'a'), idDe(sc, 'b'), envioDe(sc, 'a'), envioDe(sc, 'b')], ['', '', '25/09/2026', '26/09/2026'],
-          '(' + modo + ') una celda con fórmula en "ID cuentas": no se escribe NINGÚN ID (ni en las filas sin fórmula); las fechas de envío, sí');
+    igual([idDe(sc, 'a'), idDe(sc, 'b'), envioDe(sc, 'a'), envioDe(sc, 'b')], ['', '', '', ''],
+          '(' + modo + ') una celda con fórmula en "ID cuentas": no se escribe NINGÚN ID (ni en las filas sin fórmula), y las fechas de envío ' +
+          'tampoco: no van al lado de un ID que no está (segunda revisión)');
     ok(escrituras(sc, sc.iId) === 0 && sc.E.base().formulasCelda['3:' + sc.iId] !== undefined, '    ni se toca la celda con la fórmula');
     ok(/"ID cuentas" tiene 1 celdas con FÓRMULA: no se escribe esa columna \(2 escrituras sacadas\)/.test(sc.E.log()), '    el log lo avisa ("tiene 1 celdas con FÓRMULA: no se escribe esa columna (2 escrituras sacadas)")');
     igual(Object.assign({}, sc.res.formulas), { 'ID cuentas': 1, 'Fecha envío campañas': 0 }, '    y el resultado dice cuántas celdas con fórmula tiene cada columna');
@@ -1211,11 +1224,11 @@ console.log('[15] una columna de la base con fórmulas no se escribe');
        '(' + modo + ') fórmulas en las dos columnas (2 celdas cada una): no se escribe nada en la base y no hay traza (REGISTRO_IDS)');
     ok(/"ID cuentas" tiene 2 celdas con FÓRMULA/.test(sc.E.log()) && /"Fecha envío campañas" tiene 2 celdas con FÓRMULA/.test(sc.E.log()), '    el log cuenta las 2 celdas con fórmula de cada una');
   });
-  // BUG: con fórmulas en "ID cuentas" las fechas de envío sí se escriben, y REGISTRO_IDS anota esas filas como "(ya estaba) X-1": un ID que NO
-  // está en la fila (no se escribió por la fórmula) figura como que ya estaba.
+  // Con fórmulas en "ID cuentas" no se escribe nada (ni los IDs ni las fechas de envío), así que REGISTRO_IDS no anota nada: ningún
+  // "(ya estaba) X-1" de un ID que NO está en la fila (era un BUG, arreglado; la segunda revisión lo cerró del todo).
   const sc = armar(['ID cuentas'], 'historial');
-  ok(lineasRegistro(sc).length === 2 && lineasRegistro(sc).every(function (r) { return !/\(ya estaba\)/.test(r[4]); }),
-     'BUG: REGISTRO_IDS no dice "(ya estaba)" de un ID que no está en la fila (hoy: ' + JSON.stringify(lineasRegistro(sc).map(function (r) { return r[4]; })) + ')');
+  ok(lineasRegistro(sc).length === 0,
+     'REGISTRO_IDS no anota un ID que no está en la fila (hoy: ' + JSON.stringify(lineasRegistro(sc).map(function (r) { return r[4]; })) + ')');
   // sin fórmulas, nada de esto (el caso normal está en todo el resto del archivo)
   const sn = armar([], 'historial');
   igual([idDe(sn, 'a'), idDe(sn, 'b'), envioDe(sn, 'a'), envioDe(sn, 'b')], ['X-1', 'X-2', '25/09/2026', '26/09/2026'], 'sin fórmulas: se escribe todo');
