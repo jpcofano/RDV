@@ -2754,7 +2754,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       no se escriben y se listan. Dos IDs para una fila: gana la misma fecha y, después, la figura exacta; si empatan,
       ninguno. El mismo ID repetido para la misma fila: vale el de mejor cruce y, a igual cruce, el texto que va primero
       (no depende del orden de la lista);
-    - **dos mejoras, APAGADAS** (09/10, `IDS_CONJUNTA_UNA_FIGURA` e `IDS_SEGURIDAD_POR_COMUNA`; medición: paso 60). Sólo
+    - **dos mejoras, PRENDIDAS el 09/10** (`IDS_CONJUNTA_UNA_FIGURA` e `IDS_SEGURIDAD_POR_COMUNA`; el paso 60 de las 15:41:
+      CAMBIA UN ID YA CRUZADO 0, conjuntas 9 de 9, Seguridad 4, correctas). Sólo
       actúan sobre un registro que la regla de siempre NO cruza, y su cruce pierde contra cualquier cruce normal por la misma
       fila: (1) una **conjunta sin fila con todas sus figuras** (las filas de antes de la agenda no tienen "Conjunta con"):
       la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas de siempre), el lugar compatible por la

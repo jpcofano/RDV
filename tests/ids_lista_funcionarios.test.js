@@ -39,7 +39,13 @@
  * las que ya aparecen en los otros tests del proyecto y los barrios, los de la Ciudad.
  */
 'use strict';
-const { crearEntornoIds, filaBase, hdrBase, D } = require('./ids_mock');
+const { crearEntornoIds: _crearEntornoIds, filaBase, hdrBase, D } = require('./ids_mock');
+// Este archivo prueba la regla de SIEMPRE: las dos mejoras del 09/10 (IDS_CONJUNTA_UNA_FIGURA, IDS_SEGURIDAD_POR_COMUNA,
+// prendidas en 00_Config.js) se apagan acá; las prueba tests/ids_mejoras.test.js.
+const SIN_MEJORAS_ = { '00_Config.js': [['const IDS_CONJUNTA_UNA_FIGURA = true;', 'const IDS_CONJUNTA_UNA_FIGURA = false;'],
+                                        ['const IDS_SEGURIDAD_POR_COMUNA = true;', 'const IDS_SEGURIDAD_POR_COMUNA = false;']] };
+const crearEntornoIds = function (o) { return _crearEntornoIds(Object.assign({ reemplazos: SIN_MEJORAS_ }, o)); };
+
 
 let fallas = 0, chequeos = 0;
 function ok(cond, que) { chequeos++; console.log((cond ? '  ok   ' : '  FALLA ') + que); if (!cond) fallas++; }

@@ -34,10 +34,10 @@ function cruce(E, id, mejoras) {
 const NADA = { conjunta: false, seguridad: false }, CONJ = { conjunta: true, seguridad: false }, SEG = { conjunta: false, seguridad: true };
 const F0 = 22;   // la primera fila después del relleno
 
-console.log('[1] apagadas por defecto');
+console.log('[1] prendidas desde el 09/10 (paso 60 de las 15:41)');
 {
   const E = entorno([], []);
-  ok(E.cfg('IDS_CONJUNTA_UNA_FIGURA') === false && E.cfg('IDS_SEGURIDAD_POR_COMUNA') === false, 'las dos, false en 00_Config.js');
+  ok(E.cfg('IDS_CONJUNTA_UNA_FIGURA') === true && E.cfg('IDS_SEGURIDAD_POR_COMUNA') === true, 'las dos, true en 00_Config.js');
 }
 
 console.log('[2] IDS_CONJUNTA_UNA_FIGURA');

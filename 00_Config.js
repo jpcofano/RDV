@@ -262,8 +262,10 @@ const IDS_EN_LA_HORA = true;
  *                             reunión es de la comuna); primero las filas de Seguridad; una sola. Si la figura de la fila no
  *                             es la de la lista, se escribe igual y la traza dice "figura distinta". Caso: los jueves.
  */
-const IDS_CONJUNTA_UNA_FIGURA = false;
-const IDS_SEGURIDAD_POR_COMUNA = false;
+// PRENDIDAS el 09/10 (decisión del usuario, con el paso 60 de las 15:41: CAMBIA UN ID YA CRUZADO 0 en las dos; conjuntas
+// 9 de 9, Seguridad 4, todas correctas).
+const IDS_CONJUNTA_UNA_FIGURA = true;
+const IDS_SEGURIDAD_POR_COMUNA = true;
 /** Los tipos de encuentro, para desempatar con el Tipo de "Agenda JM" contra el EVENTO de la fila. El primero que matchea. */
 const IDS_TIPOS = [
   { tipo: 'seguridad', re: /\bseguridad en tu barrio\b/ },

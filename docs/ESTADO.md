@@ -1161,6 +1161,12 @@ corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no 
 
 Lo que sigue es cómo quedó antes de prenderlo (08/10–09/10).
 
+**09/10 15:41, el paso 60 (corrido por el usuario): "CAMBIA UN ID YA CRUZADO" 0 en las dos; conjuntas resuelve 9 de 9 y
+Seguridad 4, todas correctas. PRENDIDAS** (`IDS_CONJUNTA_UNA_FIGURA = true`, `IDS_SEGURIDAD_POR_COMUNA = true`). La corrida de la
+hora escribe las de las filas activas; las viejas, `paso57_idsHistorial()` otra vez (sólo celdas vacías). De los 16
+`lugar_distinto` de Seguridad quedan 12: `paso61_seguridadSinCruzar()` (sólo lectura) los lista uno por uno, con las filas de
+esa fecha y esa comuna y el motivo; la regla no se cambia hasta verlos.
+
 **Las conjuntas sin "Conjunta con" y Seguridad por comuna: escritas y APAGADAS (09/10) — primero el paso 60.** Decisión del
 usuario, para los 34 de `IDS_SIN_CRUZAR`. Las reglas, en CLAUDE.md (decisión 14). Interruptores: `IDS_CONJUNTA_UNA_FIGURA` e
 `IDS_SEGURIDAD_POR_COMUNA` (00_Config.js). Las dos actúan sólo sobre lo que hoy no cruza y su cruce pierde contra cualquier
