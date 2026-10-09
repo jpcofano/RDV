@@ -2765,6 +2765,13 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       fila de …"); (2) **Seguridad** ("SEG" en el ID o "Seguridad en tu barrio") **por fecha + comuna**, no por figura: las filas
       de esa fecha en esa comuna, primero las de Seguridad; una sola; si la figura de la fila no es la de la lista se
       escribe igual y la traza dice "figura distinta";
+    - **la regla corregida de Seguridad** (09/10, después del paso 61; `IDS_SEGURIDAD_FIGURA_PRIMERO`, APAGADA hasta el paso
+      62): en Seguridad la FIGURA es más estable que la comuna (la lista tiene la comuna planeada; la base, la real). Para un
+      ID de Seguridad que la regla de siempre (figura + comuna) no cruza: (2) la figura de la lista tiene UNA sola fila ese día
+      y sin ID → esa ("comuna distinta (la lista: Cx; la fila: Cy)"); (3) si no, la comuna, pero sólo una fila cuya figura NO
+      está en la lista ese día —un reemplazo— ("figura distinta"); (4) si no, IDS_SIN_CRUZAR. La regla por comuna sola había
+      puesto 3000-MAYSEGVC en la fila de Piñeiro y 2014-SEPSEGVC en la de Landerreche: el paso 63 los vacía (sólo si todavía
+      son lo que escribió el sistema) y el paso 57 los vuelve a cruzar;
     - **un ID borrado vuelve**: la celda queda vacía y la corrida siguiente lo escribe de nuevo. Para que una fila NO reciba
       un ID, el equipo escribe **"no"** (o cualquier texto) en su "ID cuentas": una celda con valor no se toca (se lista
       como `fila_con_otro_id`, "no es un ID: lo puso el equipo"). **Con el guardián prendido (sección 0) esto deja de

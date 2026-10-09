@@ -164,6 +164,67 @@ console.log('[5] el paso 61: los de Seguridad que siguen sin cruzar, con las fil
   ok(JSON.stringify(E.base().valores) === antes && E.base().escrituras.length === 0 && !E.intermedia('IDS_SIN_CRUZAR'), 'no escribe nada');
 }
 
+console.log('[6] la regla corregida de Seguridad (primero la figura; la comuna sólo para un reemplazo) y la corrección (pasos 62 y 63)');
+{
+  // Los casos del paso 61 (09/10), con nombres inventados: "Muzzio" hace de la figura de la 590, "Pereyra" de la de la 592,
+  // "Landerreche" de la 244, "Lombardi" del reemplazo (Quintana).
+  const AZUL = '#CFE2F3';
+  const filas = [
+    filaBase({ Figura: 'Clara Muzzio', Barrio: 'Caballito', FECHA: D(14, 5), 'ID cuentas': '3000-MAYSEGVC', 'Fecha envío campañas': D(10, 5) }, HDR),   // F0: la "590"
+    filaBase({ Figura: 'Ana Pereyra', Barrio: 'Monserrat', FECHA: D(14, 5) }, HDR),                                                                  // F0+1: la "592"
+    filaBase({ Figura: 'Ruth Landerreche', Barrio: 'Retiro', FECHA: D(2, 10, 2025), 'ID cuentas': '2014-SEPSEGVC' }, HDR),                         // F0+2: la "244"
+    filaBase({ Figura: 'Hernán Lombardi', Barrio: 'Saavedra', FECHA: D(4, 6), 'Evento (mail)': 'Seguridad en tu Barrio' }, HDR),                      // F0+3: reemplazo
+    filaBase({ Figura: 'Jorge Macri', Barrio: 'Belgrano', FECHA: D(29, 9), 'ID cuentas': '3735-SEPJDGAG' }, HDR)                                      // F0+4: otro ID, ya cruzado
+  ];
+  const lista = [['3000-MAYSEGVC', 'Ana Pereyra', 'Comuna 6', D(14, 5), D(10, 5)], ['3001-MAYSEGVC', 'Clara Muzzio', 'Comuna 3', D(14, 5), D(10, 5)],
+                 ['2014-SEPSEGVC', 'Ana Pereyra', 'C1N', D(2, 10, 2025), ''], ['2015-SEPSEGVC', 'Ruth Landerreche', 'Comuna 2', D(2, 10, 2025), ''],
+                 ['2634-JUNSEGAA', 'Gabino Tapia', 'Comuna 12', D(4, 6), ''], ['3735-SEPJDGAG', 'Jorge Macri', 'Belgrano', D(1, 10), '']];
+  const mk = function () {
+    const E = entorno(filas, lista);
+    [F0, F0 + 2].forEach(function (f) { E.base().fondos[f + ':' + (col('ID cuentas') + 1)] = AZUL; });
+    E.base().fondos[F0 + ':' + (col('Fecha envío campañas') + 1)] = AZUL;
+    return E;
+  };
+  let E = mk();
+  ok(E.cfg('IDS_SEGURIDAD_FIGURA_PRIMERO') === false, 'IDS_SEGURIDAD_FIGURA_PRIMERO = false en 00_Config.js (apagada)');
+  const antes = JSON.stringify(E.base().valores);
+  const m = E.run('medirSeguridadReglaNueva()');
+  ok(m.vaciadas.length === 2 && m.otros === 0, 'paso 62: la corrección en memoria (2 IDs) y CAMBIA en los demás IDs: 0');
+  ok(/3000-MAYSEGVC[^\n]*\n\s*hoy: fila 22[^\n]*con la regla corregida: fila 23[^\n]*comuna distinta \(la lista: C6; la fila: C1\)/.test(E.log()),
+     'paso 62: 3000 (Pereyra) pasa de la fila de Muzzio a la suya, "comuna distinta (la lista: C6; la fila: C1)"');
+  ok(/3001-MAYSEGVC[^\n]*\n\s*hoy: sin cruzar[^\n]*con la regla corregida: fila 22/.test(E.log()), 'paso 62: 3001 (Muzzio) se resuelve a su fila');
+  ok(/2015-SEPSEGVC[^\n]*\n\s*hoy: sin cruzar[^\n]*con la regla corregida: fila 24/.test(E.log()), 'paso 62: 2015 (Landerreche) se resuelve a su fila');
+  ok(/2014-SEPSEGVC[^\n]*\n\s*hoy: fila 24[^\n]*con la regla corregida: SIN CRUZAR/.test(E.log()),
+     'paso 62: 2014 (Pereyra, sin fila ese día) queda sin cruzar: la de la Comuna 1 es de Landerreche, que está en la lista ese día');
+  ok(JSON.stringify(E.base().valores) === antes && E.base().escrituras.length === 0, 'paso 62: no escribe nada');
+  // el reemplazo
+  E.ctx.__m = { conjunta: true, seguridad: true, figuraPrimero: true };
+  const res = E.run('conMejorasIds_(__m, function () { return cruzarIds_(leerListaIds_().registros, leerDestino_(), { historial: true }); })');
+  const it = res.items.filter(function (x) { return x.r.id === '2634-JUNSEGAA'; })[0];
+  ok(it.final.estado === 'escribe' && it.final.fila === F0 + 3 && /figura distinta/.test(E.run('comoCruzoIds_')(it)),
+     'un reemplazo (la figura de la fila no está en la lista ese día): por la comuna, "figura distinta"');
+  // paso 63: en seco no toca; en serio vacía las dos (con la fecha de envío de la primera)
+  let r63 = E.run('corregirIdsSeguridad0910(false)');
+  ok(r63.plan.length === 2 && E.base().valores[F0 - 1][col('ID cuentas')] === '3000-MAYSEGVC', 'paso 63 en seco: dice qué vaciaría (2) y no toca nada');
+  r63 = E.run('corregirIdsSeguridad0910(true)');
+  ok(!E.base().valores[F0 - 1][col('ID cuentas')] && !E.base().valores[F0 - 1][col('Fecha envío campañas')] && !E.base().valores[F0 + 1][col('ID cuentas')] &&
+     !E.base().valores[F0 + 2][col('ID cuentas')],
+     'paso 63: vacía 3000 (con su fecha de envío) y 2014; nada más');
+  ok(E.base().valores[F0 + 4 - 1][col('ID cuentas')] === '3735-SEPJDGAG', '   el otro ID (3735) queda como estaba');
+  ok(E.intermedia('REGISTRO_IDS').valores.some(function (x) { return /\(VACIADO\) 3000-MAYSEGVC/.test(x[4]); }), '   y REGISTRO_IDS lo anota');
+  // y el paso 57 con la regla corregida los vuelve a cruzar donde van
+  E.run('conMejorasIds_(__m, function () { return idsHistorial(false); })');
+  ok(E.base().valores[F0 - 1][col('ID cuentas')] === '3001-MAYSEGVC' && E.base().valores[F0][col('ID cuentas')] === '3000-MAYSEGVC' &&
+     E.base().valores[F0 + 1][col('ID cuentas')] === '2015-SEPSEGVC' && E.base().valores[F0 + 2][col('ID cuentas')] === '2634-JUNSEGAA',
+     'el paso 57 con la regla corregida: 3001 → la de Muzzio, 3000 → la de Pereyra, 2015 → la de Landerreche, 2634 → el reemplazo');
+  // una celda que el equipo cambió (sin el color del sistema) no se vacía
+  E = mk();
+  delete E.base().fondos[(F0 + 2) + ':' + (col('ID cuentas') + 1)];
+  E.run('corregirIdsSeguridad0910(true)');
+  ok(E.base().valores[F0 + 1][col('ID cuentas')] === '2014-SEPSEGVC' && !E.base().valores[F0 - 1][col('ID cuentas')],
+     'paso 63: una celda sin el color del sistema (la cargó el equipo) no se toca; la otra sí');
+}
+
 console.log('\n' + chequeos + ' chequeos.');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');
 process.exit(fallas ? 1 : 0);

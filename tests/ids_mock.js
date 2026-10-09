@@ -143,7 +143,8 @@ function crearHoja(nombre, valores, opciones) {
       return {
         setBackground: function (bg) { rs.forEach(function (q) { q.setBackground(bg); }); },
         setNumberFormat: function (f) { rs.forEach(function (q) { q.setNumberFormat(f); }); },
-        setValue: function (v) { rs.forEach(function (q) { q.setValue(v); }); }
+        setValue: function (v) { rs.forEach(function (q) { q.setValue(v); }); },
+        clearContent: function () { rs.forEach(function (q) { q.clearContent(); }); }
       };
     },
     insertColumnsAfter: function (despues, n) {

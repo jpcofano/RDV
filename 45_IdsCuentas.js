@@ -573,7 +573,17 @@ function cruzarIds_(registros, dest, opciones) {
   // del parser: las partes del Funcionario que no se reconocieron se buscan también entre esos nombres.
   const nombresBase = Array.from(porFigura.keys());
   registros.forEach(function (r) { _completarQuienIds_(r, nombresBase); });
-  const items = registros.map(function (r) { return { r: r, ev: evaluarRegistroIds_(r, { porFigura: porFigura, seguridad: seguridad, filas: filas }) }; });
+  // las figuras que nombra la lista cada día (las dos solapas): la regla corregida de Seguridad no le da a un ID la fila de una
+  // figura que tiene su propio registro ese día
+  const figurasListaDia = {};
+  registros.forEach(function (r) {
+    if (!r.fecha) return;
+    const k = ymd_(r.fecha), s = figurasListaDia[k] = figurasListaDia[k] || {};
+    r.quien.norm.forEach(function (n) { s[n] = true; });
+  });
+  const items = registros.map(function (r) {
+    return { r: r, ev: evaluarRegistroIds_(r, { porFigura: porFigura, seguridad: seguridad, filas: filas, figurasListaDia: figurasListaDia }) };
+  });
   return _resolverIds_(items, { porId: porId, porFila: porFila, filas: filas, cols: cols, escribeFila: escribeFila,
                                 reunionPaso: reunionPaso, historial: historial });
 }
@@ -646,6 +656,7 @@ const IDS_DIAS_CONTEXTO_ = 7;
 var _forzarMejorasIds_ = null;
 function idsConjuntaUnaFigura_() { return _forzarMejorasIds_ && 'conjunta' in _forzarMejorasIds_ ? !!_forzarMejorasIds_.conjunta : !!IDS_CONJUNTA_UNA_FIGURA; }
 function idsSeguridadPorComuna_() { return _forzarMejorasIds_ && 'seguridad' in _forzarMejorasIds_ ? !!_forzarMejorasIds_.seguridad : !!IDS_SEGURIDAD_POR_COMUNA; }
+function idsSeguridadFiguraPrimero_() { return _forzarMejorasIds_ && 'figuraPrimero' in _forzarMejorasIds_ ? !!_forzarMejorasIds_.figuraPrimero : !!IDS_SEGURIDAD_FIGURA_PRIMERO; }
 /** Corre `fn` con las mejoras forzadas (`{ conjunta, seguridad }`) y las deja como estaban. Mediciones y tests. */
 function conMejorasIds_(valor, fn) {
   const antes = _forzarMejorasIds_;
@@ -662,7 +673,7 @@ function evaluarRegistroIds_(r, idx) {
   const ev = _evaluarRegistroBaseIds_(r, idx);
   if (ev.estado === 'cruza' || ev.estado === 'sin_fecha') return ev;
   if (idsSeguridadPorComuna_() && esSeguridadIds_(r) && idx.filas) {
-    const s = _seguridadPorComunaIds_(r, idx);
+    const s = idsSeguridadFiguraPrimero_() ? _seguridadFiguraPrimeroIds_(r, idx) : _seguridadPorComunaIds_(r, idx);
     if (s) return s;
   }
   if (idsConjuntaUnaFigura_() && ev.motivo === 'conjunta_sin_fila' && idx.filas) {
@@ -682,6 +693,43 @@ function esSeguridadIds_(r) {
  * la comuna de la lista (la subzona de la Comuna 1, si las dos la tienen), no Reprogramadas; primero las de Seguridad y, si
  * la lista nombra una figura, la suya. Una sola → cruza (misma fecha). null si la lista no dice una comuna o no hay ninguna.
  */
+/**
+ * **La regla corregida de Seguridad** (IDS_SEGURIDAD_FIGURA_PRIMERO, 09/10): primero la FIGURA (su única fila ese día, sin
+ * ID: "comuna distinta"); si no, la COMUNA, pero sólo una fila cuya figura NO está en la lista ese día (un reemplazo: "figura
+ * distinta"). null si ninguna (queda en IDS_SIN_CRUZAR con su motivo).
+ */
+function _seguridadFiguraPrimeroIds_(r, idx) {
+  const u = r.lugar.u, comuna = u.comuna;
+  const delDia = idx.filas.filter(function (x) { return x.f.fecha && !x.noCandidata && diasEntre_(x.f.fecha, r.fecha) === 0; });
+  // 2. FIGURA
+  if (r.quien.norm.length) {
+    const deFigura = delDia.filter(function (x) { return r.quien.norm.some(function (k) { return x.fig.indexOf(k) >= 0; }); });
+    if (deFigura.length === 1 && !deFigura[0].idActual) {
+      const x = deFigura[0], e = { x: x, ident: 'parcial', dias: 0, lug: compararUbicacion_(u, x.ubic) };
+      return { estado: 'cruza', nivel: 'misma_fecha', regla: 'seguridad_por_figura', cands: [e], desempate: [], e: e,
+               comunaLista: comuna, comunaFila: x.ubic.comuna };
+    }
+  }
+  // 3. COMUNA, sólo un reemplazo: la figura de la fila no está en la lista ese día
+  if (comuna == null) return null;
+  const enLista = (idx.figurasListaDia || {})[ymd_(r.fecha)] || {};
+  const cands = delDia.filter(function (x) {
+    if (x.ubic.comuna !== comuna) return false;
+    if (comuna === 1 && u.subzona && x.ubic.subzona && u.subzona !== x.ubic.subzona) return false;
+    return !x.fig.some(function (k) { return enLista[k]; });
+  }).map(function (x) { return { x: x, ident: 'parcial', dias: 0, lug: { nivel: 'comuna', coincide: true, porSubzona: false } }; });
+  if (!cands.length) return null;
+  const pasos = [];
+  const c = _preferirIds_(cands, function (e) { return e.x.seguridad; }, pasos, 'seguridad');
+  if (c.length !== 1) {
+    return { estado: 'ambiguo', motivo: 'ambiguo', cands: c, regla: 'seguridad_por_comuna',
+             detalle: 'Seguridad por comuna (reemplazo): ' + c.length + ' filas de la Comuna ' + comuna + ' ese día cuya figura no está en la lista' };
+  }
+  const x = c[0].x;
+  return { estado: 'cruza', nivel: 'misma_fecha', e: c[0], desempate: pasos, cands: cands, regla: 'seguridad_por_comuna',
+           figuraDistinta: r.quien.norm.length > 0 && !r.quien.norm.some(function (k) { return x.fig.indexOf(k) >= 0; }) };
+}
+
 function _seguridadPorComunaIds_(r, idx) {
   const u = r.lugar.u, comuna = u.comuna;
   if (comuna == null) return null;
@@ -1084,6 +1132,8 @@ function comoCruzoIds_(it) {
   if (r.quien.seguridad) s += ' · Seguridad';
   else if (r.quien.norm.length > 1) s += ' · conjunta';
   if (it.ev.regla === 'conjunta_una_figura') s += ' · conjunta sin "Conjunta con": la fila de ' + (e.x.f.figura || 'una de sus figuras');
+  else if (it.ev.regla === 'seguridad_por_figura') s += ' · Seguridad por figura · comuna distinta (la lista: ' +
+    (it.ev.comunaLista == null ? 'sin comuna' : 'C' + it.ev.comunaLista) + '; la fila: ' + (it.ev.comunaFila == null ? 'sin comuna' : 'C' + it.ev.comunaFila) + ')';
   else if (it.ev.regla === 'seguridad_por_comuna') s += ' · Seguridad por comuna' + (it.ev.figuraDistinta ? ' · figura distinta (la lista: ' + r.quien.figuras.join(', ') + '; la fila: ' + (e.x.f.figura || 'sin figura') + ')' : '');
   else if (e.ident === 'parcial') s += ' · fila conjunta (una de sus figuras)';
   if (r.quien.porSolapa) s += ' · figura por la solapa';
@@ -1206,4 +1256,62 @@ function logIds_(res) {
   Logger.log('  columnas en la base: "%s" %s | "%s" %s', COLUMNA_ID_CUENTAS, iId == null ? 'NO ESTÁ' : 'en ' + _letraIds_(iId + 1),
              COLUMNA_FECHA_ENVIO, iEnv == null ? 'NO ESTÁ' : 'en ' + _letraIds_(iEnv + 1));
   Logger.log('  IDS_SIN_CRUZAR: %s líneas', res.sinCruzar.length);
+}
+
+// ===================== La corrección del 09/10 (paso 63) =====================
+
+/**
+ * **Paso 63: vacía los IDs de Seguridad que la regla por comuna escribió en la fila de OTRA figura** (IDS_CORRECCION_SEGURIDAD_0910;
+ * 09/10, decisión del usuario). Por el ID (único en la base), nunca por número de fila. Se vacían el ID y su Fecha envío campañas
+ * **sólo si todavía son lo que escribió el sistema**: el ID es ése y las dos celdas tienen el color del sistema
+ * (`vaciarCeldasDelSistema_`: lectura fresca; si alguien las cambió, no se tocan). Cada celda vaciada va a REGISTRO_IDS. Después:
+ * la regla corregida (IDS_SEGURIDAD_FIGURA_PRIMERO) y el paso 57, que los vuelve a cruzar. `escribe` false: sólo dice qué haría.
+ */
+function corregirIdsSeguridad0910(escribe) {
+  Logger.log('=== paso 63 — vaciar los IDs de Seguridad mal asignados (%s) ===', escribe ? 'ESCRIBE' : 'EN SECO');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(ESPERA_BLOQUEO_MS)) { Logger.log('>>> Hay otra corrida en curso: no se hace nada.'); return null; }
+  try {
+    const sh = verificarHojaDestino_(ssDestino_());
+    const n = sh.getLastRow(), m = sh.getLastColumn();
+    const hdr = sh.getRange(1, 1, 1, m).getValues()[0];
+    const cols = columnasIdsEnBase_(hdr), iId = cols[COLUMNA_ID_CUENTAS], iEnv = cols[COLUMNA_FECHA_ENVIO];
+    if (iId == null) { Logger.log('  la base no tiene "%s": nada que hacer.', COLUMNA_ID_CUENTAS); return { vaciadas: [] }; }
+    const ids = sh.getRange(2, iId + 1, Math.max(n - 1, 1), 1).getValues();
+    const envs = iEnv != null ? sh.getRange(2, iEnv + 1, Math.max(n - 1, 1), 1).getValues() : null;
+    const fondos = sh.getRange(2, iId + 1, Math.max(n - 1, 1), 1).getBackgrounds();
+    const celdas = [], plan = [];
+    IDS_CORRECCION_SEGURIDAD_0910.forEach(function (id) {
+      const filas = [];
+      ids.forEach(function (v, i) { if (normIdIds_(v[0]) === normIdIds_(id)) filas.push(i + 2); });
+      if (filas.length !== 1) { Logger.log('  %s: %s — no se toca', id, filas.length ? 'está en ' + filas.length + ' filas (' + filas.join(', ') + ')' : 'no está en la base'); return; }
+      const f = filas[0];
+      if (!esColorSistema_(String(fondos[f - 2][0] || '').toLowerCase())) { Logger.log('  %s: fila %s, pero la celda no tiene el color del sistema (¿la cargó el equipo?) — no se toca', id, f); return; }
+      celdas.push({ fila: f, col: iId + 1, escrito: ids[f - 2][0] });
+      const env = envs ? envs[f - 2][0] : '';
+      if (envs && !esVacio_(env)) celdas.push({ fila: f, col: iEnv + 1, escrito: env });
+      plan.push({ id: id, fila: f, envio: env });
+      Logger.log('  %s: fila %s → se vacía el ID%s', id, f, envs && !esVacio_(env) ? ' y la Fecha envío campañas (' + fmtFecha_(toDate_(env) || env) + ')' : '');
+    });
+    if (!escribe) { Logger.log('>>> EN SECO: no se tocó nada.'); return { plan: plan }; }
+    const hechas = vaciarCeldasDelSistema_(sh, celdas);
+    Logger.log('>>> vaciadas %s de %s celdas (las que no: alguien las cambió).', hechas.length, celdas.length);
+    if (hechas.length) {
+      const ss = ssIntermedia_();
+      let reg = ss.getSheetByName(RDV_HOJA_REGISTRO_IDS);
+      if (!reg) { reg = ss.insertSheet(RDV_HOJA_REGISTRO_IDS); reg.appendRow(IDS_ENCABEZADO_REGISTRO_); reg.setFrozenRows(1); }
+      const ahora = new Date();
+      const filas = hechas.filter(function (c) { return c.col === iId + 1; }).map(function (c) {
+        return [ahora, 'corrección 09/10 (paso 63)', '', '', '(VACIADO) ' + c.escrito, c.fila, '', '', '', '', '', 'la regla por comuna lo había puesto en la fila de otra figura', ''];
+      });
+      if (filas.length) {
+        const desde = reg.getLastRow() + 1, hasta = desde + filas.length - 1;
+        if (hasta > reg.getMaxRows()) reg.insertRowsAfter(reg.getMaxRows(), hasta - reg.getMaxRows());
+        reg.getRange(desde, 1, filas.length, IDS_ENCABEZADO_REGISTRO_.length).setValues(filas);
+      }
+    }
+    return { plan: plan, vaciadas: hechas };
+  } finally {
+    lock.releaseLock();
+  }
 }

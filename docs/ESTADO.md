@@ -1161,6 +1161,24 @@ corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no 
 
 Lo que sigue es cómo quedó antes de prenderlo (08/10–09/10).
 
+**09/10, el paso 61 (corrido por el usuario) y la REGLA CORREGIDA DE SEGURIDAD — escrita y APAGADA, primero el paso 62.** Los
+8 de Seguridad que quedaban tienen el mismo patrón: la figura de la lista TIENE su fila ese día, sin ID, en OTRA comuna (la
+lista tiene la comuna planeada; la base, la real). Y la regla por comuna asignó mal 2: 3000-MAYSEGVC (Giménez C6, 14/05) a la
+fila 590 (Piñeiro, Caballito) —lo correcto: 3001 en la 590 y 3000 en la 592 (Giménez, Monserrat)—, y 2014-SEPSEGVC (Giménez
+C1N, 02/10/2025) a la 244 (Landerreche, Retiro), que tiene el suyo ese día (2015). Las otras dos (2634 → 451 y 3445 → 728,
+Quintana) están bien: reemplazos. La regla nueva (CLAUDE.md, decisión 14): figura + comuna → la FIGURA (su única fila ese día,
+sin ID) → la COMUNA sólo para un reemplazo → IDS_SIN_CRUZAR (`IDS_SEGURIDAD_FIGURA_PRIMERO`, 00_Config.js).
+- **`paso62_medirSeguridadReglaNueva()`** — SÓLO LECTURA, con la corrección del 63 en memoria: cada ID de Seguridad que cambia
+  (hoy → con la regla corregida, con la traza) y "CAMBIA en los demás IDs".
+- **Predicción (la del usuario)**: se resuelven los 8 (2015 → 244, 2372 → 380, 2397 → 393, 2564 → 425, 2806 → 521, 3001 → 590,
+  3002 → 589, 3414 → 716), 3000 pasa a la 592, 2014 queda sin cruzar (salvo que Giménez tenga fila ese día); **CAMBIA en los
+  demás IDs: 0**.
+- Si da bien: **`paso63_corregirIdsSeguridad_enSeco()`** → **`paso63_corregirIdsSeguridad()`** (vacía 3000 de la 590 y 2014
+  de la 244, con su Fecha envío campañas, sólo si todavía tienen ese ID y el color del sistema; REGISTRO_IDS lo anota) →
+  `IDS_SEGURIDAD_FIGURA_PRIMERO = true` + clasp push → **`paso57_idsHistorial()`** (los vuelve a cruzar: sólo celdas vacías).
+- **Mientras tanto**, la regla por comuna sola sigue prendida en la corrida de la hora (filas activas): puede repetir el error
+  un jueves. Si se quiere evitar hasta prender la corregida: `IDS_SEGURIDAD_POR_COMUNA = false`.
+
 **09/10 15:41, el paso 60 (corrido por el usuario): "CAMBIA UN ID YA CRUZADO" 0 en las dos; conjuntas resuelve 9 de 9 y
 Seguridad 4, todas correctas. PRENDIDAS** (`IDS_CONJUNTA_UNA_FIGURA = true`, `IDS_SEGURIDAD_POR_COMUNA = true`). La corrida de la
 hora escribe las de las filas activas; las viejas, `paso57_idsHistorial()` otra vez (sólo celdas vacías). De los 16

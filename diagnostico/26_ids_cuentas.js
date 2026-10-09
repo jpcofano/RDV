@@ -413,3 +413,59 @@ function medirSeguridadSinCruzar() {
              'barrio" o "sobre Seguridad". No se cambió ninguna regla.');
   return out;
 }
+
+/**
+ * **PASO 62 — SÓLO LECTURA (09/10): la regla corregida de Seguridad, antes de prenderla** (IDS_SEGURIDAD_FIGURA_PRIMERO).
+ * La base, con la corrección del paso 63 hecha EN MEMORIA (los IDs de IDS_CORRECCION_SEGURIDAD_0910 vaciados de la fila
+ * donde están). Para cada ID de Seguridad: a qué fila va HOY (la regla por comuna, sobre la base como está) y a cuál iría con
+ * la regla corregida, con la traza; qué cambia. Y el control: **CAMBIA en los demás IDs: 0**. No escribe nada.
+ */
+function medirSeguridadReglaNueva() {
+  Logger.log('=== paso 62 — la regla corregida de Seguridad: MEDICIÓN (sólo lectura; la corrección del paso 63, en memoria) ===');
+  const dest = leerDestino_(), lista = leerListaIds_(), fantasma = idsEnFilasFantasmaIds_(dest);
+  const cols = columnasIdsEnBase_(dest.hdr), iId = cols[COLUMNA_ID_CUENTAS], iEnv = cols[COLUMNA_FECHA_ENVIO];
+  // la base corregida, en memoria (copias de las filas: la de verdad no se toca)
+  const corregir = IDS_CORRECCION_SEGURIDAD_0910.map(normIdIds_);
+  const vaciadas = [];
+  const corregida = { sh: dest.sh, hdr: dest.hdr, D: dest.D, T: dest.T, filas: dest.filas.map(function (f) {
+    if (iId == null || corregir.indexOf(normIdIds_(f.valores[iId])) < 0) return f;
+    vaciadas.push({ id: str(f.valores[iId]), fila: f.fila, figura: f.figura });
+    const v = f.valores.slice(); v[iId] = ''; if (iEnv != null) v[iEnv] = '';
+    return Object.assign({}, f, { valores: v });
+  }) };
+  Logger.log('  la corrección del paso 63 (en memoria): %s', vaciadas.length ? vaciadas.map(function (x) { return x.id + ' de la fila ' + x.fila + ' (' + x.figura + ')'; }).join(' | ')
+             : 'NINGUNO de ' + IDS_CORRECCION_SEGURIDAD_0910.join(', ') + ' está en la base');
+  const correr = function (d, m) {
+    return conMejorasIds_(m, function () { return cruzarIds_(lista.registros, d, { historial: true, idsFantasma: fantasma }); });
+  };
+  const hoy = correr(dest, { conjunta: true, seguridad: true, figuraPrimero: false });
+  const nueva = correr(corregida, { conjunta: true, seguridad: true, figuraPrimero: true });
+  const destino = function (f) {
+    return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'fuera' || f.estado === 'ya_en_la_base' ? f.fila : null;
+  };
+  let resueltos = 0, movidos = 0, perdidos = 0, otros = 0;
+  Logger.log('--- los IDs de Seguridad ("SEG" en el ID o "Seguridad en tu barrio") ---');
+  nueva.items.forEach(function (it, i) {
+    const a = hoy.items[i], filaHoy = destino(a.final), filaNueva = destino(it.final);
+    if (!esSeguridadIds_(it.r)) {
+      if (filaHoy !== filaNueva || a.final.estado !== it.final.estado) {
+        otros++;
+        Logger.log('  ¡CAMBIA OTRO ID!: %s — hoy %s %s → %s %s', _descRegistro_diag26(it.r), a.final.estado, filaHoy || '', it.final.estado, filaNueva || '');
+      }
+      return;
+    }
+    if (filaHoy === filaNueva && a.final.estado === it.final.estado) return;
+    if (!filaHoy && filaNueva) resueltos++;
+    else if (filaHoy && filaNueva) movidos++;
+    else if (filaHoy && !filaNueva) perdidos++;
+    const como = it.ev.estado === 'cruza' ? comoCruzoIds_(it) : (it.final.motivo + (it.final.detalle ? ' — ' + it.final.detalle : ''));
+    Logger.log('  %s\n     hoy: %s | con la regla corregida: %s | %s', _descRegistro_diag26(it.r),
+               filaHoy ? 'fila ' + filaHoy + ' (' + a.final.estado + ')' : 'sin cruzar (' + a.final.motivo + ')',
+               filaNueva ? 'fila ' + filaNueva + ' (' + it.final.estado + ')' : 'SIN CRUZAR', como);
+  });
+  Logger.log('--- resumen: Seguridad: se resuelven %s | cambian de fila %s | quedan sin cruzar (antes cruzaban) %s | CAMBIA en los demás IDs: %s%s',
+             resueltos, movidos, perdidos, otros, otros ? '  <<< ¡OJO!' : ' (bien)');
+  Logger.log('  Si está bien: paso63_corregirIdsSeguridad_enSeco() → paso63_corregirIdsSeguridad() → IDS_SEGURIDAD_FIGURA_PRIMERO = true + ' +
+             'clasp push → paso57_idsHistorial() (los vuelve a cruzar; sólo celdas vacías).');
+  return { vaciadas: vaciadas, resueltos: resueltos, movidos: movidos, perdidos: perdidos, otros: otros };
+}

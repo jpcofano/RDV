@@ -292,7 +292,8 @@ function vaciarCeldasDelSistema_(sh, celdas) {
   const vals = rango.getValues(), fondos = rango.getBackgrounds();
   const hechas = celdas.filter(function (e) {
     const v = vals[e.fila - f1][e.col - c1], bg = String(fondos[e.fila - f1][e.col - c1]).toLowerCase();
-    return v === e.escrito && esColorSistema_(bg);
+    const igual = (v instanceof Date && e.escrito instanceof Date) ? v.getTime() === e.escrito.getTime() : v === e.escrito;
+    return igual && esColorSistema_(bg);
   });
   const a1 = hechas.map(function (e) { return _a1_(e.fila, e.col); });
   if (a1.length) _selloEscrituraSistema_();

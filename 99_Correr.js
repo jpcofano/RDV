@@ -17,6 +17,12 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (6): LA REGLA CORREGIDA DE SEGURIDAD (primero la figura; la comuna sólo para un reemplazo), escrita y APAGADA
+ *      (IDS_SEGURIDAD_FIGURA_PRIMERO = false). En orden:
+ *        paso62_medirSeguridadReglaNueva()      SÓLO LECTURA: a qué fila iría cada ID de Seguridad; CAMBIA en otros: 0
+ *        paso63_corregirIdsSeguridad_enSeco()   qué vaciaría (3000-MAYSEGVC y 2014-SEPSEGVC, de la fila de otra figura)
+ *        paso63_corregirIdsSeguridad()          ESCRIBE: los vacía (sólo si son lo que escribió el sistema)
+ *      Después: IDS_SEGURIDAD_FIGURA_PRIMERO = true + clasp push → paso57_idsHistorial().
  *  >>> 09/10 (5): las dos mejoras PRENDIDAS (paso 60 de las 15:41). SÓLO LECTURA: paso61_seguridadSinCruzar() — los de Seguridad
  *      que siguen sin cruzar, uno por uno, con las filas de esa fecha y esa comuna. No cambia ninguna regla.
  *  >>> 09/10 (4): dos mejoras del cruce de los IDs, escritas y APAGADAS (IDS_CONJUNTA_UNA_FIGURA, IDS_SEGURIDAD_POR_COMUNA):
@@ -1266,6 +1272,36 @@ function paso61_seguridadSinCruzar() {
   _anunciar_('paso 61 — Seguridad que sigue sin cruzar', 'medirSeguridadSinCruzar()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
              'el log: cada caso con la comuna leída, el motivo, las filas de esa fecha y esa comuna, y las de la figura de la lista');
   return medirSeguridadSinCruzar();
+}
+
+/**
+ * PASO 62 — SÓLO LECTURA (09/10): la regla corregida de Seguridad (primero la FIGURA; la comuna sólo para un reemplazo), apagada
+ * (IDS_SEGURIDAD_FIGURA_PRIMERO). Con la corrección del paso 63 en memoria: a qué fila iría cada ID de Seguridad, qué cambia, y
+ * "CAMBIA en los demás IDs" (tiene que dar 0).
+ */
+function paso62_medirSeguridadReglaNueva() {
+  _anunciar_('paso 62 — la regla corregida de Seguridad: MEDICIÓN', 'medirSeguridadReglaNueva()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
+             'el log: cada ID de Seguridad que cambia (hoy → con la regla corregida, la traza) y el resumen');
+  return medirSeguridadReglaNueva();
+}
+
+/** PASO 63 — EN SECO (09/10): qué celdas vaciaría la corrección (los IDs de IDS_CORRECCION_SEGURIDAD_0910). No toca nada. */
+function paso63_corregirIdsSeguridad_enSeco() {
+  _anunciar_('paso 63 — vaciar los IDs de Seguridad mal asignados (EN SECO)', 'corregirIdsSeguridad0910(false)  [45_IdsCuentas.js]', 'NO escribe nada',
+             'el log: cada ID, en qué fila está y qué celdas se vaciarían');
+  return corregirIdsSeguridad0910(false);
+}
+
+/**
+ * PASO 63 — ESCRIBE (09/10): vacía 3000-MAYSEGVC y 2014-SEPSEGVC (con su Fecha envío campañas) de la fila donde los puso la
+ * regla por comuna, sólo si todavía tienen ese ID y el color del sistema. REGISTRO_IDS lo anota. Después:
+ * IDS_SEGURIDAD_FIGURA_PRIMERO = true + clasp push → paso57_idsHistorial().
+ */
+function paso63_corregirIdsSeguridad() {
+  _anunciar_('paso 63 — vaciar los IDs de Seguridad mal asignados (ESCRIBE)', 'corregirIdsSeguridad0910(true)  [45_IdsCuentas.js]',
+             'ESCRIBE: vacía esas celdas de "ID cuentas" y "Fecha envío campañas" (sólo si son lo que escribió el sistema)',
+             'el log: qué vació; REGISTRO_IDS: "(VACIADO) …"');
+  return corregirIdsSeguridad0910(true);
 }
 
 /**

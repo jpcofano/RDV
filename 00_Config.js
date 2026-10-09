@@ -266,6 +266,25 @@ const IDS_EN_LA_HORA = true;
 // 9 de 9, Seguridad 4, todas correctas).
 const IDS_CONJUNTA_UNA_FIGURA = true;
 const IDS_SEGURIDAD_POR_COMUNA = true;
+/**
+ * **La regla corregida de Seguridad** (09/10, decisión del usuario, después del paso 61: en Seguridad la FIGURA es más estable
+ * que la comuna —la lista tiene la comuna planeada; la base, la real—). Con IDS_SEGURIDAD_POR_COMUNA, para un ID de Seguridad
+ * que la regla de siempre (figura + comuna) no cruza, en este orden:
+ *   2. FIGURA: la figura de la lista tiene UNA sola fila ese día, sin ID → esa (traza "comuna distinta (la lista: Cx; la
+ *      fila: Cy)");
+ *   3. COMUNA: una fila de esa fecha en esa comuna cuya figura NO está en la lista ese día (un reemplazo) → esa (traza
+ *      "figura distinta"); primero las de Seguridad; una sola;
+ *   4. si no, IDS_SIN_CRUZAR.
+ * APAGADA hasta ver el paso 62 (medir: a qué fila iría cada ID de Seguridad y qué cambia; con la corrección de abajo hecha en
+ * memoria). Con `false`, la regla por comuna del 09/10 15:41 (la que asignó mal dos).
+ */
+const IDS_SEGURIDAD_FIGURA_PRIMERO = false;
+/**
+ * Los IDs que la regla por comuna escribió en la fila de OTRA figura (09/10, paso 61): el paso 63 los vacía —con su Fecha envío
+ * campañas— sólo si la celda todavía tiene ese ID y el color del sistema; después el paso 57 los vuelve a cruzar con la regla
+ * corregida. Por el ID (único en la base), nunca por número de fila (eran la 590 y la 244).
+ */
+const IDS_CORRECCION_SEGURIDAD_0910 = ['3000-MAYSEGVC', '2014-SEPSEGVC'];
 /** Los tipos de encuentro, para desempatar con el Tipo de "Agenda JM" contra el EVENTO de la fila. El primero que matchea. */
 const IDS_TIPOS = [
   { tipo: 'seguridad', re: /\bseguridad en tu barrio\b/ },
