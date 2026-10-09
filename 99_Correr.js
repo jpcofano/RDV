@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (5): las dos mejoras PRENDIDAS (paso 60 de las 15:41). SÓLO LECTURA: paso61_seguridadSinCruzar() — los de Seguridad
+ *      que siguen sin cruzar, uno por uno, con las filas de esa fecha y esa comuna. No cambia ninguna regla.
  *  >>> 09/10 (4): dos mejoras del cruce de los IDs, escritas y APAGADAS (IDS_CONJUNTA_UNA_FIGURA, IDS_SEGURIDAD_POR_COMUNA):
  *        paso60_medirIdsMejoras()   SÓLO LECTURA: cuántos de IDS_SIN_CRUZAR resuelve cada una; "CAMBIA UN ID YA CRUZADO" = 0
  *      Si está bien: el interruptor = true + clasp push; los viejos, paso57_idsHistorial() otra vez (sólo celdas vacías).
@@ -1253,6 +1255,17 @@ function paso60_medirIdsMejoras() {
   _anunciar_('paso 60 — las mejoras de los IDs: MEDICIÓN', 'medirIdsMejoras()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
              'el log: por mejora, lo que resuelve (fila y traza), lo que cambia de motivo y "CAMBIA UN ID YA CRUZADO" (tiene que dar 0)');
   return medirIdsMejoras();
+}
+
+/**
+ * PASO 61 — SÓLO LECTURA (09/10): los de Seguridad que siguen sin cruzar (de los `lugar_distinto` de la regla de siempre, los
+ * que la regla de la comuna tampoco cruza), uno por uno: las filas de esa fecha y esa comuna (figura, barrio, ID, Seguridad) y
+ * el motivo exacto. No cambia ninguna regla.
+ */
+function paso61_seguridadSinCruzar() {
+  _anunciar_('paso 61 — Seguridad que sigue sin cruzar', 'medirSeguridadSinCruzar()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
+             'el log: cada caso con la comuna leída, el motivo, las filas de esa fecha y esa comuna, y las de la figura de la lista');
+  return medirSeguridadSinCruzar();
 }
 
 /**

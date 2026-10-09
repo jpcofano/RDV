@@ -139,6 +139,31 @@ console.log('[4] el paso 60: lo que resuelve cada una, y que ninguna cambie un I
   ok(/figura distinta/.test(E.log()) && /la fila de Hernán Lombardi/.test(E.log()), 'el log lista lo que resuelve, con la traza');
 }
 
+console.log('[5] el paso 61: los de Seguridad que siguen sin cruzar, con las filas de esa fecha y esa comuna');
+{
+  const E = entorno([
+    // a) Pereyra el 14/05 en Palermo; en la Comuna 6 no hay nada ese día
+    filaBase({ Figura: 'Ana Pereyra', Barrio: 'Palermo', FECHA: D(14, 5) }, HDR),
+    // b) Pereyra el 21/05 en Palermo; en la Comuna 6, dos filas y ninguna de Seguridad
+    filaBase({ Figura: 'Ana Pereyra', Barrio: 'Palermo', FECHA: D(21, 5) }, HDR),
+    filaBase({ Figura: 'Jorge Macri', Barrio: 'Caballito', FECHA: D(21, 5) }, HDR),
+    filaBase({ Figura: 'Gabino Tapia', Barrio: 'Caballito', FECHA: D(21, 5) }, HDR),
+    // c) Pereyra el 28/05 en Palermo; en la Comuna 6, una sola, que ya tiene otro ID
+    filaBase({ Figura: 'Ana Pereyra', Barrio: 'Palermo', FECHA: D(28, 5) }, HDR),
+    filaBase({ Figura: 'Gabino Tapia', Barrio: 'Caballito', FECHA: D(28, 5), 'Evento (mail)': 'Seguridad en tu Barrio', 'ID cuentas': '9999-OTRO' }, HDR)
+  ], [['3010-MAYSEGAA', 'Ana Pereyra', 'Comuna 6', D(14, 5), ''], ['3011-MAYSEGBB', 'Ana Pereyra', 'Comuna 6', D(21, 5), ''],
+      ['3012-MAYSEGCC', 'Ana Pereyra', 'Comuna 6', D(28, 5), '']]);
+  const antes = JSON.stringify(E.base().valores);
+  const r = E.run('medirSeguridadSinCruzar()');
+  const por = {}; r.forEach(function (x) { por[x.id] = x; });
+  ok(r.length === 3, 'los tres siguen sin cruzar (' + r.length + ')');
+  ok(/no hay ninguna fila de la Comuna 6 ese día/.test(por['3010-MAYSEGAA'].porque), 'a) "no hay ninguna fila de la Comuna 6 ese día"');
+  ok(/2 filas, ninguna marcada de Seguridad/.test(por['3011-MAYSEGBB'].porque) && por['3011-MAYSEGBB'].filasComuna === 2, 'b) "2 filas, ninguna marcada de Seguridad … no se elige ninguna"');
+  ok(/pero no se escribe: fila_con_otro_id/.test(por['3012-MAYSEGCC'].porque), 'c) "cruza con la fila …, pero no se escribe: fila_con_otro_id"');
+  ok(/ID: 9999-OTRO \| SEGURIDAD/.test(E.log()) && /las filas de Ana Pereyra a ±3 días/.test(E.log()), 'el log muestra cada fila (ID, SEGURIDAD) y las de la figura de la lista');
+  ok(JSON.stringify(E.base().valores) === antes && E.base().escrituras.length === 0 && !E.intermedia('IDS_SIN_CRUZAR'), 'no escribe nada');
+}
+
 console.log('\n' + chequeos + ' chequeos.');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');
 process.exit(fallas ? 1 : 0);

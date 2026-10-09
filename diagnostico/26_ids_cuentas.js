@@ -331,3 +331,85 @@ function medirIdsMejoras() {
   out.hoy = hoy.sinCruzar.length;
   return out;
 }
+
+/**
+ * **PASO 61 — SÓLO LECTURA (09/10): los de Seguridad que siguen sin cruzar.** De los registros de Seguridad ("SEG" en el ID o
+ * "Seguridad en tu barrio") que con la regla de siempre daban `lugar_distinto`, los que TODAVÍA no cruzan con
+ * IDS_SEGURIDAD_POR_COMUNA. Uno por uno: lo que dice la lista (ID, Funcionario, Barrio / Comuna, la comuna que se leyó,
+ * fecha); el motivo exacto por el que no cruza; TODAS las filas de la base de ESA fecha y ESA comuna (fila, figura, barrio,
+ * comuna, si ya tienen ID y cuál, si están marcadas de Seguridad, si son Reprogramada); y, si no hay ninguna en esa comuna,
+ * las de esa fecha en otras comunas; y las de la figura de la lista. No cambia ninguna regla ni escribe nada.
+ */
+function medirSeguridadSinCruzar() {
+  Logger.log('=== paso 61 — Seguridad que sigue sin cruzar (sólo lectura) ===');
+  const dest = leerDestino_(), lista = leerListaIds_(), fantasma = idsEnFilasFantasmaIds_(dest);
+  const correr = function (m) {
+    return conMejorasIds_(m, function () { return cruzarIds_(lista.registros, dest, { historial: true, idsFantasma: fantasma }); });
+  };
+  const antes = correr({ conjunta: false, seguridad: false }), ahora = correr({ conjunta: true, seguridad: true });
+  const cruzado = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'fuera' || f.estado === 'ya_en_la_base'; };
+  const filas = ahora.filas;
+  const descFila = function (x) {
+    const marcas = [];
+    if (x.seguridad) marcas.push('SEGURIDAD');
+    if (x.noCandidata) marcas.push(x.status || 'reprogramada');
+    return 'fila ' + x.f.fila + ' | ' + (x.f.figura || 'sin figura') + ' | ' + (x.f.barrio || 'sin barrio') + ' | comuna ' +
+           (x.ubic.comuna == null ? '?' : x.ubic.comuna + (x.ubic.subzona ? ' ' + x.ubic.subzona : '')) +
+           (x.ubic.deComuna === 'mail' ? ' (del mail)' : '') + ' | ID: ' + (x.idActual || '—') + (marcas.length ? ' | ' + marcas.join(', ') : '');
+  };
+  const casos = [];
+  ahora.items.forEach(function (it, i) {
+    const a = antes.items[i];
+    if (!esSeguridadIds_(it.r) || a.final.motivo !== 'lugar_distinto' || cruzado(it.final)) return;
+    casos.push({ it: it, a: a });
+  });
+  const seg0 = antes.items.filter(function (x) { return esSeguridadIds_(x.r) && x.final.motivo === 'lugar_distinto'; }).length;
+  Logger.log('  Seguridad con lugar_distinto (la regla de siempre): %s | siguen sin cruzar con la de la comuna: %s', seg0, casos.length);
+  const out = [];
+  casos.forEach(function (c, n) {
+    const r = c.it.r, u = r.lugar.u, f = c.it.final, ev = c.it.ev;
+    const comuna = u.comuna;
+    const mismaFecha = filas.filter(function (x) { return x.f.fecha && diasEntre_(x.f.fecha, r.fecha) === 0; });
+    const enComuna = comuna == null ? [] : mismaFecha.filter(function (x) { return x.ubic.comuna === comuna; });
+    let porque;
+    if (comuna == null) porque = 'la lista no dice una comuna que se reconozca ("' + (r.lugarTexto || '') + '")';
+    else if (!enComuna.length) porque = 'no hay ninguna fila de la Comuna ' + comuna + ' ese día';
+    else {
+      const cand = enComuna.filter(function (x) { return !x.noCandidata && !(comuna === 1 && u.subzona && x.ubic.subzona && u.subzona !== x.ubic.subzona); });
+      const seg = cand.filter(function (x) { return x.seguridad; });
+      if (!cand.length) porque = 'las filas de esa comuna ese día no son candidatas (Reprogramada, u otra subzona de la Comuna 1)';
+      else if (ev.regla === 'seguridad_por_comuna' && ev.estado === 'ambiguo') {
+        porque = (seg.length > 1 ? seg.length + ' filas marcadas de Seguridad' : cand.length + ' filas, ninguna marcada de Seguridad') +
+                 ' en la Comuna ' + comuna + ' ese día: no se elige ninguna';
+      } else if (ev.estado === 'cruza') porque = 'cruza con la fila ' + ev.e.x.f.fila + ', pero no se escribe: ' + f.motivo + (f.detalle ? ' (' + f.detalle + ')' : '');
+      else porque = 'la regla de la comuna no se aplicó: ' + (ev.motivo || ev.estado) + (ev.detalle ? ' (' + ev.detalle + ')' : '');
+    }
+    Logger.log('');
+    Logger.log('  %s) %s', n + 1, _descRegistro_diag26(r));
+    Logger.log('     la comuna que se leyó: %s | el motivo hoy: %s%s', comuna == null ? 'NINGUNA' : comuna + (u.subzona ? ' ' + u.subzona : ''),
+               f.motivo || f.estado, f.detalle ? ' — ' + f.detalle : '');
+    Logger.log('     POR QUÉ NO CRUZA: %s', porque);
+    Logger.log('     las filas de ESA fecha en ESA comuna (%s):', enComuna.length);
+    enComuna.forEach(function (x) { Logger.log('       %s', descFila(x)); });
+    if (!enComuna.length) {
+      Logger.log('     las filas de ESA fecha en otras comunas (%s):', mismaFecha.length);
+      mismaFecha.slice(0, 15).forEach(function (x) { Logger.log('       %s', descFila(x)); });
+      if (mismaFecha.length > 15) Logger.log('       (y %s más)', mismaFecha.length - 15);
+    }
+    if (r.quien.norm.length) {
+      const deFigura = filas.filter(function (x) {
+        return x.f.fecha && Math.abs(diasEntre_(x.f.fecha, r.fecha)) <= IDS_DIAS_FECHA_DISTINTA && r.quien.norm.some(function (k) { return x.fig.indexOf(k) >= 0; });
+      });
+      Logger.log('     las filas de %s a ±%s días (donde miró la regla de siempre): %s', r.quien.figuras.join(', '), IDS_DIAS_FECHA_DISTINTA, deFigura.length ? '' : 'ninguna');
+      deFigura.forEach(function (x) {
+        const d = diasEntre_(x.f.fecha, r.fecha);
+        Logger.log('       %s, %s%s', descFila(x), fmtFecha_(x.f.fecha), d ? ' (' + d + ' días)' : '');
+      });
+    }
+    out.push({ id: r.idTexto || r.id, fecha: fmtFecha_(r.fecha), comuna: comuna, porque: porque, filasComuna: enComuna.length });
+  });
+  Logger.log('');
+  Logger.log('  Una fila es "de Seguridad" si su EVENTO, su "Evento (mail)" o el formulario que se le cruzó dicen "Seguridad en tu ' +
+             'barrio" o "sobre Seguridad". No se cambió ninguna regla.');
+  return out;
+}
