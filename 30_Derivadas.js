@@ -235,7 +235,8 @@ function recalcDerivadas_(solapa, escribe) {
     const conF = ctx.sh.getRange(2, kId + 1, ctx.vals.length - 1, 1).getFormulas().filter(function (x) { return x[0]; }).length;
     if (conF) fx[COLUMNA_ID] = { col: kId + 1, tipo: 'por_fila', formula: conF + ' celdas con fórmula' };
   }
-  const out = { total: 0, porCol: {}, conFormula: [] };
+  // `conId`: con el tablero de Looker, si la base tiene la columna ID (sin ella, el tablero no se escribe).
+  const out = { total: 0, porCol: {}, conFormula: [], conId: kId != null };
   const calc = [];
   for (let i = 1; i < ctx.vals.length; i++) calc.push(i < ctx.ultima ? calcularDerivadasFila_(ctx.vals[i], ctx) : null);
   if (kId != null) {

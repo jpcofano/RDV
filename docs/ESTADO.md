@@ -1101,6 +1101,55 @@ solapas.
 **La página para el dueño** (08/10): qué queda igual, qué cambia, las pruebas y lo que necesitamos de él (mirar en
 Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comparte el usuario.
 
+#### El tablero de Looker: PRENDIDO el 08/10 — y qué mirar después de la primera corrida de la hora
+
+**Las pruebas (pruebasLooker, 08/10 19:00, las pasó el usuario): APROBADO.**
+- **A** (el backup del 04/10): Aux_Maximos **idéntico**; Datos_Unpivot difiere sólo en la **fila 6** (su "Sin
+  identificar" se corrigió entre el 02/10 y el 04/10, después de la última corrida del script atado).
+- **B** (hoy): difiere sólo en **816, 819, 820 y 821** (escritas después de la última corrida del script atado) y en **4
+  filas sin ID**.
+- **C** (corregido contra compatible): **OTRA 0**; reuniones distintas **627 → 795**; ID repetidas **0**.
+
+**La activación (08/10):**
+- **Lo nuestro: `LOOKER_EN_SISTEMA = true`** + clasp push. Si la corrida de la hora ya lleva más de 4 minutos al llegar
+  al tablero, no lo rehace en ésa (`LOOKER_TIEMPO_MAX_MS`): lo hace la próxima. Sin la columna ID en la base, no se
+  escribe el tablero.
+- **El script atado, PREPARADO pero sin subir**: el código viejo de los siete archivos, todo comentado, en un solo
+  `LEGACY.js` (con qué hacía, la fecha y dónde vive ahora), y `unpivotEventos` / `buildAuxMaximos` vacías en
+  `Migrado.js` (sólo registran "migrado al sistema RDV el 08/10/2026"). Está en **`script-atado-base/`** (al lado del
+  repo, fuera de él, con su propio `.clasp.json`). **El push falló: la cuenta de clasp de esta máquina puede leer el
+  script atado pero no editarlo** (`Drive ACL permission denied … CAN_EDIT: false`); nada cambió allá (un clon posterior
+  da los ocho archivos de siempre). Lo aplica el usuario con una cuenta editora: (a) en el editor de Apps Script del
+  archivo de la base, crear `LEGACY` y `Migrado` con el contenido de esos dos archivos y borrar los otros siete; o (b)
+  `clasp login --user editor` con esa cuenta y `clasp push -f --user editor` desde `script-atado-base/`.
+- **El activador del script atado lo borra el usuario** (lo armó él). Hasta que esté borrado o subido `Migrado.js`, el
+  script viejo puede volver a escribir Datos_Unpivot y Aux_Maximos con la lógica vieja entre dos corridas de la hora (la
+  base no: la ID ya la completa el sistema).
+- Antes de los push, un agente revisor (sólo lectura): todo PASS — las dos solapas se arman con las mismas funciones y
+  parámetros que la prueba C; los encabezados, iguales a los del original; `LEGACY.js` sin ninguna sentencia ejecutable y
+  con los siete originales enteros; `Migrado.js`, sólo las dos funciones con un `Logger.log`. Encontró un test viejo (el
+  [19] contaba 2 celdas de derivadas y ahora son 3, con la ID) y un caso borde (sin la columna ID en la base, el tablero no
+  se escribe): arreglados.
+
+**Qué mirar después de la primera corrida de la hora:**
+1. **REGISTRO_UPSERT** (intermedia), la última línea, columna `looker`: `Datos_Unpivot N | Aux_Maximos M | reuniones
+   795` (o un poco más, si entraron reuniones con datos después de las 19:00).
+2. **Datos_Unpivot**: `FechaCarga` = la hora de esa corrida, igual en todas las filas; **N** filas (las de la columna
+   `looker`); el encabezado de siempre (12 columnas).
+3. **Aux_Maximos**: **M** filas; el encabezado de siempre (18 columnas).
+4. **La ID nueva en la base**: en todas las filas con figura, `Figura - Barrio - dd/MM/yyyy` (`- HH:mm` sólo si se
+   repite); vacía sin figura; ningún "GMT". `paso53_investigarId()`: en la sección 1 de hoy, sólo ese formato y "vacío";
+   repetidos (sección 4) **0**. El log de la corrida: en las derivadas, `ID` con ~830 celdas la primera vez (después, sólo
+   las que cambian).
+5. **Que el script viejo no escribió**: en el proyecto del script atado → Ejecuciones, si el activador corrió, dice
+   "migrado al sistema RDV el 08/10/2026"; la `FechaCarga` de Datos_Unpivot es la de nuestra corrida (no la del horario
+   viejo); y no aparece ninguna ID nueva con "GMT".
+6. **En Looker**: si cuenta reuniones por ID, sube de 627 a ~795; el gráfico de género ya no suma más que los
+   inscriptos.
+
+Si algo no da: `LOOKER_EN_SISTEMA = false` + clasp push frena lo nuestro (las solapas quedan como las dejó la última
+corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no se descomenta sin decidirlo.
+
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
 > **06/10: `REVISAR_FORMATO_NUEVO = true`**, decisión del usuario después de correr la demo (paso 33) y la vista

@@ -163,7 +163,7 @@ que la de STATUS, y vive aparte en `05_Escritura.js` (`escribirDerivadas_`):
 - **sin color**: no es la marca de procedencia;
 - sólo las celdas cuyo valor cambió; las columnas, protegidas con advertencia.
 
-**La ID, la derivada 12 (08/10, con `LOOKER_EN_SISTEMA`; apagado hasta las pruebas del paso 54).** Decisión del usuario:
+**La ID, la derivada 12 (08/10, con `LOOKER_EN_SISTEMA`; prendido el 08/10, con las pruebas del paso 54).** Decisión del usuario:
 la columna `ID` —que hasta ahora completaba el script atado a la base, con fechas de JavaScript— pasa a ser una derivada
 más, `Figura - Barrio - dd/MM/yyyy` (sin barrio `Figura - dd/MM/yyyy`; vacía sin figura; `- HH:mm` a las que repiten),
 recalculada en todas las filas por `recalcDerivadas_` y escrita por la misma excepción (`columnasDerivadas_()`: las once
@@ -261,10 +261,12 @@ Solapas que importan:
   del archivo; `unpivotEventos` y `buildAuxMaximos`) para el tablero de Looker Studio. Ese script además **escribe la
   columna `ID`** de `RVD JM-CM - ES` donde está vacía, con fechas de JavaScript (el formato roto, "GMT"). Decisión del
   usuario (07/10): pasa a nuestro sistema, con la ID como derivada 12. FASE 1, el informe:
-  [docs/script-looker.md](docs/script-looker.md). **FASE 2 (08/10): escrita y apagada** (`44_Looker.js`,
-  `LOOKER_EN_SISTEMA = false`): con el interruptor, la corrida de la hora las rehace después de las derivadas, con el
-  mismo nombre, encabezados y orden de columnas, y las tres correcciones aprobadas. Antes, las pruebas A, B y C (paso 54);
-  al prenderlo, el script atado queda con funciones vacías (el mismo día).
+  [docs/script-looker.md](docs/script-looker.md). **Desde el 08/10 las arma el sistema** (`44_Looker.js`,
+  `LOOKER_EN_SISTEMA = true`): la corrida de la hora las rehace después de las derivadas, con el mismo nombre, encabezados
+  y orden de columnas, y las tres correcciones aprobadas (pruebas A, B y C del paso 54, aprobadas). El script atado,
+  preparado ese día: las dos funciones vacías (`Migrado.js`) y el código viejo, todo comentado, en `LEGACY.js` (carpeta
+  `script-atado-base/`, al lado del repo, con su propio `.clasp.json`). **La cuenta de clasp no puede editarlo**
+  (`CAN_EDIT: false`): lo sube el usuario con una cuenta editora, y borra su activador.
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
   (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
   El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
@@ -2687,7 +2689,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
                    con formato y protegidas; las escribe sólo el paso 48. Nada del sistema las lee   ← 07/10
 44_Looker.js       el tablero de Looker (08/10, FASE 2 del script atado): la ID como derivada 12 (idsDerivados_),
                    Datos_Unpivot y Aux_Maximos (modo compatible = el script atado tal cual, para las pruebas; modo
-                   corregido = la corrida de la hora). APAGADO hasta el paso 54 (LOOKER_EN_SISTEMA)   ← 08/10
+                   corregido = la corrida de la hora). PRENDIDO el 08/10 (LOOKER_EN_SISTEMA)          ← 08/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

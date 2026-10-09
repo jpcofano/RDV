@@ -155,7 +155,7 @@ granularidades, Inscriptos / Asistentes / ID vacías en Aux_Maximos, `Realizada_
 - **`paso53_investigarId()`**: los formatos (backup del 04/10 y hoy), qué escribió cada ID que cambió, los de guiones
   bajos, los ID repetidos, la última corrida del script atado y cuántos repetiría el formato propuesto.
 
-## 7. FASE 2 (08/10): escrita y apagada
+## 7. FASE 2 (08/10): hecha
 
 Aprobado por el usuario el 08/10: la ID `Figura - Barrio - dd/MM/yyyy` (sin barrio `Figura - dd/MM/yyyy`; vacía sin
 figura; `- HH:mm` si se repite), derivada 12, recalculada en cada corrida; "Sin identificar" de género = Inscriptos − M −
@@ -167,17 +167,28 @@ cuenta como realizada; las columnas vacías de Aux_Maximos.
   las derivadas, con `LOOKER_EN_SISTEMA`). La ID la escribe `recalcDerivadas_` como las otras derivadas.
 - **La fidelidad, probada contra el original**: `tests/looker.test.js` corre `unpivotEventos` y `buildAuxMaximos` de la
   copia de `_externo/` (sin subirla al repo) y el modo compatible da lo mismo, celda por celda.
-- **Las pruebas sobre los datos reales** (paso 54, sólo lectura): A (el backup), B (hoy), C (corregido contra compatible).
-- **La activación**: `LOOKER_EN_SISTEMA = true` y, el mismo día, el script atado con las dos funciones vacías:
+- **Las pruebas sobre los datos reales** (paso 54, 08/10 19:00): **A** — Aux_Maximos idéntico, Datos_Unpivot sólo la
+  fila 6 (corregida en la base después de la última corrida del script atado); **B** — sólo 816, 819, 820 y 821 (escritas
+  después) y 4 filas sin ID; **C** — OTRA 0, reuniones distintas 627 → 795, ID repetidas 0. **Aprobado.**
+- **Prendido el 08/10** (`LOOKER_EN_SISTEMA = true`). El script atado, preparado ese día en `script-atado-base/` (al lado
+  del repo, con su propio `.clasp.json`; la copia del original sigue en `_externo/base-script/`). **La cuenta de clasp no
+  puede editarlo** (`CAN_EDIT: false`): lo sube el usuario con una cuenta editora (en el editor, o con `clasp login --user`
+  y `clasp push --user`). Queda así:
+  - **`Migrado.js`**: las dos funciones activas, vacías —no leen ni escriben ninguna planilla—, por si el activador todavía
+    las llama:
 
 ```js
 function unpivotEventos() {
-  Logger.log('unpivotEventos: migrado al sistema RDV el <fecha>. Datos_Unpivot la arma el sistema RDV cada hora; esto ya no escribe nada.');
+  Logger.log('unpivotEventos: migrado al sistema RDV el 08/10/2026. No hace nada: Datos_Unpivot la arma el sistema RDV cada hora.');
 }
 function buildAuxMaximos() {
-  Logger.log('buildAuxMaximos: migrado al sistema RDV el <fecha>. Aux_Maximos la arma el sistema RDV cada hora; esto ya no escribe nada.');
+  Logger.log('buildAuxMaximos: migrado al sistema RDV el 08/10/2026. No hace nada: Aux_Maximos la arma el sistema RDV cada hora.');
 }
 ```
 
-  El resto de los archivos de ese proyecto (todo comentado) queda como está. Sus activadores pueden quedar (llaman a las
-  funciones vacías) o los borra el dueño cuando quiera.
+  - **`LEGACY.js`**: todo el código viejo de los siete archivos (`Unpivot2.js`, `Auxiliar.js`, `Código.js`,
+    `Unpivot.js`, `Graficos.js`, `Sin título.js`, `Sin título 2.js`), comentado línea por línea, con un encabezado: qué
+    hacía, la fecha de la migración, dónde vive ahora (este repo, `44_Looker.js`) y que no se descomenta;
+  - los siete archivos, borrados. El activador lo borra el usuario (lo armó él); hasta entonces, el script viejo puede
+    volver a escribir las dos solapas entre corridas de la hora.
+- Qué mirar después de la primera corrida de la hora: docs/ESTADO.md, 0.z ("El tablero de Looker: PRENDIDO el 08/10").

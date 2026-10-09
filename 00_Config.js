@@ -164,8 +164,16 @@ const DESC_PROTECCION_DERIVADAS = 'RDV: columna derivada, la calcula el sistema 
  *     sin fila si no da positivo; sin el reemplazo por P. Varon / P. Mujer).
  * Apagado hasta ver las pruebas A, B y C (paso 54). Se prende A LA VEZ que el script atado queda con las funciones vacías:
  * si no, los dos escribirían las mismas solapas.
+ *
+ * **PRENDIDO el 08/10** (pruebasLooker de las 19:00, aprobado por el usuario: A — Aux_Maximos idéntico, Datos_Unpivot sólo la
+ * fila 6, corregida entre el 02/10 y el 04/10; B — sólo 816, 819, 820, 821, escritas después de la última corrida del script
+ * atado, y 4 filas sin ID; C — OTRA 0, reuniones distintas 627 → 795, ID repetidas 0). El script atado: preparado ese día
+ * (Migrado.js con las dos funciones vacías, LEGACY.js con el código viejo comentado; carpeta script-atado-base/, al lado del
+ * repo), pero la cuenta de clasp no puede editarlo: lo sube el usuario con una cuenta editora, y borra su activador.
  */
-const LOOKER_EN_SISTEMA = false;
+const LOOKER_EN_SISTEMA = true;   // PRENDIDO el 08/10 (pruebas A, B y C de las 19:00: aprobado); el script atado: lo vacía el usuario
+/** Si la corrida de la hora ya lleva más que esto al llegar al tablero, no lo rehace (lo hace la próxima): no la lleva al límite de 6 min. */
+const LOOKER_TIEMPO_MAX_MS = 4 * 60 * 1000;
 /** Las solapas del tablero, en el archivo del destino, con el nombre que lee Looker (no cambian). */
 const RDV_HOJA_UNPIVOT = 'Datos_Unpivot';
 const RDV_HOJA_AUX_MAXIMOS = 'Aux_Maximos';

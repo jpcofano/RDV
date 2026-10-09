@@ -1657,8 +1657,11 @@ function escenarioDerivadas() {
   real.v[3][colD('Inscriptos')] = 999;
   real.v[4][colD('Barrio')] = 'Recoleta';
   const r1 = corre("recalcularDerivadas('RVD JM-CM - ES', true)");
-  ok(!r1.error && r1.resultado.total === 2 && r1.resultado.porCol['% de Asistencia'] === 1 && r1.resultado.porCol['Comuna'] === 1,
-     'recalcular: sólo las celdas que cambiaron (el %, y la Comuna: en los datos sintéticos el resto de Comunas es igual) → ' + (r1.resultado ? r1.resultado.total : r1.error));
+  // 08/10 (LOOKER_EN_SISTEMA): la ID es la derivada 12, y la fila que cambia de barrio cambia de ID
+  ok(!r1.error && r1.resultado.total === 3 && r1.resultado.porCol['% de Asistencia'] === 1 && r1.resultado.porCol['Comuna'] === 1 &&
+     r1.resultado.porCol['ID'] === 1,
+     'recalcular: sólo las celdas que cambiaron (el %, la Comuna —en los datos sintéticos el resto de Comunas es igual— y la ID ' +
+     'de la fila que cambió de barrio) → ' + (r1.resultado ? r1.resultado.total + ' ' + JSON.stringify(r1.resultado.porCol) : r1.error));
   ok(real.v[3][k] === real.v[3][colD('Asistentes')] / 999 && real.v[4][colD('Comuna')] === 2, 'con los valores nuevos');
   ok(JSON.stringify(real.bg.slice(0, n0)) === JSON.stringify(antes.bg), 'sin color');
   const d14 = corre("diagFormulasDestino('RVD JM-CM - ES')");
@@ -2599,12 +2602,29 @@ function escenarioLooker() {
      'en seco: ni la ID ni las solapas (el log dice cuántas filas tendrían)');
 
   // --- apagado: nada ---
-  const Eoff = crearEntorno({ config: cfg });
+  const Eoff = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'false' }, cfg) });
   const moff = montar(Eoff, 120, true);
   const hoff = preparar(Eoff, moff);
   const antesOff = JSON.stringify(hoff.v.map(function (x) { return x[iId]; }));
   ok(!Eoff.ejecutar('upsertDestino').error && JSON.stringify(hoff.v.map(function (x) { return x[iId]; })) === antesOff &&
-     !moff.ssD.hojas['Datos_Unpivot'] && !moff.ssD.hojas['Aux_Maximos'], 'apagado (como está en 00_Config.js): ni la ID ni las solapas');
+     !moff.ssD.hojas['Datos_Unpivot'] && !moff.ssD.hojas['Aux_Maximos'], 'apagado (LOOKER_EN_SISTEMA = false): ni la ID ni las solapas');
+
+  // --- la base sin columna ID: el tablero no se escribe (quedaría con otra ID que la base) ---
+  const Ei = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
+  const mi = montar(Ei, 120, true);
+  const hi = preparar(Ei, mi);
+  hi.v[0][iId] = 'Identificador';
+  const ri = Ei.ejecutar('upsertDestino');
+  ok(!ri.error && !mi.ssD.hojas['Datos_Unpivot'] && ri.logs.some(function (l) { return /no tiene la columna "ID"/.test(l); }),
+     'la base sin columna "ID": ni la ID ni el tablero, y lo dice');
+
+  // --- una corrida que ya lleva más de LOOKER_TIEMPO_MAX_MS al llegar al tablero: no lo rehace (lo hace la próxima) ---
+  const Et = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg), costo: { calculo: 250000 } });
+  const mt = montar(Et, 120, true);
+  preparar(Et, mt);
+  const rt = Et.ejecutar('upsertDestino');
+  ok(!rt.error && !mt.ssD.hojas['Datos_Unpivot'] && rt.logs.some(function (l) { return /no se rehacen en ésta/.test(l); }),
+     'sin tiempo (la corrida ya lleva más de 4 minutos): no rehace el tablero en ésta, y lo dice');
 
   // --- una fórmula en la columna ID: ni la ID ni las solapas ---
   const Ef = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg) });
@@ -2627,8 +2647,8 @@ function escenarioLooker() {
      rh.logs.some(function (l) { return /Datos_Unpivot NO se reescribe: faltan columnas de base: Día de la semana/.test(l); }),
      'sin "Día de la semana": Datos_Unpivot no se reescribe (queda la de antes) y el log lo dice');
 
-  // --- paso 54: las pruebas A, B y C ---
-  const E5 = crearEntorno({ config: cfg });
+  // --- paso 54: las pruebas A, B y C (sólo lectura; el tablero apagado, como antes de prenderlo) ---
+  const E5 = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'false' }, cfg) });
   const m5 = montar(E5, 120, true);
   const h5 = preparar(E5, m5);
   // "lo que escribía el script atado": el modo compatible, sobre el backup y sobre hoy

@@ -241,8 +241,9 @@ ok(new Set(ids.filter(Boolean)).size === ids.filter(Boolean).length, 'ninguna re
 ok(vm.runInContext('horaHHmm_(0.75) + "|" + horaHHmm_("9") + "|" + horaHHmm_("19:05:00") + "|" + horaHHmm_("")', ctx) === '18:00|09:00|19:05|',
    'la hora como HH:mm (fracción del día, "9", "19:05:00", vacía)');
 ok(vm.runInContext('conLooker_(true, function () { return esColumnaDerivada_("ID") && columnasDerivadas_().length === 12; })', ctx) &&
-   !vm.runInContext('esColumnaDerivada_("ID")', ctx),
-   'la ID es derivada (la 12) sólo con LOOKER_EN_SISTEMA (apagado: no)');
+   !vm.runInContext('conLooker_(false, function () { return esColumnaDerivada_("ID"); })', ctx) &&
+   vm.runInContext('LOOKER_EN_SISTEMA && esColumnaDerivada_("ID")', ctx),
+   'la ID es derivada (la 12) sólo con LOOKER_EN_SISTEMA (prendido desde el 08/10; apagado: no)');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

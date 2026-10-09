@@ -1667,22 +1667,27 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
 
   // Las derivadas por script (05/10): en TODAS las filas, sólo donde cambió, sin color. En seco sólo cuenta.
   // Con LOOKER_EN_SISTEMA (08/10), también la ID (la derivada 12).
-  let idListo = false;
+  let idListo = false, porQueNoId = 'las derivadas no se recalcularon (DERIVADAS_POR_SCRIPT)';
   if (DERIVADAS_POR_SCRIPT) {
     try {
       const d = recalcDerivadas_(RDV_HOJA_DESTINO, !enSeco);
       plan.res.derivadas = d.total;
-      idListo = d.conFormula.indexOf(COLUMNA_ID) < 0;
+      idListo = d.conFormula.indexOf(COLUMNA_ID) < 0 && (!lookerEnSistema_() || d.conId);
+      porQueNoId = !d.conId ? 'la base no tiene la columna "' + COLUMNA_ID + '"' : 'la columna "' + COLUMNA_ID + '" tiene fórmula';
     } catch (err) {
+      porQueNoId = 'las derivadas fallaron';
       Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
     }
   }
   // El tablero de Looker (08/10, FASE 2 del script atado): Datos_Unpivot y Aux_Maximos, desde RVD con la ID ya recalculada.
   // Sin la ID escrita (fórmula en la columna, o las derivadas fallaron) no se reescriben: quedarían con otra ID que RVD.
   if (lookerEnSistema_() && !historial) {
-    if (!idListo) Logger.log('>>> Tablero de Looker: la ID (derivada 12) no se recalculó en esta corrida: %s y %s no se ' +
-                             'reescriben (quedan las de antes).', RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
-    else {
+    if (!idListo) Logger.log('>>> Tablero de Looker: la ID (derivada 12) no se recalculó en esta corrida (%s): %s y %s no se ' +
+                             'reescriben (quedan las de antes).', porQueNoId, RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
+    else if (new Date() - t0 > LOOKER_TIEMPO_MAX_MS) {
+      Logger.log('>>> Tablero de Looker: la corrida ya lleva %s s; %s y %s no se rehacen en ésta (las rehace la próxima).',
+                 Math.round((new Date() - t0) / 1000), RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
+    } else {
       try { plan.res.looker = escribirSolapasLooker_(enSeco); }
       catch (err) { Logger.log('>>> El tablero de Looker NO se reescribió: %s (el resto de la corrida sigue).', err); }
     }
