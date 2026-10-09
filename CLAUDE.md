@@ -2768,6 +2768,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 45_IdsCuentas.js   los IDs de los encuentros (decisión 14): la lista del equipo de campañas → "ID cuentas" y "Fecha
                    envío campañas" en la base, por la regla general; IDS_SIN_CRUZAR y REGISTRO_IDS. Medición:
                    diagnostico/26_ids_cuentas.js (paso 55). APAGADO en la hora (IDS_EN_LA_HORA) hasta el paso 57 ← 08/10
+diagnostico/27_guardian.js  el GUARDIÁN de las columnas del sistema, SÓLO LO QUE SE MIDE SIN SU TEXTO (que no llegó):
+                   el inventario (qué columnas, ocultas/protegidas hoy), las filas cuyas trazas no cuadran y la prueba
+                   del orden parcial (grande y chico), en memoria. No escribe nada; no hay interruptor        ← 08/10
+diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medirGuardian con las listas acotadas, y el
+                   RESUMEN de qué está listo para prender. SÓLO LECTURA                                         ← 08/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10, A LA MAÑANA: correr **manana()** (abajo, junto a los pasos 55-57). SÓLO LECTURA: no escribe nada. Corre la
+ *      medición de los IDs (paso 55: el cruce, el caso 3735 → 805) y las del guardián (las filas cuyas trazas no cuadran hoy
+ *      y la prueba del orden parcial, en memoria) y el inventario de las columnas del sistema (ocultas/protegidas), y termina
+ *      con un RESUMEN de qué está listo para prender. El texto del guardián NO llegó: sus reglas no están hechas (ESTADO 0.z).
+ *      Todo lo nuevo sigue APAGADO: la corrida de la hora hace lo mismo que el 08/10.
  *  >>> 08/10 (7): LOS IDS DE LOS ENCUENTROS ("ID cuentas" y "Fecha envío campañas", 45_IdsCuentas.js), escritos y
  *      APAGADOS en la hora (IDS_EN_LA_HORA = false). En orden, de a uno:
  *        paso55_medirIds()             SÓLO LECTURA: el cruce por solapa, fecha distinta, el caso 3735 → 805, lo que no se
@@ -1191,6 +1196,23 @@ function paso55_medirIds() {
              'el log: la lista · el cruce por solapa · fecha distinta · el caso de control · lo que no se cruza · lo que no se reconoce · ' +
              'Tipo · Fecha de envío · filas sin ID por mes y figura · qué escribiría');
   return medirIds();
+}
+
+/**
+ * **manana()** (08/10, para la mañana del 09/10) — TODAS las mediciones de esta noche, en orden, en UNA ejecución. NO ESCRIBE
+ * NADA: ni la base, ni la intermedia, ni el archivo de la lista. Si un paso falla, lo dice y sigue con el próximo. Termina con
+ * un RESUMEN de qué está listo para prender y qué no. La lógica (los pasos y el resumen) vive en diagnostico/28_manana.js.
+ *   1. los IDs de los encuentros: medirIds() (paso 55) — el cruce por solapa (misma fecha / ±3 / ambiguos / sin fila /
+ *      conflictos), el caso 3735 → 805, las fechas de envío, las filas sin ID, lo que escribiría el paso 57;
+ *   2. el guardián (sólo lo que se mide sin su texto): las filas cuyas trazas no cuadran HOY y la prueba del orden parcial
+ *      (grande y chico), en memoria;
+ *   3. ocultar y proteger: qué columnas del sistema hay, cuáles están ocultas o protegidas hoy, y la propuesta.
+ */
+function manana() {
+  _anunciar_('manana — las mediciones de la noche del 08/10, en orden', 'mananaMediciones_()  [diagnostico/28_manana.js]',
+             'NO escribe nada (ni la base, ni la intermedia, ni la lista)',
+             'el log: 1. IDs (paso 55, listas acotadas) · 2 y 3. el guardián y ocultar/proteger · el RESUMEN al final');
+  return mananaMediciones_();
 }
 
 /** PASO 56 — EN SECO (08/10): la corrida del historial de los IDs sin tocar la base. Escribe IDS_SIN_CRUZAR (intermedia). */

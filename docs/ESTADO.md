@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1179,16 +1179,39 @@ final: **"ID cuentas"** y **"Fecha envío campañas"**, por la regla general (s�
   código, todas detectadas) y `ids_lista_funcionarios` 389 (con 50 casos al azar y 500 más aparte), todo en verde;
 - `tests/ids_cuentas.test.js` (el flujo entero: el historial, la idempotencia, en seco y la medición sin escribir, columnas
   que ya existen, el bloqueo, los permisos, el determinismo, la hora, el huso, las fórmulas, el borde de la grilla, los IDs
-  inválidos).
+  inválidos);
+- **segunda vuelta del revisor** (08/10 de noche) y un test de **propiedades del ±3** (`tests/ids_tres_dias.test.js`: un
+  oráculo propio, que no llama al código, contra 450 escenarios al azar). Lo que salió, y quedó arreglado el 09/10:
+  - **(grave, latente)** un ID de la misma fecha podía caer en una fila de HOY o FUTURA que era de otra reunión (un temático
+    sin lugar comparable, con la fila de Belgrano todavía sin crear por la agenda) y el invariante lo dejaba ahí para
+    siempre. **Ahora un ID se escribe recién cuando la reunión de su fila ya pasó** (`reunion_futura`: se calcula igual, no
+    se lista y lo escribe una corrida posterior);
+  - el caso de control decía OK aunque el 3735 no se escribiera (otro ID le ganaba la fila): ahora exige que se escriba;
+  - Seguridad cruzaba a ±3 aunque hubiera una fila de Seguridad ese día sin lugar comparable: ahora es ambiguo;
+  - "Lugano", "Pompeya", "Paternal", "Vélez" y "C 13" (con espacio) no se leían como lugar;
+  - la fecha de envío se escribía al lado de un ID que el equipo cargó en el medio: ahora va sólo al lado de un ID que quedó
+    escrito o ya estaba (primero los IDs, después las fechas);
+  - un ID repetido con otra grafía dependía del orden de la lista; un ID en una fila "fantasma" no contaba como ocupado; un
+    ID sólo de dígitos ("03735") se habría escrito como número: ahora como texto;
+  - el paso 43 limpia también el fondo de las celdas vacías de las dos columnas nuevas;
+- **tercera vuelta del revisor** (09/10, sobre esos arreglos; confirmó que la corrida de la hora queda idéntica a la de
+  8f1246b con `IDS_EN_LA_HORA = false`). Lo que salió, y quedó arreglado:
+  - **(grave, latente)** "C 1 Sur" / "C1 Sur" / "C1 - Norte" perdían la subzona de la Comuna 1: un Seguridad "C 1 Sur" podía
+    cruzar con la única fila de Seguridad del día en Retiro (Comuna 1 Norte). Ahora la subzona se lee con la palabra entera;
+  - "Sede c/ 9 de Julio" ya no se lee como la comuna 9;
+  - un ID sólo de dígitos ("03735") ahora sí se escribe como texto en la base (antes, sólo en los reportes);
+  - en "ya estaba", si alguien cambia el ID de la celda en el medio, la fecha de envío no se escribe al lado (lectura fresca);
+  - el paso 43 no le saca el fondo a una celda con fórmula de "ID cuentas";
+  - el caso de control no da un "NO LISTO" falso cuando el 3735 está dos veces en la lista.
 
 **La secuencia** (nada escribe en la base hasta el 57):
 1. **`paso55_medirIds()`** — SÓLO LECTURA: ni la base ni la intermedia. Todo al log.
 2. **`paso56_idsHistorial_enSeco()`** — el historial en seco: no toca la base; escribe `IDS_SIN_CRUZAR` (intermedia).
 3. **`paso57_idsHistorial()`** — ESCRIBE, una vez: agrega "ID cuentas" y "Fecha envío campañas" al final si no están (sólo
-   el encabezado, sin formato heredado) y escribe en todas las filas (hasta hoy + 7). Traza en `REGISTRO_IDS`. Se puede
-   volver a correr: no reescribe nada (lo que ya está, "ya estaba").
-4. **`IDS_EN_LA_HORA = true`** + clasp push: la corrida de la hora, después de la agenda, sólo filas activas; la columna
-   `ids` de `REGISTRO_UPSERT` dice qué hizo.
+   el encabezado, sin formato heredado) y escribe en todas las filas **cuya reunión ya pasó** (las de hoy y las futuras
+   esperan). Traza en `REGISTRO_IDS`. Se puede volver a correr: no reescribe nada (lo que ya está, "ya estaba").
+4. **`IDS_EN_LA_HORA = true`** + clasp push: la corrida de la hora, después de la agenda, sólo filas activas que ya
+   pasaron (así se completan las de esta semana a medida que pasan); la columna `ids` de `REGISTRO_UPSERT` dice qué hizo.
 
 **Predicción del paso 55** (anotada antes de correrlo; los números exactos no se pueden predecir sin la lista):
 - **la lista**: huso horario de la lista (si no es `America/Argentina/Buenos_Aires`, el log lo dice y las fechas se leen en
@@ -1199,11 +1222,15 @@ final: **"ID cuentas"** y **"Fecha envío campañas"**, por la regla general (s�
 - **las columnas**: "FALTAN ID cuentas y Fecha envío campañas → el paso 57 las agrega al final, a partir de BL" (la última
   es "Conjunta con", BK), salvo que ya las hayan creado: entonces "están las dos" (y, si tuvieran fórmulas, el aviso).
 - **el caso de control**: `3735-SEPJDGAG → fila 805 (Jorge Macri, 29/09/2026, Belgrano) por fecha distinta (−2 días: la
-  lista dice 01/10/2026)` y **"OK: es la fila 805."**. Si diera ambiguo o DISTINTO, el log nombra las candidatas (una fila de
-  Macri del 01/10, o una a ±3 en Belgrano o sin lugar comparable).
+  lista dice 01/10/2026) · lugar: barrio`, "SE ESCRIBE", y **"OK: es la fila 805."**. Si diera ambiguo o DISTINTO, el log
+  nombra las candidatas (una fila de Macri del 01/10, o una a ±3 en Belgrano o sin lugar comparable); si cruza pero otro ID le
+  gana la fila, dice "CRUZA con la fila 805 pero NO se escribe" (y no es LISTO).
 - **el cruce**: la gran mayoría por la **misma fecha**; por **fecha distinta**, pocos (todos listados, para revisarlos uno
   por uno); **ambiguos**, algunos (el ±3 es estricto a propósito); **conflictos del invariante**, pocos o ninguno; **futuras
-  sin fila**: las reuniones de las próximas semanas que la agenda todavía no creó (no van a IDS_SIN_CRUZAR).
+  sin fila**: las reuniones de las próximas semanas que la agenda todavía no creó (no van a IDS_SIN_CRUZAR); **"cruzan con
+  una reunión que todavía no pasó"**: las de hoy y de esta semana que ya tienen fila (se escriben después; tampoco se
+  listan); y la lista nueva **"los cruces de la MISMA fecha con el lugar NO comparable"** (se escriben: la figura y la fecha
+  alcanzan; están para mirarlos).
 - **sin fila**, donde se espera: canceladas o movidas más de ±3 días (`sin_fila`, `lugar_distinto`); **Seguridad** sin
   lugar comparable (`seguridad_sin_lugar`) o de antes de que la agenda anotara "Evento (mail)" (06/10, alcance desde el
   06/09) y sin un formulario "sobre Seguridad" cruzado (no se reconocen como Seguridad); **conjuntas** cuya fila no tiene
@@ -1215,6 +1242,67 @@ final: **"ID cuentas"** y **"Fecha envío campañas"**, por la regla general (s�
 al final, `#CFE2F3` sólo en las celdas escritas y las fechas en `dd/MM/yyyy`; `REGISTRO_IDS` (una línea por fila escrita, con
 "misma fecha" / "fecha distinta (−N días…)"); `IDS_SIN_CRUZAR` (los motivos); `paso16_verificarEscritura()` sigue OK
 (invariante 0). Para volver atrás: `REGISTRO_IDS` dice la fila y el ID de cada escritura (no hay un deshacer automático).
+**Un ID borrado vuelve** en la corrida siguiente (la celda quedó vacía): para que una fila no reciba un ID, escribir **"no"**
+en su "ID cuentas" (una celda con valor no se toca; sale en IDS_SIN_CRUZAR como `fila_con_otro_id`, "lo puso el equipo").
+
+#### La noche del 08/10 → la mañana del 09/10: qué se hizo, `manana()` y qué prender
+
+**El pedido** (08/10 de noche, "sin esperar respuesta"): terminar los IDs; después ocultar y proteger las columnas del
+sistema con el guardián; todo lo nuevo APAGADO (la corrida de la hora hace exactamente lo mismo que el 08/10; nada nuevo
+escribe en la base); tests con agentes en paralelo y un revisor; commits por tema; y una función `manana()` que mida todo sin
+escribir nada y diga qué está listo para prender.
+
+**Qué se hizo**
+1. **Los IDs de los encuentros: TERMINADOS y APAGADOS** (arriba, "Los IDs de los encuentros"; CLAUDE.md, decisión 14), con
+   la segunda vuelta de revisión aplicada. `IDS_EN_LA_HORA = false`: la corrida de la hora no los toca, y `REGISTRO_UPSERT`
+   no suma la columna `ids` mientras esté apagado. Nada escribe en la base hasta el paso 57, que corre una persona.
+2. **El guardián: SU TEXTO NO LLEGÓ.** El pedido dice "con el guardián (el texto que te pasé)", pero ese texto no está en la
+   sesión, ni en las anteriores, ni en el repo: sólo la mención. Sin él no se implementó ninguna de sus reglas (qué columnas,
+   cómo protegerlas, qué hace la corrida si detecta una desalineación). Lo que NO depende de él quedó hecho, de SÓLO
+   LECTURA, en `diagnostico/27_guardian.js`:
+   - **el inventario**: qué columnas del sistema hay (traza, agenda, IDs, derivadas), cuáles están ocultas y qué
+     protecciones cubren sus DATOS hoy, y una PROPUESTA (a confirmar con el texto) de cuáles ocultar y cómo proteger;
+   - **"las celdas que difieren hoy"**: las filas cuyas trazas no cuadran con la fila (el formulario cruzado nombra otra
+     figura, o —con `form_clave`— es de otra fecha; la agenda escribió otra FECHA, HORA o Barrio, dos o más, que "Tocado por
+     el equipo" no explica). DESALINEADA con muchas (máx(5, 5%)) o con 6 SEGUIDAS;
+   - **"la prueba del orden parcial"**: en memoria, ordena sólo las columnas del equipo (las del sistema quedan quietas) y
+     mide cuántas filas MÁS dejan de cuadrar; GRANDE (toda la base) y CHICO (sólo las últimas 30: el mes activo, donde
+     trabaja el equipo; lo tiene que ver la racha). El orden de filas enteras se mide, pero no prueba nada (cada fila se
+     mira sola).
+   No hay interruptor del guardián: no hay nada que prender hasta tener su texto.
+3. **`manana()`** (99_Correr.js; la lógica, en `diagnostico/28_manana.js`): corre, en orden y sin escribir nada,
+   `medirIds()` (el paso 55, con las listas largas acotadas a 12 por motivo para que el log no pierda el resumen) y
+   `medirGuardian()`, y termina con un RESUMEN de qué está listo y qué no. Si un paso falla, sigue con el otro.
+4. **Tests y agentes**: cinco agentes (uno por solapa de la lista, uno de propiedades del ±3, uno del guardián y de
+   `manana()`, y un revisor en tres vueltas: la tercera, a la mañana, sobre los arreglos de la segunda). Los dos agentes de
+   tests se cortaron por el límite de uso a las 00:2x; sus archivos los terminé yo a la mañana. En verde: `ids_cuentas` (77),
+   `ids_lista_jm` (336), `ids_lista_funcionarios` (393), `ids_tres_dias` (130 chequeos: 708 + 1093 + 450 verificaciones
+   contra el oráculo, en 450 escenarios), `guardian` (262), y los de siempre (`agenda_escritura`, `agenda_parser`, `ayuda`,
+   `looker`, `ubicacion`, `escritura_lote`).
+
+**Predicción de `manana()`** (anotada antes de correrla):
+- **1. IDs**: lo de la predicción del paso 55 (arriba): el encabezado en la fila 2 de las dos solapas; las columnas que faltan
+  "a partir de BL"; **"el caso 3735: OK: es la fila 805. (fecha distinta (−2 días: la lista dice 01/10/2026) · lugar:
+  barrio)"**; la gran mayoría por la misma fecha, pocos por fecha distinta (todos listados), algunos ambiguos; "cruzan con
+  una reunión que todavía no pasó": las de esta semana con fila; y el resumen **"IDS: LISTO para seguir"** si se leyeron las
+  dos solapas, el caso 3735 dio OK (y se escribe) y "ID cuentas" no tiene fórmulas.
+- **2. Guardián**: "las celdas que difieren HOY": **pocas** (de 0 a unas decenas: filas que el equipo corrigió después del
+  cruce —dos o más de FECHA, HORA y Barrio de una fila de la agenda sin anotar en "Tocado por el equipo", o la Figura de una
+  fila con formulario—), racha corta → **alineada**; el orden parcial GRANDE: **DESALINEADA con cientos** → "se ve"; el
+  CHICO: **DESALINEADA por la racha** → "también se ve" (si las últimas 30 filas casi no tuvieran trazas, diría "NO se ve":
+  sería un dato, no una falla).
+- **3. Ocultar y proteger**: **34 columnas del sistema** (6 de traza, 16 de la agenda, 12 derivadas con la ID; 36 si "ID
+  cuentas" y "Fecha envío campañas" ya existieran); **ocultas 0** (salvo que el equipo haya ocultado alguna); **con alguna
+  protección: 11** (las derivadas, con advertencia, desde el paso 26; la ID no); la propuesta: ocultar 14 internas.
+- **El resumen**: IDs LISTO (o NO LISTO con el motivo); GUARDIÁN NO LISTO ("su texto no llegó"); OCULTAR Y PROTEGER NO
+  LISTO; `IDS_EN_LA_HORA = false`.
+
+**Qué prender si da bien** (en este orden; cada uno lo corre una persona):
+1. **IDs**: `paso56_idsHistorial_enSeco()` → mirar `IDS_SIN_CRUZAR` (los motivos) → `paso57_idsHistorial()` (escribe UNA
+   vez: agrega las dos columnas y escribe en todas las filas que ya pasaron) → mirar `REGISTRO_IDS` y la base →
+   **`IDS_EN_LA_HORA = true`** + clasp push.
+2. **Guardián y ocultar/proteger**: nada todavía. Falta el texto del guardián: con él se implementan sus reglas (con su
+   interruptor, apagado) y `manana()` ya deja la línea de base de hoy para comparar.
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 
