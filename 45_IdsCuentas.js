@@ -573,7 +573,7 @@ function cruzarIds_(registros, dest, opciones) {
   // del parser: las partes del Funcionario que no se reconocieron se buscan también entre esos nombres.
   const nombresBase = Array.from(porFigura.keys());
   registros.forEach(function (r) { _completarQuienIds_(r, nombresBase); });
-  const items = registros.map(function (r) { return { r: r, ev: evaluarRegistroIds_(r, { porFigura: porFigura, seguridad: seguridad }) }; });
+  const items = registros.map(function (r) { return { r: r, ev: evaluarRegistroIds_(r, { porFigura: porFigura, seguridad: seguridad, filas: filas }) }; });
   return _resolverIds_(items, { porId: porId, porFila: porFila, filas: filas, cols: cols, escribeFila: escribeFila,
                                 reunionPaso: reunionPaso, historial: historial });
 }
@@ -642,11 +642,112 @@ function identidadIds_(r, x) {
 /** Días de contexto para mostrar candidatas en IDS_SIN_CRUZAR (no deciden nada). */
 const IDS_DIAS_CONTEXTO_ = 7;
 
+/** Las dos mejoras del 09/10 (00_Config.js): su interruptor, salvo que una medición las fuerce (`conMejorasIds_`). */
+var _forzarMejorasIds_ = null;
+function idsConjuntaUnaFigura_() { return _forzarMejorasIds_ && 'conjunta' in _forzarMejorasIds_ ? !!_forzarMejorasIds_.conjunta : !!IDS_CONJUNTA_UNA_FIGURA; }
+function idsSeguridadPorComuna_() { return _forzarMejorasIds_ && 'seguridad' in _forzarMejorasIds_ ? !!_forzarMejorasIds_.seguridad : !!IDS_SEGURIDAD_POR_COMUNA; }
+/** Corre `fn` con las mejoras forzadas (`{ conjunta, seguridad }`) y las deja como estaban. Mediciones y tests. */
+function conMejorasIds_(valor, fn) {
+  const antes = _forzarMejorasIds_;
+  _forzarMejorasIds_ = valor;
+  try { return fn(); } finally { _forzarMejorasIds_ = antes; }
+}
+
 /**
- * Un registro solo, contra las filas (antes del invariante) → `{ estado, nivel, e, desempate, motivo, detalle, cands }`.
+ * Un registro solo, contra las filas (antes del invariante) → `{ estado, nivel, e, desempate, motivo, detalle, cands, regla }`.
  * estado: 'cruza' (nivel 'misma_fecha' | 'fecha_distinta') | 'ambiguo' | 'sin_fila' | 'sin_fecha' | 'no_reconocido'.
+ * Las mejoras del 09/10 actúan SÓLO si la regla de siempre no cruza; su cruce lleva `regla` y rango "parcial".
  */
 function evaluarRegistroIds_(r, idx) {
+  const ev = _evaluarRegistroBaseIds_(r, idx);
+  if (ev.estado === 'cruza' || ev.estado === 'sin_fecha') return ev;
+  if (idsSeguridadPorComuna_() && esSeguridadIds_(r) && idx.filas) {
+    const s = _seguridadPorComunaIds_(r, idx);
+    if (s) return s;
+  }
+  if (idsConjuntaUnaFigura_() && ev.motivo === 'conjunta_sin_fila' && idx.filas) {
+    const c = _conjuntaUnaFiguraIds_(r, idx);
+    if (c) return c;
+  }
+  return ev;
+}
+
+/** ¿Es de Seguridad en tu barrio? El Funcionario lo dice, o el ID tiene "SEG" (3000-MAYSEGVC). */
+function esSeguridadIds_(r) {
+  return !!r.quien.seguridad || /SEG/.test(String(r.id).split('-').slice(1).join('-'));
+}
+
+/**
+ * **Seguridad por comuna** (IDS_SEGURIDAD_POR_COMUNA): la reunión es de la comuna, no de la figura. Las filas de ESA fecha en
+ * la comuna de la lista (la subzona de la Comuna 1, si las dos la tienen), no Reprogramadas; primero las de Seguridad y, si
+ * la lista nombra una figura, la suya. Una sola → cruza (misma fecha). null si la lista no dice una comuna o no hay ninguna.
+ */
+function _seguridadPorComunaIds_(r, idx) {
+  const u = r.lugar.u, comuna = u.comuna;
+  if (comuna == null) return null;
+  const cands = idx.filas.filter(function (x) {
+    if (!x.f.fecha || x.noCandidata || diasEntre_(x.f.fecha, r.fecha) !== 0) return false;
+    if (x.ubic.comuna !== comuna) return false;
+    return !(comuna === 1 && u.subzona && x.ubic.subzona && u.subzona !== x.ubic.subzona);
+  }).map(function (x) { return { x: x, ident: 'parcial', dias: 0, lug: { nivel: 'comuna', coincide: true, porSubzona: false } }; });
+  if (!cands.length) return null;
+  const pasos = [];
+  let c = _preferirIds_(cands, function (e) { return e.x.seguridad; }, pasos, 'seguridad');
+  if (r.quien.norm.length) c = _preferirIds_(c, function (e) { return r.quien.norm.some(function (k) { return e.x.fig.indexOf(k) >= 0; }); }, pasos, 'figura');
+  if (c.length !== 1) {
+    return { estado: 'ambiguo', motivo: 'ambiguo', cands: c, regla: 'seguridad_por_comuna',
+             detalle: 'Seguridad por comuna: ' + c.length + ' filas de la Comuna ' + comuna + ' ese día' };
+  }
+  const x = c[0].x;
+  return { estado: 'cruza', nivel: 'misma_fecha', e: c[0], desempate: pasos, cands: cands, regla: 'seguridad_por_comuna',
+           figuraDistinta: r.quien.norm.length > 0 && !r.quien.norm.some(function (k) { return x.fig.indexOf(k) >= 0; }) };
+}
+
+/** ¿El lugar de la lista es compatible con la fila? No en desacuerdo, y si la lista dice un eje y el barrio de la fila tiene
+ *  eje en Comunas (columna I), que sea ése. `fuerte`: el lugar coincide, o el eje coincide así. */
+function _lugarCompatibleIds_(r, x) {
+  const lug = compararUbicacion_(r.lugar.u, x.ubic);
+  if (lug.coincide === false) return { ok: false, fuerte: false, lug: lug };
+  const eje = r.lugar.u.eje, ejeBarrio = x.f.barrio ? ejeDeBarrio_(x.f.barrio) : '';
+  if (eje && ejeBarrio) {
+    const enEje = barrioEnEje_(x.f.barrio, eje);
+    return { ok: enEje, fuerte: enEje || lug.coincide === true, lug: enEje && lug.coincide !== true ? { nivel: 'eje', coincide: true, porSubzona: false } : lug };
+  }
+  return { ok: true, fuerte: lug.coincide === true, lug: lug };
+}
+
+/**
+ * **Una conjunta sin "Conjunta con"** (IDS_CONJUNTA_UNA_FIGURA): no hay fila con todas sus figuras; la de UNA de ellas, con
+ * el lugar compatible y una sola candidata: la misma fecha, o a ±3 (la fecha planeada ya pasó, una sola posible y el lugar
+ * coincide). null si no hay ninguna (queda como estaba).
+ */
+function _conjuntaUnaFiguraIds_(r, idx) {
+  const E = r.quien.norm, N = IDS_DIAS_FECHA_DISTINTA, vistas = {};
+  const cands = [];
+  E.forEach(function (k) {
+    (idx.porFigura.get(k) || []).forEach(function (x) {
+      if (vistas[x.f.fila] || !x.f.fecha || x.noCandidata) return;
+      vistas[x.f.fila] = true;
+      const dias = diasEntre_(x.f.fecha, r.fecha);
+      if (Math.abs(dias) > N) return;
+      const comp = _lugarCompatibleIds_(r, x);
+      if (comp.ok) cands.push({ x: x, ident: 'parcial', dias: dias, lug: comp.lug, fuerte: comp.fuerte });
+    });
+  });
+  const mismas = cands.filter(function (e) { return e.dias === 0; });
+  if (mismas.length === 1) return { estado: 'cruza', nivel: 'misma_fecha', e: mismas[0], desempate: [], cands: cands, regla: 'conjunta_una_figura' };
+  if (mismas.length > 1) {
+    return { estado: 'ambiguo', motivo: 'ambiguo', cands: mismas, regla: 'conjunta_una_figura',
+             detalle: 'conjunta sin "Conjunta con": ' + mismas.length + ' filas de sus figuras ese día' };
+  }
+  const cerca = cands;   // todas a ±1..N
+  if (cerca.length === 1 && cerca[0].fuerte && ymd_(r.fecha) < ymd_(hoyMediodia_())) {
+    return { estado: 'cruza', nivel: 'fecha_distinta', e: cerca[0], desempate: [], cands: cands, regla: 'conjunta_una_figura' };
+  }
+  return null;
+}
+
+function _evaluarRegistroBaseIds_(r, idx) {
   if (!r.fecha) return { estado: 'sin_fecha', motivo: 'sin_fecha', detalle: 'la Fecha de la lista no es una fecha ("' + r.fechaTexto + '")', cands: [] };
   const hoy = hoyMediodia_();
   const lejos = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + IDS_DIAS_FECHA_LISTA_MAX, 12, 0, 0);
@@ -984,7 +1085,9 @@ function comoCruzoIds_(it) {
         : 'fecha distinta (' + (e.dias > 0 ? '+' : '−') + Math.abs(e.dias) + ' días: la lista dice ' + fmtFecha_(r.fecha) + ')';
   if (r.quien.seguridad) s += ' · Seguridad';
   else if (r.quien.norm.length > 1) s += ' · conjunta';
-  if (e.ident === 'parcial') s += ' · fila conjunta (una de sus figuras)';
+  if (it.ev.regla === 'conjunta_una_figura') s += ' · conjunta sin "Conjunta con": la fila de ' + (e.x.f.figura || 'una de sus figuras');
+  else if (it.ev.regla === 'seguridad_por_comuna') s += ' · Seguridad por comuna' + (it.ev.figuraDistinta ? ' · figura distinta (la lista: ' + r.quien.figuras.join(', ') + '; la fila: ' + (e.x.f.figura || 'sin figura') + ')' : '');
+  else if (e.ident === 'parcial') s += ' · fila conjunta (una de sus figuras)';
   if (r.quien.porSolapa) s += ' · figura por la solapa';
   if (e.x.status === 'suspendida') s += ' · fila Suspendida';
   if (e.lug.nivel) s += ' · lugar: ' + e.lug.nivel;

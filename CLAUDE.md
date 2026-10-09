@@ -2754,6 +2754,14 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       no se escriben y se listan. Dos IDs para una fila: gana la misma fecha y, después, la figura exacta; si empatan,
       ninguno. El mismo ID repetido para la misma fila: vale el de mejor cruce y, a igual cruce, el texto que va primero
       (no depende del orden de la lista);
+    - **dos mejoras, APAGADAS** (09/10, `IDS_CONJUNTA_UNA_FIGURA` e `IDS_SEGURIDAD_POR_COMUNA`; medición: paso 60). Sólo
+      actúan sobre un registro que la regla de siempre NO cruza, y su cruce pierde contra cualquier cruce normal por la misma
+      fila: (1) una **conjunta sin fila con todas sus figuras** (las filas de antes de la agenda no tienen "Conjunta con"):
+      la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas de siempre), el lugar compatible —también
+      el eje de la lista contra el del barrio en Comunas— y una sola candidata (traza "conjunta sin 'Conjunta con': la fila
+      de …"); (2) **Seguridad** ("SEG" en el ID o "Seguridad en tu barrio") **por fecha + comuna**, no por figura: las filas
+      de esa fecha en esa comuna, primero las de Seguridad; una sola; si la figura de la fila no es la de la lista se
+      escribe igual y la traza dice "figura distinta";
     - **un ID borrado vuelve**: la celda queda vacía y la corrida siguiente lo escribe de nuevo. Para que una fila NO reciba
       un ID, el equipo escribe **"no"** (o cualquier texto) en su "ID cuentas": una celda con valor no se toca (se lista
       como `fila_con_otro_id`, "no es un ID: lo puso el equipo"). **Con el guardián prendido (sección 0) esto deja de

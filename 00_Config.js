@@ -249,6 +249,20 @@ const RDV_HOJA_REGISTRO_IDS = 'REGISTRO_IDS';
  * a ±3 —revisados, correctos—, el 3735 → 805, conflictos 0).
  */
 const IDS_EN_LA_HORA = true;
+/**
+ * **Dos mejoras del cruce (09/10, decisión del usuario), APAGADAS hasta ver el paso 60** (medir: cuántos de IDS_SIN_CRUZAR
+ * resuelve cada una, y que ninguna cambie un ID ya cruzado). Las dos sólo actúan sobre un registro que hoy NO cruza, y su
+ * cruce pierde contra cualquier cruce normal por la misma fila (rango "parcial"):
+ *   IDS_CONJUNTA_UNA_FIGURA   una conjunta sin fila con todas sus figuras (las filas de antes de la agenda no tienen
+ *                             "Conjunta con"): la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas
+ *                             de siempre), lugar compatible (también el eje: el de la lista contra el del barrio en Comunas,
+ *                             si lo tiene) y una sola candidata. Caso: Lombardi / Arengo Piragine / Tapia, 03/2026 a 08/2026.
+ *   IDS_SEGURIDAD_POR_COMUNA  Seguridad ("SEG" en el ID o "Seguridad en tu barrio"): por FECHA + COMUNA, no por figura (la
+ *                             reunión es de la comuna); primero las filas de Seguridad; una sola. Si la figura de la fila no
+ *                             es la de la lista, se escribe igual y la traza dice "figura distinta". Caso: los jueves.
+ */
+const IDS_CONJUNTA_UNA_FIGURA = false;
+const IDS_SEGURIDAD_POR_COMUNA = false;
 /** Los tipos de encuentro, para desempatar con el Tipo de "Agenda JM" contra el EVENTO de la fila. El primero que matchea. */
 const IDS_TIPOS = [
   { tipo: 'seguridad', re: /\bseguridad en tu barrio\b/ },

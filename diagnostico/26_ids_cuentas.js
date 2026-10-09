@@ -285,3 +285,49 @@ function _logSinId_diag26(lista, res) {
     Logger.log('  %s: %s filas | con ID %s | SIN ID %s%s', m, g.filas, g.con, g.sin, g.sin ? ' → ' + _top_diag26(g.figuras, 12) : '');
   });
 }
+
+/**
+ * **PASO 60 — SÓLO LECTURA (09/10): las dos mejoras del cruce, antes de prenderlas** (IDS_CONJUNTA_UNA_FIGURA y
+ * IDS_SEGURIDAD_POR_COMUNA, 00_Config.js). Corre el mismo cruce del historial cuatro veces —como hoy, con cada una sola y
+ * con las dos— y dice: cuántos de lo que hoy NO se cruza (IDS_SIN_CRUZAR) resuelve cada una, uno por uno (a qué fila, con
+ * la traza: "figura distinta", "la fila de …"); los que cambian de motivo sin cruzar; y el control: **ninguna cambia un ID
+ * ya cruzado** (lo que hoy se escribe, ya estaba o está en la base sigue igual, en la misma fila). No escribe nada.
+ */
+function medirIdsMejoras() {
+  Logger.log('=== paso 60 — las dos mejoras del cruce de los IDs: MEDICIÓN (sólo lectura) ===');
+  const dest = leerDestino_(), lista = leerListaIds_(), fantasma = idsEnFilasFantasmaIds_(dest);
+  const correr = function (m) {
+    return conMejorasIds_(m, function () { return cruzarIds_(lista.registros, dest, { historial: true, idsFantasma: fantasma }); });
+  };
+  const hoy = correr({ conjunta: false, seguridad: false });
+  const cruzado = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'fuera'; };
+  const fijo = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'ya_en_la_base' || f.estado === 'fuera'; };
+  Logger.log('  hoy (las dos apagadas): IDS_SIN_CRUZAR %s líneas | se escriben %s | ya estaban %s', hoy.sinCruzar.length, hoy.conteo.escribeId, hoy.conteo.yaEstaba);
+  const out = {};
+  [['conjunta', { conjunta: true, seguridad: false }, 'IDS_CONJUNTA_UNA_FIGURA'], ['seguridad', { conjunta: false, seguridad: true }, 'IDS_SEGURIDAD_POR_COMUNA'],
+   ['las dos', { conjunta: true, seguridad: true }, 'las dos']].forEach(function (v) {
+    const res = correr(v[1]);
+    const resuelve = [], cambian = [], rompe = [];
+    res.items.forEach(function (it, i) {
+      const a = hoy.items[i].final, b = it.final;
+      if (fijo(a) && (b.estado !== a.estado || (b.fila || null) !== (a.fila || null))) rompe.push({ it: it, antes: a });
+      else if (!cruzado(a) && cruzado(b)) resuelve.push(it);
+      else if (!cruzado(a) && !cruzado(b) && (a.motivo !== b.motivo)) cambian.push({ it: it, antes: a });
+    });
+    Logger.log('--- %s: resuelve %s de las %s líneas de IDS_SIN_CRUZAR (quedan %s) | cambian de motivo sin cruzar %s | ' +
+               'CAMBIA UN ID YA CRUZADO: %s%s', v[2], resuelve.length, hoy.sinCruzar.length, res.sinCruzar.length, cambian.length,
+               rompe.length, rompe.length ? '  <<< ¡OJO!' : ' (bien)');
+    resuelve.forEach(function (it) {
+      const f = it.ev.e.x.f;
+      Logger.log('    %s\n       → fila %s (%s, %s, %s) | %s | %s', _descRegistro_diag26(it.r), f.fila, f.figura || 'sin figura', fmtFecha_(f.fecha),
+                 f.barrio || 'sin barrio', comoCruzoIds_(it), _descFinal_diag26(it));
+    });
+    cambian.forEach(function (x) { Logger.log('    cambia: %s — %s → %s (%s)', _descRegistro_diag26(x.it.r), x.antes.motivo, x.it.final.motivo, x.it.final.detalle || ''); });
+    rompe.forEach(function (x) { Logger.log('    ¡CAMBIA!: %s — %s fila %s → %s fila %s', _descRegistro_diag26(x.it.r), x.antes.estado, x.antes.fila, x.it.final.estado, x.it.final.fila); });
+    out[v[0]] = { resuelve: resuelve.length, quedan: res.sinCruzar.length, cambian: cambian.length, rompe: rompe.length };
+  });
+  Logger.log('  Si "CAMBIA UN ID YA CRUZADO" da 0 y los que resuelve están bien: IDS_CONJUNTA_UNA_FIGURA / IDS_SEGURIDAD_POR_COMUNA = true + ' +
+             'clasp push (la corrida de la hora los escribe en las filas activas; para los viejos, paso57_idsHistorial() otra vez).');
+  out.hoy = hoy.sinCruzar.length;
+  return out;
+}

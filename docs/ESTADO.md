@@ -1161,6 +1161,20 @@ corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no 
 
 Lo que sigue es cómo quedó antes de prenderlo (08/10–09/10).
 
+**Las conjuntas sin "Conjunta con" y Seguridad por comuna: escritas y APAGADAS (09/10) — primero el paso 60.** Decisión del
+usuario, para los 34 de `IDS_SIN_CRUZAR`. Las reglas, en CLAUDE.md (decisión 14). Interruptores: `IDS_CONJUNTA_UNA_FIGURA` e
+`IDS_SEGURIDAD_POR_COMUNA` (00_Config.js). Las dos actúan sólo sobre lo que hoy no cruza y su cruce pierde contra cualquier
+cruce normal: por construcción, no pueden cambiar un ID ya cruzado (y el paso 60 lo controla). Tests: `tests/ids_mejoras.test.js`.
+- **`paso60_medirIdsMejoras()`** — SÓLO LECTURA: el cruce del historial cuatro veces (como hoy, cada una sola, las dos).
+- **Predicción**: "hoy: IDS_SIN_CRUZAR 34 líneas"; **IDS_CONJUNTA_UNA_FIGURA resuelve hasta 9** (las de Lombardi / Arengo
+  Piragine / Tapia de 03/2026 a 08/2026; menos si alguna tiene ese día filas de dos de las figuras —ambigua— o si hoy no sale
+  como `conjunta_sin_fila`: si alguna parte del Funcionario no se reconoce, es `funcionario_en_parte` y la mejora no la toca);
+  **IDS_SEGURIDAD_POR_COMUNA resuelve hasta 16** (los `lugar_distinto` de los jueves, como 3000-MAYSEGVC Comuna 6 14/05; menos
+  si ese día hay dos filas de esa comuna y ninguna marcada de Seguridad), casi todas con "figura distinta"; **"CAMBIA UN ID
+  YA CRUZADO: 0"** en las tres.
+- **Si da bien**: el interruptor = true + clasp push. La corrida de la hora los escribe en las filas activas que ya pasaron;
+  los viejos (03/2026 a 08/2026), `paso57_idsHistorial()` otra vez (sólo celdas vacías: lo que ya está no se toca).
+
 **Qué es** (decisión del usuario, 08/10; CLAUDE.md, decisión 14, con todas las reglas). La lista de IDs del equipo de
 campañas (planilla 6, "Base reuniones - Digital - Call Center", `RDV_SS_IDS`; se lee, nunca se escribe), solapas "Agenda
 JM" (sólo Macri: ID | Funcionario | Barrio / Comuna | Tipo | Fecha | Fecha de envío) y "Agenda funcionarios" (ID |

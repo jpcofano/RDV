@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (4): dos mejoras del cruce de los IDs, escritas y APAGADAS (IDS_CONJUNTA_UNA_FIGURA, IDS_SEGURIDAD_POR_COMUNA):
+ *        paso60_medirIdsMejoras()   SÓLO LECTURA: cuántos de IDS_SIN_CRUZAR resuelve cada una; "CAMBIA UN ID YA CRUZADO" = 0
+ *      Si está bien: el interruptor = true + clasp push; los viejos, paso57_idsHistorial() otra vez (sólo celdas vacías).
  *  >>> 09/10 (3): IDS_EN_LA_HORA = true (pasos 55 a 57 OK: 733 cruzan, conflictos 0). Nada para correr a mano: la corrida de la
  *      hora completa los IDs de las filas activas que ya pasaron; mirar la columna "ids" de REGISTRO_UPSERT.
  *  >>> 09/10 (2): EL GUARDIÁN de las columnas del sistema (46_Guardian.js), escrito y APAGADO (GUARDIAN_ACTIVO = false):
@@ -1240,6 +1243,16 @@ function paso57_idsHistorial() {
              'ESCRIBE en la base: "ID cuentas" y "Fecha envío campañas", sólo en celdas vacías (y las agrega al final si faltan)',
              'el log: el cruce y "Escritos en ...: N IDs y M fechas de envío"; REGISTRO_IDS y IDS_SIN_CRUZAR en la intermedia');
   return idsHistorial(false);
+}
+
+/**
+ * PASO 60 — SÓLO LECTURA (09/10): las dos mejoras del cruce de los IDs (conjuntas sin "Conjunta con"; Seguridad por fecha +
+ * comuna), apagadas: cuántos de IDS_SIN_CRUZAR resuelve cada una, uno por uno, y que ninguna cambie un ID ya cruzado.
+ */
+function paso60_medirIdsMejoras() {
+  _anunciar_('paso 60 — las mejoras de los IDs: MEDICIÓN', 'medirIdsMejoras()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
+             'el log: por mejora, lo que resuelve (fila y traza), lo que cambia de motivo y "CAMBIA UN ID YA CRUZADO" (tiene que dar 0)');
+  return medirIdsMejoras();
 }
 
 /**
