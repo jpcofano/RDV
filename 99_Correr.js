@@ -17,6 +17,13 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 08/10 (7): LOS IDS DE LOS ENCUENTROS ("ID cuentas" y "Fecha envío campañas", 45_IdsCuentas.js), escritos y
+ *      APAGADOS en la hora (IDS_EN_LA_HORA = false). En orden, de a uno:
+ *        paso55_medirIds()             SÓLO LECTURA: el cruce por solapa, fecha distinta, el caso 3735 → 805, lo que no se
+ *                                      cruza, las fechas de envío, las filas sin ID por mes y figura
+ *        paso56_idsHistorial_enSeco()  no toca la base; escribe IDS_SIN_CRUZAR (intermedia)
+ *        paso57_idsHistorial()         ESCRIBE una vez: agrega las dos columnas al final si faltan; sólo celdas vacías
+ *      Después: IDS_EN_LA_HORA = true + clasp push (la corrida de la hora, después de la agenda). Predicción: ESTADO 0.z.
  *  >>> 08/10 (6): LOOKER_EN_SISTEMA = true (pruebasLooker de las 19:00, aprobado). El script atado, VACÍO desde las 21:22:
  *      Migrado.js (las dos funciones vacías) y LEGACY.js (todo comentado), subidos desde script-atado-base/ (al lado del
  *      repo); sus activadores los borró el usuario. Después de la primera corrida de la hora:
@@ -1169,6 +1176,41 @@ function pruebasLooker() {
   }
   Logger.log('');
   Logger.log('########## pruebasLooker — fin');
+}
+
+/**
+ * PASO 55 — SÓLO LECTURA (08/10): los IDs de los encuentros (45_IdsCuentas.js), antes de escribir nada. Lee la lista
+ * ("Agenda JM" y "Agenda funcionarios") y la base, corre el mismo cruce que el paso 57 y la corrida de la hora, y lo dice
+ * todo en el log: por solapa, cuántos cruzan por la misma fecha y por fecha distinta (±3), ambiguos, sin fila y
+ * conflictos; TODOS los de fecha distinta; el caso 3735-SEPJDGAG → fila 805; lo que no se reconoce; las fechas de envío;
+ * las filas que quedarían sin ID, por mes y figura.
+ */
+function paso55_medirIds() {
+  _anunciar_('paso 55 — los IDs de los encuentros: MEDICIÓN', 'medirIds()  [diagnostico/26_ids_cuentas.js]',
+             'NO escribe nada (ni la base ni la intermedia)',
+             'el log: la lista · el cruce por solapa · fecha distinta · el caso de control · lo que no se cruza · lo que no se reconoce · ' +
+             'Tipo · Fecha de envío · filas sin ID por mes y figura · qué escribiría');
+  return medirIds();
+}
+
+/** PASO 56 — EN SECO (08/10): la corrida del historial de los IDs sin tocar la base. Escribe IDS_SIN_CRUZAR (intermedia). */
+function paso56_idsHistorial_enSeco() {
+  _anunciar_('paso 56 — los IDs de los encuentros, el historial EN SECO', 'idsHistorial(true)  [45_IdsCuentas.js]',
+             'NO toca la base; escribe IDS_SIN_CRUZAR en la intermedia',
+             'el log: el cruce por solapa y "EN SECO: escribiría N IDs y M fechas de envío"; IDS_SIN_CRUZAR');
+  return idsHistorial(true);
+}
+
+/**
+ * PASO 57 — ESCRIBE, UNA VEZ (08/10): la corrida del historial de los IDs, sobre TODAS las filas. Agrega al final de la
+ * base "ID cuentas" y "Fecha envío campañas" si no están (sólo el encabezado), y escribe por la regla general: sólo celda
+ * vacía, COLOR_SISTEMA. Traza en REGISTRO_IDS; lo que no se cruzó, en IDS_SIN_CRUZAR. Después: IDS_EN_LA_HORA = true.
+ */
+function paso57_idsHistorial() {
+  _anunciar_('paso 57 — los IDs de los encuentros, el historial (ESCRIBE)', 'idsHistorial(false)  [45_IdsCuentas.js]',
+             'ESCRIBE en la base: "ID cuentas" y "Fecha envío campañas", sólo en celdas vacías (y las agrega al final si faltan)',
+             'el log: el cruce y "Escritos en ...: N IDs y M fechas de envío"; REGISTRO_IDS y IDS_SIN_CRUZAR en la intermedia');
+  return idsHistorial(false);
 }
 
 /**

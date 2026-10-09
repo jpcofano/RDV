@@ -73,6 +73,9 @@ bloques de celdas vacías en esa lectura** —nunca reescribe una celda ajena "c
 pinta con un `RangeList` exactamente esos bloques. Una columna manual o derivada en la lista es un
 error y no se escribe nada. Vive en `05_Escritura.js` como la otra: el grep sigue valiendo.
 
+**Desde el 08/10 la usan también los IDs de los encuentros** ("ID cuentas" y "Fecha envío campañas", decisión 14): sin
+excepción nueva. Un ID que ya está en la base no se reescribe ni se corrige; si la lista dice otro, se lista.
+
 ### La única excepción: `STATUS REUNIÓN`
 
 Hay **una** escritura que la regla general no puede hacer y que igual hace falta. Está acá
@@ -199,6 +202,7 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   futura y la fila **la creó la agenda y nadie la tocó** (`filaIntocadaAgenda_`: agenda_uid "c-…", todo lo que escribió
   igual, ninguna otra celda cargada, sin formulario ni asistentes, STATUS "en agenda"). Se verifica dos veces (la
   segunda justo antes de borrar, con el bloqueo), se guarda entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura.
+  Una fila con "ID cuentas" (decisión 14) ya no está intocada: no se borra, se suspende.
   Es la excepción a "no borrar filas" de §6: nada del sistema depende del número de fila (fichas y elecciones van por
   figura + fecha + barrio; el registro de la agenda, por `agenda_uid`).
 - **la cancelación se pregunta** (07/10, `AGENDA_CANCELACION_AUTOMATICA = false`): la regla 7 de arriba (suspender o
@@ -248,6 +252,7 @@ antes de que nadie haya cargado nada en ellas.
 | 3 | **Origen inscriptos** — `Hoja1` | `1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg` | **no** |
 | 4 | **Agenda** (legado) — la lee y escribe el flujo Agenda del legado | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
 | 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
+| 6 | **Lista de IDs de los encuentros** (08/10) — "Base reuniones - Digital - Call Center", del equipo de campañas (`RDV_SS_IDS`): solapas "Agenda JM" y "Agenda funcionarios". **Se lee, nunca se escribe** | `12b0v67FbxjuIndK7DgVU3MYxx-k0yBIS9gtyV45rFaY` | **no** |
 
 Solapas que importan:
 
@@ -268,6 +273,15 @@ Solapas que importan:
   `.clasp.json`, cuando el usuario le dio permiso de edición a la cuenta de clasp): sólo las dos funciones vacías
   (`Migrado.js`) y el código viejo, todo comentado, en `LEGACY.js`; los siete archivos viejos, borrados. Sus activadores
   los borró el usuario. Nada más se toca de ese proyecto.
+- **(1) `RVD JM-CM - ES`, columnas "ID cuentas" y "Fecha envío campañas"** (08/10, decisión 14) → el ID de la campaña de
+  cada encuentro y la fecha de envío, desde la lista (6). Del sistema: las escribe la regla general (sólo celda vacía,
+  `COLOR_SISTEMA`). Al final de la base; si no están, las agrega el paso 57.
+- **(6) "Agenda JM" y "Agenda funcionarios"** → la lista de IDs. "Agenda JM": ID | Funcionario | Barrio / Comuna | Tipo |
+  Fecha | Fecha de envío, sólo Macri. "Agenda funcionarios": ID | Funcionario | Barrio / Comuna | Fecha | Fecha de envío;
+  Funcionario puede ser una conjunta o "Seguridad en tu barrio". Las dos tienen una fila de grupos arriba del encabezado.
+  **La Fecha es la PLANEADA**, puede no ser la real.
+- **(2) `IDS_SIN_CRUZAR`** (lo que no se cruzó, con el motivo; se reescribe en cada corrida) y **`REGISTRO_IDS`** (la traza
+  de cada ID escrito; se acumula).
 - **(1) `Para Revisar`** → **staging del pipeline principal**: lo escribe el paso 4
   (`Upset Base FInal.js:7`, `DEST_SHEET_NAME = 'Para Revisar'`) y el paso 5 lo cruza al destino.
   El flujo Agenda **también** escribe ahí (`agenda_pushReadyToBaseFinal`), pero no es su dueño.
@@ -2663,6 +2677,50 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     cerradas (información: después del paso 22 tienen que dar 0), y el paso 20 con rango
     (`PASO20_DESDE = 2`) usa el plan de todo el historial.
 
+14. **Los IDs de los encuentros: "ID cuentas" y "Fecha envío campañas"** (decisión del usuario, 08/10; `45_IdsCuentas.js`).
+    La lista del equipo de campañas (planilla 6) se cruza con las filas de la base y el ID se escribe por la **regla
+    general** (sólo celda vacía, `COLOR_SISTEMA`); la traza de cada escritura, en `REGISTRO_IDS`; lo que no se cruza, con el
+    motivo, en `IDS_SIN_CRUZAR`. El cruce (`cruzarIds_`, en memoria; el mismo en la medición, el historial y la hora):
+
+    - **la lista**: el encabezado, en las primeras filas (arriba hay una fila de grupos); cada campo, la columna **más a la
+      izquierda** con su nombre (otra "Fecha de envío" vive en otros bloques); las fechas, en el **huso de la lista**. Un ID
+      es un texto con algún dígito que no empieza con "#" y no es sólo ceros: "#N/A", "-", "Pendiente", "0" no son IDs (se
+      cuentan). Se escribe como viene;
+    - **quién**: la figura por los tokens de su nombre, sin tildes (`figuraPorTokens_`; si no, variantes, apellidos únicos y
+      los nombres que la base tiene sólo en "Conjunta con"). En "Agenda funcionarios" una parte que no se reconoce **frena
+      el cruce** (`funcionario_en_parte`), salvo que sea un lugar ("Gabino Tapia - Retiro"); "Agenda JM" es sólo de Macri
+      (un Funcionario que no nombra a nadie, o "Seguridad en tu barrio", es él). Una **conjunta** va sólo a la fila de la
+      conjunta (el mismo conjunto: Figura + "Conjunta con" —con o sin los de "No participa"— o una Figura que junta varias);
+      una figura sola, a sus filas (a una conjunta donde PARTICIPA, sólo el mismo día y si no hay una propia); **"Seguridad
+      en tu barrio"**, a las filas de Seguridad ("Evento (mail)", EVENTO o el formulario cruzado lo dicen). Una fila
+      **"Reprogramada"** no es candidata;
+    - **dónde**: la regla de los tres niveles (`compararUbicacion_`); un desacuerdo descarta la fila, un lugar que no se
+      puede comparar no (salvo **Seguridad, que exige la misma comuna**). Un "Barrio / Comuna" que no se reconoce no es un
+      barrio: queda sin ubicación; uno que nombra varios barrios vale por su comuna (y por su subzona de la Comuna 1, si
+      es la misma);
+    - **cuándo**: la Fecha de la lista es la **planeada**. Primero, las filas de esa fecha (si ninguna tiene lugar comparable
+      y a ±3 hay una con el lugar exacto: ambiguo). Si no hay, a ±`IDS_DIAS_FECHA_DISTINTA` (3) días **sólo si hay una sola
+      fila posible** (las que el lugar no descarta) **y en ésa la figura es exacta y el lugar coincide** (traza "fecha
+      distinta"), y **sólo si la fecha planeada ya pasó** (antes se espera la fila de ese día). Caso: 3735-SEPJDGAG, Macri
+      Belgrano 01/10 → la fila 805, Macri Belgrano 29/09. Una Fecha imposible (año mal escrito) se lista;
+    - **varias filas el mismo día**: la figura exacta antes que la conjunta donde está, después el lugar que coincide,
+      después el **Tipo** (sólo "Agenda JM") contra el EVENTO; si siguen varias, o el Tipo apunta a otra de las filas que el
+      lugar no descartó, ambiguo. El Tipo **desempata, no veta**: una fila que el lugar descartó no cuenta;
+    - **el invariante**: un ID en una fila y una fila con un ID. Un ID repetido en la lista que va a filas distintas, uno que
+      ya está en otra fila, una fila que ya tiene otro ID: no se escriben y se listan. Dos IDs para una fila: gana la misma
+      fecha y, después, la figura exacta; si empatan, ninguno;
+    - **la fecha de envío**: como fecha (`dd/MM/yyyy`); vacía si la lista dice "#N/A", "-" o algo que no es fecha; si su
+      **año no cierra** con el del encuentro (el mismo, o diciembre para uno de enero) o un ID repetido trae dos distintas,
+      vacía y se lista (`fecha_envio_descartada`). El ID se escribe igual;
+    - **las columnas**: si ya existen (por encabezado normalizado) se usan, salvo que tengan **fórmulas** (también una de
+      array en el encabezado): esa columna no se escribe.
+
+    **Cuándo corre**: paso 55 (medir, sólo lectura) → paso 56 (el historial en seco) → **paso 57** (el historial, una vez:
+    agrega las dos columnas al final si faltan y escribe en todas las filas, hasta hoy + `DIAS_FUTUROS_CRUCE`) →
+    `IDS_EN_LA_HORA = true`: dentro de la corrida de la hora, **después de la agenda** y antes del cruce con los
+    formularios, sólo en las filas activas (nunca en una cerrada). Si falla, la corrida sigue; `REGISTRO_UPSERT` lo dice en
+    la columna `ids`. Una fila con ID no la borra la agenda al cancelarse (deja de estar intocada): la suspende.
+
 ### Estructura de archivos
 
 ```
@@ -2691,6 +2749,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 44_Looker.js       el tablero de Looker (08/10, FASE 2 del script atado): la ID como derivada 12 (idsDerivados_),
                    Datos_Unpivot y Aux_Maximos (modo compatible = el script atado tal cual, para las pruebas; modo
                    corregido = la corrida de la hora). PRENDIDO el 08/10 (LOOKER_EN_SISTEMA)          ← 08/10
+45_IdsCuentas.js   los IDs de los encuentros (decisión 14): la lista del equipo de campañas → "ID cuentas" y "Fecha
+                   envío campañas" en la base, por la regla general; IDS_SIN_CRUZAR y REGISTRO_IDS. Medición:
+                   diagnostico/26_ids_cuentas.js (paso 55). APAGADO en la hora (IDS_EN_LA_HORA) hasta el paso 57 ← 08/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

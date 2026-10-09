@@ -12,7 +12,8 @@
  * en lote (02/10), con el mismo criterio:
  *
  *   setSiDelSistema_(rango, valor)          la regla general: escribe sólo en celda vacía.
- *   setSiDelSistemaLote_(sh, hdr, lista)    ídem, por bloques (la usa el upsert).
+ *   setSiDelSistemaLote_(sh, hdr, lista)    ídem, por bloques (la usan el upsert y los IDs de los encuentros, 08/10:
+ *                                           agregarColumnasIds_ y formatoFechaEnvioIds_ completan lo de esas dos columnas).
  *   marcarRealizada_(...)                   la excepción de STATUS: una transición de estado.
  *   marcarRealizadaLote_(...)               ídem, por bloques (la usa el upsert).
  *   escribirDerivadas_(...)                 la excepción de las DERIVADAS (05/10): las once columnas que
@@ -603,6 +604,39 @@ function agregarColumnasAgenda(escribe) {
   SpreadsheetApp.flush();
   Logger.log('>>> agregadas al final, a partir de la columna %s (sin formato heredado).', _a1_(1, nCols + 1).replace(/\d+$/, ''));
   return { faltan: faltan, agregadas: faltan.length, desde: _a1_(1, nCols + 1).replace(/\d+$/, '') };
+}
+
+// ===================== Los IDs de los encuentros (08/10, 45_IdsCuentas.js) =====================
+
+/**
+ * **Las dos columnas de los IDs de los encuentros** (paso 57): "ID cuentas" y "Fecha envío campañas" (COLUMNAS_IDS). Se
+ * buscan por encabezado normalizado, sin tildes ni mayúsculas (IDS_ALIAS_COLUMNAS): si están, se usan. Las que faltan se
+ * agregan AL FINAL: sólo el encabezado, en la primera columna libre, nunca en el medio (correría los fondos, CLAUDE.md §6),
+ * y sin el formato que hereda una columna nueva de la anterior (la lección de las 16 de la agenda, 07/10). Idempotente.
+ * Sin `escribe`, sólo dice qué faltaría y desde dónde se agregaría.
+ */
+function agregarColumnasIds_(sh, escribe) {
+  const nCols = sh.getLastColumn();
+  const hdr = sh.getRange(1, 1, 1, nCols).getValues()[0];
+  const faltan = COLUMNAS_IDS.filter(function (n) { return findIdxOr_(hdr, IDS_ALIAS_COLUMNAS[n] || [n], true) == null; });
+  const desde = _a1_(1, nCols + 1).replace(/\d+$/, '');
+  if (!faltan.length || !escribe) return { faltan: faltan, agregadas: 0, desde: desde };
+  if (sh.getMaxColumns() < nCols + faltan.length) sh.insertColumnsAfter(sh.getMaxColumns(), nCols + faltan.length - sh.getMaxColumns());
+  sh.getRange(1, nCols + 1, 1, faltan.length).setValues([faltan]);
+  if (sh.getMaxRows() > 1) sh.getRange(2, nCols + 1, sh.getMaxRows() - 1, faltan.length).clearFormat();
+  SpreadsheetApp.flush();
+  return { faltan: faltan, agregadas: faltan.length, desde: desde };
+}
+
+/**
+ * El formato de fecha (IDS_FORMATO_FECHA_ENVIO) en las celdas de "Fecha envío campañas" que **se acaban de escribir**
+ * (lo que devolvió `setSiDelSistemaLote_`): sólo ésas, nunca una celda que no escribió el sistema. Sólo el formato
+ * numérico: el fondo ya lo puso la regla general.
+ */
+function formatoFechaEnvioIds_(sh, celdas) {
+  const a1 = celdas.map(function (e) { return _a1_(e.fila, e.col); });
+  for (let i = 0; i < a1.length; i += 400) sh.getRangeList(a1.slice(i, i + 400)).setNumberFormat(IDS_FORMATO_FECHA_ENVIO);
+  return a1.length;
 }
 
 // ===================== La guarda de la solapa destino =====================

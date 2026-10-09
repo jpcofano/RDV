@@ -180,6 +180,85 @@ const RDV_HOJA_AUX_MAXIMOS = 'Aux_Maximos';
 /** La columna ID de RVD: la derivada 12 con LOOKER_EN_SISTEMA. */
 const COLUMNA_ID = 'ID';
 
+// ===================== Los IDs de los encuentros: "ID cuentas" (08/10, 45_IdsCuentas.js) =====================
+
+/**
+ * **La lista de IDs de los encuentros** (08/10, decisión del usuario): el archivo "Base reuniones - Digital - Call Center"
+ * del equipo de campañas. Se LEE, nunca se escribe. Dos solapas:
+ *   - IDS_SOLAPA_JM ("Agenda JM", sólo Macri): ID | Funcionario | Barrio / Comuna | Tipo | Fecha | Fecha de envío;
+ *   - IDS_SOLAPA_FUNCIONARIOS ("Agenda funcionarios"): ID | Funcionario | Barrio / Comuna | Fecha | Fecha de envío.
+ *     Funcionario puede ser una conjunta ("Hernan Lombardi, Gustavo Arengo Piragine, Gabino Tapia") o "Seguridad en tu
+ *     barrio" (sin figura).
+ * Las dos tienen una fila de GRUPOS arriba del encabezado ("Información del encuentro" / "Mail" / "Comunicación
+ * Directa"): el encabezado es la primera de las primeras IDS_FILAS_ENCABEZADO filas que tiene ID, Funcionario y Fecha.
+ * **La Fecha de la lista es la PLANEADA y puede no ser la real** (dato del usuario): 3735-SEPJDGAG, Macri, Belgrano,
+ * 01/10/26 es la fila 805 (Macri 29/09 Belgrano): el mail del 23/09 la tenía el 01/10 y el del 25/09 la pasó al 29/09.
+ */
+const RDV_SS_IDS = '12b0v67FbxjuIndK7DgVU3MYxx-k0yBIS9gtyV45rFaY';
+const IDS_SOLAPA_JM = 'Agenda JM';
+const IDS_SOLAPA_FUNCIONARIOS = 'Agenda funcionarios';
+/** "Agenda JM" es sólo de Macri: si el Funcionario de una fila no nombra a nadie reconocible, es él (como en la base). */
+const IDS_FIGURA_SOLAPA_JM = 'Jorge Macri';
+const IDS_FILAS_ENCABEZADO = 5;
+/** Los encabezados de la lista, por encabezado normalizado (sin tildes ni mayúsculas): el primero que esté. */
+const IDS_COLUMNAS_LISTA = {
+  id: ['ID', 'ID cuentas', 'ID cuenta'],
+  funcionario: ['Funcionario', 'Funcionarios'],
+  lugar: ['Barrio / Comuna', 'Barrio/Comuna', 'Barrio - Comuna', 'Barrio o Comuna', 'Barrio', 'Comuna'],
+  tipo: ['Tipo', 'Tipo de encuentro'],
+  fecha: ['Fecha', 'Fecha del encuentro'],
+  envio: ['Fecha de envío', 'Fecha envío', 'Fecha de envio del mail']
+};
+/**
+ * **Las dos columnas de la base** (RVD): el ID y la fecha de envío de la campaña. Se buscan por encabezado normalizado; si
+ * no están, la corrida del historial (paso 57) las agrega AL FINAL (sólo el encabezado, sin formato heredado). Las escribe
+ * la REGLA GENERAL (`setSiDelSistemaLote_`): sólo celda vacía, COLOR_SISTEMA. "Fecha envío campañas" como fecha
+ * (IDS_FORMATO_FECHA_ENVIO); vacía si la lista dice "#N/A", "-" o algo que no es fecha, y si su año no cierra con la fecha
+ * del encuentro (vacía y se lista en IDS_SIN_CRUZAR).
+ */
+const COLUMNA_ID_CUENTAS = 'ID cuentas';
+const COLUMNA_FECHA_ENVIO = 'Fecha envío campañas';
+const COLUMNAS_IDS = [COLUMNA_ID_CUENTAS, COLUMNA_FECHA_ENVIO];
+const IDS_ALIAS_COLUMNAS = {};
+IDS_ALIAS_COLUMNAS[COLUMNA_ID_CUENTAS] = ['ID cuentas', 'ID cuenta', 'ID de cuentas'];
+IDS_ALIAS_COLUMNAS[COLUMNA_FECHA_ENVIO] = ['Fecha envío campañas', 'Fecha envío campaña', 'Fecha de envío campañas', 'Fecha de envío campaña'];
+const IDS_FORMATO_FECHA_ENVIO = 'dd/MM/yyyy';
+/**
+ * **La fecha distinta** (08/10): sin ninguna fila en la fecha de la lista, una a ±IDS_DIAS_FECHA_DISTINTA días SÓLO si la
+ * figura (o "Seguridad") y el lugar coinciden y es UNA sola. La traza lo dice: "fecha distinta (−2 días)".
+ */
+const IDS_DIAS_FECHA_DISTINTA = 3;
+/** El caso de control del usuario: el paso 55 dice a qué fila cruza (tiene que ser ésta: la fila y, por si se movió, la reunión). */
+const IDS_CASO_CONTROL = { id: '3735-SEPJDGAG', fila: 805, figura: 'Jorge Macri', fecha: '2026-09-29', barrio: 'Belgrano' };
+/**
+ * Las filas que NO son candidatas: "Reprogramada" es la fecha vieja de una reunión que se movió (la real es otra fila). Se
+ * muestran en IDS_SIN_CRUZAR como contexto. "Suspendida" sí es candidata (la reunión de la campaña; la traza lo dice).
+ */
+const IDS_STATUS_NO_CANDIDATA = ['Reprogramada'];
+/** Una Fecha de la lista antes de ésta, o a más de IDS_DIAS_FECHA_LISTA_MAX días de hoy, es un error de tipeo: se lista. */
+const IDS_FECHA_LISTA_MIN = '2024-01-01';
+const IDS_DIAS_FECHA_LISTA_MAX = 180;
+/** Lo que no se cruzó, con el motivo (intermedia; se reescribe en cada corrida, sólo informativa). */
+const IDS_SOLAPA_SIN_CRUZAR = 'IDS_SIN_CRUZAR';
+/** La traza: una línea por ID escrito en la base (cómo se cruzó: misma fecha / fecha distinta, conjunta, Seguridad…). Se acumula. */
+const RDV_HOJA_REGISTRO_IDS = 'REGISTRO_IDS';
+/**
+ * **El cruce dentro de la corrida de la hora** (sólo filas activas, después de la agenda). `false` hasta la corrida del
+ * historial: paso 55 (medir, sólo lectura) → paso 56 (el historial en seco) → paso 57 (el historial, escribe una vez).
+ */
+const IDS_EN_LA_HORA = false;
+/** Los tipos de encuentro, para desempatar con el Tipo de "Agenda JM" contra el EVENTO de la fila. El primero que matchea. */
+const IDS_TIPOS = [
+  { tipo: 'seguridad', re: /\bseguridad en tu barrio\b/ },
+  { tipo: 'uno_a_uno', re: /\buno a uno\b|\b1 a 1\b/ },
+  { tipo: 'primera_persona', re: /\bprimera persona\b/ },
+  { tipo: 'tematica', re: /\btematic[oa]s?\b/ },
+  { tipo: 'cafe', re: /\bcafe con\b/ },
+  { tipo: 'vecinos', re: /\bencuentros? con (?:los )?vecinos?\b/ }
+];
+/** Una fila de Seguridad en tu Barrio: lo dice "Evento (mail)", EVENTO o el formulario que se le cruzó. */
+const IDS_RE_SEGURIDAD_FILA = /\bseguridad en tu barrio\b|\bsobre seguridad\b/;
+
 // ===================== Ventana de análisis =====================
 
 /**

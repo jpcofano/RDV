@@ -1615,6 +1615,18 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
     }
   }
 
+  // Los IDs de los encuentros (08/10, IDS_EN_LA_HORA; 45_IdsCuentas.js): después de la agenda, que crea y mueve filas; sólo
+  // filas activas, por la regla general (sólo celda vacía). No en el paso 22: el historial de los IDs es el paso 57. Si
+  // falla, lo dice y la corrida sigue.
+  let resIds = null;
+  if (IDS_EN_LA_HORA && !historial) {
+    try { resIds = idsEnLaHora_(enSeco); }
+    catch (err) {
+      Logger.log('>>> Los IDs de los encuentros fallaron: %s (la corrida sigue igual).', err);
+      resIds = { error: String(err && err.message || err) };
+    }
+  }
+
   // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas
   // que ya escribió tienen RDV_UID y entran por ahí; sólo se completan sus celdas vacías.
   const props = PropertiesService.getScriptProperties();
@@ -1625,6 +1637,7 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   }
 
   const plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
+  plan.res.ids = resIds;
   logResumen_(plan);                 // ← ANTES de escribir nada
   _logColumnasB_(plan.cands);
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
@@ -1747,7 +1760,9 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                         'pendiente_barrio_total', 'revisar_ventana', 'revisar_total',
                         'sin_match_ventana', 'sin_match_total', 'reportes_fallidos', 'ms',
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
-                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas', 'looker'];
+                        'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas', 'looker']
+      // 08/10: la columna de los IDs de los encuentros, sólo con IDS_EN_LA_HORA (apagado: el registro queda como siempre)
+      .concat(IDS_EN_LA_HORA ? ['ids'] : []);
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1766,7 +1781,9 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   DERIVADAS_POR_SCRIPT ? (r.derivadas || 0) : 'fórmulas',
                   // 08/10: el tablero de Looker (LOOKER_EN_SISTEMA): filas de Datos_Unpivot y Aux_Maximos, y reuniones (ID distintos)
                   r.looker ? RDV_HOJA_UNPIVOT + ' ' + r.looker.unpivot + ' | ' + RDV_HOJA_AUX_MAXIMOS + ' ' + r.looker.aux +
-                             ' | reuniones ' + r.looker.reuniones : '']);
+                             ' | reuniones ' + r.looker.reuniones : '']
+                  // 08/10: los IDs de los encuentros (IDS_EN_LA_HORA): escritos, ya estaban, sin cruzar; o el error
+                  .concat(IDS_EN_LA_HORA ? [r.ids ? (r.ids.error ? 'error: ' + r.ids.error : r.ids.resumen || '') : ''] : []));
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }

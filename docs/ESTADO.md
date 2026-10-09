@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, apagadas hasta el paso 52: 0.z, al final)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1150,6 +1150,71 @@ Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comp
 
 Si algo no da: `LOOKER_EN_SISTEMA = false` + clasp push frena lo nuestro (las solapas quedan como las dejó la última
 corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no se descomenta sin decidirlo.
+
+#### Los IDs de los encuentros ("ID cuentas"): escritos y APAGADOS (08/10) — primero el paso 55
+
+**Qué es** (decisión del usuario, 08/10; CLAUDE.md, decisión 14, con todas las reglas). La lista de IDs del equipo de
+campañas (planilla 6, "Base reuniones - Digital - Call Center", `RDV_SS_IDS`; se lee, nunca se escribe), solapas "Agenda
+JM" (sólo Macri: ID | Funcionario | Barrio / Comuna | Tipo | Fecha | Fecha de envío) y "Agenda funcionarios" (ID |
+Funcionario | Barrio / Comuna | Fecha | Fecha de envío; conjuntas y "Seguridad en tu barrio"). En la base, dos columnas al
+final: **"ID cuentas"** y **"Fecha envío campañas"**, por la regla general (sólo celda vacía, `#CFE2F3`). Código:
+`45_IdsCuentas.js`; medición: `diagnostico/26_ids_cuentas.js`; configuración: 00_Config.js, "Los IDs de los encuentros".
+
+**Cómo se revisó** (antes de cualquier push; todo en el mock `tests/ids_mock.js`, sin datos reales):
+- tres agentes en paralelo: uno por solapa (`tests/ids_lista_jm.test.js`, `tests/ids_lista_funcionarios.test.js`: el
+  encabezado de dos filas, las conjuntas, Seguridad, las fechas de envío raras, el Tipo, el caso 3735 y sus variantes, 50
+  casos al azar) y un **revisor del cruce** (Opus);
+- lo que encontraron, y quedó arreglado: un "#N/A", "-" o "Pendiente" en la columna ID se escribía como ID; Seguridad
+  cruzaba por la fecha sola; el ±3 contaba sólo las filas con el lugar coincidente (una a ±3 sin lugar comparable no lo
+  frenaba) y, con la fecha planeada todavía por venir, podía llevarse el ID a otra reunión cercana; la columna de envío se
+  elegía por el orden de los nombres y no por posición; las fechas de la lista se leían en el huso del script; la hora
+  completaba la fecha de envío en filas cerradas; REGISTRO_IDS perdía la traza al borde de la grilla; un apellido solo no
+  resolvía una figura que está sólo en "Conjunta con"; y una columna que ya existiera con fórmulas se habría pisado;
+- reglas que se endurecieron por eso: una parte del Funcionario que no se reconoce frena el cruce ("Agenda funcionarios";
+  un lugar pegado, "Gabino Tapia - Retiro", no); una fila "Reprogramada" no es candidata; un Tipo que apunta a otra fila
+  del día (entre las que el lugar no descartó) deja el caso ambiguo; una conjunta se compara también sin los de "No
+  participa" (que tampoco se llevan la fila); dos barrios de la misma subzona de la Comuna 1 la conservan; un "0" no es un
+  ID; un ID repetido se queda con su mejor cruce (no con el primero de la lista); una Fecha imposible se lista;
+- segunda vuelta de los dos agentes de solapa, ya con las reglas nuevas: `ids_lista_jm` 332 chequeos (32 mutaciones del
+  código, todas detectadas) y `ids_lista_funcionarios` 389 (con 50 casos al azar y 500 más aparte), todo en verde;
+- `tests/ids_cuentas.test.js` (el flujo entero: el historial, la idempotencia, en seco y la medición sin escribir, columnas
+  que ya existen, el bloqueo, los permisos, el determinismo, la hora, el huso, las fórmulas, el borde de la grilla, los IDs
+  inválidos).
+
+**La secuencia** (nada escribe en la base hasta el 57):
+1. **`paso55_medirIds()`** — SÓLO LECTURA: ni la base ni la intermedia. Todo al log.
+2. **`paso56_idsHistorial_enSeco()`** — el historial en seco: no toca la base; escribe `IDS_SIN_CRUZAR` (intermedia).
+3. **`paso57_idsHistorial()`** — ESCRIBE, una vez: agrega "ID cuentas" y "Fecha envío campañas" al final si no están (sólo
+   el encabezado, sin formato heredado) y escribe en todas las filas (hasta hoy + 7). Traza en `REGISTRO_IDS`. Se puede
+   volver a correr: no reescribe nada (lo que ya está, "ya estaba").
+4. **`IDS_EN_LA_HORA = true`** + clasp push: la corrida de la hora, después de la agenda, sólo filas activas; la columna
+   `ids` de `REGISTRO_UPSERT` dice qué hizo.
+
+**Predicción del paso 55** (anotada antes de correrlo; los números exactos no se pueden predecir sin la lista):
+- **la lista**: huso horario de la lista (si no es `America/Argentina/Buenos_Aires`, el log lo dice y las fechas se leen en
+  el suyo); en las dos solapas, el encabezado en la **fila 2**; "Agenda JM": id A, funcionario B, lugar C, tipo D, fecha E,
+  envío F; "Agenda funcionarios": id A, funcionario B, lugar C, fecha D, envío E. Puede aparecer el aviso "está en más de
+  una columna" para el envío (hay otros bloques): tiene que decir que usa la F (JM) y la E (funcionarios). Hasta 157 y 609
+  IDs, menos las filas sin ID y las que **no son un ID** (la sección "la columna ID" las lista con su fila).
+- **las columnas**: "FALTAN ID cuentas y Fecha envío campañas → el paso 57 las agrega al final, a partir de BL" (la última
+  es "Conjunta con", BK), salvo que ya las hayan creado: entonces "están las dos" (y, si tuvieran fórmulas, el aviso).
+- **el caso de control**: `3735-SEPJDGAG → fila 805 (Jorge Macri, 29/09/2026, Belgrano) por fecha distinta (−2 días: la
+  lista dice 01/10/2026)` y **"OK: es la fila 805."**. Si diera ambiguo o DISTINTO, el log nombra las candidatas (una fila de
+  Macri del 01/10, o una a ±3 en Belgrano o sin lugar comparable).
+- **el cruce**: la gran mayoría por la **misma fecha**; por **fecha distinta**, pocos (todos listados, para revisarlos uno
+  por uno); **ambiguos**, algunos (el ±3 es estricto a propósito); **conflictos del invariante**, pocos o ninguno; **futuras
+  sin fila**: las reuniones de las próximas semanas que la agenda todavía no creó (no van a IDS_SIN_CRUZAR).
+- **sin fila**, donde se espera: canceladas o movidas más de ±3 días (`sin_fila`, `lugar_distinto`); **Seguridad** sin
+  lugar comparable (`seguridad_sin_lugar`) o de antes de que la agenda anotara "Evento (mail)" (06/10, alcance desde el
+  06/09) y sin un formulario "sobre Seguridad" cruzado (no se reconocen como Seguridad); **conjuntas** cuya fila no tiene
+  "Conjunta con" ni una Figura que junte a todas (`conjunta_sin_fila`); Funcionario con una parte que no se reconoce
+  (`funcionario_en_parte`).
+- **Fecha de envío**: "#N/A" y "-" frecuentes; los de **año que no cierra** (el usuario los anticipó), todos listados.
+
+**Qué mirar después del 57**: el log ("Escritos en …: N IDs y M fechas de envío") igual al 56; en la base, las dos columnas
+al final, `#CFE2F3` sólo en las celdas escritas y las fechas en `dd/MM/yyyy`; `REGISTRO_IDS` (una línea por fila escrita, con
+"misma fecha" / "fecha distinta (−N días…)"); `IDS_SIN_CRUZAR` (los motivos); `paso16_verificarEscritura()` sigue OK
+(invariante 0). Para volver atrás: `REGISTRO_IDS` dice la fila y el ID de cada escritura (no hay un deshacer automático).
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

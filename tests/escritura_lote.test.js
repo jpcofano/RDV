@@ -34,7 +34,8 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
                   '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
                   'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js',
-                  'diagnostico/24_columna_id.js', '44_Looker.js', 'diagnostico/25_looker_pruebas.js'];
+                  'diagnostico/24_columna_id.js', '44_Looker.js', 'diagnostico/25_looker_pruebas.js',
+                  '45_IdsCuentas.js', 'diagnostico/26_ids_cuentas.js'];
 const LIMITE_GAS_MS = 6 * 60 * 1000;
 const COSTO_BASE = { lectura: 60, op: 40, porCelda: 0.002, openById: 300, leerB: 60000, calculo: 45000 };
 /** 02/10 14:50: el cálculo terminó 14:52:41 y el corte fue 14:56:56 → ~255 s para 123 filas. */

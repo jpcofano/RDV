@@ -269,10 +269,11 @@ function _azules_diag8(dest) {
   });
   const out = { total: 0, manual: 0, grupos: { traza: 0, datos: 0, status: 0, manuales: 0, otras: 0 },
                 porColumna: {}, trazaConValor: 0, trazaSinAzul: 0, ejemplosSinAzul: [], sistemaSinValor: {}, sistemaSinValorTotal: 0 };
-  // 07/10: columnas del SISTEMA (traza y agenda): una celda con el color del sistema y sin valor no debería existir (las
-  // 16 de la agenda heredaron el color de form_clave al agregarse; paso43_limpiarFondoAgenda).
+  // 07/10: columnas del SISTEMA (traza y agenda; 08/10: también las dos de los IDs de los encuentros): una celda con el
+  // color del sistema y sin valor no debería existir (las 16 de la agenda heredaron el color de form_clave al agregarse;
+  // paso43_limpiarFondoAgenda).
   const delSistema = hdr.map(function (h) {
-    return COLUMNAS_TRAZA.concat(COLUMNAS_AGENDA).some(function (c) { return normalizeHeader_(c) === normalizeHeader_(h); });
+    return COLUMNAS_TRAZA.concat(COLUMNAS_AGENDA, COLUMNAS_IDS).some(function (c) { return normalizeHeader_(c) === normalizeHeader_(h); });
   });
   const nuevo = COLOR_SISTEMA.toLowerCase();
   const porFila = {};
