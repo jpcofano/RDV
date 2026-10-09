@@ -703,17 +703,15 @@ function _seguridadPorComunaIds_(r, idx) {
            figuraDistinta: r.quien.norm.length > 0 && !r.quien.norm.some(function (k) { return x.fig.indexOf(k) >= 0; }) };
 }
 
-/** ¿El lugar de la lista es compatible con la fila? No en desacuerdo, y si la lista dice un eje y el barrio de la fila tiene
- *  eje en Comunas (columna I), que sea ése. `fuerte`: el lugar coincide, o el eje coincide así. */
+/**
+ * ¿El lugar de la lista es compatible con la fila? La regla de los tres niveles, tal cual (`compararUbicacion_`): el eje de la
+ * lista, sólo contra el eje del MAIL de la fila ("Lugar (mail)"); NUNCA contra el eje del barrio en Comunas (medición del
+ * 30/09: las reuniones de un eje se hacen en barrios de otro; el 24/06 "Eje Oeste" fue en Villa Urquiza, Norte en Comunas).
+ * Sin eje del mail, el lugar es "no comparable": no descarta. `fuerte`: el lugar coincide (lo exige el ±3).
+ */
 function _lugarCompatibleIds_(r, x) {
   const lug = compararUbicacion_(r.lugar.u, x.ubic);
-  if (lug.coincide === false) return { ok: false, fuerte: false, lug: lug };
-  const eje = r.lugar.u.eje, ejeBarrio = x.f.barrio ? ejeDeBarrio_(x.f.barrio) : '';
-  if (eje && ejeBarrio) {
-    const enEje = barrioEnEje_(x.f.barrio, eje);
-    return { ok: enEje, fuerte: enEje || lug.coincide === true, lug: enEje && lug.coincide !== true ? { nivel: 'eje', coincide: true, porSubzona: false } : lug };
-  }
-  return { ok: true, fuerte: lug.coincide === true, lug: lug };
+  return { ok: lug.coincide !== false, fuerte: lug.coincide === true, lug: lug };
 }
 
 /**

@@ -2757,9 +2757,11 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     - **dos mejoras, APAGADAS** (09/10, `IDS_CONJUNTA_UNA_FIGURA` e `IDS_SEGURIDAD_POR_COMUNA`; medición: paso 60). Sólo
       actúan sobre un registro que la regla de siempre NO cruza, y su cruce pierde contra cualquier cruce normal por la misma
       fila: (1) una **conjunta sin fila con todas sus figuras** (las filas de antes de la agenda no tienen "Conjunta con"):
-      la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas de siempre), el lugar compatible —también
-      el eje de la lista contra el del barrio en Comunas— y una sola candidata (traza "conjunta sin 'Conjunta con': la fila
-      de …"); (2) **Seguridad** ("SEG" en el ID o "Seguridad en tu barrio") **por fecha + comuna**, no por figura: las filas
+      la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas de siempre), el lugar compatible por la
+      regla de los tres niveles —el eje de la lista sólo contra el del MAIL de la fila ("Lugar (mail)"); sin él, no
+      comparable: no descarta; **nunca contra el eje del barrio en Comunas** (30/09: las reuniones de un eje se hacen en
+      barrios de otro)— y una sola candidata: con una sola, alcanzan figura + fecha (traza "conjunta sin 'Conjunta con': la
+      fila de …"); (2) **Seguridad** ("SEG" en el ID o "Seguridad en tu barrio") **por fecha + comuna**, no por figura: las filas
       de esa fecha en esa comuna, primero las de Seguridad; una sola; si la figura de la fila no es la de la lista se
       escribe igual y la traza dice "figura distinta";
     - **un ID borrado vuelve**: la celda queda vacía y la corrida siguiente lo escribe de nuevo. Para que una fila NO reciba

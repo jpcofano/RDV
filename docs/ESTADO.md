@@ -1167,7 +1167,9 @@ usuario, para los 34 de `IDS_SIN_CRUZAR`. Las reglas, en CLAUDE.md (decisión 14
 cruce normal: por construcción, no pueden cambiar un ID ya cruzado (y el paso 60 lo controla). Tests: `tests/ids_mejoras.test.js`.
 - **`paso60_medirIdsMejoras()`** — SÓLO LECTURA: el cruce del historial cuatro veces (como hoy, cada una sola, las dos).
 - **Predicción**: "hoy: IDS_SIN_CRUZAR 34 líneas"; **IDS_CONJUNTA_UNA_FIGURA resuelve hasta 9** (las de Lombardi / Arengo
-  Piragine / Tapia de 03/2026 a 08/2026; menos si alguna tiene ese día filas de dos de las figuras —ambigua— o si hoy no sale
+  Piragine / Tapia de 03/2026 a 08/2026; el eje de la lista se compara sólo con el del mail de la fila —ajuste del usuario,
+  09/10: nunca con el de Comunas—, así que una fila vieja sin "Lugar (mail)" no se descarta; menos si alguna tiene ese día
+  filas de dos de las figuras —ambigua— o si hoy no sale
   como `conjunta_sin_fila`: si alguna parte del Funcionario no se reconoce, es `funcionario_en_parte` y la mejora no la toca);
   **IDS_SEGURIDAD_POR_COMUNA resuelve hasta 16** (los `lugar_distinto` de los jueves, como 3000-MAYSEGVC Comuna 6 14/05; menos
   si ese día hay dos filas de esa comuna y ninguna marcada de Seguridad), casi todas con "figura distinta"; **"CAMBIA UN ID

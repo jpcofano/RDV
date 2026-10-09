@@ -255,8 +255,9 @@ const IDS_EN_LA_HORA = true;
  * cruce pierde contra cualquier cruce normal por la misma fila (rango "parcial"):
  *   IDS_CONJUNTA_UNA_FIGURA   una conjunta sin fila con todas sus figuras (las filas de antes de la agenda no tienen
  *                             "Conjunta con"): la fila de UNA de las figuras nombradas, la misma fecha (o ±3 con las reglas
- *                             de siempre), lugar compatible (también el eje: el de la lista contra el del barrio en Comunas,
- *                             si lo tiene) y una sola candidata. Caso: Lombardi / Arengo Piragine / Tapia, 03/2026 a 08/2026.
+ *                             de siempre), lugar compatible por la regla de los tres niveles (el eje de la lista, sólo contra
+ *                             el del MAIL de la fila; sin él, no comparable: no descarta; nunca el de Comunas) y una sola
+ *                             candidata. Caso: Lombardi / Arengo Piragine / Tapia, 03/2026 a 08/2026.
  *   IDS_SEGURIDAD_POR_COMUNA  Seguridad ("SEG" en el ID o "Seguridad en tu barrio"): por FECHA + COMUNA, no por figura (la
  *                             reunión es de la comuna); primero las filas de Seguridad; una sola. Si la figura de la fila no
  *                             es la de la lista, se escribe igual y la traza dice "figura distinta". Caso: los jueves.
