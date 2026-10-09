@@ -1151,7 +1151,15 @@ Looker si algo usa la ID; el OK para las funciones vacías). Es privada: la comp
 Si algo no da: `LOOKER_EN_SISTEMA = false` + clasp push frena lo nuestro (las solapas quedan como las dejó la última
 corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no se descomenta sin decidirlo.
 
-#### Los IDs de los encuentros ("ID cuentas"): escritos y APAGADOS (08/10) — primero el paso 55
+#### Los IDs de los encuentros ("ID cuentas"): PRENDIDOS en la hora el 09/10
+
+> **09/10: `manana()` OK y los pasos 56 y 57 corridos** (por el usuario). El cruce: **733 IDs cruzan** —724 por la misma fecha
+> y 9 a ±3 días (los 9 revisados uno por uno: correctos)—; el caso de control 3735 → 805 OK; **conflictos del invariante 0**.
+> `IDS_EN_LA_HORA = true` (decisión del usuario): la corrida de la hora completa los de las filas activas que ya pasaron, y
+> `REGISTRO_UPSERT` suma la columna `ids`. Quedan 34 en `IDS_SIN_CRUZAR`; dos mejoras, apagadas y con su medición (paso 60),
+> abajo ("Las conjuntas sin 'Conjunta con' y Seguridad por comuna").
+
+Lo que sigue es cómo quedó antes de prenderlo (08/10–09/10).
 
 **Qué es** (decisión del usuario, 08/10; CLAUDE.md, decisión 14, con todas las reglas). La lista de IDs del equipo de
 campañas (planilla 6, "Base reuniones - Digital - Call Center", `RDV_SS_IDS`; se lee, nunca se escribe), solapas "Agenda

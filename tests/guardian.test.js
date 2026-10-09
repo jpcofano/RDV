@@ -1042,8 +1042,8 @@ function correrManana(E) {
   const r = E.run('manana()');
   return { r: r, llamadas: llamadas, props: props, intacta: foto(E) === antes, hojasInter: hojasInter, resumen: resumenDe(E) };
 }
-// La última línea del resumen, con IDS_EN_LA_HORA = false (la de hoy).
-const ULTIMA_FALSE = /IDS_EN_LA_HORA = false \(la corrida de la hora no toca los IDs: todo lo demás, como ayer\)\./;
+// La última línea del resumen, con IDS_EN_LA_HORA como está hoy (prendido el 09/10).
+const ULTIMA_FALSE = /IDS_EN_LA_HORA = true \(la corrida de la hora ya escribe los IDs de las filas activas\)\./;
 
 console.log('  -- el caso sano: la lista cruza, el 3735 es la fila 805');
 {
@@ -1073,8 +1073,8 @@ console.log('  -- el caso sano: la lista cruza, el 3735 es la fila 805');
      '   el orden parcial CHICO (sólo las últimas 30 filas) da DESALINEADA por la racha (' + r.guardian.chico + ' filas que no cuadran)');
   ok(/OCULTAR Y PROTEGER: NO LISTO — propuesta \(falta el texto del guardián\): ocultar 14 columnas internas y proteger con advertencia las 34 del sistema; hoy 0 ocultas y 0 con alguna protección\./.test(rs),
      'ocultar y proteger: "NO LISTO", la propuesta (14 y 34) y lo de hoy (0 y 0)');
-  ok(ULTIMA_FALSE.test(rs) && E.cfg('IDS_EN_LA_HORA') === false && E.logs[E.logs.length - 1].trim().indexOf('IDS_EN_LA_HORA = false') === 0,
-     'IDS_EN_LA_HORA = false: el resumen termina con "IDS_EN_LA_HORA = false (la corrida de la hora no toca los IDs: todo lo demás, como ayer)."');
+  ok(ULTIMA_FALSE.test(rs) && E.cfg('IDS_EN_LA_HORA') === true && E.logs[E.logs.length - 1].trim().indexOf('IDS_EN_LA_HORA = true') === 0,
+     'IDS_EN_LA_HORA = true (09/10): el resumen termina con "IDS_EN_LA_HORA = true (la corrida de la hora ya escribe los IDs de las filas activas)."');
   ok(r.ids.conteo.escribeId === 8 && r.ids.conteo.escribeFecha === 4 && r.guardian.veredictoHoy === 'alineada' && r.guardian.trazadas === 803 && r.guardian.detecta === true && r.guardian.inventario.proponeOcultar === 14,
      'lo que devuelve manana(): los IDs (8 y 4), el guardián (alineada, 803, detecta, propone 14)');
   const log = E.log();

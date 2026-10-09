@@ -200,7 +200,7 @@ const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'u
 const iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iIds = up.indexOf('resIds = idsEnLaHora_(enSeco)'), iPlan = up.indexOf('const plan = calcularPlan_(enSeco, null');
 ok(iAg > 0 && iIds > iAg && iPlan > iIds, 'en _correrUpsertConBloqueo_: después de la agenda y antes del cruce con los formularios');
 ok(/if \(IDS_EN_LA_HORA && !historial\) \{\s*try \{ resIds = idsEnLaHora_\(enSeco\); \}\s*catch/.test(up), 'sólo con IDS_EN_LA_HORA, no en el paso 22, y con try/catch');
-ok(E7.cfg('IDS_EN_LA_HORA') === false, 'IDS_EN_LA_HORA = false hasta el paso 57');
+ok(E7.cfg('IDS_EN_LA_HORA') === true, 'IDS_EN_LA_HORA = true desde el 09/10 (pasos 55 a 57 OK)');
 
 // ---------------------------- [8] el huso horario de la lista ----------------------------
 console.log('[8] la lista en otro huso horario (GMT): sus fechas se leen en el de la lista');

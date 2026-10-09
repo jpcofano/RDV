@@ -245,8 +245,10 @@ const RDV_HOJA_REGISTRO_IDS = 'REGISTRO_IDS';
 /**
  * **El cruce dentro de la corrida de la hora** (sólo filas activas, después de la agenda). `false` hasta la corrida del
  * historial: paso 55 (medir, sólo lectura) → paso 56 (el historial en seco) → paso 57 (el historial, escribe una vez).
+ * PRENDIDO el 09/10 (decisión del usuario, después de manana() y los pasos 56 y 57: 733 cruzan, 724 por la misma fecha y 9
+ * a ±3 —revisados, correctos—, el 3735 → 805, conflictos 0).
  */
-const IDS_EN_LA_HORA = false;
+const IDS_EN_LA_HORA = true;
 /** Los tipos de encuentro, para desempatar con el Tipo de "Agenda JM" contra el EVENTO de la fila. El primero que matchea. */
 const IDS_TIPOS = [
   { tipo: 'seguridad', re: /\bseguridad en tu barrio\b/ },

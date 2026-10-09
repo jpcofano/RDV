@@ -2768,7 +2768,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
 
     **Cuándo corre**: paso 55 (medir, sólo lectura) → paso 56 (el historial en seco) → **paso 57** (el historial, una vez:
     agrega las dos columnas al final si faltan y escribe en todas las filas **cuya reunión ya pasó**) →
-    `IDS_EN_LA_HORA = true`: dentro de la corrida de la hora, **después de la agenda** y antes del cruce con los
+    `IDS_EN_LA_HORA = true` (**prendido el 09/10**, después de los pasos 55 a 57: 733 cruzan, conflictos 0): dentro de la
+    corrida de la hora, **después de la agenda** y antes del cruce con los
     formularios, sólo en las filas activas que ya pasaron (nunca en una cerrada ni en una futura). Si falla, la corrida
     sigue; `REGISTRO_UPSERT` lo dice en la columna `ids` (sólo con el interruptor prendido: apagado, la línea es la de
     siempre). Una fila con ID no la borra la agenda al cancelarse (deja de estar intocada): la suspende. El paso 43 limpia

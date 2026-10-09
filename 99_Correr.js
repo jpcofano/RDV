@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (3): IDS_EN_LA_HORA = true (pasos 55 a 57 OK: 733 cruzan, conflictos 0). Nada para correr a mano: la corrida de la
+ *      hora completa los IDs de las filas activas que ya pasaron; mirar la columna "ids" de REGISTRO_UPSERT.
  *  >>> 09/10 (2): EL GUARDIÁN de las columnas del sistema (46_Guardian.js), escrito y APAGADO (GUARDIAN_ACTIVO = false):
  *        paso58_guardianEnSeco()     SÓLO LECTURA: qué ocultaría, protegería y restauraría; la prueba de la desalineación;
  *                                    las filas que no cuadran hoy
