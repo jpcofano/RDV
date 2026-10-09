@@ -222,6 +222,42 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
+### La cuarta excepción: el GUARDIÁN de las columnas del sistema (09/10; APAGADO: `GUARDIAN_ACTIVO = false`)
+
+Decisión del usuario: **el equipo ORDENA y BORRA filas, pero las columnas del sistema no pueden quedar modificadas.** La
+protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`):
+
+- las **técnicas** (sólo de traza: `GUARDIAN_OCULTAR`, las 6 de traza y las 8 `agenda_*`) se **ocultan**; **todas** las del
+  sistema (traza, agenda, "ID cuentas", "Fecha envío campañas" y las 12 derivadas) llevan **protección con advertencia** y
+  el **encabezado gris** (paso 59, una vez; buscadas por encabezado). Las del equipo no se tocan;
+- en la corrida de la hora, **antes de escribir nada**, el guardián compara las columnas guardadas (traza, agenda, IDs; las
+  derivadas no: se recalculan) contra su **copia** (`SISTEMA_COPIA`, intermedia; clave agenda_uid o RDV_UID y huella figura +
+  fecha), que se toma al final de cada corrida: lo que cambió sin que lo cambiara el sistema se **restaura**; si alguien
+  ordenó sólo algunas columnas (**desalineación**), las del sistema se **reubican** en la fila que tiene su huella (con un
+  desempate barrio | hora | evento sólo para los pares figura + fecha repetidos); una fila que el equipo borró se respeta;
+  una fila que no es de ninguna entrada de la copia (copiada y pegada, o nueva con algo tipeado) queda sin nada en esas
+  columnas. Todo a `REGISTRO_PROTECCION`;
+- **si no puede reubicar sin ambigüedad, esa corrida no escribe NADA en la base** (sigue en seco), y lo avisa en grande:
+  con filas corridas, cualquier escritura —que va por número de fila— puede caer en la fila de otra reunión. Es más que
+  "no escribir en esas filas", a propósito;
+- la escritura vive en `05_Escritura.js` (`escribirGuardianLote_`): **sólo columnas guardadas** (cualquier otra es un error
+  y no escribe nada), lectura fresca (una celda que alguien cambió mientras corría no se toca), `COLOR_SISTEMA` en lo
+  escrito; pisa celdas con valor: por eso es una excepción anunciada;
+- **la copia sirve para restaurar sólo si es fresca**: tomada al final de una corrida prendida hace menos de
+  `GUARDIAN_COPIA_MAX_MS` (75 min) y sin escrituras del sistema después (dejan un sello, `_selloEscrituraSistema_`, sólo con
+  el guardián prendido; un paso a mano: el 57, la agenda a mano, un deshacer). La del paso 59 no tiene hora. Con una copia
+  vieja no restaura, pero **sí busca la desalineación: si la hay, frena** (sin escribir nada). Al final de cada corrida la
+  copia se toma **sólo si la base no quedó desalineada** (un orden parcial hecho mientras corría no queda grabado). Si
+  frena, **no escribe nada**, tampoco lo que podría arreglar. El paso 57 pasa por el guardián antes de escribir;
+- **la fila de cada reunión**: la clave en una fila con su huella; la misma huella con los mismos valores; la clave manda si
+  el equipo cambió figura o fecha (una reprogramación, un intercambio de fechas: no es una desalineación); la huella en una
+  sola fila libre con el mismo desempate (o los mismos valores) → reubicada; con otro desempate o en varias filas →
+  ambigua (frena). Revisado por el agente revisor del punto 3c, con sus casos en `tests/guardian_activo.test.js` [6];
+- **consecuencia**: con el guardián prendido el equipo ya no puede corregir a mano una columna del sistema (se restaura): un
+  ID mal puesto o el "no" de la decisión 14 se vuelven atrás. Esas correcciones pasan por quien opera el sistema.
+
+`setSiDelSistema_` sigue siendo verificable con un grep: el guardián nunca pasa por él.
+
 ### Tres consecuencias que no son negociables
 
 **a) El cero cuenta como valor escrito.** Escribir `0` sobre una celda vacía la marca como
@@ -2720,7 +2756,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       (no depende del orden de la lista);
     - **un ID borrado vuelve**: la celda queda vacía y la corrida siguiente lo escribe de nuevo. Para que una fila NO reciba
       un ID, el equipo escribe **"no"** (o cualquier texto) en su "ID cuentas": una celda con valor no se toca (se lista
-      como `fila_con_otro_id`, "no es un ID: lo puso el equipo");
+      como `fila_con_otro_id`, "no es un ID: lo puso el equipo"). **Con el guardián prendido (sección 0) esto deja de
+      andar**: lo que el equipo escribe en "ID cuentas" se restaura;
     - **la fecha de envío**: como fecha (`dd/MM/yyyy`); vacía si la lista dice "#N/A", "-" o algo que no es fecha; si su
       **año no cierra** con el del encuentro (el mismo, o diciembre para uno de enero) o un ID repetido trae dos distintas,
       vacía y se lista (`fecha_envio_descartada`). El ID se escribe igual. Se escribe **sólo al lado de un ID que quedó
@@ -2773,6 +2810,9 @@ diagnostico/27_guardian.js  el GUARDIÁN de las columnas del sistema, SÓLO LO Q
                    del orden parcial (grande y chico), en memoria. No escribe nada; no hay interruptor        ← 08/10
 diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medirGuardian con las listas acotadas, y el
                    RESUMEN de qué está listo para prender. SÓLO LECTURA                                         ← 08/10
+46_Guardian.js     EL GUARDIÁN (sección 0, la cuarta excepción): ocultar y proteger las columnas del sistema (paso 59), su
+                   copia (SISTEMA_COPIA), y en la corrida de la hora restaurar / reubicar / frenar (REGISTRO_PROTECCION).
+                   Paso 58 en seco. APAGADO (GUARDIAN_ACTIVO = false)                                           ← 09/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

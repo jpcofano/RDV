@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1303,6 +1303,68 @@ escribir nada y diga qué está listo para prender.
    **`IDS_EN_LA_HORA = true`** + clasp push.
 2. **Guardián y ocultar/proteger**: nada todavía. Falta el texto del guardián: con él se implementan sus reglas (con su
    interruptor, apagado) y `manana()` ya deja la línea de base de hoy para comparar.
+
+#### El GUARDIÁN de las columnas del sistema: escrito y APAGADO (09/10) — primero el paso 58
+
+**Qué es** (el texto del usuario llegó el 09/10; CLAUDE.md, sección 0, "La cuarta excepción"; código: `46_Guardian.js`). El
+equipo ordena y borra filas; las columnas del sistema no pueden quedar modificadas:
+- **se ocultan** las 14 técnicas (`GUARDIAN_OCULTAR`: RDV_UID, form_origen, form_score, form_nivel, form_fecha_match,
+  form_clave, agenda_uid, agenda_mail, agenda_version, agenda_hora_escrita, agenda_direccion_escrita, agenda_barrio_escrito,
+  agenda_fecha_escrita, agenda_status_escrito). **Contra la propuesta del inventario de anoche: ninguna diferencia** (era la
+  misma lista de 14). No hay otra columna "sólo de traza": las demás del sistema (Origen fila, Tocado por el equipo, No
+  participa, Conjunta con, las 4 "(mail)", ID cuentas, Fecha envío campañas) le sirven al equipo y quedan a la vista;
+- **protección con advertencia y encabezado gris** en las 36 del sistema: 6 de traza + 16 de la agenda + 2 de los IDs + 12
+  derivadas (con la ID). Las 11 derivadas ya tenían la suya (paso 26): no se duplica;
+- **en la corrida de la hora**, antes de escribir nada: restaurar / reubicar / frenar contra `SISTEMA_COPIA` (las reglas, en
+  CLAUDE.md). Lo que hace queda en `REGISTRO_PROTECCION` (intermedia) y, prendido, en la columna `guardian` de
+  `REGISTRO_UPSERT`;
+- la GUÍA tiene la línea nueva ("Las columnas grises las escribe el sistema…"): sale con `paso48_ayuda()`, **después** de
+  prender el guardián (antes sería falso).
+
+**Cómo se revisó**: `tests/guardian_activo.test.js` (55 chequeos) y un **agente revisor del punto 3c** (Opus), que encontró —y
+quedó arreglado—: una reprogramación (o una fila sin clave) mezclada con un orden parcial borraba la traza de esa reunión y la
+daba por "borrada"; un intercambio de fechas entre dos reuniones, sin ordenar nada, les cambiaba la traza; ordenar sólo la
+columna FECHA reubicaba mal; una Seguridad completada por el equipo perdía lo de la agenda; la copia del paso 59 (o la de
+antes de un apagado) habría deshecho lo que escribieron las corridas apagadas; con la copia vieja no se veía una
+desalineación y la copia del final la grababa; un orden parcial hecho mientras corría quedaba grabado; si frenaba, igual
+arreglaba a medias. Queda propuesto (no hecho): un aviso visible en el archivo del destino (hoy: el log y
+REGISTRO_PROTECCION), que no repita cada hora las mismas líneas AMBIGUA.
+
+**Decisiones que tomé, para mirar**: (1) con una desalineación que no se puede reubicar sin ambigüedad, la corrida entera
+no escribe nada en la base, no sólo esas filas (todo escribe por número de fila); (2) la copia sirve para restaurar sólo si es
+fresca (menos de 75 minutos, sin escrituras a mano después); vieja, no restaura pero sí frena ante una desalineación; (3) la huella figura + fecha se desempata con barrio | hora |
+evento sólo si está en varias filas (hay pares figura + fecha repetidos); (4) una fila que no es de ninguna entrada de la
+copia queda sin nada en las columnas del sistema (una fila copiada y pegada con su RDV_UID, algo tipeado en una fila nueva);
+(5) el encabezado gris lo pone el paso 59 (la GUÍA habla de "columnas grises"; hasta hoy no había nada gris);
+(6) **con el guardián prendido, el equipo ya no puede corregir a mano una columna del sistema** (un ID mal puesto, el "no"
+de la decisión 14): se restaura. Esas correcciones pasan por quien opera el sistema.
+
+**La secuencia** (nada escribe hasta el 59; nada nuevo corre en la hora hasta prenderlo):
+1. **`paso58_guardianEnSeco()`** — SÓLO LECTURA: 1. qué ocultaría, 2. qué protegería y dónde pondría el gris, 3. qué
+   restauraría (sin copia todavía: nada), 4. la prueba en memoria ("si alguien ordenara HOY sólo las columnas del equipo"),
+   5. las filas cuyas trazas no cuadran HOY, con el motivo.
+2. **`paso59_guardianPreparar()`** — ESCRIBE FORMATO: oculta, protege con advertencia, pinta el encabezado gris y toma la
+   primera copia. Ningún valor ni fondo de datos cambia.
+3. **`GUARDIAN_ACTIVO = true`** + clasp push; después `paso48_ayuda()`.
+   Si el paso 57 (los IDs) se corre después del 59, volver a correr el 59 (es idempotente): protege y pone en gris las dos
+   columnas nuevas.
+
+**Predicción del paso 58** (anotada antes de correrlo):
+- **1.** "OCULTARÍA 14 columnas técnicas", con sus letras (traza en AP..AU, agenda_* en AW..BD, si no se movieron).
+- **2.** Si el paso 57 todavía no agregó "ID cuentas" y "Fecha envío campañas": "PROTEGERÍA con advertencia 23 de las 34"
+  (las 11 derivadas ya protegidas; la ID, no) y el gris en 34. Después del 57: 25 de 36.
+- **3.** "no hay copia todavía" (después del 59: "copia del …" — la del 59 no tiene hora: no restaura, sólo mira la
+  desalineación).
+- **4.** La prueba: reubicaría **cientos** de filas; ambiguas **0 o unas pocas** (pares figura + fecha repetidos que además
+  coinciden en barrio, hora y evento: si aparece alguna, "FRENA la corrida" es lo esperado para ese caso); si no frena,
+  "la base quedaría IGUAL".
+- **5.** "las filas cuyas trazas no cuadran HOY": las mismas pocas de `manana()`, cada una con su motivo. **El guardián no las
+  toca**: compara contra su copia, y la primera copia (paso 59) las toma tal como están. Si alguna es un error, hay que
+  corregirla a mano ANTES del paso 59 (después, el guardián la "restauraría" al valor equivocado).
+
+**Qué prender si da bien**: paso 59 → `GUARDIAN_ACTIVO = true` + clasp push → paso 48. La primera corrida prendida dice
+"copia vieja (es la del paso 59…): no comparó" y toma la copia buena; desde la segunda: `REGISTRO_UPSERT` (columna
+`guardian`: "restauradas 0 | reubicadas 0 filas | …") y `REGISTRO_PROTECCION` (vacía si nadie tocó nada).
 
 ### y) 06/10: REVISAR_MATCH con el formato aprobado — integrado y PRENDIDO
 

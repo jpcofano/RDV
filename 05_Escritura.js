@@ -48,6 +48,7 @@ function setSiDelSistema_(rango, valor) {
   if (actual !== '' && actual !== null && String(actual).trim() !== '') return false;
   if (valor === '' || valor === null || valor === undefined) return false;
 
+  _selloEscrituraSistema_();
   rango.setValue(valor);
   rango.setBackground(COLOR_SISTEMA);
   return true;
@@ -120,6 +121,7 @@ function setSiDelSistemaLote_(sh, hdr, escrituras) {
   });
 
   const bloques = _bloquesDeEscritura_(porFila);
+  if (bloques.length) _selloEscrituraSistema_();
   bloques.forEach(function (b) {
     sh.getRange(b.fila, b.col, b.valores.length, b.valores[0].length).setValues(b.valores);
   });
@@ -204,6 +206,7 @@ function _a1_(fila, col) {
  */
 function marcarRealizada_(rangoStatus, asistentes) {
   if (!_decideRealizada_(rangoStatus.getValue(), asistentes)) return false;
+  _selloEscrituraSistema_();
   rangoStatus.setValue(TRANSICION_REALIZADA.hacia);
   rangoStatus.setBackground(COLOR_SISTEMA);
   return true;
@@ -233,6 +236,7 @@ function marcarRealizadaLote_(sh, filas, colStatus, colAsis) {
     if (_decideRealizada_(r[colStatus - c1], numOcero_(r[colAsis - c1]))) avanzan.push(fila);
   });
   if (!avanzan.length) return [];
+  _selloEscrituraSistema_();
   const a1 = avanzan.map(function (f) { return _a1_(f, colStatus); });
   for (let i = 0; i < a1.length; i += 400) {
     const rl = sh.getRangeList(a1.slice(i, i + 400));
@@ -291,12 +295,76 @@ function vaciarCeldasDelSistema_(sh, celdas) {
     return v === e.escrito && esColorSistema_(bg);
   });
   const a1 = hechas.map(function (e) { return _a1_(e.fila, e.col); });
+  if (a1.length) _selloEscrituraSistema_();
   for (let i = 0; i < a1.length; i += 400) {
     const rl = sh.getRangeList(a1.slice(i, i + 400));
     rl.clearContent();
     rl.setBackground(null);
   }
   return hechas;
+}
+
+// ===================== El sello de las escrituras del sistema (el guardián, 09/10) =====================
+
+/**
+ * Anota cuándo escribió el sistema en la base (PROP_GUARDIAN_ESCRITURA), **sólo con GUARDIAN_ACTIVO**: si escribió después
+ * de la copia del guardián (un paso a mano), la copia está vieja y el guardián no compara (no sabría quién cambió qué).
+ * Apagado no hace nada (ni lee las propiedades). Nunca frena una escritura: si falla, lo ignora.
+ */
+function _selloEscrituraSistema_() {
+  if (typeof GUARDIAN_ACTIVO === 'undefined' || !GUARDIAN_ACTIVO) return;
+  try { PropertiesService.getScriptProperties().setProperty(PROP_GUARDIAN_ESCRITURA, String(Date.now())); }
+  catch (err) { /* el sello no frena nada */ }
+}
+
+// ===================== La cuarta excepción: el GUARDIÁN (09/10) =====================
+
+/**
+ * **El guardián restaura, reubica y limpia las columnas del sistema** (CLAUDE.md, sección 0, "La cuarta excepción";
+ * 46_Guardian.js). Pisa celdas con valor —por eso es una excepción anunciada y vive aparte—, con estas reglas:
+ *   1. **sólo las columnas guardadas** (traza, agenda, IDs: `esColumnaGuardada_`), por nombre: cualquier otra es un error
+ *      y no se escribe NADA (nunca una columna del equipo ni una derivada);
+ *   2. cada cambio dice qué había cuando se calculó (`puesto`): con una **lectura fresca**, justo antes de escribir, la
+ *      celda se escribe sólo si todavía tiene eso (si alguien la cambió mientras corría, no se toca: `saltadas`);
+ *   3. lo escrito con valor se pinta `COLOR_SISTEMA`; una celda que se vacía queda sin color;
+ *   4. NO deja el sello de escritura: lo que restaura es lo de la copia.
+ * @param {Array} cambios [{fila, col (1-based), valor, puesto}]
+ */
+function escribirGuardianLote_(sh, hdr, cambios) {
+  cambios.forEach(function (e) {
+    if (!esColumnaGuardada_(hdr[e.col - 1])) {
+      throw new Error('escribirGuardianLote_: "' + hdr[e.col - 1] + '" no es una columna del sistema que cuide el guardián. No se escribió nada.');
+    }
+  });
+  if (!cambios.length) return { hechas: [], saltadas: [] };
+  let f1 = Infinity, f2 = 0, c1 = Infinity, c2 = 0;
+  cambios.forEach(function (e) {
+    f1 = Math.min(f1, e.fila); f2 = Math.max(f2, e.fila); c1 = Math.min(c1, e.col); c2 = Math.max(c2, e.col);
+  });
+  const actual = sh.getRange(f1, c1, f2 - f1 + 1, c2 - c1 + 1).getValues();   // lectura fresca
+  // el encabezado, fresco también: si alguien insertó o movió columnas mientras corría, no se escribe nada
+  const hdrFresco = sh.getRange(1, c1, 1, c2 - c1 + 1).getValues()[0];
+  cambios.forEach(function (e) {
+    if (normalizeHeader_(hdrFresco[e.col - c1]) !== normalizeHeader_(hdr[e.col - 1])) {
+      throw new Error('escribirGuardianLote_: las columnas cambiaron mientras corría ("' + hdr[e.col - 1] + '" ya no está en su lugar). No se escribió nada.');
+    }
+  });
+  const porFila = {}, hechas = [], saltadas = [], vistas = {};
+  cambios.forEach(function (e) {
+    const k = e.fila + ':' + e.col;
+    if (vistas[k]) return;
+    vistas[k] = true;
+    if (_normGuardian_(actual[e.fila - f1][e.col - c1]) !== _normGuardian_(e.puesto)) { saltadas.push(e); return; }
+    (porFila[e.fila] = porFila[e.fila] || []).push({ fila: e.fila, col: e.col, valor: _valorCeldaGuardian_(e.valor) });
+    hechas.push(e);
+  });
+  const bloques = _bloquesDeEscritura_(porFila);
+  bloques.forEach(function (b) { sh.getRange(b.fila, b.col, b.valores.length, b.valores[0].length).setValues(b.valores); });
+  const conValor = hechas.filter(function (e) { return _normGuardian_(e.valor) !== ''; }).map(function (e) { return _a1_(e.fila, e.col); });
+  const vacias = hechas.filter(function (e) { return _normGuardian_(e.valor) === ''; }).map(function (e) { return _a1_(e.fila, e.col); });
+  for (let i = 0; i < conValor.length; i += 400) sh.getRangeList(conValor.slice(i, i + 400)).setBackground(COLOR_SISTEMA);
+  for (let i = 0; i < vacias.length; i += 400) sh.getRangeList(vacias.slice(i, i + 400)).setBackground(null);
+  return { hechas: hechas, saltadas: saltadas };
 }
 
 // ===================== Repintar el azul viejo =====================
@@ -453,6 +521,7 @@ function escribirAgendaLote_(sh, hdr, escrituras) {
     }
   });
   if (!escrituras.length) return { hechas: [], saltadas: [] };
+  _selloEscrituraSistema_();
 
   // Filas nuevas al final: si hace falta, se agregan filas AL FINAL de la hoja (no mueve nada).
   const maxFila = escrituras.reduce(function (a, e) { return Math.max(a, e.fila); }, 0);
@@ -520,6 +589,7 @@ function valorAgendaComparable_(v, nombreCol) {
  */
 function deshacerAgendaLote_(sh, hdr, cambios) {
   const hechas = [], saltadas = [];
+  if (cambios.length) _selloEscrituraSistema_();
   cambios.forEach(function (c) {
     const nombre = hdr[c.col - 1];
     if (COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_).indexOf(normalizeHeader_(nombre)) < 0) {
@@ -550,6 +620,7 @@ function borrarFilaAgenda_(sh, hdr, fila, uid) {
   if (iUid == null || str(sh.getRange(fila, iUid + 1).getValue()) !== uid || !/^c-/.test(uid)) {
     throw new Error('borrarFilaAgenda_: la fila ' + fila + ' no es la de agenda_uid ' + uid + '. No se borró nada.');
   }
+  _selloEscrituraSistema_();
   sh.deleteRow(fila);
 }
 
@@ -562,6 +633,7 @@ function borrarFilaAgenda_(sh, hdr, fila, uid) {
 function sacarFilasCreadasAgenda_(sh, filas, ultimaConDatos) {
   const orden = filas.slice().sort(function (a, b) { return a - b; });
   if (!orden.length) return { borradas: 0, vaciadas: 0 };
+  _selloEscrituraSistema_();
   const alFinal = orden[orden.length - 1] === ultimaConDatos &&
                   orden.every(function (f, i) { return i === 0 || f === orden[i - 1] + 1; });
   if (alFinal) {

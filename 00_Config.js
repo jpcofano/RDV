@@ -259,6 +259,35 @@ const IDS_TIPOS = [
 /** Una fila de Seguridad en tu Barrio: lo dice "Evento (mail)", EVENTO o el formulario que se le cruzó. */
 const IDS_RE_SEGURIDAD_FILA = /\bseguridad en tu barrio\b|\bsobre seguridad\b/;
 
+// ===================== El guardián de las columnas del sistema (09/10; 46_Guardian.js; CLAUDE.md, sección 0) =====================
+
+/**
+ * **El guardián en la corrida de la hora** (decisión del usuario, 09/10): antes de escribir nada, compara las columnas del
+ * sistema contra su copia (SISTEMA_COPIA) y restaura lo que cambió sin que lo cambiara el sistema; si alguien ordenó sólo
+ * algunas columnas (desalineación), reubica las del sistema por la huella figura + fecha; si no puede sin ambigüedad, esa
+ * corrida no escribe nada en la base. `false` hasta: paso 58 (en seco) → paso 59 (ocultar, proteger, primera copia).
+ */
+const GUARDIAN_ACTIVO = false;
+/** La copia de las columnas del sistema, una fila por fila de la base (intermedia; se reescribe al final de cada corrida). */
+const RDV_HOJA_SISTEMA_COPIA = 'SISTEMA_COPIA';
+/** Lo que restauró, reubicó o no pudo reubicar el guardián (intermedia; se acumula). */
+const RDV_HOJA_REGISTRO_PROTECCION = 'REGISTRO_PROTECCION';
+/** Las columnas técnicas que se OCULTAN (sólo traza): las otras del sistema quedan a la vista, en gris y protegidas. */
+const GUARDIAN_OCULTAR = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave',
+  'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita', 'agenda_direccion_escrita', 'agenda_barrio_escrito',
+  'agenda_fecha_escrita', 'agenda_status_escrito'];
+/** La descripción de la protección con advertencia de las columnas del sistema (para reconocerla y no duplicarla). */
+const DESC_PROTECCION_SISTEMA = 'RDV: columna del sistema — si se toca, el sistema la corrige (guardián)';
+/** El gris del encabezado de las columnas del sistema ("las columnas grises" de la GUÍA). Sólo la fila 1. */
+const GUARDIAN_GRIS_ENCABEZADO = '#D9D9D9';
+/** Cuándo se tomó la copia y cuándo escribió el sistema por última vez (ms): si escribió después, la copia está vieja. */
+const PROP_GUARDIAN_COPIA = 'GUARDIAN_COPIA_HORA';
+/** Una copia más vieja que esto no sirve para restaurar (con el guardián apagado, o sin corridas, se escribió sin sello). */
+const GUARDIAN_COPIA_MAX_MS = 75 * 60 * 1000;
+/** Con tantas filas restauradas o limpiadas a la vez, el log avisa en grande (alguien ordenó o movió columnas del sistema). */
+const GUARDIAN_MUCHAS_FILAS = 5;
+const PROP_GUARDIAN_ESCRITURA = 'GUARDIAN_ULTIMA_ESCRITURA_SISTEMA';
+
 // ===================== Ventana de análisis =====================
 
 /**

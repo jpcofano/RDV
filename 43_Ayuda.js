@@ -39,6 +39,7 @@ const AYUDA_GUIA_ = [
   ['item', 'Barrio vacío: cargarlo. Lo que corrijan, el sistema no lo vuelve a tocar.'],
   ['item', 'Si una fila sobra, borrarla: el sistema no la vuelve a crear.'],
   ['item', 'No escribir en: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con.'],
+  ['item', 'Las columnas grises las escribe el sistema: si se tocan, el sistema las corrige. Para ordenar, usar Datos → Ordenar hoja o vistas de filtro; nunca ordenar sólo algunas columnas.'],
   ['seccion', 'SOLAPA REVISAR_MATCH (formularios dudosos)'],
   ['item', 'Cada ficha: la reunión arriba y hasta 3 formularios abajo.'],
   ['item', 'Leer "¿por qué?" y elegir en ELEGIR: Opción 1, 2, 3, Ninguno o No sé.'],

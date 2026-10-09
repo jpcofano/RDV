@@ -1602,6 +1602,23 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   // Si no, error ANTES de calcular: no se escribe nada.
   verificarHojaDestino_(ssDestino_());
 
+  // EL GUARDIÁN (09/10, GUARDIAN_ACTIVO; 46_Guardian.js): antes de escribir NADA, las columnas del sistema contra su copia:
+  // restaura, reubica (desalineación) o, si no puede reubicar sin ambigüedad, esta corrida no escribe nada más en la base
+  // (sigue en seco: los reportes se regeneran). Si el guardián mismo falla, tampoco: con la base sin controlar no se escribe.
+  let resGuardian = null;
+  if (GUARDIAN_ACTIVO) {
+    try { resGuardian = guardianAntesDeEscribir_(enSeco); }
+    catch (err) {
+      Logger.log('>>> ### EL GUARDIÁN FALLÓ: %s. Esta corrida NO escribe nada en la base (sigue en seco). ###', err);
+      resGuardian = { error: String(err && err.message || err), frenar: true };
+    }
+    if (resGuardian.frenar && !enSeco) {
+      Logger.log('>>> ### EL GUARDIÁN FRENÓ LA CORRIDA: no se escribe nada en la base (agenda, IDs, datos, derivadas, tablero). ' +
+                 'Mirar REGISTRO_PROTECCION y el log de arriba. ###');
+      enSeco = true;
+    }
+  }
+
   // La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
   // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
   // 07/10: el error queda también en REGISTRO_AGENDA (si la intermedia responde); el upsert sigue igual.
@@ -1638,6 +1655,7 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
 
   const plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
   plan.res.ids = resIds;
+  plan.res.guardian = resGuardian;
   logResumen_(plan);                 // ← ANTES de escribir nada
   _logColumnasB_(plan.cands);
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
@@ -1726,6 +1744,12 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
                'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
   }
 
+  // El guardián: la copia de las columnas del sistema, al final (después de todo lo que escribió esta corrida).
+  if (GUARDIAN_ACTIVO && !enSeco) {
+    try { tomarCopiaSiAlineada_(); }
+    catch (err) { Logger.log('>>> El guardián no pudo tomar la copia: %s (la próxima corrida la tomará; ésa no compara).', err); }
+  }
+
   _registrarCorrida_(plan, enSeco, t0, fallaron, soloUids ? 'historial, sólo ' + soloUids.size + ' filas (paso 47b)' : historial);
   Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
              ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
@@ -1762,7 +1786,9 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                         'hoja_destino', 'escritura_completa', 'filas_por_escribir', 'tandas',
                         'huella_entradas', 'huella_plan', 'por_columna', 'alcance', 'derivadas', 'looker']
       // 08/10: la columna de los IDs de los encuentros, sólo con IDS_EN_LA_HORA (apagado: el registro queda como siempre)
-      .concat(IDS_EN_LA_HORA ? ['ids'] : []);
+      .concat(IDS_EN_LA_HORA || GUARDIAN_ACTIVO ? ['ids'] : [])
+      // 09/10: el guardián, sólo con GUARDIAN_ACTIVO (apagado: el registro queda como siempre)
+      .concat(GUARDIAN_ACTIVO ? ['guardian'] : []);
     if (!sh) {
       sh = ss.insertSheet(RDV_HOJA_REGISTRO);
       sh.appendRow(encabezado);
@@ -1783,7 +1809,8 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   r.looker ? RDV_HOJA_UNPIVOT + ' ' + r.looker.unpivot + ' | ' + RDV_HOJA_AUX_MAXIMOS + ' ' + r.looker.aux +
                              ' | reuniones ' + r.looker.reuniones : '']
                   // 08/10: los IDs de los encuentros (IDS_EN_LA_HORA): escritos, ya estaban, sin cruzar; o el error
-                  .concat(IDS_EN_LA_HORA ? [r.ids ? (r.ids.error ? 'error: ' + r.ids.error : r.ids.resumen || '') : ''] : []));
+                  .concat(IDS_EN_LA_HORA || GUARDIAN_ACTIVO ? [r.ids ? (r.ids.error ? 'error: ' + r.ids.error : r.ids.resumen || '') : ''] : [])
+                  .concat(GUARDIAN_ACTIVO ? [r.guardian ? (r.guardian.error ? 'error: ' + r.guardian.error : r.guardian.resumen || '') : ''] : []));
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
   }

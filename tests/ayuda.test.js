@@ -130,8 +130,8 @@ const iSec = filas.indexOf('QUÉ HACE EL SISTEMA (solo, cada hora)');
 ok(iSec > 0 && filas[iSec - 1] === '' && fmt(g, iSec + 1).peso === 'bold' && fmt(g, iSec + 1).tamano === 12 && fmt(g, iSec + 1).fondo === '#D9E1F2',
    'título de sección: negrita 12, gris claro, con una fila en blanco antes');
 const secciones = filas.filter(function (t, i) { return fmt(g, i + 1).fondo === '#D9E1F2'; });
-ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 19,
-   '6 secciones y 19 viñetas (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
+ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 20,
+   '6 secciones y 20 viñetas (09/10: la de las columnas grises) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
 const colores = E.run('_coloresAyuda_()');
 const conColor = function (inicio) { const i = filas.findIndex(function (t) { return t.indexOf(' • ' + inicio) === 0; }); return fmt(g, i + 1).fondo; };
 ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde && conColor('Rojo') === colores.rojo &&

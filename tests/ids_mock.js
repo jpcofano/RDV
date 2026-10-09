@@ -215,7 +215,15 @@ function crearEntornoIds(opciones) {
       setProperty: function (k, v) { p[k] = v; }, deleteProperty: function (k) { delete p[k]; } }; } }
   };
   vm.createContext(ctx);
-  ARCHIVOS.forEach(function (f) { vm.runInContext(fs.readFileSync(path.join(RAIZ, f), 'utf8'), ctx, { filename: f }); });
+  // `o.extra`: más archivos del proyecto; `o.reemplazos`: { archivo: [[texto, por]] } (prender un interruptor en un test)
+  ARCHIVOS.concat(o.extra || []).forEach(function (f) {
+    let src = fs.readFileSync(path.join(RAIZ, f), 'utf8');
+    ((o.reemplazos || {})[f] || []).forEach(function (r) {
+      if (src.indexOf(r[0]) < 0) throw new Error('reemplazo: no está "' + r[0] + '" en ' + f);
+      src = src.split(r[0]).join(r[1]);
+    });
+    vm.runInContext(src, ctx, { filename: f });
+  });
   const cfg = function (expr) { return vm.runInContext(expr, ctx); };
   _convFecha_ = function (v) { return (v instanceof Date && !(v instanceof FakeDate)) ? new FakeDate(v.getTime()) : v; };
 

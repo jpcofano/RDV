@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (2): EL GUARDIÁN de las columnas del sistema (46_Guardian.js), escrito y APAGADO (GUARDIAN_ACTIVO = false):
+ *        paso58_guardianEnSeco()     SÓLO LECTURA: qué ocultaría, protegería y restauraría; la prueba de la desalineación;
+ *                                    las filas que no cuadran hoy
+ *        paso59_guardianPreparar()   ESCRIBE FORMATO: oculta, protege con advertencia, encabezado gris; la primera copia
+ *      Después: GUARDIAN_ACTIVO = true + clasp push, y paso48_ayuda() (la GUÍA con "las columnas grises"). ESTADO 0.z.
  *  >>> 09/10, A LA MAÑANA: correr **manana()** (abajo, junto a los pasos 55-57). SÓLO LECTURA: no escribe nada. Corre la
  *      medición de los IDs (paso 55: el cruce, el caso 3735 → 805) y las del guardián (las filas cuyas trazas no cuadran hoy
  *      y la prueba del orden parcial, en memoria) y el inventario de las columnas del sistema (ocultas/protegidas), y termina
@@ -1233,6 +1238,30 @@ function paso57_idsHistorial() {
              'ESCRIBE en la base: "ID cuentas" y "Fecha envío campañas", sólo en celdas vacías (y las agrega al final si faltan)',
              'el log: el cruce y "Escritos en ...: N IDs y M fechas de envío"; REGISTRO_IDS y IDS_SIN_CRUZAR en la intermedia');
   return idsHistorial(false);
+}
+
+/**
+ * PASO 58 — EN SECO (09/10): el GUARDIÁN de las columnas del sistema, sin tocar nada. Qué columnas ocultaría (las técnicas),
+ * cuáles protegería con advertencia (todas las del sistema) y en cuáles pondría el encabezado gris; qué restauraría contra
+ * la copia (si ya hay una); la prueba EN MEMORIA de "alguien ordenó sólo las columnas del equipo" (qué reubicaría o si
+ * frenaría la corrida); y las filas cuyas trazas no cuadran HOY (el guardián no las toca: la primera copia las toma así).
+ */
+function paso58_guardianEnSeco() {
+  _anunciar_('paso 58 — el guardián EN SECO', 'guardianEnSeco()  [46_Guardian.js]', 'NO escribe nada (ni la base, ni la intermedia)',
+             'el log: 1. ocultaría · 2. protegería y encabezado gris · 3. restauraría · 4. la prueba de la desalineación · 5. las filas que no cuadran hoy');
+  return guardianEnSeco();
+}
+
+/**
+ * PASO 59 — ESCRIBE FORMATO (09/10): oculta las columnas técnicas, protege con ADVERTENCIA todas las del sistema (no
+ * bloquea ordenar ni borrar filas), pone su encabezado gris y toma la primera copia (SISTEMA_COPIA, intermedia). Ningún
+ * valor ni fondo de datos cambia. Después: GUARDIAN_ACTIVO = true + clasp push, y paso48_ayuda() (la GUÍA nueva).
+ */
+function paso59_guardianPreparar() {
+  _anunciar_('paso 59 — el guardián: ocultar, proteger y la primera copia', 'guardianPreparar()  [46_Guardian.js]',
+             'ESCRIBE: oculta columnas, protecciones con advertencia, el encabezado gris de las columnas del sistema; SISTEMA_COPIA en la intermedia',
+             'el log: cuántas ocultó, protegió y pintó, y la primera copia');
+  return guardianPreparar();
 }
 
 /**

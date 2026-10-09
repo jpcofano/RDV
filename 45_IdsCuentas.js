@@ -70,6 +70,11 @@ function idsHistorial(enSeco) {
   }
   try {
     verificarHojaDestino_(ssDestino_());
+    // el guardián (09/10): antes de escribir por número de fila, la base tiene que estar alineada
+    if (GUARDIAN_ACTIVO && !enSeco) {
+      const g = guardianAntesDeEscribir_(false);
+      if (g.frenar) { Logger.log('>>> EL GUARDIÁN FRENÓ: los IDs no escriben nada (mirar REGISTRO_PROTECCION).'); return null; }
+    }
     return _correrIds_(!!enSeco, true);
   } finally {
     lock.releaseLock();
@@ -119,6 +124,10 @@ function _correrIds_(enSeco, historial) {
   }
   try { escribirSinCruzarIds_(res, corrida); }
   catch (err) { Logger.log('>>> No se pudo escribir %s: %s', IDS_SOLAPA_SIN_CRUZAR, err); }
+  // el guardián (09/10): el historial de los IDs (paso 57, a mano) escribió en columnas del sistema: la copia, de nuevo
+  if (GUARDIAN_ACTIVO && historial && w) {
+    try { tomarCopiaSiAlineada_(); } catch (err) { Logger.log('>>> El guardián no pudo tomar la copia: %s', err); }
+  }
 
   res.ms = Date.now() - t0;
   res.resumen = (w ? 'escritos ' + w.ids + ' (fechas ' + w.fechas + ')' : 'escribiría ' + res.conteo.escribeId + ' (fechas ' + res.conteo.escribeFecha + ')') +
