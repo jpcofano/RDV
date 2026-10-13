@@ -2228,7 +2228,7 @@ function calcularPlan_(enSeco, entradas, opciones) {
            evStats: evStats, evBase: evBase, ejemplosEvento: ejemplosEvento,
            scoresVentana: scoresVentana, scoresTotal: scoresTotal,
            filasRevisar: filasRevisar, filasSinMatch: filasSinMatch,
-           decisiones: decisiones, emp: emp };
+           decisiones: decisiones, emp: emp, usados: usados };
 }
 
 function _sn_(b) { return b ? 'TRUE' : 'FALSE'; }
@@ -3518,6 +3518,14 @@ function escribirReportes_(plan, fallaron, soloEstos) {
     _intentar_(fallaron, RDV_HOJA_EMPAREJAR, function () {
       escribirHoja_(RDV_HOJA_EMPAREJAR, plan.emp.matriz);
       Logger.log('[upsert] %s: %s filas', RDV_HOJA_EMPAREJAR, plan.emp.matriz.length - 1);
+    });
+  }
+  // 13/10: los formularios sin fila, en el archivo de la base (48_FormulariosSinFila.js), con FORMULARIOS_SIN_FILA_ACTIVA
+  if (FORMULARIOS_SIN_FILA_ACTIVA && quiere(RDV_HOJA_FORMS_SIN_FILA)) {
+    _intentar_(fallaron, RDV_HOJA_FORMS_SIN_FILA, function () {
+      const r = formulariosSinFila_(plan);
+      escribirFormulariosSinFila_(r);
+      Logger.log('[upsert] %s (archivo de la base): %s formularios sin fila', RDV_HOJA_FORMS_SIN_FILA, r.lista.length);
     });
   }
   if (quiere(RDV_HOJA_SIN_MATCH)) {

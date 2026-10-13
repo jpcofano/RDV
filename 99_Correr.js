@@ -20,6 +20,9 @@
  *  >>> 13/10: el archivo "Agenda" con dos solapas nuevas ("AgendaCall" y "Agenda (mail)", 47_AgendaVistas.js), PRENDIDAS
  *      (AGENDA_VISTAS_NUEVAS = true): la próxima corrida de la hora las crea y ordena las solapas. Después: paso48_ayuda()
  *      (la LEER nueva). paso64_vistasAgenda_enSeco() sigue sirviendo de vista previa (no escribe nada).
+ *  >>> 13/10 (2): FORMULARIOS_SIN_FILA (48_FormulariosSinFila.js), escrita y APAGADA (FORMULARIOS_SIN_FILA_ACTIVA = false).
+ *      paso65_formulariosSinFila_enSeco(): cuántos hay hoy y cuáles. Si está bien: FORMULARIOS_SIN_FILA_ACTIVA = true +
+ *      clasp push (la próxima corrida crea la solapa en el archivo de la base); después paso48_ayuda() (la GUÍA).
  *  >>> 13/10: LA REGLA CORREGIDA DE SEGURIDAD, PRENDIDA (IDS_SEGURIDAD_FIGURA_PRIMERO = true; pasos 62 y 63 corridos).
  *      Ahora: paso57_idsHistorial() (vuelve a cruzar 3000-MAYSEGVC y 2014-SEPSEGVC, sólo celdas vacías).
  *  >>> 09/10 (6): LA REGLA CORREGIDA DE SEGURIDAD (primero la figura; la comuna sólo para un reemplazo), escrita y APAGADA
@@ -1277,6 +1280,16 @@ function paso61_seguridadSinCruzar() {
   _anunciar_('paso 61 — Seguridad que sigue sin cruzar', 'medirSeguridadSinCruzar()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
              'el log: cada caso con la comuna leída, el motivo, las filas de esa fecha y esa comuna, y las de la figura de la lista');
   return medirSeguridadSinCruzar();
+}
+
+/**
+ * PASO 65 — EN SECO (13/10): los FORMULARIOS SIN FILA (48_FormulariosSinFila.js), apagados (FORMULARIOS_SIN_FILA_ACTIVA): el plan
+ * de esta hora en seco y, en el log, cuántos hay hoy y cuáles, con el motivo y la fila más cercana. No toca nada.
+ */
+function paso65_formulariosSinFila_enSeco() {
+  _anunciar_('paso 65 — los formularios sin fila (EN SECO)', 'medirFormulariosSinFila()  [48_FormulariosSinFila.js]', 'NO escribe nada',
+             'el log: cuántos, los que no se listan (y por qué), y uno por uno con el motivo y la fila más cercana');
+  return medirFormulariosSinFila();
 }
 
 /**

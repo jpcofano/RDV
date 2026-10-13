@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV; FORMULARIOS_SIN_FILA, escrita y apagada hasta el paso 65: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1939,6 +1939,30 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
    cargue algo en Responsable / Check 1 / Check 2.
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
+
+#### FORMULARIOS_SIN_FILA (13/10) — escrita y APAGADA, primero el paso 65
+
+**Lo que había** (confirmado leyendo el código): los formularios sin fila salían sólo en el log del upsert ("los N
+formularios huérfanos, uno por uno", y sólo si eran 40 o menos) y al final de EMPAREJAR_MANUAL, en la intermedia; los dos con
+la definición vieja, **sin ningún par propuesto** (`calcularEmparejar_`). Un formulario con un par propuesto que no quedó en
+ninguna fila no figuraba como huérfano en ningún lado.
+
+**Lo nuevo** (decisión del usuario; CLAUDE.md, decisión 2, "FORMULARIOS_SIN_FILA"; `48_FormulariosSinFila.js`): la solapa
+`FORMULARIOS_SIN_FILA` en el archivo de la base. Los formularios de B con fecha en los últimos 30 días (`DIAS_ACTIVOS`) que no
+quedaron asignados a ninguna fila (el plan devuelve ahora `usados`), sin gemelos descartados, 0 inscriptos, futuros ni
+gemelos de uno con fila. Columnas: Formulario | Fecha | Inscriptos | Figura (del nombre) | Lugar (del nombre) | Motivo | Fila
+más cercana. Arriba: "Un formulario sin fila suele ser una reunión que falta cargar en la base." y el resumen (cuántos y los
+que no se listan). Protegida con advertencia, reescrita en cada corrida. GUÍA (paso 48): una sección nueva. Tests:
+`tests/formularios_sin_fila.test.js` (31), `tests/ayuda.test.js`.
+
+**Qué correr:**
+1. **`paso65_formulariosSinFila_enSeco()`** — NO escribe nada: el plan de esta hora en seco y, en el log, cuántos hay hoy, los
+   que no se listan y uno por uno con el motivo y la fila más cercana. **Predicción** (sin el número, que no se puede saber
+   sin correrlo): pocos, del orden de los "formularios sin candidato" del log del upsert más los que tienen un par propuesto
+   pero ninguna fila; la mayoría "sin ninguna fila de esa figura cerca" (reuniones que faltan cargar) o "en revisión"; los
+   de Seguridad sin figura, "sin figura".
+2. Si está bien: `FORMULARIOS_SIN_FILA_ACTIVA = true` + clasp push. La corrida de la hora siguiente crea la solapa.
+3. **`paso48_ayuda()`** — la GUÍA con la sección nueva.
 
 #### La "Agenda" también en el archivo RDV (13/10) — PRENDIDA
 

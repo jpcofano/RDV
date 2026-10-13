@@ -48,6 +48,10 @@ const AYUDA_GUIA_ = [
   ['item', 'Reunión parecida a una fila existente: "Es la misma: vincular" · "Son distintas: crear" · "Ya está cargada en otra fila: no crear" · "No sé".'],
   ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".'],
   ['item', 'Se aplica en la próxima hora.'],
+  ['seccion', 'SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)'],
+  ['item', 'Los formularios de los últimos 30 días que no quedaron en ninguna fila, con el motivo y la fila más cercana.'],
+  ['item', 'Un formulario sin fila suele ser una reunión que falta cargar en la base: cargarla y el sistema la completa solo.'],
+  ['item', 'La escribe el sistema cada hora. Sólo lectura.'],
   ['seccion', 'ARCHIVO "AGENDA"'],
   ['item', '"Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.'],
   ['item', 'La solapa "Agenda" de este archivo es la misma "Agenda": la escribe el sistema cada hora. Sólo lectura.']

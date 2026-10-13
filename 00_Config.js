@@ -1551,6 +1551,18 @@ const RDV_HOJA_AGENDA_EQUIPO = 'AGENDA_EQUIPO';
 const AGENDA_COPIA_EN_RDV = true;
 const AGENDA_RDV_SOLAPA = 'Agenda';
 const AGENDA_RDV_RESPALDO = 'Agenda (legado)';
+// ===================== Los formularios sin fila (13/10; 48_FormulariosSinFila.js) =====================
+
+/**
+ * **"FORMULARIOS_SIN_FILA"** (decisión del usuario, 13/10), en el archivo de la base, para el equipo: los formularios de B de
+ * los últimos DIAS_ACTIVOS días que no quedaron en ninguna fila, con el motivo en palabras y la fila más cercana. Reescrita
+ * en cada corrida, protegida con advertencia. Sin los gemelos descartados (regla 3), los de 0 inscriptos ni los de reuniones
+ * futuras. APAGADO hasta ver el paso 65 (en seco: cuántos hay hoy y cuáles).
+ */
+const FORMULARIOS_SIN_FILA_ACTIVA = false;
+const RDV_HOJA_FORMS_SIN_FILA = 'FORMULARIOS_SIN_FILA';
+const FORMULARIOS_SIN_FILA_LINEA = 'Un formulario sin fila suele ser una reunión que falta cargar en la base.';
+const DESC_PROTECCION_FORMS_SIN_FILA = 'RDV: la escribe el sistema en cada corrida — es un reporte, no se edita';
 const DESC_PROTECCION_VISTA_MAIL = 'RDV: la escribe el sistema — sólo se editan las columnas del equipo (Responsable, Check 1, Check 2) y las opciones';
 
 /** Paso 16: una fila "en agenda" con la fecha pasada hace más de estos días es un aviso. */

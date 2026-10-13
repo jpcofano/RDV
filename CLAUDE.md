@@ -2438,6 +2438,22 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    (intermedia), **sólo informativa**: fila, figura, fecha, barrio, motivo y la mejor opción con su
    confianza. Nadie elige ahí.
 
+   #### `FORMULARIOS_SIN_FILA`: los formularios que no quedaron en ninguna fila (13/10)
+
+   Hasta el 13/10 los formularios sin fila salían sólo en el log del upsert ("los N formularios huérfanos, uno por uno", si
+   eran 40 o menos) y al final de `EMPAREJAR_MANUAL` (intermedia), los dos con la definición vieja: **sin ningún par
+   propuesto**. Un formulario que tenía un par propuesto pero no quedó en ninguna fila no aparecía como huérfano en ningún
+   lado. Decisión del usuario: una solapa en el **archivo de la base**, para el equipo (`48_FormulariosSinFila.js`;
+   `FORMULARIOS_SIN_FILA_ACTIVA`): **los formularios de `B` con fecha en los últimos `DIAS_ACTIVOS` días que no quedaron
+   asignados a ninguna fila** (ni escritos ni reservados por la traza de una fila, en todo el historial), sin los gemelos
+   descartados por la regla 3, los de 0 inscriptos, los de reuniones futuras (esperan su fila) ni los gemelos de uno que ya
+   tiene fila. Por cada uno: nombre, fecha (la del nombre o el cierre), inscriptos, figura y lugar que se leen del nombre, el
+   **motivo** en palabras (en revisión / espera su fila / varias figuras / sin figura / sin ninguna fila de esa figura cerca /
+   la fila de la figura es en otro lugar / ya tiene otro formulario / es de antes de las activas / está a más de 3 días / no
+   se cruzó) y **la fila más cercana**. Arriba: *"Un formulario sin fila suele ser una reunión que falta cargar en la base."*
+   Reescrita en cada corrida (`escribirReportes_`), protegida con advertencia; no es "RVD JM-CM - ES". Es un reporte: no
+   decide ni escribe nada en la base.
+
    #### `EMPAREJAR_MANUAL`: el lado que falta
 
    Todo lo demás mira **desde el destino hacia `B`**. Falta el opuesto: **formularios que no se
@@ -2842,6 +2858,10 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
                    —Responsable, Check 1, Check 2, por POSICIÓN B:D— guardadas por agenda_uid en AGENDA_EQUIPO de la
                    intermedia antes de cada reescritura: si no se pueden guardar, la vista no se reescribe). "Agenda" y
                    "Agenda cerrada" no cambian. Paso 64 en seco. PRENDIDO el 13/10 (AGENDA_VISTAS_NUEVAS)       ← 09/10
+48_FormulariosSinFila.js  la solapa FORMULARIOS_SIN_FILA del archivo de la base, para el equipo: los formularios de B de los
+                   últimos DIAS_ACTIVOS días que no quedaron en ninguna fila (sin gemelos descartados, 0 inscriptos ni
+                   futuros), con el motivo en palabras y la fila más cercana; reescrita en cada corrida (escribirReportes_),
+                   protegida con advertencia. Paso 65 en seco. APAGADO (FORMULARIOS_SIN_FILA_ACTIVA = false)    ← 13/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
