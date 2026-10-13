@@ -1359,6 +1359,10 @@ escribir nada y diga qué está listo para prender.
 
 #### El GUARDIÁN de las columnas del sistema: escrito y APAGADO (09/10) — primero el paso 58
 
+**13/10, el texto llegó otra vez** (el usuario: "si ya lo tenés empezado, seguí desde donde quedaste"): estaba hecho el 09/10.
+Se sumaron las dos cosas que faltaban (abajo, punto 3): las columnas que nacen después nacen protegidas / ocultas, y la
+prueba del orden parcial chico con el guardián activo. Las 14 ocultas son exactamente las del texto del usuario.
+
 **Qué es** (el texto del usuario llegó el 09/10; CLAUDE.md, sección 0, "La cuarta excepción"; código: `46_Guardian.js`). El
 equipo ordena y borra filas; las columnas del sistema no pueden quedar modificadas:
 - **se ocultan** las 14 técnicas (`GUARDIAN_OCULTAR`: RDV_UID, form_origen, form_score, form_nivel, form_fecha_match,
@@ -1399,8 +1403,15 @@ de la decisión 14): se restaura. Esas correcciones pasan por quien opera el sis
 2. **`paso59_guardianPreparar()`** — ESCRIBE FORMATO: oculta, protege con advertencia, pinta el encabezado gris y toma la
    primera copia. Ningún valor ni fondo de datos cambia.
 3. **`GUARDIAN_ACTIVO = true`** + clasp push; después `paso48_ayuda()`.
-   Si el paso 57 (los IDs) se corre después del 59, volver a correr el 59 (es idempotente): protege y pone en gris las dos
-   columnas nuevas.
+   **13/10: las columnas nuevas ya no hace falta protegerlas a mano.** Con el guardián prendido, al final de cada corrida
+   una columna del sistema sin su protección (nació después del paso 59: las dos del paso 57, por ejemplo) se protege con
+   advertencia, se pone gris y, si es técnica, se oculta (`asegurarColumnasNuevasGuardian_`). Una técnica ya protegida que el
+   equipo mostró no se vuelve a ocultar. Tests: `guardian_activo` [7] (el orden parcial CHICO, con el guardián activo: sólo
+   las últimas 10 filas; reubica, no frena, no toca las de arriba) y [8] (las columnas nuevas), 73 chequeos. Un agente revisor
+   (13/10) no encontró nada ALTO; se aplicaron: la protección va AL FINAL (si la corrida se corta, la columna queda sin
+   protección y la siguiente la termina, en vez de quedar protegida pero a la vista para siempre); cuenta sólo la protección
+   DEL SISTEMA (por su descripción: la del guardián o la de las derivadas, ésta aunque sea acotada), no la de otra persona.
+   Si alguien saca a mano la protección de advertencia de una columna del sistema, la corrida siguiente la vuelve a poner.
 
 **Predicción del paso 58** (anotada antes de correrlo):
 - **1.** "OCULTARÍA 14 columnas técnicas", con sus letras (traza en AP..AU, agenda_* en AW..BD, si no se movieron).

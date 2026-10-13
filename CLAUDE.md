@@ -229,7 +229,10 @@ protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`
 
 - las **técnicas** (sólo de traza: `GUARDIAN_OCULTAR`, las 6 de traza y las 8 `agenda_*`) se **ocultan**; **todas** las del
   sistema (traza, agenda, "ID cuentas", "Fecha envío campañas" y las 12 derivadas) llevan **protección con advertencia** y
-  el **encabezado gris** (paso 59, una vez; buscadas por encabezado). Las del equipo no se tocan;
+  el **encabezado gris** (paso 59, una vez; buscadas por encabezado). Las del equipo no se tocan. **Las columnas del
+  sistema que nacen después** (13/10): al final de cada corrida con el guardián prendido, una columna del sistema sin su
+  protección es nueva y nace protegida, gris y, si es técnica, oculta (`asegurarColumnasNuevasGuardian_`); una técnica ya
+  protegida que alguien del equipo mostró no se vuelve a ocultar;
 - en la corrida de la hora, **antes de escribir nada**, el guardián compara las columnas guardadas (traza, agenda, IDs; las
   derivadas no: se recalculan) contra su **copia** (`SISTEMA_COPIA`, intermedia; clave agenda_uid o RDV_UID y huella figura +
   fecha), que se toma al final de cada corrida: lo que cambió sin que lo cambiara el sistema se **restaura**; si alguien

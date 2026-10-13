@@ -443,14 +443,17 @@ function faltaOcultarProteger_() {
   const cols = columnasGuardian_(hdr), todas = cols.guardadas.concat(cols.derivadas);
   const ocultar = GUARDIAN_OCULTAR.map(function (n) { return { n: n, c: findIdxOr_(hdr, [n], true) }; })
     .filter(function (x) { return x.c != null && !(sh.isColumnHiddenByUser && sh.isColumnHiddenByUser(x.c + 1)); });
+  // 13/10 (revisor): cuenta sólo la protección DEL SISTEMA (la del guardián o la de las derivadas, por su descripción), no la
+  // de otra persona; y la de las derivadas vale aunque sea acotada (se creó hasta el maxRows de ese día: no es "nueva").
+  const nuestras = [DESC_PROTECCION_SISTEMA, DESC_PROTECCION_DERIVADAS];
   const prot = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).map(function (p) {
     const r = p.getRange();
-    return { desde: r.getColumn(), hasta: r.getLastColumn(), fila1: r.getRow(), fila2: r.getLastRow() };
+    return { desde: r.getColumn(), hasta: r.getLastColumn(), fila1: r.getRow(), fila2: r.getLastRow(),
+             nuestra: nuestras.indexOf(p.getDescription ? p.getDescription() : '') >= 0 };
   });
-  const ultima = Math.max(2, sh.getLastRow());
   const proteger = todas.filter(function (x) {
     const c = x.col + 1;
-    return !prot.some(function (p) { return p.desde <= c && c <= p.hasta && p.fila1 <= 2 && p.fila2 >= ultima; });
+    return !prot.some(function (p) { return p.nuestra && p.desde <= c && c <= p.hasta && p.fila1 <= 2; });
   });
   const fondos = sh.getRange(1, 1, 1, sh.getLastColumn()).getBackgrounds()[0];
   const gris = todas.filter(function (x) { return String(fondos[x.col] || '').toLowerCase() !== GUARDIAN_GRIS_ENCABEZADO.toLowerCase(); });
@@ -545,14 +548,19 @@ function pruebaDesalineacionGuardian_(bloque) {
  * **Paso 59 — ESCRIBE (formato, no valores)**: oculta las técnicas, protege con advertencia todas las del sistema, pone su
  * encabezado gris y toma la primera copia. Ningún valor ni fondo de datos cambia. Después: GUARDIAN_ACTIVO = true.
  */
+/** Protege con advertencia (toda la columna) cada columna de `lista` (`[{ col }]`, 0-based). */
+function _protegerColumnasGuardian_(sh, lista) {
+  lista.forEach(function (x) {
+    const l = _a1_(1, x.col + 1).replace(/\d+$/, '');
+    sh.getRange(l + ':' + l).protect().setDescription(DESC_PROTECCION_SISTEMA).setWarningOnly(true);
+  });
+}
+
 function guardianPreparar() {
   Logger.log('=== paso 59 — el guardián: ocultar, proteger y la primera copia ===');
   const f = faltaOcultarProteger_(), sh = f.sh;
   f.ocultar.forEach(function (x) { sh.hideColumns(x.c + 1); });
-  f.proteger.forEach(function (x) {
-    const l = _a1_(1, x.col + 1).replace(/\d+$/, '');
-    sh.getRange(l + ':' + l).protect().setDescription(DESC_PROTECCION_SISTEMA).setWarningOnly(true);
-  });
+  _protegerColumnasGuardian_(sh, f.proteger);
   if (f.gris.length) sh.getRangeList(f.gris.map(function (x) { return _a1_(1, x.col + 1); })).setBackground(GUARDIAN_GRIS_ENCABEZADO);
   Logger.log('>>> ocultas %s | protegidas con advertencia %s | encabezado gris %s (de %s columnas del sistema).', f.ocultar.length,
              f.proteger.length, f.gris.length, f.todas.length);
@@ -563,4 +571,29 @@ function guardianPreparar() {
   Logger.log('>>> primera copia: %s filas (sirve para ver una desalineación; la que restaura la toma la primera corrida prendida). ' +
              'Ahora: GUARDIAN_ACTIVO = true + clasp push.', n);
   return { ocultas: f.ocultar.length, protegidas: f.proteger.length, gris: f.gris.length, copia: n };
+}
+
+/**
+ * **Las columnas del sistema que NACEN después del paso 59** (13/10: "las columnas nuevas que el sistema agregue en el
+ * futuro nacen ocultas o protegidas según corresponda"). En cada corrida de la hora con el guardián prendido, al final: una
+ * columna del sistema SIN la protección del sistema es nueva (el paso 59 protegió todas las que había) → se protege con
+ * advertencia, se pinta su encabezado de gris y, si es técnica (GUARDIAN_OCULTAR), se oculta. Una columna técnica que ya
+ * está protegida y que alguien del equipo mostró NO se vuelve a ocultar (no se pelea con quien la quiere mirar). No toca
+ * valores ni fondos de datos. Devuelve `{ nuevas: [nombres] }`.
+ */
+function asegurarColumnasNuevasGuardian_() {
+  const f = faltaOcultarProteger_(), sh = f.sh;
+  if (!f.proteger.length) return { nuevas: [] };
+  const tecnicas = {};
+  GUARDIAN_OCULTAR.forEach(function (n) { const c = findIdxOr_(f.hdr, [n], true); if (c != null) tecnicas[c] = true; });
+  // 13/10 (revisor): la protección AL FINAL. Es lo que marca "ya no es nueva": si la corrida se corta antes (el límite de 6
+  // minutos), la columna sigue sin protección y la corrida siguiente termina el gris y el ocultar.
+  sh.getRangeList(f.proteger.map(function (x) { return _a1_(1, x.col + 1); })).setBackground(GUARDIAN_GRIS_ENCABEZADO);
+  const ocultas = f.proteger.filter(function (x) { return tecnicas[x.col]; });
+  ocultas.forEach(function (x) { sh.hideColumns(x.col + 1); });
+  _protegerColumnasGuardian_(sh, f.proteger);
+  const nombres = f.proteger.map(function (x) { return x.nombre + (tecnicas[x.col] ? ' (oculta)' : ''); });
+  Logger.log('>>> el guardián: %s columna(s) del sistema NUEVA(S), protegidas con advertencia y con el encabezado gris: %s',
+             f.proteger.length, nombres.join(', '));
+  return { nuevas: nombres };
 }

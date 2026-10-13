@@ -294,7 +294,7 @@ console.log('[5] apagado y prendido');
   const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
   const iG = up.indexOf('resGuardian = guardianAntesDeEscribir_(enSeco)'), iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iC = up.indexOf('try { tomarCopiaSiAlineada_(); }');
   ok(iG > 0 && iG < iAg && iC > iAg, 'la corrida de la hora: el guardián ANTES de la agenda (y de todo), la copia al final');
-  ok(/if \(GUARDIAN_ACTIVO\) \{\s*try \{ resGuardian = guardianAntesDeEscribir_\(enSeco\); \}/.test(up) && /if \(GUARDIAN_ACTIVO && !enSeco\) \{\s*try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
+  ok(/if \(GUARDIAN_ACTIVO\) \{\s*try \{ resGuardian = guardianAntesDeEscribir_\(enSeco\); \}/.test(up) && /if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,300}?try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
      '   las dos, sólo con GUARDIAN_ACTIVO');
   ok(/if \(resGuardian\.frenar && !enSeco\) \{[\s\S]{0,400}enSeco = true;/.test(up), '   si frena, el resto de la corrida va en seco (no escribe nada en la base)');
   // prendido: las escrituras del sistema dejan el sello
@@ -377,6 +377,100 @@ console.log('[6] los casos del revisor del punto 3c (09/10)');
   r = E2.run('guardianAntesDeEscribir_(false)');
   ok(r.frenar && E2.base().escrituras.length === nEsc3 && E2.intermedia('REGISTRO_PROTECCION').valores.every(function (x, i) { return i === 0 || /AMBIGUA/.test(x[1]); }),
      'con la copia fresca y una AMBIGUA: frena, no escribe NADA, y REGISTRO_PROTECCION sólo anota las ambiguas');
+}
+
+console.log('[7] el ORDEN PARCIAL CHICO en la planilla (13/10): sólo las últimas filas; el resto, quieto');
+{
+  const mk = function () {
+    const E0 = entorno();
+    const B = base(E0, 40).map(function (r) { return r.map(function (v) { return v instanceof Date ? new Date(v.getTime()) : v; }); });
+    return entorno({ bloqueBase: B });
+  };
+  const E = mk();
+  E.run('tomarCopiaSistema_()');
+  const antes = E.base().valores.map(function (x) { return x.slice(); });
+  // sólo las filas de datos 30..39 (las de la planilla 32..41): el mes activo, por ejemplo
+  const P = ordenParcial(E, E.base().valores.slice(0, 41).map(function (x) { return x.slice(); }), 30, 40);
+  const movidas = P.filter(function (r, i) { return i > 0 && r[col('Figura')] !== antes[i][col('Figura')]; }).length;
+  P.forEach(function (fila, i) { E.base().valores[i] = fila.slice(); });
+  const r = E.run('guardianAntesDeEscribir_(false)');
+  ok(movidas >= 5 && !r.frenar && r.plan.reubicadas.length > 0 && r.plan.ambiguas.length === 0,
+     'el orden parcial CHICO (' + movidas + ' filas movidas entre las últimas 10): reubica ' + r.plan.reubicadas.length + ', no frena');
+  ok(E.base().escrituras.every(function (e) { return e.fila >= 32; }), '   sólo escribe en las filas que se movieron (32 a 41): las de arriba, intactas');
+  ok(mismoSistemaPorHuella(E, antes.slice(0, 41), E.base().valores.slice(0, 41)).length === 0, '   y cada reunión vuelve a tener sus columnas del sistema');
+  ok(E.base().escrituras.every(function (e) { return SISTEMA(E).indexOf(e.col - 1) >= 0; }), '   sin tocar ninguna columna del equipo');
+}
+
+console.log('[8] las columnas del sistema que NACEN después del paso 59 (13/10): protegidas, grises y, si son técnicas, ocultas');
+{
+  const E0 = entorno();
+  const B = base(E0, 10).map(function (r) { return r.map(function (v) { return v instanceof Date ? new Date(v.getTime()) : v; }); });
+  const E = entorno({ bloqueBase: B });
+  const sh = E.base().sheet;
+  const ocultas = [], protecciones = [];
+  sh.isColumnHiddenByUser = function (c) { return ocultas.indexOf(c) >= 0; };
+  sh.hideColumns = function (c) { if (ocultas.indexOf(c) < 0) ocultas.push(c); };
+  sh.getProtections = function () { return protecciones.map(function (p) { return { getRange: function () { return { getColumn: function () { return p.c; }, getLastColumn: function () { return p.c; }, getRow: function () { return 1; }, getLastRow: function () { return 100000; } }; }, getDescription: function () { return p.desc; }, isWarningOnly: function () { return p.adv; } }; }); };
+  const getRangeOrig = sh.getRange;
+  sh.getRange = function (r, c, nr, nc) {
+    if (typeof r === 'string') {
+      const letra = r.split(':')[0];
+      let n = 0; for (let i = 0; i < letra.length; i++) n = n * 26 + (letra.charCodeAt(i) - 64);
+      return { protect: function () { const p = { c: n, desc: '', adv: false }; protecciones.push(p);
+        const o = { setDescription: function (d) { p.desc = d; return o; }, setWarningOnly: function (w) { p.adv = w; return o; } }; return o; } };
+    }
+    return getRangeOrig(r, c, nr, nc);
+  };
+  E.run('guardianPreparar()');
+  ok(E.run('asegurarColumnasNuevasGuardian_()').nuevas.length === 0, 'después del paso 59: ninguna nueva');
+  // "nacen" dos columnas del sistema: ID cuentas (visible) y agenda_uid (técnica); y el equipo MUESTRA form_score (protegida)
+  const cID = col('ID cuentas') + 1, cUid = col('agenda_uid') + 1, cScore = col('form_score') + 1;
+  [cID, cUid].forEach(function (c) { for (let i = protecciones.length - 1; i >= 0; i--) if (protecciones[i].c === c) protecciones.splice(i, 1); });
+  [cUid, cScore].forEach(function (c) { const k = ocultas.indexOf(c); if (k >= 0) ocultas.splice(k, 1); });
+  [cID, cUid].forEach(function (c) { delete E.base().fondos['1:' + c]; });
+  const fotoValores = JSON.stringify(E.base().valores);
+  const fotoFondosDatos = JSON.stringify(Object.keys(E.base().fondos).filter(function (k) { return !/^1:/.test(k); }).sort()
+    .map(function (k) { return [k, E.base().fondos[k]]; }));
+  const r = E.run('asegurarColumnasNuevasGuardian_()');
+  ok(r.nuevas.length === 2 && protecciones.filter(function (p) { return (p.c === cID || p.c === cUid) && p.adv; }).length === 2,
+     'las dos nuevas, protegidas con ADVERTENCIA: ' + r.nuevas.join(', '));
+  ok(ocultas.indexOf(cUid) >= 0 && ocultas.indexOf(cID) < 0, '   la técnica (agenda_uid) se oculta; ID cuentas queda a la vista');
+  ok(ocultas.indexOf(cScore) < 0, '   form_score, que el equipo mostró (ya protegida), NO se vuelve a ocultar');
+  ok(E.base().fondos['1:' + cID] === E.cfg('GUARDIAN_GRIS_ENCABEZADO') && E.base().fondos['1:' + cUid] === E.cfg('GUARDIAN_GRIS_ENCABEZADO'),
+     '   el encabezado gris');
+  ok(JSON.stringify(E.base().valores) === fotoValores, '   ningún valor cambia');
+  ok(JSON.stringify(Object.keys(E.base().fondos).filter(function (k) { return !/^1:/.test(k); }).sort()
+       .map(function (k) { return [k, E.base().fondos[k]]; })) === fotoFondosDatos, '   ningún fondo de datos cambia (sólo el encabezado)');
+  const sis = SISTEMA(E);
+  ok(protecciones.every(function (p) { return sis.indexOf(p.c - 1) >= 0; }), '   ninguna columna del equipo queda protegida');
+  ok(E.run('asegurarColumnasNuevasGuardian_()').nuevas.length === 0, '   otra vez: nada (idempotente)');
+  // una protección de OTRA persona (varias columnas, otra descripción) no cuenta como la del sistema
+  const cF = col('Fecha envío campañas') + 1;
+  for (let i = protecciones.length - 1; i >= 0; i--) if (protecciones[i].c === cF) protecciones.splice(i, 1);
+  protecciones.push({ c: cF, desc: 'protegida por alguien del equipo', adv: false });
+  const r2 = E.run('asegurarColumnasNuevasGuardian_()');
+  ok(r2.nuevas.length === 1 && /Fecha envío campañas/.test(r2.nuevas[0]), '   con una protección de otra persona (otra descripción): igual se le pone la del sistema');
+  // la de las derivadas, acotada (paso 26, hasta el maxRows de ese día): no es "nueva"
+  const cD = col('Comuna') + 1;
+  for (let i = protecciones.length - 1; i >= 0; i--) if (protecciones[i].c === cD) protecciones.splice(i, 1);
+  protecciones.push({ c: cD, desc: E.cfg('DESC_PROTECCION_DERIVADAS'), adv: true });
+  ok(E.run('asegurarColumnasNuevasGuardian_()').nuevas.length === 0, '   la protección de las derivadas (paso 26) cuenta como del sistema: no la da por nueva');
+  // el corte a la mitad: si la corrida se corta, la columna queda SIN protección y la siguiente la termina
+  const cV = col('agenda_version') + 1;
+  for (let i = protecciones.length - 1; i >= 0; i--) if (protecciones[i].c === cV) protecciones.splice(i, 1);
+  { const k = ocultas.indexOf(cV); if (k >= 0) ocultas.splice(k, 1); }
+  const hideOrig = sh.hideColumns;
+  sh.hideColumns = function () { throw new Error('se cortó la corrida'); };
+  let cortada = false;
+  try { E.run('asegurarColumnasNuevasGuardian_()'); } catch (e) { cortada = true; }
+  ok(cortada && !protecciones.some(function (p) { return p.c === cV; }), '   cortada antes de terminar: la columna queda SIN protección (no "medio hecha")');
+  sh.hideColumns = hideOrig;
+  const r3 = E.run('asegurarColumnasNuevasGuardian_()');
+  ok(r3.nuevas.length === 1 && ocultas.indexOf(cV) >= 0 && protecciones.some(function (p) { return p.c === cV && p.adv; }),
+     '   y la corrida siguiente la termina: oculta y protegida');
+  const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
+  ok(/if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,200}try \{ asegurarColumnasNuevasGuardian_\(\); \}[\s\S]{0,200}try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
+     'la corrida de la hora: al final, sólo con GUARDIAN_ACTIVO y no en seco, antes de la copia');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

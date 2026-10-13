@@ -1746,6 +1746,9 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
 
   // El guardián: la copia de las columnas del sistema, al final (después de todo lo que escribió esta corrida).
   if (GUARDIAN_ACTIVO && !enSeco) {
+    // 13/10: una columna del sistema que nació en esta corrida (o después del paso 59) queda protegida (y oculta si es técnica)
+    try { asegurarColumnasNuevasGuardian_(); }
+    catch (err) { Logger.log('>>> El guardián no pudo proteger las columnas nuevas: %s', err); }
     try { tomarCopiaSiAlineada_(); }
     catch (err) { Logger.log('>>> El guardián no pudo tomar la copia: %s (la próxima corrida la tomará; ésa no compara).', err); }
   }

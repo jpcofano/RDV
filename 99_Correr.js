@@ -44,6 +44,7 @@
  *                                    las filas que no cuadran hoy
  *        paso59_guardianPreparar()   ESCRIBE FORMATO: oculta, protege con advertencia, encabezado gris; la primera copia
  *      Después: GUARDIAN_ACTIVO = true + clasp push, y paso48_ayuda() (la GUÍA con "las columnas grises"). ESTADO 0.z.
+ *      (13/10: las columnas del sistema que nazcan después las protege —y oculta, si son técnicas— la corrida de la hora.)
  *  >>> 09/10, A LA MAÑANA: correr **manana()** (abajo, junto a los pasos 55-57). SÓLO LECTURA: no escribe nada. Corre la
  *      medición de los IDs (paso 55: el cruce, el caso 3735 → 805) y las del guardián (las filas cuyas trazas no cuadran hoy
  *      y la prueba del orden parcial, en memoria) y el inventario de las columnas del sistema (ocultas/protegidas), y termina
