@@ -2837,7 +2837,7 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
                    Lugar por reunión, lo cambiado en naranja, lo desaparecido tachado, y las COLUMNAS DEL EQUIPO
                    —Responsable, Check 1, Check 2, por POSICIÓN B:D— guardadas por agenda_uid en AGENDA_EQUIPO de la
                    intermedia antes de cada reescritura: si no se pueden guardar, la vista no se reescribe). "Agenda" y
-                   "Agenda cerrada" no cambian. Paso 64 en seco. APAGADO (AGENDA_VISTAS_NUEVAS = false)         ← 09/10
+                   "Agenda cerrada" no cambian. Paso 64 en seco. PRENDIDO el 13/10 (AGENDA_VISTAS_NUEVAS)       ← 09/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

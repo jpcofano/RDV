@@ -150,10 +150,10 @@ const enVista = function (E, k) {
 };
 
 // ===================================================================================================================
-console.log('[1] apagado por defecto, y el gancho');
+console.log('[1] prendido (13/10), y el gancho');
 {
   const E = entorno(BASE());
-  ok(E.cfg('AGENDA_VISTAS_NUEVAS') === false, 'AGENDA_VISTAS_NUEVAS = false');
+  ok(E.cfg('AGENDA_VISTAS_NUEVAS') === true, 'AGENDA_VISTAS_NUEVAS = true (prendido el 13/10)');
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '40_Agenda.js'), 'utf8');
   ok(/_escribirSolapaCopiaAgenda_\(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz\.cerrada\);\s*\/\/[^\n]*\n\s*if \(AGENDA_VISTAS_NUEVAS\) escribirVistasAgenda_\(ss, pz\.abierta, P\);/.test(src),
      'las vistas se escriben DESPUÉS de "Agenda" y "Agenda cerrada", y sólo con AGENDA_VISTAS_NUEVAS');
@@ -296,6 +296,17 @@ console.log('[8] el EN SECO (paso 64): la vista previa en el log, sin escribir n
      'el log: las dos solapas, los colores, lo naranja «…» y lo tachado ~~…~~');
   ok(nombres(E.agenda).join('|') === antes && !E.agenda.getSheetByName('AgendaCall'), 'no crea ni toca ninguna solapa');
   if (process.env.VER) console.log(L);
+}
+
+console.log('[9] de punta a punta: la copia de siempre (escribirCopiaAgenda_) escribe también las dos vistas, con el interruptor');
+{
+  const E = entorno(BASE());
+  E.ctx.__m = abierta(E, SEMANA);
+  E.run('escribirCopiaAgenda_(__m, {})');
+  const L = E.log();
+  ok(!/NO se escribi|is not defined|TypeError/.test(L), 'sin errores en el log' + (/NO se escribi|is not defined|TypeError/.test(L) ? ': ' + L.split('\n').filter(function (x) { return /NO se escribi|is not defined|TypeError/.test(x); }).join(' | ') : ''));
+  igual(nombres(E.agenda), ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada'], 'las cinco solapas, en su orden');
+  ok(E.agenda.getSheetByName('AgendaCall').v.length >= 2 && !!enVista(E, 'c-2'), 'AgendaCall y "Agenda (mail)" escritas desde la misma corrida');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

@@ -1509,10 +1509,10 @@ const DESC_PROTECCION_COPIA_AGENDA = 'RDV: la escribe el sistema en cada corrida
  * semana en curso y la siguiente, si llegó su mail): "AgendaCall" (otro orden de columnas y un color por fila) y
  * "Agenda (mail)" (como se ve el mail: un renglón por día y una celda de tres líneas por reunión, lo cambiado en naranja, lo
  * desaparecido tachado, y tres COLUMNAS DEL EQUIPO —Responsable, Check 1, Check 2— que se guardan por agenda_uid y no se
- * pierden al reescribir). "Agenda" y "Agenda cerrada" quedan como están. APAGADO hasta ver el paso 64 (en seco: cómo
- * quedaría una semana en cada una).
+ * pierden al reescribir). "Agenda" y "Agenda cerrada" quedan como están. PRENDIDO el 13/10 (decisión del usuario; el paso 64
+ * sigue sirviendo de vista previa en seco).
  */
-const AGENDA_VISTAS_NUEVAS = false;
+const AGENDA_VISTAS_NUEVAS = true;
 const AGENDA_SOLAPA_CALL = 'AgendaCall';
 const AGENDA_SOLAPA_VISTA_MAIL = 'Agenda (mail)';
 /** El orden de las solapas del archivo "Agenda". */

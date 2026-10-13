@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", escritas y apagadas hasta el paso 64: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1898,7 +1898,7 @@ politico") y el 10, **los activadores**:
 MANTENER; el paso 24 se niega con legado vivo o con el destino en la copia, instala uno solo y no
 duplica; borrarlo no toca los demás. Toda la suite en verde.
 
-#### El archivo "Agenda": "AgendaCall" y "Agenda (mail)" — escritas y APAGADAS (09/10), primero el paso 64
+#### El archivo "Agenda": "AgendaCall" y "Agenda (mail)" — escritas el 09/10, PRENDIDAS el 13/10
 
 **Qué es** (pedido del usuario, 09/10; código: `47_AgendaVistas.js`; sólo el archivo "Agenda", **nada de la base**). Cinco
 solapas, en este orden: **LEER | Agenda | AgendaCall | Agenda (mail) | Agenda cerrada**. "Agenda" y "Agenda cerrada" quedan
@@ -1923,18 +1923,17 @@ exactamente como estaban (las dos vistas se escriben después, desde las mismas 
   oculta.
 - **LEER** (paso 48): las dos solapas nuevas, los colores y las columnas del equipo.
 
-**Interruptor**: `AGENDA_VISTAS_NUEVAS = false`. Tests: `tests/agenda_vistas.test.js` (33: sobre todo que lo del equipo
+**Interruptor**: `AGENDA_VISTAS_NUEVAS = true` (**prendido el 13/10**, decisión del usuario). Tests: `tests/agenda_vistas.test.js` (36: sobre todo que lo del equipo
 sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desaparece, al cierre de la semana y a que vuelva).
 
-**Qué correr:**
-1. **`paso64_vistasAgenda_enSeco()`** — NO escribe nada: la corrida de la agenda en seco y, en el log, cómo quedaría la semana
-   en cada solapa nueva (`[VERDE]` / `[AMARILLO]` / `[ROSADO]`, `«naranja»`, `~~tachado~~`). **Predicción**: las mismas
-   reuniones que hoy muestra "Agenda" (la semana del 05/10 y, si llegó su mail, la del 12/10), en el mismo orden; los días 05 a
-   07/10 en verde, 08 a 10/10 en amarillo, la semana siguiente en rosado; doce renglones de día (seis por semana); en naranja
-   sólo las reuniones con algo en "Cambios".
-2. Si se ve bien: `AGENDA_VISTAS_NUEVAS = true` + clasp push. La corrida de la hora siguiente crea las dos solapas y las
-   ordena.
-3. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
+**Qué falta / qué mirar:**
+1. La corrida de la hora siguiente al clasp push crea "AgendaCall" y "Agenda (mail)" y deja las solapas en el orden de arriba.
+   **Predicción**: las mismas reuniones que "Agenda" (la semana del 12/10 y, si llegó su mail, la del 19/10), en el mismo
+   orden; el lunes 12/10 en verde, del 13/10 al sábado en amarillo, la semana siguiente en rosado; seis renglones de día por
+   semana; en naranja sólo las reuniones con algo en "Cambios". `AGENDA_EQUIPO` (intermedia) aparece recién cuando el equipo
+   cargue algo en Responsable / Check 1 / Check 2.
+2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
+3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
 #### Pendientes al 04/10
 

@@ -1,7 +1,7 @@
 /**
  * 47_AgendaVistas.js — LAS DOS VISTAS NUEVAS DEL ARCHIVO "AGENDA" (09/10, decisión del usuario). Configuración: 00_Config.js,
- * "El archivo Agenda: las dos vistas nuevas". APAGADO: AGENDA_VISTAS_NUEVAS = false (paso 64: en seco, cómo quedaría una
- * semana en cada una).
+ * "El archivo Agenda: las dos vistas nuevas". PRENDIDO el 13/10: AGENDA_VISTAS_NUEVAS = true (paso 64: en seco, cómo
+ * quedaría una semana en cada una).
  *
  * El archivo "Agenda" (AGENDA_COPIA_SS) queda con cinco solapas, en este orden: LEER | Agenda | AgendaCall | Agenda (mail) |
  * Agenda cerrada. "Agenda" y "Agenda cerrada" no cambian (las escribe 40_Agenda.js, como siempre). Las dos nuevas salen de
