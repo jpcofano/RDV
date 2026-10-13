@@ -707,7 +707,7 @@ function _seguridadFiguraPrimeroIds_(r, idx) {
     if (deFigura.length === 1 && !deFigura[0].idActual) {
       const x = deFigura[0], e = { x: x, ident: 'parcial', dias: 0, lug: compararUbicacion_(u, x.ubic) };
       return { estado: 'cruza', nivel: 'misma_fecha', regla: 'seguridad_por_figura', cands: [e], desempate: [], e: e,
-               comunaLista: comuna, comunaFila: x.ubic.comuna };
+               comunaLista: comuna, comunaFila: x.ubic.comuna, subzonaLista: u.subzona || '', subzonaFila: x.ubic.subzona || '' };
     }
   }
   // 3. COMUNA, sólo un reemplazo: la figura de la fila no está en la lista ese día
@@ -1124,6 +1124,12 @@ function _descCandidataIds_(e) {
          (e.x.noCandidata ? ', ' + (e.x.status || 'reprogramada') : '') + ')';
 }
 
+/** "C6", "C1 Norte" / "C1 Sur" (la subzona de la Comuna 1, si se sabe: sin ella "C1 contra C1" no se entiende), "sin comuna". */
+function etiquetaComunaIds_(comuna, subzona) {
+  if (comuna == null) return 'sin comuna';
+  return 'C' + comuna + (comuna === 1 && subzona ? ' ' + subzona : '');
+}
+
 /** Cómo se cruzó, para la traza (REGISTRO_IDS) y el log: "fecha distinta (−2 días: la lista dice 01/10/2026)". */
 function comoCruzoIds_(it) {
   const e = it.ev.e, r = it.r;
@@ -1133,7 +1139,7 @@ function comoCruzoIds_(it) {
   else if (r.quien.norm.length > 1) s += ' · conjunta';
   if (it.ev.regla === 'conjunta_una_figura') s += ' · conjunta sin "Conjunta con": la fila de ' + (e.x.f.figura || 'una de sus figuras');
   else if (it.ev.regla === 'seguridad_por_figura') s += ' · Seguridad por figura · comuna distinta (la lista: ' +
-    (it.ev.comunaLista == null ? 'sin comuna' : 'C' + it.ev.comunaLista) + '; la fila: ' + (it.ev.comunaFila == null ? 'sin comuna' : 'C' + it.ev.comunaFila) + ')';
+    etiquetaComunaIds_(it.ev.comunaLista, it.ev.subzonaLista) + '; la fila: ' + etiquetaComunaIds_(it.ev.comunaFila, it.ev.subzonaFila) + ')';
   else if (it.ev.regla === 'seguridad_por_comuna') s += ' · Seguridad por comuna' + (it.ev.figuraDistinta ? ' · figura distinta (la lista: ' + r.quien.figuras.join(', ') + '; la fila: ' + (e.x.f.figura || 'sin figura') + ')' : '');
   else if (e.ident === 'parcial') s += ' · fila conjunta (una de sus figuras)';
   if (r.quien.porSolapa) s += ' · figura por la solapa';

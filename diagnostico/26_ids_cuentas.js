@@ -299,13 +299,13 @@ function medirIdsMejoras() {
   const correr = function (m) {
     return conMejorasIds_(m, function () { return cruzarIds_(lista.registros, dest, { historial: true, idsFantasma: fantasma }); });
   };
-  const hoy = correr({ conjunta: false, seguridad: false });
+  const hoy = correr({ conjunta: false, seguridad: false, figuraPrimero: false });
   const cruzado = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'fuera'; };
   const fijo = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'ya_en_la_base' || f.estado === 'fuera'; };
   Logger.log('  hoy (las dos apagadas): IDS_SIN_CRUZAR %s líneas | se escriben %s | ya estaban %s', hoy.sinCruzar.length, hoy.conteo.escribeId, hoy.conteo.yaEstaba);
   const out = {};
-  [['conjunta', { conjunta: true, seguridad: false }, 'IDS_CONJUNTA_UNA_FIGURA'], ['seguridad', { conjunta: false, seguridad: true }, 'IDS_SEGURIDAD_POR_COMUNA'],
-   ['las dos', { conjunta: true, seguridad: true }, 'las dos']].forEach(function (v) {
+  [['conjunta', { conjunta: true, seguridad: false, figuraPrimero: false }, 'IDS_CONJUNTA_UNA_FIGURA'], ['seguridad', { conjunta: false, seguridad: true, figuraPrimero: false }, 'IDS_SEGURIDAD_POR_COMUNA'],
+   ['las dos', { conjunta: true, seguridad: true, figuraPrimero: false }, 'las dos']].forEach(function (v) {
     const res = correr(v[1]);
     const resuelve = [], cambian = [], rompe = [];
     res.items.forEach(function (it, i) {
@@ -346,7 +346,7 @@ function medirSeguridadSinCruzar() {
   const correr = function (m) {
     return conMejorasIds_(m, function () { return cruzarIds_(lista.registros, dest, { historial: true, idsFantasma: fantasma }); });
   };
-  const antes = correr({ conjunta: false, seguridad: false }), ahora = correr({ conjunta: true, seguridad: true });
+  const antes = correr({ conjunta: false, seguridad: false, figuraPrimero: false }), ahora = correr({ conjunta: true, seguridad: true, figuraPrimero: false });
   const cruzado = function (f) { return f.estado === 'escribe' || f.estado === 'ya_estaba' || f.estado === 'fuera' || f.estado === 'ya_en_la_base'; };
   const filas = ahora.filas;
   const descFila = function (x) {

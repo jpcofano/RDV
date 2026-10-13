@@ -31,7 +31,8 @@ function cruce(E, id, mejoras) {
   return { estado: it.final.estado, motivo: it.final.motivo || '', fila: it.final.fila || null, regla: it.ev.regla || '',
            como: it.ev.estado === 'cruza' ? E.run('comoCruzoIds_')(it) : '', res: res };
 }
-const NADA = { conjunta: false, seguridad: false }, CONJ = { conjunta: true, seguridad: false }, SEG = { conjunta: false, seguridad: true };
+const NADA = { conjunta: false, seguridad: false, figuraPrimero: false }, CONJ = { conjunta: true, seguridad: false, figuraPrimero: false },
+      SEG = { conjunta: false, seguridad: true, figuraPrimero: false };   // 13/10: la regla corregida (figuraPrimero) se prueba en [6]
 const F0 = 22;   // la primera fila después del relleno
 
 console.log('[1] prendidas desde el 09/10 (paso 60 de las 15:41)');
@@ -186,12 +187,12 @@ console.log('[6] la regla corregida de Seguridad (primero la figura; la comuna s
     return E;
   };
   let E = mk();
-  ok(E.cfg('IDS_SEGURIDAD_FIGURA_PRIMERO') === false, 'IDS_SEGURIDAD_FIGURA_PRIMERO = false en 00_Config.js (apagada)');
+  ok(E.cfg('IDS_SEGURIDAD_FIGURA_PRIMERO') === true, 'IDS_SEGURIDAD_FIGURA_PRIMERO = true en 00_Config.js (prendida el 13/10)');
   const antes = JSON.stringify(E.base().valores);
   const m = E.run('medirSeguridadReglaNueva()');
   ok(m.vaciadas.length === 2 && m.otros === 0, 'paso 62: la corrección en memoria (2 IDs) y CAMBIA en los demás IDs: 0');
-  ok(/3000-MAYSEGVC[^\n]*\n\s*hoy: fila 22[^\n]*con la regla corregida: fila 23[^\n]*comuna distinta \(la lista: C6; la fila: C1\)/.test(E.log()),
-     'paso 62: 3000 (Pereyra) pasa de la fila de Muzzio a la suya, "comuna distinta (la lista: C6; la fila: C1)"');
+  ok(/3000-MAYSEGVC[^\n]*\n\s*hoy: fila 22[^\n]*con la regla corregida: fila 23[^\n]*comuna distinta \(la lista: C6; la fila: C1 Sur\)/.test(E.log()),
+     'paso 62: 3000 (Pereyra) pasa de la fila de Muzzio a la suya, "comuna distinta (la lista: C6; la fila: C1 Sur)" (13/10: con la subzona; Monserrat)');
   ok(/3001-MAYSEGVC[^\n]*\n\s*hoy: sin cruzar[^\n]*con la regla corregida: fila 22/.test(E.log()), 'paso 62: 3001 (Muzzio) se resuelve a su fila');
   ok(/2015-SEPSEGVC[^\n]*\n\s*hoy: sin cruzar[^\n]*con la regla corregida: fila 24/.test(E.log()), 'paso 62: 2015 (Landerreche) se resuelve a su fila');
   ok(/2014-SEPSEGVC[^\n]*\n\s*hoy: fila 24[^\n]*con la regla corregida: SIN CRUZAR/.test(E.log()),
@@ -223,6 +224,15 @@ console.log('[6] la regla corregida de Seguridad (primero la figura; la comuna s
   E.run('corregirIdsSeguridad0910(true)');
   ok(E.base().valores[F0 + 1][col('ID cuentas')] === '2014-SEPSEGVC' && !E.base().valores[F0 - 1][col('ID cuentas')],
      'paso 63: una celda sin el color del sistema (la cargó el equipo) no se toca; la otra sí');
+}
+
+console.log('[7] la traza de la Comuna 1 con su subzona (13/10): "C1 Norte" / "C1 Sur", no "C1 contra C1"');
+{
+  const E = entorno([], []);
+  const et = E.run('etiquetaComunaIds_');
+  ok(et(1, 'Norte') === 'C1 Norte' && et(1, 'Sur') === 'C1 Sur' && et(1, '') === 'C1' && et(6, 'Norte') === 'C6' && et(null, '') === 'sin comuna',
+     'C1 Norte · C1 Sur · C1 (sin subzona) · C6 · sin comuna');
+  ok(E.cfg('IDS_SEGURIDAD_FIGURA_PRIMERO') === true, 'la regla corregida, prendida');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

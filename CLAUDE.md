@@ -2769,8 +2769,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       fila de …"); (2) **Seguridad** ("SEG" en el ID o "Seguridad en tu barrio") **por fecha + comuna**, no por figura: las filas
       de esa fecha en esa comuna, primero las de Seguridad; una sola; si la figura de la fila no es la de la lista se
       escribe igual y la traza dice "figura distinta";
-    - **la regla corregida de Seguridad** (09/10, después del paso 61; `IDS_SEGURIDAD_FIGURA_PRIMERO`, APAGADA hasta el paso
-      62): en Seguridad la FIGURA es más estable que la comuna (la lista tiene la comuna planeada; la base, la real). Para un
+    - **la regla corregida de Seguridad** (09/10, después del paso 61; `IDS_SEGURIDAD_FIGURA_PRIMERO`, **PRENDIDA el 13/10**
+      con los pasos 62 y 63; la traza nombra la Comuna 1 con su subzona, "C1 Norte" / "C1 Sur"): en Seguridad la FIGURA es más estable que la comuna (la lista tiene la comuna planeada; la base, la real). Para un
       ID de Seguridad que la regla de siempre (figura + comuna) no cruza: (2) la figura de la lista tiene UNA sola fila ese día
       y sin ID → esa ("comuna distinta (la lista: Cx; la fila: Cy)"); (3) si no, la comuna, pero sólo una fila cuya figura NO
       está en la lista ese día —un reemplazo— ("figura distinta"); (4) si no, IDS_SIN_CRUZAR. La regla por comuna sola había

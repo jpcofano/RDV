@@ -1161,6 +1161,11 @@ corrida); el código viejo está en `LEGACY.js` del script atado, comentado: no 
 
 Lo que sigue es cómo quedó antes de prenderlo (08/10–09/10).
 
+**13/10: PRENDIDA (`IDS_SEGURIDAD_FIGURA_PRIMERO = true`).** El usuario corrió el paso 63 (vació 3000-MAYSEGVC de la 590 y
+2014-SEPSEGVC de la 244) y el paso 62 dio: los 8 resueltos, 3000 → 592, 2014 → 247 (su propia fila), CAMBIA en los demás IDs
+0. Falta: **`paso57_idsHistorial()`** (los vuelve a cruzar). La traza de "comuna distinta" nombra ahora la Comuna 1 con su
+subzona ("la lista: C1 Norte; la fila: C1 Sur"): antes decía "C1; C1" y no se entendía (`etiquetaComunaIds_`).
+
 **09/10, el paso 61 (corrido por el usuario) y la REGLA CORREGIDA DE SEGURIDAD — escrita y APAGADA, primero el paso 62.** Los
 8 de Seguridad que quedaban tienen el mismo patrón: la figura de la lista TIENE su fila ese día, sin ID, en OTRA comuna (la
 lista tiene la comuna planeada; la base, la real). Y la regla por comuna asignó mal 2: 3000-MAYSEGVC (Giménez C6, 14/05) a la

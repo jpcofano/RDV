@@ -20,6 +20,8 @@
  *  >>> 13/10: el archivo "Agenda" con dos solapas nuevas ("AgendaCall" y "Agenda (mail)", 47_AgendaVistas.js), PRENDIDAS
  *      (AGENDA_VISTAS_NUEVAS = true): la próxima corrida de la hora las crea y ordena las solapas. Después: paso48_ayuda()
  *      (la LEER nueva). paso64_vistasAgenda_enSeco() sigue sirviendo de vista previa (no escribe nada).
+ *  >>> 13/10: LA REGLA CORREGIDA DE SEGURIDAD, PRENDIDA (IDS_SEGURIDAD_FIGURA_PRIMERO = true; pasos 62 y 63 corridos).
+ *      Ahora: paso57_idsHistorial() (vuelve a cruzar 3000-MAYSEGVC y 2014-SEPSEGVC, sólo celdas vacías).
  *  >>> 09/10 (6): LA REGLA CORREGIDA DE SEGURIDAD (primero la figura; la comuna sólo para un reemplazo), escrita y APAGADA
  *      (IDS_SEGURIDAD_FIGURA_PRIMERO = false). En orden:
  *        paso62_medirSeguridadReglaNueva()      SÓLO LECTURA: a qué fila iría cada ID de Seguridad; CAMBIA en otros: 0
