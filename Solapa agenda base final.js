@@ -1,6 +1,12 @@
 const DEST_AGENDA_SHEET    = 'Agenda'; // solapa espejo en la base
 
 function syncAgendaSheetInBaseFromAgenda_2() {
+  // 13/10: la solapa "Agenda" del archivo RDV la escribe ahora el sistema (AGENDA_COPIA_EN_RDV, 40_Agenda.js). Con eso
+  // prendido, este espejo del archivo de agenda viejo no escribe nada (si su activador sigue vivo, no pisa la nueva).
+  if (typeof AGENDA_COPIA_EN_RDV !== 'undefined' && AGENDA_COPIA_EN_RDV) {
+    Logger.log('syncAgendaSheetInBaseFromAgenda_2: no escribe (la solapa "Agenda" del archivo RDV la escribe el sistema, AGENDA_COPIA_EN_RDV).');
+    return;
+  }
   const tz = Session.getScriptTimeZone() || 'America/Argentina/Buenos_Aires';
 
   // === Abrimos Agenda original ===

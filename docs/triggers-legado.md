@@ -88,6 +88,11 @@ CLAUDE.md 3.6: depende de `mapBarrioCanon_`, que tiene **dos implementaciones di
 proyecto, y borra filas invalidando su propio índice a mitad del loop. Escribe `BarrioN` en B2,
 que es la mitad de la clave natural.
 
+> **13/10: ya no escribe.** La solapa "Agenda" del archivo RDV la escribe el sistema (`AGENDA_COPIA_EN_RDV`, 40_Agenda.js);
+> con eso prendido, `syncAgendaSheetInBaseFromAgenda_2` sale al principio sin tocar nada. Su función quedó cubierta por la
+> arquitectura nueva: **el activador se puede borrar** (y el archivo, archivar en la Fase 8). Lo que armaba quedó guardado en
+> la solapa "Agenda (legado)".
+
 **3. `syncAgendaSheetInBaseFromAgenda_2` — 0,63%, el único que queda vivo.** Arma la solapa
 espejo `Agenda` dentro de la planilla (1). Es el paso que menos decide de todo el flujo Agenda, y
 es el único de los tres que tiene activador: la ingesta desde Gmail y el push a `Para Revisar`

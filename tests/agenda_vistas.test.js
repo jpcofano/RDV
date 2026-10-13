@@ -50,7 +50,9 @@ function archivoAgenda(nombres) {
       return o;
     };
     Object.assign(h, {
-      getName: function () { return nombre; },
+      getName: function () { return h.nombre; },
+      setName: function (n) { h.nombre = n; return h; },
+      copyTo: function (dest) { const c = dest.insertSheet('Copia de ' + h.nombre); c.v = JSON.parse(JSON.stringify(h.v)); return c; },
       getIndex: function () { return ssRef.hojas.indexOf(h) + 1; },
       getRange: rango,
       getRangeList: function (l) { return { setBackground: function (b) { l.forEach(function (a1) { const p = a1.split(':'); const x = a1c(p[0]), y = a1c(p[1] || p[0]); rango(x[0], x[1], y[0] - x[0] + 1, y[1] - x[1] + 1).setBackground(b); }); } }; },
@@ -107,6 +109,17 @@ function entorno(baseFilas) {
     return b;
   };
   E.agenda = ss;
+  // el archivo RDV: la base y la solapa "Agenda" que armaba el legado (sin la protección del sistema)
+  const rdv = archivoAgenda(['RVD JM-CM - ES', 'Agenda']);
+  rdv.getSheetByName('Agenda').v = [['Figura', 'Barrio', 'FECHA'], ['(lo que armaba el legado)', 'Palermo', '01/10/2026']];
+  // encima del archivo RDV del mock (la base sigue ahí: la leen las vistas para el agenda_uid); las solapas de agenda, en `rdv`
+  const orig = E.archivos[E.cfg('RDV_SS_DESTINO')].ss;
+  const capa = Object.create(orig);
+  capa.getSheetByName = function (n) { return /^(Agenda|Agenda \(legado\)|Copia de .*)$/.test(n) ? rdv.getSheetByName(n) : orig.getSheetByName(n); };
+  capa.insertSheet = function (n) { return rdv.insertSheet(n); };
+  rdv.getSheetByName('RVD JM-CM - ES').v = [['(la base del mock vive en el archivo original)']];
+  E.archivos[E.cfg('RDV_SS_DESTINO')].ss = capa;
+  E.rdv = rdv;
   return E;
 }
 
@@ -307,6 +320,29 @@ console.log('[9] de punta a punta: la copia de siempre (escribirCopiaAgenda_) es
   ok(!/NO se escribi|is not defined|TypeError/.test(L), 'sin errores en el log' + (/NO se escribi|is not defined|TypeError/.test(L) ? ': ' + L.split('\n').filter(function (x) { return /NO se escribi|is not defined|TypeError/.test(x); }).join(' | ') : ''));
   igual(nombres(E.agenda), ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada'], 'las cinco solapas, en su orden');
   ok(E.agenda.getSheetByName('AgendaCall').v.length >= 2 && !!enVista(E, 'c-2'), 'AgendaCall y "Agenda (mail)" escritas desde la misma corrida');
+}
+
+console.log('[10] la "Agenda" también en el archivo RDV (13/10): la misma matriz; lo del legado, guardado una vez; la base, intacta');
+{
+  const E = entorno(BASE());
+  ok(E.cfg('AGENDA_COPIA_EN_RDV') === true, 'AGENDA_COPIA_EN_RDV = true');
+  const baseAntes = JSON.stringify(E.rdv.getSheetByName('RVD JM-CM - ES').v);
+  E.ctx.__m = abierta(E, SEMANA);
+  E.run('escribirCopiaAgenda_(__m, {})');
+  const r = E.rdv.getSheetByName('Agenda'), a = E.agenda.getSheetByName('Agenda');
+  ok(JSON.stringify(r.v) === JSON.stringify(a.v) && r.v.length === 5, 'la solapa "Agenda" del archivo RDV = la "Agenda" del archivo "Agenda" (4 reuniones)');
+  ok(r.prot && r.prot.adv && r.prot.desc === E.cfg('DESC_PROTECCION_COPIA_AGENDA'), 'protegida con advertencia, como la otra');
+  const leg = E.rdv.getSheetByName('Agenda (legado)');
+  ok(!!leg && leg.v[1][0] === '(lo que armaba el legado)', 'lo que había (lo armaba el legado) quedó en "Agenda (legado)"');
+  ok(JSON.stringify(E.rdv.getSheetByName('RVD JM-CM - ES').v) === baseAntes, '"RVD JM-CM - ES" no se toca');
+  // otra corrida: no hay un segundo respaldo y "Agenda (legado)" no cambia
+  E.ctx.__m = abierta(E, SEMANA.slice(1));
+  E.run('escribirCopiaAgenda_(__m, {})');
+  ok(E.rdv.hojas.filter(function (h) { return /legado|Copia de/.test(h.nombre); }).length === 1 && E.rdv.getSheetByName('Agenda (legado)').v[1][0] === '(lo que armaba el legado)'
+     && E.rdv.getSheetByName('Agenda').v.length === 4, 'la segunda corrida: reescribe "Agenda" (3 reuniones) y no vuelve a respaldar');
+  const leg2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'Solapa agenda base final.js'), 'utf8');
+  ok(/function syncAgendaSheetInBaseFromAgenda_2\(\) \{\s*\/\/[^\n]*\n[^\n]*\n\s*if \(typeof AGENDA_COPIA_EN_RDV !== 'undefined' && AGENDA_COPIA_EN_RDV\) \{[^}]*return;/.test(leg2),
+     'el espejo del legado (syncAgendaSheetInBaseFromAgenda_2) no escribe nada con AGENDA_COPIA_EN_RDV');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

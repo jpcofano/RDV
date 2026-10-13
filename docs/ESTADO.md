@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1934,6 +1934,27 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
    cargue algo en Responsable / Check 1 / Check 2.
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
+
+#### La "Agenda" también en el archivo RDV (13/10) — PRENDIDA
+
+Decisión del usuario: la solapa "Agenda" del archivo RDV (el de la base) muestra **la misma "Agenda"** del archivo "Agenda"
+(la semana en curso y las que vienen), con el mismo formato y protegida con advertencia, reescrita en cada corrida
+(`AGENDA_COPIA_EN_RDV = true`; `escribirAgendaEnRdv_`, `40_Agenda.js`). Es otra solapa del archivo, no "RVD JM-CM - ES": no
+pasa por 05_Escritura.js (la función se niega si el nombre fuera el de la base). Si falla, la corrida sigue y el log lo dice.
+
+- **Esa solapa la armaba el legado**: `syncAgendaSheetInBaseFromAgenda_2` (`Solapa agenda base final.js`, el único activador
+  vivo del legado), un espejo del archivo de agenda VIEJO que la borraba y la rearmaba en cada disparo. Con
+  `AGENDA_COPIA_EN_RDV` prendido **esa función no escribe nada** (se sale al principio y lo dice en el log): aunque su
+  activador siga vivo, no pisa la nueva. De paso deja de agregarle columnas a `Para Revisar`.
+- **No se pierde lo que había**: la primera vez, si la solapa existe y no tiene la protección del sistema, se duplica como
+  **`Agenda (legado)`** antes de reescribirla. Una sola vez (si ya existe "Agenda (legado)", no se vuelve a copiar).
+- **GUÍA** (paso 48): una línea nueva en ARCHIVO "AGENDA".
+- Tests: `tests/agenda_vistas.test.js` [10] (43 chequeos); `tests/ayuda.test.js` (la viñeta nueva).
+
+**Qué falta / qué mirar:** la próxima corrida de la hora escribe la solapa; en el archivo RDV tiene que aparecer
+"Agenda (legado)" con lo de antes y "Agenda" igual a la del archivo "Agenda". Después: `paso48_ayuda()`. Y el activador de
+`syncAgendaSheetInBaseFromAgenda_2` ya no hace nada: **se puede borrar** en el editor (Activadores); anotarlo en
+docs/triggers-legado.md.
 
 #### Pendientes al 04/10
 

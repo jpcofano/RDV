@@ -142,6 +142,8 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     const pz = partirCopiaAgenda_(copia, hoyMediodia_());
     Logger.log('  copia en el archivo "Agenda": escribiría %s filas en "%s" y %s en "%s" (en seco no se escribe).',
                pz.abierta.length - 1, AGENDA_COPIA_SOLAPA, pz.cerrada.length - 1, AGENDA_COPIA_SOLAPA_CERRADA);
+    if (AGENDA_COPIA_EN_RDV) Logger.log('  y las mismas %s filas en la solapa "%s" del archivo RDV (en seco no se escribe).',
+                                        pz.abierta.length - 1, AGENDA_RDV_SOLAPA);
     if (typeof _vistaPreviaAgenda_ !== 'undefined' && _vistaPreviaAgenda_) {
       try { logVistasAgenda_(pz.abierta, plan); }
       catch (err) { Logger.log('>>> la vista previa de "%s" y "%s" falló: %s', AGENDA_SOLAPA_CALL, AGENDA_SOLAPA_VISTA_MAIL, err); }
@@ -1402,6 +1404,31 @@ function escribirCopiaAgenda_(matriz, P) {
   _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz.cerrada);
   // 09/10: "AgendaCall" y "Agenda (mail)" (47_AgendaVistas.js), con AGENDA_VISTAS_NUEVAS; las de arriba, igual que siempre
   if (AGENDA_VISTAS_NUEVAS) escribirVistasAgenda_(ss, pz.abierta, P);
+  // 13/10: la misma "Agenda", también en el archivo RDV (AGENDA_COPIA_EN_RDV). Aislada: si falla, lo de arriba ya quedó.
+  if (AGENDA_COPIA_EN_RDV) {
+    try { escribirAgendaEnRdv_(pz.abierta); }
+    catch (err) { Logger.log('>>> la solapa "%s" del archivo RDV NO se escribió: %s', AGENDA_RDV_SOLAPA, err); }
+  }
+}
+
+/**
+ * La "Agenda" en el archivo RDV (13/10): la misma matriz que la solapa "Agenda" del archivo "Agenda", con el mismo formato y
+ * protegida con advertencia. Nunca en la solapa de la base (RDV_HOJA_DESTINO). La primera vez, si la solapa existe y no es
+ * del sistema (la armaba el legado), se duplica como AGENDA_RDV_RESPALDO antes de reescribirla.
+ */
+function escribirAgendaEnRdv_(abierta) {
+  if (AGENDA_RDV_SOLAPA === RDV_HOJA_DESTINO) throw new Error('AGENDA_RDV_SOLAPA no puede ser la solapa de la base');
+  const ss = SpreadsheetApp.openById(RDV_SS_DESTINO);
+  const sh = ss.getSheetByName(AGENDA_RDV_SOLAPA);
+  if (sh && !ss.getSheetByName(AGENDA_RDV_RESPALDO)) {
+    const delSistema = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET)
+      .some(function (pr) { return pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA; });
+    if (!delSistema) {
+      sh.copyTo(ss).setName(AGENDA_RDV_RESPALDO);
+      Logger.log('  archivo RDV: lo que había en "%s" (la armaba el legado) quedó guardado en "%s".', AGENDA_RDV_SOLAPA, AGENDA_RDV_RESPALDO);
+    }
+  }
+  _escribirSolapaCopiaAgenda_(ss, AGENDA_RDV_SOLAPA, abierta, 'archivo RDV');
 }
 
 /**
@@ -1428,7 +1455,7 @@ function partirCopiaAgenda_(matriz, hoy) {
 }
 
 /** Una solapa de la copia: reescrita entera, con formato y protegida con advertencia. */
-function _escribirSolapaCopiaAgenda_(ss, nombre, matriz) {
+function _escribirSolapaCopiaAgenda_(ss, nombre, matriz, dondeLog) {
   const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA) pr.remove();
@@ -1463,8 +1490,8 @@ function _escribirSolapaCopiaAgenda_(ss, nombre, matriz) {
   try { sh.autoResizeColumns(1, m); } catch (e) { /* no importa */ }
   sh.protect().setDescription(DESC_PROTECCION_COPIA_AGENDA).setWarningOnly(true);
   SpreadsheetApp.flush();
-  Logger.log('  copia en el archivo "Agenda" (%s): %s filas escritas, solapa "%s", protegida con advertencia.',
-             AGENDA_COPIA_SS.slice(0, 8) + '…', n - 1, nombre);
+  Logger.log('  copia en el %s: %s filas escritas, solapa "%s", protegida con advertencia.',
+             dondeLog || 'archivo "Agenda" (' + AGENDA_COPIA_SS.slice(0, 8) + '…)', n - 1, nombre);
 }
 
 // ===================== EVENTO, agenda_uid, "intocada" (06/10) =====================

@@ -297,6 +297,10 @@ Solapas que importan:
   `RDV_HOJA_DESTINO` (`00_Config.js`) volvió a `RVD JM-CM - ES`; la copia queda como referencia hasta
   que se borre (docs/ESTADO.md, 0.f y 0.s).
 - **(1) `RDV CONJUNTO`** → origen de asistentes (12 col).
+- **(1) `Agenda`** → desde el 13/10, la misma solapa "Agenda" del archivo (5), copiada en cada corrida
+  (`AGENDA_COPIA_EN_RDV`, `escribirAgendaEnRdv_` en `40_Agenda.js`): un reporte que el sistema reescribe entero, protegido
+  con advertencia. Antes la armaba el legado (`syncAgendaSheetInBaseFromAgenda_2`, desde el archivo (4)): con el
+  interruptor prendido esa función ya no escribe, y lo que había quedó en **`Agenda (legado)`** (se guarda una sola vez).
 - **(1) `Comunas`** → tabla de lookup, A:H. Estable, no cambia.
 - **(1) `Datos_Unpivot` y `Aux_Maximos`** → las arma un **script atado al archivo de la base** (otro proyecto, del dueño
   del archivo; `unpivotEventos` y `buildAuxMaximos`) para el tablero de Looker Studio. Ese script además **escribe la

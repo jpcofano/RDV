@@ -130,8 +130,8 @@ const iSec = filas.indexOf('QUÉ HACE EL SISTEMA (solo, cada hora)');
 ok(iSec > 0 && filas[iSec - 1] === '' && fmt(g, iSec + 1).peso === 'bold' && fmt(g, iSec + 1).tamano === 12 && fmt(g, iSec + 1).fondo === '#D9E1F2',
    'título de sección: negrita 12, gris claro, con una fila en blanco antes');
 const secciones = filas.filter(function (t, i) { return fmt(g, i + 1).fondo === '#D9E1F2'; });
-ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 20,
-   '6 secciones y 20 viñetas (09/10: la de las columnas grises) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
+ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 21,
+   '6 secciones y 21 viñetas (09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
 const colores = E.run('_coloresAyuda_()');
 const conColor = function (inicio) { const i = filas.findIndex(function (t) { return t.indexOf(' • ' + inicio) === 0; }); return fmt(g, i + 1).fondo; };
 ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde && conColor('Rojo') === colores.rojo &&
@@ -140,7 +140,8 @@ ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde &
 const iEleg = filas.findIndex(function (t) { return /ELEGIR/.test(t); });
 ok(iEleg > 0 && JSON.stringify(fmt(g, iEleg + 1).negritas) === '["ELEGIR"]', 'ELEGIR en negrita');
 ok(filas.indexOf(' • No escribir en: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con.') > 0 &&
-   filas.indexOf(' • "Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.') === n - 1, 'el texto, tal cual');
+   filas.indexOf(' • "Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.') === n - 2 &&
+   filas[n - 1] === ' • La solapa "Agenda" de este archivo es la misma "Agenda": la escribe el sistema cada hora. Sólo lectura.', 'el texto, tal cual');
 ok(g.protecciones.length === 1 && g.protecciones[0].aviso === false && g.protecciones[0].editores.length === 1 &&
    g.protecciones[0].editores[0].getEmail() === 'yo@x', 'protegida: sólo quien corre el script (y el dueño)');
 

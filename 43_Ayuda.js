@@ -49,7 +49,8 @@ const AYUDA_GUIA_ = [
   ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".'],
   ['item', 'Se aplica en la próxima hora.'],
   ['seccion', 'ARCHIVO "AGENDA"'],
-  ['item', '"Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.']
+  ['item', '"Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.'],
+  ['item', 'La solapa "Agenda" de este archivo es la misma "Agenda": la escribe el sistema cada hora. Sólo lectura.']
 ];
 
 /** El texto de la solapa "LEER" del archivo "Agenda". */

@@ -1540,6 +1540,16 @@ const AGENDA_RESPONSABLES = ['Lu', 'Cris', 'Mel', 'Yami'];
 const AGENDA_COLORES_RESPONSABLE = ['#C9DAF8', '#D9D2E9', '#FCE5CD', '#D0E0E3', '#EAD1DC', '#FFF2CC', '#D9EAD3', '#F4CCCC'];
 /** Lo que el equipo carga en esas columnas, guardado por la clave de la reunión (intermedia; se acumula: también lo cerrado). */
 const RDV_HOJA_AGENDA_EQUIPO = 'AGENDA_EQUIPO';
+/**
+ * **La "Agenda" también en el archivo RDV** (decisión del usuario, 13/10): la misma solapa "Agenda" del archivo "Agenda" (la
+ * semana en curso y las que vienen), copiada en la solapa "Agenda" del archivo del destino, en cada corrida. Es un reporte
+ * que el sistema reescribe entero (como REVISAR_MATCH): no es "RVD JM-CM - ES" y no pasa por 05_Escritura.js. Esa solapa la
+ * escribía el legado (syncAgendaSheetInBaseFromAgenda_2, desde el archivo de agenda viejo): con esto prendido el legado no
+ * escribe más ahí, y la primera vez lo que había se guarda en AGENDA_RDV_RESPALDO (no se pierde nada).
+ */
+const AGENDA_COPIA_EN_RDV = true;
+const AGENDA_RDV_SOLAPA = 'Agenda';
+const AGENDA_RDV_RESPALDO = 'Agenda (legado)';
 const DESC_PROTECCION_VISTA_MAIL = 'RDV: la escribe el sistema — sólo se editan las columnas del equipo (Responsable, Check 1, Check 2) y las opciones';
 
 /** Paso 16: una fila "en agenda" con la fecha pasada hace más de estos días es un aviso. */
