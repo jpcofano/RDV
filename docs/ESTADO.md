@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", escritas y apagadas hasta el paso 64: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1897,6 +1897,44 @@ politico") y el 10, **los activadores**:
 **Test en Node** [18]: el paso 23 marca a BORRAR el legado y una función que no existe, Agenda como
 MANTENER; el paso 24 se niega con legado vivo o con el destino en la copia, instala uno solo y no
 duplica; borrarlo no toca los demás. Toda la suite en verde.
+
+#### El archivo "Agenda": "AgendaCall" y "Agenda (mail)" — escritas y APAGADAS (09/10), primero el paso 64
+
+**Qué es** (pedido del usuario, 09/10; código: `47_AgendaVistas.js`; sólo el archivo "Agenda", **nada de la base**). Cinco
+solapas, en este orden: **LEER | Agenda | AgendaCall | Agenda (mail) | Agenda cerrada**. "Agenda" y "Agenda cerrada" quedan
+exactamente como estaban (las dos vistas se escriben después, desde las mismas reuniones).
+
+- **"AgendaCall"**: las reuniones de "Agenda" con las columnas en otro orden (`AGENDA_CALL_COLUMNAS`: Figura | FECHA | Día |
+  HORA | Semana | Dirección | … | Mail | Versión) y un color por fila, recalculado en cada corrida: los días de la semana en
+  curso que ya pasaron `#D9EAD3`; hoy y el resto de la semana `#FFF2CC`; la semana siguiente `#F4CCCC`. Protegida con
+  advertencia.
+- **"Agenda (mail)"**: como se ve el mail. Un renglón por día de lunes a sábado (fondo negro, letra blanca, negrita: "martes
+  13/10"), aunque no haya reuniones; una celda de tres líneas por reunión ("Evento: …" / "Hora: HH:mmh" / "Lugar: …"), con el
+  color de su semana; lo que cambió entre versiones (según "Cambios": la hora, la dirección o el lugar; una reunión nueva en la
+  última versión, entera) en **naranja y negrita**, sólo esa parte; una reunión que salió del mail, **tachada en gris**.
+- **Las columnas del equipo** (B, C, D: Responsable —desplegable con las opciones de la columna G, editables; un color por
+  opción con formato condicional, porque Apps Script no deja poner los colores de los "chips"—, Check 1 y Check 2, casillas).
+  El sistema las reconoce **por su lugar**, no por el título (el equipo puede renombrarlas; los títulos y las opciones se
+  conservan). **No se pierden**: antes de reescribir, lo que tiene la vista se guarda por la clave de la reunión (`agenda_uid`;
+  si no tiene, la identidad de la reunión) en **`AGENDA_EQUIPO`** (intermedia; se acumula, también lo de las semanas cerradas),
+  y se vuelve a poner en la fila de esa reunión aunque cambien la hora, el día o el orden. Una reunión desaparecida queda
+  tachada con lo suyo. **Si no se puede guardar, "Agenda (mail)" no se reescribe** (queda la versión anterior, y el log lo
+  dice). Esas tres columnas (y las opciones) sin proteger; el resto, protegido con advertencia. La clave, en la columna E
+  oculta.
+- **LEER** (paso 48): las dos solapas nuevas, los colores y las columnas del equipo.
+
+**Interruptor**: `AGENDA_VISTAS_NUEVAS = false`. Tests: `tests/agenda_vistas.test.js` (33: sobre todo que lo del equipo
+sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desaparece, al cierre de la semana y a que vuelva).
+
+**Qué correr:**
+1. **`paso64_vistasAgenda_enSeco()`** — NO escribe nada: la corrida de la agenda en seco y, en el log, cómo quedaría la semana
+   en cada solapa nueva (`[VERDE]` / `[AMARILLO]` / `[ROSADO]`, `«naranja»`, `~~tachado~~`). **Predicción**: las mismas
+   reuniones que hoy muestra "Agenda" (la semana del 05/10 y, si llegó su mail, la del 12/10), en el mismo orden; los días 05 a
+   07/10 en verde, 08 a 10/10 en amarillo, la semana siguiente en rosado; doce renglones de día (seis por semana); en naranja
+   sólo las reuniones con algo en "Cambios".
+2. Si se ve bien: `AGENDA_VISTAS_NUEVAS = true` + clasp push. La corrida de la hora siguiente crea las dos solapas y las
+   ordena.
+3. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 
 #### Pendientes al 04/10
 

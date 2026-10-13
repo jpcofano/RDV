@@ -1502,5 +1502,45 @@ const AGENDA_COPIA_COLUMNAS = ['Semana', 'Grupo', 'Día', 'FECHA', 'HORA', 'Figu
   'Fecha original', 'Fila del destino', 'STATUS en el destino', 'Mail', 'Versión', 'Última actualización'];
 const DESC_PROTECCION_COPIA_AGENDA = 'RDV: la escribe el sistema en cada corrida de la agenda — corregir en el destino, no acá';
 
+// ===================== El archivo "Agenda": las dos vistas nuevas (09/10; 47_AgendaVistas.js) =====================
+
+/**
+ * **Dos solapas nuevas en el archivo "Agenda"** (decisión del usuario, 09/10), con las mismas reuniones que "Agenda" (la
+ * semana en curso y la siguiente, si llegó su mail): "AgendaCall" (otro orden de columnas y un color por fila) y
+ * "Agenda (mail)" (como se ve el mail: un renglón por día y una celda de tres líneas por reunión, lo cambiado en naranja, lo
+ * desaparecido tachado, y tres COLUMNAS DEL EQUIPO —Responsable, Check 1, Check 2— que se guardan por agenda_uid y no se
+ * pierden al reescribir). "Agenda" y "Agenda cerrada" quedan como están. APAGADO hasta ver el paso 64 (en seco: cómo
+ * quedaría una semana en cada una).
+ */
+const AGENDA_VISTAS_NUEVAS = false;
+const AGENDA_SOLAPA_CALL = 'AgendaCall';
+const AGENDA_SOLAPA_VISTA_MAIL = 'Agenda (mail)';
+/** El orden de las solapas del archivo "Agenda". */
+const AGENDA_ORDEN_SOLAPAS = ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada'];
+/** Las columnas de "AgendaCall", en este orden (las mismas de "Agenda", AGENDA_COPIA_COLUMNAS, reordenadas). */
+const AGENDA_CALL_COLUMNAS = ['Figura', 'FECHA', 'Día', 'HORA', 'Semana', 'Dirección', 'Barrio calculado', 'Comuna', 'Lugar del mail',
+  'Grupo', 'Sin barrio porque', 'Cambios', 'No participa', 'Conjunta con', 'EVENTO', 'Marcas', 'Estado en la agenda',
+  'Última actualización', 'Fecha original', 'Fila del destino', 'STATUS en el destino', 'Mail', 'Versión'];
+/** Los colores por semana: los días de la semana en curso que ya pasaron; hoy y lo que queda; la semana siguiente. */
+const AGENDA_COLOR_PASADO = '#D9EAD3';
+const AGENDA_COLOR_HOY = '#FFF2CC';
+const AGENDA_COLOR_SIGUIENTE = '#F4CCCC';
+/** "Agenda (mail)": lo que cambió entre versiones (naranja, negrita) y lo desaparecido (tachado, gris). */
+const AGENDA_COLOR_CAMBIO = '#E69138';
+const AGENDA_COLOR_DESAPARECIDA = '#999999';
+/**
+ * Las COLUMNAS DEL EQUIPO de "Agenda (mail)", por POSICIÓN (B, C, D: los títulos los puede cambiar el equipo) y la columna
+ * oculta con la clave de cada reunión (E). Las opciones de Responsable, en un rango de la misma solapa (G2:G21) que el equipo
+ * edita: la primera vez se completa con AGENDA_RESPONSABLES; después, lo que haya ahí.
+ */
+const AGENDA_MAIL_COL_RESPONSABLE = 2, AGENDA_MAIL_COL_CHECK1 = 3, AGENDA_MAIL_COL_CHECK2 = 4, AGENDA_MAIL_COL_CLAVE = 5;
+const AGENDA_MAIL_COL_OPCIONES = 7, AGENDA_MAIL_OPCIONES_FILAS = 20;
+const AGENDA_RESPONSABLES = ['Lu', 'Cris', 'Mel', 'Yami'];
+/** Los colores de los "chips" de Responsable (formato condicional, en el orden de las opciones). */
+const AGENDA_COLORES_RESPONSABLE = ['#C9DAF8', '#D9D2E9', '#FCE5CD', '#D0E0E3', '#EAD1DC', '#FFF2CC', '#D9EAD3', '#F4CCCC'];
+/** Lo que el equipo carga en esas columnas, guardado por la clave de la reunión (intermedia; se acumula: también lo cerrado). */
+const RDV_HOJA_AGENDA_EQUIPO = 'AGENDA_EQUIPO';
+const DESC_PROTECCION_VISTA_MAIL = 'RDV: la escribe el sistema — sólo se editan las columnas del equipo (Responsable, Check 1, Check 2) y las opciones';
+
 /** Paso 16: una fila "en agenda" con la fecha pasada hace más de estos días es un aviso. */
 const AGENDA_DIAS_VENCIDA = 2;

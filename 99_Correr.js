@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 09/10 (7): el archivo "Agenda" con dos solapas nuevas ("AgendaCall" y "Agenda (mail)", 47_AgendaVistas.js), escritas y
+ *      APAGADAS (AGENDA_VISTAS_NUEVAS = false). paso64_vistasAgenda_enSeco(): cómo quedaría esta semana en cada una. Si está
+ *      bien: AGENDA_VISTAS_NUEVAS = true + clasp push (la próxima corrida las crea); después paso48_ayuda() (la LEER nueva).
  *  >>> 09/10 (6): LA REGLA CORREGIDA DE SEGURIDAD (primero la figura; la comuna sólo para un reemplazo), escrita y APAGADA
  *      (IDS_SEGURIDAD_FIGURA_PRIMERO = false). En orden:
  *        paso62_medirSeguridadReglaNueva()      SÓLO LECTURA: a qué fila iría cada ID de Seguridad; CAMBIA en otros: 0
@@ -1302,6 +1305,17 @@ function paso63_corregirIdsSeguridad() {
              'ESCRIBE: vacía esas celdas de "ID cuentas" y "Fecha envío campañas" (sólo si son lo que escribió el sistema)',
              'el log: qué vació; REGISTRO_IDS: "(VACIADO) …"');
   return corregirIdsSeguridad0910(true);
+}
+
+/**
+ * PASO 64 — EN SECO (09/10): las dos vistas nuevas del archivo "Agenda" ("AgendaCall" y "Agenda (mail)"), apagadas
+ * (AGENDA_VISTAS_NUEVAS): la agenda en seco y, en el log, cómo quedaría esta semana en cada una. No toca nada.
+ */
+function paso64_vistasAgenda_enSeco() {
+  _anunciar_('paso 64 — las vistas nuevas del archivo "Agenda" (EN SECO)', 'vistasAgendaEnSeco()  [47_AgendaVistas.js]',
+             'NO toca el destino ni el archivo "Agenda" (la agenda en seco escribe REGISTRO_AGENDA, como el paso 37 en seco)',
+             'el log: "cómo quedaría AgendaCall" (una línea por reunión, con su color) y "cómo quedaría Agenda (mail)" (los días, las celdas, «naranja», ~~tachado~~, las columnas del equipo)');
+  return vistasAgendaEnSeco();
 }
 
 /**

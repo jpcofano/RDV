@@ -287,7 +287,7 @@ antes de que nadie haya cargado nada en ellas.
 | 2 | **Intermedia** — "Base intermedia Reuniones de Vecinos". El script está atado acá (`getActive()`) | `1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM` | sí |
 | 3 | **Origen inscriptos** — `Hoja1` | `1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg` | **no** |
 | 4 | **Agenda** (legado) — la lee y escribe el flujo Agenda del legado | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
-| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
+| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10); desde el 09/10, con `AGENDA_VISTAS_NUEVAS`, cinco: LEER | Agenda | AgendaCall | Agenda (mail) | Agenda cerrada (`47_AgendaVistas.js`). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
 | 6 | **Lista de IDs de los encuentros** (08/10) — "Base reuniones - Digital - Call Center", del equipo de campañas (`RDV_SS_IDS`): solapas "Agenda JM" y "Agenda funcionarios". **Se lee, nunca se escribe** | `12b0v67FbxjuIndK7DgVU3MYxx-k0yBIS9gtyV45rFaY` | **no** |
 
 Solapas que importan:
@@ -2832,6 +2832,12 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
 46_Guardian.js     EL GUARDIÁN (sección 0, la cuarta excepción): ocultar y proteger las columnas del sistema (paso 59), su
                    copia (SISTEMA_COPIA), y en la corrida de la hora restaurar / reubicar / frenar (REGISTRO_PROTECCION).
                    Paso 58 en seco. APAGADO (GUARDIAN_ACTIVO = false)                                           ← 09/10
+47_AgendaVistas.js las dos vistas nuevas del archivo "Agenda" (no de la base): "AgendaCall" (otro orden de columnas, un
+                   color por fila según la semana) y "Agenda (mail)" (un renglón negro por día, una celda Evento / Hora /
+                   Lugar por reunión, lo cambiado en naranja, lo desaparecido tachado, y las COLUMNAS DEL EQUIPO
+                   —Responsable, Check 1, Check 2, por POSICIÓN B:D— guardadas por agenda_uid en AGENDA_EQUIPO de la
+                   intermedia antes de cada reescritura: si no se pueden guardar, la vista no se reescribe). "Agenda" y
+                   "Agenda cerrada" no cambian. Paso 64 en seco. APAGADO (AGENDA_VISTAS_NUEVAS = false)         ← 09/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

@@ -58,23 +58,36 @@ const AYUDA_LEER_ = [
   ['seccion', 'QUÉ ES'],
   ['item', 'Las reuniones de la semana, tomadas del mail "Agenda Encuentros de vecinos con …" (CM y Ministros y JM).'],
   ['item', '"Agenda": la semana en curso. "Agenda cerrada": las semanas anteriores.'],
+  ['item', '"AgendaCall": las mismas reuniones que "Agenda", con otro orden de columnas y un color por fila.'],
+  ['item', '"Agenda (mail)": la semana como se ve el mail: un renglón negro por día y una celda por reunión (Evento / Hora / Lugar).'],
   ['seccion', 'CÓMO SE ACTUALIZA'],
   ['item', 'Sola, cada hora. Toma siempre la ÚLTIMA versión del mail de cada semana.'],
   ['item', 'Si cambia la hora, la dirección o el lugar, se actualiza y queda anotado en "Cambios".'],
   ['item', 'Si una reunión sale del mail: "Estado en la agenda" = desaparecida (se confirma en la base).'],
   ['item', 'El lunes, la semana que terminó pasa a "Agenda cerrada".'],
+  ['seccion', 'COLORES (AgendaCall y Agenda (mail))'],
+  ['item', 'Verde: los días de esta semana que ya pasaron.', 'pasado'],
+  ['item', 'Amarillo: hoy y lo que queda de esta semana.', 'hoy'],
+  ['item', 'Rosado: la semana siguiente.', 'siguiente'],
+  ['item', 'En "Agenda (mail)": lo que cambió entre versiones del mail, en naranja y negrita; una reunión que salió del mail, tachada en gris.'],
+  ['seccion', 'COLUMNAS DEL EQUIPO ("Agenda (mail)")'],
+  ['item', 'Responsable (desplegable), Check 1 y Check 2 (casillas): las carga el equipo. Son lo único que se edita en esa solapa.'],
+  ['item', 'Los títulos se pueden cambiar: el sistema reconoce esas columnas por su lugar (B, C y D), no por el nombre.'],
+  ['item', 'Lo que se carga no se pierde: se guarda por reunión y vuelve a su lugar aunque cambie la hora, el día o el orden. Si la reunión sale del mail, queda tachada con lo cargado.'],
+  ['item', 'Los nombres del desplegable están en la columna G ("Responsables (opciones)"): se agregan o cambian ahí.'],
   ['seccion', 'QUÉ SIGNIFICAN LAS COLUMNAS (las menos obvias)'],
   ['item', 'Barrio calculado: sale de la dirección. Vacío si no hay dirección o el lugar está en un límite (ver "Sin barrio porque").'],
   ['item', 'No participa / Conjunta con: figuras marcadas "NO PARTICIPA" y las que comparten la reunión.'],
   ['item', 'Fila del destino: la fila de la base RDV donde está esa reunión. STATUS en el destino: su estado allí.'],
   ['item', 'Mail / Versión: de qué mail salió y qué versión es ("3 de 3").'],
   ['seccion', 'IMPORTANTE'],
-  ['item', 'No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV.']
+  ['item', 'No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)']
 ];
 
 /** Los colores de la sección de colores: los de las fichas (RM.COLOR) y la marca del sistema. */
 function _coloresAyuda_() {
-  return { sistema: COLOR_SISTEMA, verde: RM.COLOR.OK_BG, rojo: RM.COLOR.NO_BG, gris: RM.COLOR.NA_BG, amarillo: RM.COLOR.AV_BG };
+  return { sistema: COLOR_SISTEMA, verde: RM.COLOR.OK_BG, rojo: RM.COLOR.NO_BG, gris: RM.COLOR.NA_BG, amarillo: RM.COLOR.AV_BG,
+           pasado: AGENDA_COLOR_PASADO, hoy: AGENDA_COLOR_HOY, siguiente: AGENDA_COLOR_SIGUIENTE };
 }
 
 /** Las filas de una solapa de ayuda: el título, una fila en blanco antes de cada sección, una viñeta por fila. */

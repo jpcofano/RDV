@@ -142,6 +142,10 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     const pz = partirCopiaAgenda_(copia, hoyMediodia_());
     Logger.log('  copia en el archivo "Agenda": escribiría %s filas en "%s" y %s en "%s" (en seco no se escribe).',
                pz.abierta.length - 1, AGENDA_COPIA_SOLAPA, pz.cerrada.length - 1, AGENDA_COPIA_SOLAPA_CERRADA);
+    if (typeof _vistaPreviaAgenda_ !== 'undefined' && _vistaPreviaAgenda_) {
+      try { logVistasAgenda_(pz.abierta, plan); }
+      catch (err) { Logger.log('>>> la vista previa de "%s" y "%s" falló: %s', AGENDA_SOLAPA_CALL, AGENDA_SOLAPA_VISTA_MAIL, err); }
+    }
   }
   else {
     try { escribirCopiaAgenda_(copia, plan); }
@@ -1379,6 +1383,7 @@ function armarCopiaAgenda_(P, cuando) {
     ]);
   });
   out.ids = [null].concat(filas.map(function (c) { return c.ev.mailId || ''; }));
+  out.items = filas;   // 09/10: cada reunión, para las vistas nuevas (47_AgendaVistas.js)
   out.semanas = filas.map(function (c) { return { desde: c.ev.desde || null, hasta: c.ev.hasta || null }; });
   out.semanaEnCurso = filas.map(function (c) { return !!(c.ev.desde && c.ev.hasta && ymd_(hoyMediodia_()) >= ymd_(c.ev.desde) && ymd_(hoyMediodia_()) <= ymd_(c.ev.hasta)); });
   return out;
@@ -1395,6 +1400,8 @@ function escribirCopiaAgenda_(matriz, P) {
   const pz = partirCopiaAgenda_(matriz, hoyMediodia_());
   _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA, pz.abierta);
   _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz.cerrada);
+  // 09/10: "AgendaCall" y "Agenda (mail)" (47_AgendaVistas.js), con AGENDA_VISTAS_NUEVAS; las de arriba, igual que siempre
+  if (AGENDA_VISTAS_NUEVAS) escribirVistasAgenda_(ss, pz.abierta, P);
 }
 
 /**
@@ -1405,7 +1412,8 @@ function partirCopiaAgenda_(matriz, hoy) {
   const hdr = matriz[0], ab = [], ce = [];
   for (let i = 1; i < matriz.length; i++) {
     const sem = (matriz.semanas || [])[i - 1] || {};
-    const x = { fila: matriz[i], id: (matriz.ids || [])[i] || '', enCurso: !!(matriz.semanaEnCurso || [])[i - 1], desde: sem.desde, orden: i };
+    const x = { fila: matriz[i], id: (matriz.ids || [])[i] || '', enCurso: !!(matriz.semanaEnCurso || [])[i - 1], desde: sem.desde, orden: i,
+                item: (matriz.items || [])[i - 1] || null };
     (sem.hasta && ymd_(sem.hasta) < ymd_(hoy) ? ce : ab).push(x);
   }
   ce.sort(function (a, b) { return (b.desde ? b.desde.getTime() : 0) - (a.desde ? a.desde.getTime() : 0) || a.orden - b.orden; });
@@ -1413,6 +1421,7 @@ function partirCopiaAgenda_(matriz, hoy) {
     const m = [hdr].concat(lista.map(function (x) { return x.fila; }));
     m.ids = [null].concat(lista.map(function (x) { return x.id; }));
     m.semanaEnCurso = lista.map(function (x) { return x.enCurso; });
+    m.items = lista.map(function (x) { return x.item; });
     return m;
   };
   return { abierta: armar(ab), cerrada: armar(ce) };

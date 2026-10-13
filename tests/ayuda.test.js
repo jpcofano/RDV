@@ -149,7 +149,7 @@ const l = E.planilla(idAg).getSheetByName('LEER');
 ok(E.planilla(idAg).getSheets()[0] === l && celda(l, 1) === 'AGENDA DE ENCUENTROS CON VECINOS' && fmt(l, 1).fondo === '#1F3864',
    'primera de la izquierda, con su título');
 const fl = []; for (let f = 1; f <= r.leer.filas; f++) fl.push(celda(l, f));
-ok(fl.indexOf('IMPORTANTE') > 0 && fl[fl.length - 1] === ' • No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV.' &&
+ok(fl.indexOf('IMPORTANTE') > 0 && fl[fl.length - 1] === ' • No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)' &&
    l.congeladas === 1 && l.sinGrilla && l.maxCols === 1, 'el texto y el mismo formato');
 ok(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v && Object.keys(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v).length === 0 &&
    Object.keys(E.planilla(idAg).getSheetByName('Agenda').v).length === 0, 'no toca ninguna otra solapa');
