@@ -48,10 +48,11 @@ const AYUDA_GUIA_ = [
   ['item', 'Reunión parecida a una fila existente: "Es la misma: vincular" · "Son distintas: crear" · "Ya está cargada en otra fila: no crear" · "No sé".'],
   ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".'],
   ['item', 'Se aplica en la próxima hora.'],
-  ['seccion', 'SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)'],
-  ['item', 'Los formularios de los últimos 30 días que no quedaron en ninguna fila, con el motivo y la fila más cercana.'],
-  ['item', 'Un formulario sin fila suele ser una reunión que falta cargar en la base: cargarla y el sistema la completa solo.'],
-  ['item', 'La escribe el sistema cada hora. Sólo lectura.'],
+  // 13/10: sólo con FORMULARIOS_SIN_FILA_ACTIVA (si no, la GUÍA nombraría una solapa que no existe): ver _lineasAyuda_
+  ['seccion', 'SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)', null, 'formsSinFila'],
+  ['item', 'Los formularios de los últimos 30 días que no quedaron en ninguna fila, con el motivo y la fila más cercana.', null, 'formsSinFila'],
+  ['item', 'Un formulario sin fila suele ser una reunión que falta cargar en la base: cargarla y el sistema la completa solo.', null, 'formsSinFila'],
+  ['item', 'La escribe el sistema cada hora. Sólo lectura.', null, 'formsSinFila'],
   ['seccion', 'ARCHIVO "AGENDA"'],
   ['item', '"Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.'],
   ['item', 'La solapa "Agenda" de este archivo es la misma "Agenda": la escribe el sistema cada hora. Sólo lectura.']
@@ -99,6 +100,7 @@ function _coloresAyuda_() {
 function filasAyuda_(def) {
   const colores = _coloresAyuda_(), out = [];
   def.forEach(function (l) {
+    if (l[3] === 'formsSinFila' && !FORMULARIOS_SIN_FILA_ACTIVA) return;   // la solapa todavía no existe (13/10)
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });

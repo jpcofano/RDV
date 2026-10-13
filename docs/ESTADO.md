@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV; FORMULARIOS_SIN_FILA, escrita y apagada hasta el paso 65: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV; FORMULARIOS_SIN_FILA, escrita y apagada por decisión del usuario: 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1940,7 +1940,12 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
-#### FORMULARIOS_SIN_FILA (13/10) — escrita y APAGADA, primero el paso 65
+#### FORMULARIOS_SIN_FILA (13/10) — escrita y APAGADA por decisión del usuario ("dejalo apagado por ahora")
+
+**Estado: apagada a propósito**, no pendiente de un número. Se prende cuando el usuario lo decida (pasos de abajo). Para el
+equipo: [formularios-sin-fila.md](formularios-sin-fila.md). Mientras esté apagada: no se crea la solapa, la corrida no la
+calcula, y **la GUÍA no la nombra** (sus líneas entran sólo con `FORMULARIOS_SIN_FILA_ACTIVA`), así que `paso48_ayuda()` se
+puede correr igual por la Agenda.
 
 **Lo que había** (confirmado leyendo el código): los formularios sin fila salían sólo en el log del upsert ("los N
 formularios huérfanos, uno por uno", y sólo si eran 40 o menos) y al final de EMPAREJAR_MANUAL, en la intermedia; los dos con
@@ -1962,7 +1967,7 @@ que no se listan). Protegida con advertencia, reescrita en cada corrida. GUÍA (
    pero ninguna fila; la mayoría "sin ninguna fila de esa figura cerca" (reuniones que faltan cargar) o "en revisión"; los
    de Seguridad sin figura, "sin figura".
 2. Si está bien: `FORMULARIOS_SIN_FILA_ACTIVA = true` + clasp push. La corrida de la hora siguiente crea la solapa.
-3. **`paso48_ayuda()`** — la GUÍA con la sección nueva.
+3. **`paso48_ayuda()`** — la GUÍA con la sección nueva (sólo aparece con el interruptor prendido).
 
 #### La "Agenda" también en el archivo RDV (13/10) — PRENDIDA
 

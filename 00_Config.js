@@ -1557,7 +1557,8 @@ const AGENDA_RDV_RESPALDO = 'Agenda (legado)';
  * **"FORMULARIOS_SIN_FILA"** (decisión del usuario, 13/10), en el archivo de la base, para el equipo: los formularios de B de
  * los últimos DIAS_ACTIVOS días que no quedaron en ninguna fila, con el motivo en palabras y la fila más cercana. Reescrita
  * en cada corrida, protegida con advertencia. Sin los gemelos descartados (regla 3), los de 0 inscriptos ni los de reuniones
- * futuras. APAGADO hasta ver el paso 65 (en seco: cuántos hay hoy y cuáles).
+ * futuras. APAGADO POR DECISIÓN DEL USUARIO (13/10, "dejalo apagado por ahora"; docs/formularios-sin-fila.md). Para prender:
+ * el paso 65 (en seco: cuántos hay hoy y cuáles), después true. La GUÍA nombra la solapa sólo con esto prendido.
  */
 const FORMULARIOS_SIN_FILA_ACTIVA = false;
 const RDV_HOJA_FORMS_SIN_FILA = 'FORMULARIOS_SIN_FILA';

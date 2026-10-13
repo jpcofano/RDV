@@ -2452,7 +2452,9 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    la fila de la figura es en otro lugar / ya tiene otro formulario / es de antes de las activas / está a más de 3 días / no
    se cruzó) y **la fila más cercana**. Arriba: *"Un formulario sin fila suele ser una reunión que falta cargar en la base."*
    Reescrita en cada corrida (`escribirReportes_`), protegida con advertencia; no es "RVD JM-CM - ES". Es un reporte: no
-   decide ni escribe nada en la base.
+   decide ni escribe nada en la base. **APAGADA por decisión del usuario (13/10, "dejalo apagado por ahora")**: sin la
+   solapa, sin el cálculo en la corrida y sin su sección en la GUÍA hasta que se prenda. Para el equipo:
+   [docs/formularios-sin-fila.md](docs/formularios-sin-fila.md).
 
    #### `EMPAREJAR_MANUAL`: el lado que falta
 
@@ -2861,7 +2863,9 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
 48_FormulariosSinFila.js  la solapa FORMULARIOS_SIN_FILA del archivo de la base, para el equipo: los formularios de B de los
                    últimos DIAS_ACTIVOS días que no quedaron en ninguna fila (sin gemelos descartados, 0 inscriptos ni
                    futuros), con el motivo en palabras y la fila más cercana; reescrita en cada corrida (escribirReportes_),
-                   protegida con advertencia. Paso 65 en seco. APAGADO (FORMULARIOS_SIN_FILA_ACTIVA = false)    ← 13/10
+                   protegida con advertencia. Paso 65 en seco. APAGADO por decisión del usuario
+                   (FORMULARIOS_SIN_FILA_ACTIVA = false); la GUÍA la nombra sólo prendida. Para el equipo:
+                   docs/formularios-sin-fila.md                                                                 ← 13/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

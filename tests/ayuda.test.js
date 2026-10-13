@@ -14,7 +14,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayu
 let fallas = 0;
 function ok(cond, que) { console.log((cond ? '  ok   ' : '  FALLA ') + que); if (!cond) fallas++; }
 
-function crearEntorno() {
+function crearEntorno(formsSinFila) {
   const E = { logs: [], planillas: {} };
   class Hoja {
     constructor(nombre) {
@@ -94,7 +94,12 @@ function crearEntorno() {
     Utilities: { formatDate: function () { return ''; } }
   };
   vm.createContext(ctx);
-  ARCHIVOS.forEach(function (f) { vm.runInContext(fs.readFileSync(path.join(RAIZ, f), 'utf8'), ctx, { filename: f }); });
+  ARCHIVOS.forEach(function (f) {
+    let src = fs.readFileSync(path.join(RAIZ, f), 'utf8');
+    // 13/10: la sección de FORMULARIOS_SIN_FILA entra a la GUÍA sólo con la solapa prendida
+    if (formsSinFila && f === '00_Config.js') src = src.replace('const FORMULARIOS_SIN_FILA_ACTIVA = false;', 'const FORMULARIOS_SIN_FILA_ACTIVA = true;');
+    vm.runInContext(src, ctx, { filename: f });
+  });
   E.ctx = ctx;
   E.run = function (expr) { E.logs = []; return vm.runInContext(expr, ctx); };
   return E;
@@ -130,8 +135,8 @@ const iSec = filas.indexOf('QUÉ HACE EL SISTEMA (solo, cada hora)');
 ok(iSec > 0 && filas[iSec - 1] === '' && fmt(g, iSec + 1).peso === 'bold' && fmt(g, iSec + 1).tamano === 12 && fmt(g, iSec + 1).fondo === '#D9E1F2',
    'título de sección: negrita 12, gris claro, con una fila en blanco antes');
 const secciones = filas.filter(function (t, i) { return fmt(g, i + 1).fondo === '#D9E1F2'; });
-ok(secciones.length === 7 && filas.filter(function (t) { return /^ • /.test(t); }).length === 24,
-   '7 secciones y 24 viñetas (09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo y FORMULARIOS_SIN_FILA) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
+ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 21,
+   '6 secciones y 21 viñetas (09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo; FORMULARIOS_SIN_FILA apagada: no está) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
 const colores = E.run('_coloresAyuda_()');
 const conColor = function (inicio) { const i = filas.findIndex(function (t) { return t.indexOf(' • ' + inicio) === 0; }); return fmt(g, i + 1).fondo; };
 ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde && conColor('Rojo') === colores.rojo &&
@@ -154,6 +159,16 @@ ok(fl.indexOf('IMPORTANTE') > 0 && fl[fl.length - 1] === ' • No se edita: se r
    l.congeladas === 1 && l.sinGrilla && l.maxCols === 1, 'el texto y el mismo formato');
 ok(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v && Object.keys(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v).length === 0 &&
    Object.keys(E.planilla(idAg).getSheetByName('Agenda').v).length === 0, 'no toca ninguna otra solapa');
+
+console.log('[3b] con FORMULARIOS_SIN_FILA prendida (13/10), la GUÍA suma su sección; apagada, no');
+{
+  const E2 = crearEntorno(true);
+  const f2 = E2.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
+  const f1 = E.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
+  ok(f2.indexOf('SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)') >= 0 &&
+     f2.filter(function (t) { return /^ • /.test(t); }).length === 24 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
+     'prendida: 7 secciones y 24 viñetas; apagada: ni una mención');
+}
 
 console.log('[4] otra vez: se reescriben, sin duplicar');
 E.run('escribirSolapasAyuda(true)');
