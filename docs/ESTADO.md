@@ -1951,6 +1951,18 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### El formato para leer (15/10, noche) — PRENDIDO
+
+Pedido del usuario (I): las solapas de reporte y de control, legibles. `51_FormatoLectura.js` (`formatoLectura_`), con
+`FORMATO_LECTURA_ACTIVO = true` y la lista `FORMATO_LECTURA_SOLAPAS` (AGENDA_DUPLICADOS, IDS_SIN_CRUZAR, AGENDA_PENDIENTES,
+AUDITORIA_AGENDA, EMPAREJAR_MANUAL, SIN_MATCH, HISTORICO_SIN_RESOLVER, AGENDA_FIGURA_A_COMPLETAR): texto ajustado arriba a la
+izquierda; encabezado en negrita, gris claro, congelado; anchos según el contenido (la columna que describe la reunión 350 px —en
+AGENDA_DUPLICADOS es "reunión del mail", porque ELEGIR y COMENTARIO van adelante—; fechas y horas 95; figura / lugar / barrio
+160; textos largos 250; nunca menos de 70); ELEGIR y COMENTARIO resaltadas. Se reaplica en cada reescritura (los escritores
+`escribirHoja_`, `_escribirHojaAgenda_` y el de AGENDA_DUPLICADOS). REVISAR_MATCH tiene sus fichas y no se toca; los registros
+(REGISTRO_*) tampoco. Si el formato falla, la solapa ya quedó escrita (sólo se loguea). Test: `tests/formato_lectura.test.js`.
+Se ve en la próxima corrida de la hora (o al correr el paso que escribe cada solapa).
+
 #### Después del paso 66 (15/10, tarde): correcciones APAGADAS y la auditoría de cancelaciones
 
 El usuario corrió la auditoría (paso 66) y pidió, en paralelo (cuatro agentes, cada uno en su worktree; un revisor para D y

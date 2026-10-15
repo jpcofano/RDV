@@ -27,7 +27,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = r
 const { execSync } = require('child_process');
 
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js',
+const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js', '51_FormatoLectura.js',
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',

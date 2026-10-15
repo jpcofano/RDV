@@ -2898,6 +2898,11 @@ diagnostico/30_duplicados_agenda.js  los duplicados que creó la agenda (paso 69
                    de Seguridad / barrio del mail (paso 70) y de RDV CONJUNTO repetido (paso 71). SÓLO LECTURA   ← 15/10
 diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 68, SÓLO LECTURA): desaparecidas del
                    mail, marcadas o TACHADAS (HTML), RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", vencidas      ← 15/10
+51_FormatoLectura.js  el FORMATO PARA LEER de las solapas de reporte y de control (FORMATO_LECTURA_SOLAPAS: AGENDA_DUPLICADOS,
+                   IDS_SIN_CRUZAR, AGENDA_PENDIENTES, AUDITORIA_AGENDA, EMPAREJAR_MANUAL, SIN_MATCH, HISTORICO_SIN_RESOLVER,
+                   AGENDA_FIGURA_A_COMPLETAR): texto ajustado arriba a la izquierda, encabezado negrita gris congelado,
+                   anchos según el contenido (la columna de la reunión, 350 px), ELEGIR / COMENTARIO resaltadas; en cada
+                   reescritura (escribirHoja_, _escribirHojaAgenda_, AGENDA_DUPLICADOS). REVISAR_MATCH no (fichas) ← 15/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

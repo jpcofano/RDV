@@ -1993,7 +1993,9 @@ function escribirDuplicadosAgenda_(P) {
     sh.getRange(e.fila, 1, 1, 2).setBackground('#FFF2CC');
   });
   try { sh.hideColumns(ancho - 1, 2); } catch (e) { /* no importa */ }
-  try { sh.autoResizeColumns(1, ancho - 2); } catch (e) { /* no importa */ }
+  // 15/10: el formato para leer (51_FormatoLectura.js): ajustado, anchos según el contenido ("reunión del mail" ancha)
+  if (typeof llevaFormatoLectura_ === 'function' && llevaFormatoLectura_(AGENDA_SOLAPA_DUPLICADOS)) formatoLectura_(sh, filas);
+  else { try { sh.autoResizeColumns(1, ancho - 2); } catch (e) { /* no importa */ } }
   _protegerDuplicadosAgenda_(sh, editables.map(function (e) { return sh.getRange(e.fila, 1, 1, 2); }));
   SpreadsheetApp.flush();
   Logger.log('  %s (archivo del destino): %s líneas, %s para elegir.', AGENDA_SOLAPA_DUPLICADOS, filas.length - 1, editables.length);

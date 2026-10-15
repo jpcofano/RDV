@@ -744,6 +744,8 @@ function _escribirHojaAgenda_(nombre, matriz) {
     });
   }
   try { sh.setFrozenRows(1); } catch (e) { /* no importa */ }
+  // 15/10: el formato para leer (51_FormatoLectura.js), para las solapas de la lista
+  if (typeof llevaFormatoLectura_ === 'function' && llevaFormatoLectura_(nombre)) formatoLectura_(sh, matriz);
   Logger.log('[agenda] %s: %s filas', nombre, matriz.length - 1);
   return sh;
 }

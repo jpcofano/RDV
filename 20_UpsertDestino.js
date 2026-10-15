@@ -5621,6 +5621,8 @@ function escribirHoja_(nombre, matriz) {
       else sh.clearContents();
       sh.getRange(1, 1, matriz.length, matriz[0].length).setValues(matriz);
       sh.setFrozenRows(1);
+      // 15/10: el formato para leer (51_FormatoLectura.js), en cada reescritura, para las solapas de la lista
+      if (typeof llevaFormatoLectura_ === 'function' && llevaFormatoLectura_(nombre)) formatoLectura_(sh, matriz);
       SpreadsheetApp.flush();
       return sh;
     } catch (err) {

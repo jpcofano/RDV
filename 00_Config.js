@@ -94,6 +94,21 @@ const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
 const PROP_CORRIDA_EN_CURSO = 'CORRIDA_EN_CURSO';
 
 /*
+ * --- El formato para leer (15/10; 51_FormatoLectura.js) ---
+ * Las solapas de reporte y de control que el sistema reescribe: texto ajustado, arriba a la izquierda, encabezado en negrita
+ * gris y congelado, anchos según el contenido (la columna que describe la reunión, ~350 px), ELEGIR / COMENTARIO resaltadas.
+ * Se reaplica en cada reescritura. REVISAR_MATCH tiene su formato de fichas y no está en la lista.
+ */
+const FORMATO_LECTURA_ACTIVO = true;
+const FORMATO_LECTURA_SOLAPAS = ['AGENDA_DUPLICADOS', 'IDS_SIN_CRUZAR', 'AGENDA_PENDIENTES', 'AUDITORIA_AGENDA', 'EMPAREJAR_MANUAL',
+  'SIN_MATCH', 'HISTORICO_SIN_RESOLVER', 'AGENDA_FIGURA_A_COMPLETAR'];
+const FORMATO_ANCHO_DESCRIPCION = 350;
+const FORMATO_ANCHO_TEXTO_LARGO = 250;
+const FORMATO_ANCHO_MIN = 70;
+const FORMATO_GRIS_ENCABEZADO = '#D9D9D9';
+const FORMATO_RESALTE_ELEGIR = '#FFE599';
+
+/*
  * --- La escritura en lote (02/10) ---
  * La primera escritura real (02/10 14:50) se cortó a los 6 minutos de Apps Script: escribía celda
  * por celda (leer, escribir, pintar), y cada lectura obliga a vaciar la cola de escrituras. Ahora
