@@ -1330,6 +1330,24 @@ function paso90_coloresMail() {
   return coloresMail();
 }
 
+/**
+ * REVISAR TODO (16/10) — SÓLO LECTURA: corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78 y 81, cada uno aislado (si uno
+ * falla, sigue). Si quedan menos de 60 s, para y dice "FALTAN: … — volvé a correr revisarTodo()"; al correrla de nuevo sigue
+ * donde quedó. Al terminar: "TERMINADO" y un resumen por paso. NO corre el 74 (escribe), el 80 (manda un mail) ni el 82
+ * (instala un activador). Lo único que guarda es su progreso (una propiedad del script).
+ */
+function revisarTodo() {
+  _anunciar_('revisarTodo — los pasos de revisión, todos SÓLO LECTURA', 'revisarTodo_()  [52_RevisarTodo.js]',
+             'NO escribe nada (sólo su progreso, en una propiedad del script)',
+             'el log de cada paso y, al final, "TERMINADO" + RESUMEN, o "FALTAN: …" si hay que volver a correrla');
+  return revisarTodo_();
+}
+
+/** Empezar revisarTodo() de cero (borra su progreso). */
+function reiniciarRevisarTodo() {
+  return reiniciarRevisarTodo_();
+}
+
 /** PASO 75 — EN SECO (15/10, H1-H4): la agenda de HOY como quedaría con las cuatro reglas prendidas. No escribe nada. */
 function paso75_agendaSegura_enSeco() {
   _anunciar_('paso 75 — la agenda segura (EN SECO)', 'medirAgendaSegura()  [diagnostico/32_medir_agenda_segura.js]',

@@ -1951,6 +1951,19 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### revisarTodo() (16/10): los pasos de revisión, juntos
+
+`revisarTodo()` en 99_Correr.js (`52_RevisarTodo.js`) corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78 y 81, todos de
+sólo lectura, cada uno aislado. **El 74 no está**, aunque el pedido lo incluía, porque escribe: AGENDA_EQUIPO y oculta
+"Sugerencia - Equipo Directa". Se corre aparte, una vez, si se quiere. Tampoco están el 80 (manda un mail) ni el 82 (instala un
+activador).
+
+- **Si no alcanza el tiempo** (quedan menos de 60 s, o menos de 280 s para el replay del 76), dice "FALTAN: … — volvé a correr
+  revisarTodo()" y la siguiente sigue donde quedó.
+- **Si un paso corta la ejecución** por el límite de 6 minutos, se reintenta una vez y después se saltea.
+- **Al terminar** dice TERMINADO, muestra un resumen por paso y borra su progreso.
+- `reiniciarRevisarTodo()` empieza de cero.
+
 #### H1–H4 y J (15/10, noche): la agenda segura y la cancelación que sólo suspende — escritas y APAGADAS
 
 Detalle de cada regla: CLAUDE.md, sección 0 (la tercera excepción). Para el equipo: docs/agenda-equipo.md y la GUÍA / LEER

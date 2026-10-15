@@ -145,9 +145,19 @@ const AVISOS_PROP_ULTIMO = 'AVISO_ULTIMO_';
 const AVISOS_PROP_RACHA = 'AVISOS_RACHA_CORRIDAS';
 const AVISOS_PROP_COLA = 'AVISOS_COLA';
 /** La cola guardada en la propiedad (por si la corrida se corta): como mucho estos caracteres (el límite es 9 KB por valor). */
-const AVISOS_COLA_MAX_CHARS = 5000;
+const AVISOS_COLA_MAX_CHARS = 5000;   // 15/10: con margen (el límite de una propiedad es 9 KB en BYTES: tildes, escapes)
 /** Si la corrida ya lleva más que esto al cerrar, los avisos no se mandan en ésta: se guardan y los manda la siguiente. */
-const AVISOS_ENVIO_MAX_MS = 320 * 1000;   // 15/10: con margen (el límite de una propiedad es 9 KB en BYTES: tildes, escapes)
+const AVISOS_ENVIO_MAX_MS = 320 * 1000;
+/**
+ * **revisarTodo()** (16/10, 52_RevisarTodo.js): corre en orden los pasos de revisión de SÓLO LECTURA; el progreso, en la
+ * propiedad REVISAR_TODO_PROP; para cuando quedan menos de REVISAR_TODO_MARGEN_MS del límite de una ejecución
+ * (REVISAR_TODO_LIMITE_MS). Un paso que necesita más tiempo (REVISAR_TODO_PASOS, minS) espera a una ejecución nueva; un paso
+ * que corta la ejecución por el límite REVISAR_TODO_INTENTOS veces, se saltea.
+ */
+const REVISAR_TODO_PROP = 'REVISAR_TODO_PROGRESO';
+const REVISAR_TODO_LIMITE_MS = 6 * 60 * 1000;
+const REVISAR_TODO_MARGEN_MS = 60 * 1000;
+const REVISAR_TODO_INTENTOS = 2;
 /**
  * Las reuniones que la agenda suspende (tema 'suspendidas'): no van una por mail. Se anotan en la solapa
  * AVISOS_SUSPENDIDAS (intermedia) y salen juntas en UN mail por día ("reuniones suspendidas hoy"), en la primera corrida
