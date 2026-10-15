@@ -60,22 +60,36 @@ function leerDisenoDirecta_(ss) {
   try { for (let c = 1; c <= n; c++) D.anchos[c] = dir.getColumnWidth(c); } catch (e) { D.avisos = (D.avisos || []).concat(['anchos: ' + e]); }
   const ur = dir.getLastRow();
   if (ur >= fmt.filaDatos) {
-    try {
-      const dvs = dir.getRange(fmt.filaDatos, 1, ur - fmt.filaDatos + 1, n).getDataValidations();
-      const C = SpreadsheetApp.DataValidationCriteria || {};
-      D.columnas.forEach(function (col) {
-        const dv = dvs.map(function (r) { return r[col.col - 1]; }).filter(Boolean)[0];
-        if (!dv) return;
-        const t = dv.getCriteriaType();
-        if (t === C.CHECKBOX) { col.tipo = 'casilla'; return; }
-        col.validacion = dv;
-        if (t === C.VALUE_IN_LIST || t === C.VALUE_IN_RANGE) col.tipo = 'lista';
-      });
-    } catch (e) { D.avisos = (D.avisos || []).concat(['validaciones: ' + e]); }
-    try {
-      const dia = leerRenglonesVistaMail_(dir).renglones.filter(function (r) { return r.tipo === 'dia'; })[0];
-      if (dia) D.filaDia = dia.fila;
-    } catch (e) { D.avisos = (D.avisos || []).concat(['días: ' + e]); }
+    let renglones = [];
+    try { renglones = leerRenglonesVistaMail_(dir).renglones; } catch (e) { D.avisos = (D.avisos || []).concat(['renglones: ' + e]); }
+    const dia = renglones.filter(function (r) { return r.tipo === 'dia'; })[0];
+    if (dia) D.filaDia = dia.fila;
+    const filasReunion = renglones.filter(function (r) { return r.tipo === 'reunion'; }).map(function (r) { return r.fila; });
+    // 15/10 (revisión): el TIPO de cada columna sale de la validación REAL de "Agenda Directa", en los renglones de reunión. Una
+    // casilla (con sus valores propios, si los tiene: "Sí" / "No"), un desplegable, o una columna de valor (fecha, texto, otra
+    // validación o ninguna: se escribe tal cual, sin validación). Sólo si "Agenda Directa" todavía no tiene reuniones vale lo de
+    // 00_Config.js. Implementador sin desplegable en "Agenda Directa" queda con el de las opciones (el usuario lo pidió así).
+    if (filasReunion.length) {
+      try {
+        const dvs = dir.getRange(fmt.filaDatos, 1, ur - fmt.filaDatos + 1, n).getDataValidations();
+        const C = SpreadsheetApp.DataValidationCriteria || {};
+        D.columnas.forEach(function (col) {
+          const dv = filasReunion.map(function (f) { return (dvs[f - fmt.filaDatos] || [])[col.col - 1]; }).filter(Boolean)[0];
+          col.tipo = col.id === 'Implementador' ? 'lista' : 'libre';
+          col.validacion = null; col.casilla = null;
+          if (!dv) return;
+          const t = dv.getCriteriaType();
+          if (t === C.CHECKBOX) {
+            col.tipo = 'casilla';
+            let vals = [];
+            try { vals = dv.getCriteriaValues() || []; } catch (e) { vals = []; }
+            if (vals.length && vals[0] !== true && vals[0] != null && str(vals[0]) !== '') col.casilla = { si: vals[0], no: vals.length > 1 && vals[1] != null ? vals[1] : '' };
+          } else if (t === C.VALUE_IN_LIST || t === C.VALUE_IN_RANGE) {
+            col.tipo = 'lista'; col.validacion = dv;
+          }
+        });
+      } catch (e) { D.avisos = (D.avisos || []).concat(['validaciones: ' + e]); }
+    }
   }
   try {
     const impl = D.columnas.filter(function (c) { return c.id === 'Implementador'; })[0];
@@ -187,23 +201,30 @@ function escribirVistaMailDirecta_(ss, sh0, filas) {
   const n = filas.length, filasReunion = [], filasDia = [];
   filas.forEach(function (f, i) { (f.tipo === 'dia' ? filasDia : filasReunion).push(F0 + i); });
   if (n) {
-    sh.getRange(F0, D.colInfo, n, 1).setNumberFormat('@');          // "martes 13/10" queda TEXTO (Sheets no lo hace fecha)
-    const casillas = D.columnas.filter(function (c) { return c.tipo === 'casilla'; });
-    const valores = filas.map(function (f) {
+    // "martes 13/10" queda TEXTO (Sheets no lo hace fecha). El texto del día va en la PRIMERA columna del renglón combinado (si
+    // "Info" no es la A, en la columna de Info se perdería al combinar: Sheets sólo conserva la de arriba a la izquierda).
+    sh.getRange(F0, D.colInfo, n, 1).setNumberFormat('@');
+    if (D.colInfo !== 1 && filasDia.length) sh.getRangeList(filasDia.map(function (r) { return _a1_(r, 1); })).setNumberFormat('@');
+    const casillasPor = {}, noEntran = [];                          // las casillas, por sus valores ("Sí"/"No" o TRUE/FALSE)
+    const valores = filas.map(function (f, i) {
       const r = []; for (let c = 0; c < colClave; c++) r.push('');
-      if (f.tipo === 'dia') { r[D.colInfo - 1] = f.texto; return r; }
+      if (f.tipo === 'dia') { r[0] = f.texto; return r; }
       D.columnas.forEach(function (c) {
         const v = (f.campos || {})[c.id];
-        r[c.col - 1] = c.tipo === 'casilla' ? v === true : (v == null ? '' : v);
+        const x = valorCeldaDirecta_(c, v);
+        r[c.col - 1] = x.valor;
+        if (x.casilla) { const k = JSON.stringify(c.casilla ? [c.casilla.si, c.casilla.no] : []); (casillasPor[k] = casillasPor[k] || []).push(_a1_(F0 + i, c.col)); }
+        else if (x.noEntra) noEntran.push(_a1_(F0 + i, c.col) + ' (' + c.id + ': "' + str(v) + '")');
       });
       r[colClave - 1] = f.clave;
       return r;
     });
-    if (casillas.length && filasReunion.length) {                    // las casillas antes de los valores (TRUE/FALSE)
-      const a1 = [];
-      filasReunion.forEach(function (r) { casillas.forEach(function (c) { a1.push(_a1_(r, c.col)); }); });
-      sh.getRangeList(a1).insertCheckboxes();
-    }
+    Object.keys(casillasPor).forEach(function (k) {                   // las casillas antes de los valores
+      const sv = JSON.parse(k), rl = sh.getRangeList(casillasPor[k]);
+      if (sv.length) rl.insertCheckboxes(sv[0], sv[1]); else rl.insertCheckboxes();
+    });
+    if (noEntran.length) Logger.log('  AVISO "%s": %s valores guardados no son de casilla y quedaron como TEXTO (sin casilla, no se pierden): %s',
+                                    AGENDA_SOLAPA_VISTA_MAIL, noEntran.length, noEntran.join('; '));
     sh.getRange(F0, 1, n, colClave).setValues(valores);
     filas.forEach(function (f, i) {
       if (f.tipo !== 'reunion') return;
@@ -250,6 +271,26 @@ function escribirVistaMailDirecta_(ss, sh0, filas) {
              AGENDA_SOLAPA_DIRECTA, D.fuente === 'directa' ? 'copiado de "' + AGENDA_SOLAPA_DIRECTA + '"' : 'de respaldo',
              D.motivo ? ' — ' + D.motivo : '', n, filasReunion.length, RDV_HOJA_AGENDA_EQUIPO);
   return filas;
+}
+
+/**
+ * Lo que va en una celda del equipo, según el tipo de su columna. **Un valor guardado nunca se convierte en `false`**:
+ *   casilla   true / false ('' o nada) o, con valores propios, "Sí" / "No" → la casilla; cualquier otra cosa (un texto, una fecha)
+ *             NO es de casilla: va como TEXTO, sin casilla (`noEntra`, se avisa en el log) y sigue guardado tal cual;
+ *   lista / libre  el valor tal cual (fecha, texto); `false` (una casilla sin marcar de antes) es "nada cargado": vacía.
+ * → { valor, casilla (poner la casilla), noEntra }
+ */
+function valorCeldaDirecta_(col, v) {
+  if (col.tipo === 'casilla') {
+    const si = col.casilla ? col.casilla.si : true, no = col.casilla ? col.casilla.no : false;
+    if (v === true || (col.casilla && v === si)) return { valor: si, casilla: true };
+    if (v == null || v === false || v === '' || (col.casilla && v === no)) return { valor: no, casilla: true };
+    if (col.casilla && str(v) === str(si)) return { valor: si, casilla: true };
+    if (col.casilla && str(v) === str(no)) return { valor: no, casilla: true };
+    return { valor: v instanceof Date ? v : str(v), casilla: false, noEntra: true };
+  }
+  if (v == null || v === false) return { valor: '', casilla: false };
+  return { valor: v, casilla: false };
 }
 
 /** El encabezado del respaldo: gris, negrita, centrado, con bordes; cada grupo con su color. */
@@ -382,16 +423,36 @@ function horaCeldaDirecta_(texto) {
   return l ? _horaAgenda_(l) : '';
 }
 
+/** El lugar de una celda de reunión (la línea "Lugar:"), comparable; '' si no hay. */
+function lugarCeldaDirecta_(texto) {
+  const l = str(texto).split(/\r?\n/).filter(function (x) { return /^[*\s]*lugar\s*:/i.test(x); })[0];
+  return l ? normalizeText_(l.replace(/^[*\s]*lugar\s*:\s*/i, '')).replace(/[*"'“”.,;:()]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+}
+
+/**
+ * ¿Pueden ser el mismo lugar? Sin lugar de un lado, sí (no se compara). Con comuna de los dos lados, la misma comuna. Si no, el
+ * mismo texto, uno dentro del otro, o la mitad de las palabras (de 3 letras o más) en común. '' si coinciden; si no, el motivo.
+ */
+function _lugarDistintoDirecta_(a, b) {
+  if (!a || !b) return '';
+  const ca = typeof detectComuna_ === 'function' ? detectComuna_(a) : null, cb = typeof detectComuna_ === 'function' ? detectComuna_(b) : null;
+  if (ca != null && cb != null) return ca === cb ? '' : 'lugar distinto (Comuna ' + ca + ' / Comuna ' + cb + ')';
+  if (a === b || a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return '';
+  const pa = a.split(' ').filter(function (w) { return w.length >= 3; }), pb = b.split(' ').filter(function (w) { return w.length >= 3; });
+  const comunes = pa.filter(function (w) { return pb.indexOf(w) >= 0; }).length;
+  return pa.length && pb.length && comunes / Math.min(pa.length, pb.length) >= 0.5 ? '' : 'lugar distinto ("' + a + '" / "' + b + '")';
+}
+
 /**
  * Las reuniones del sistema contra las que se cruza: las de "Agenda (mail)" (con su clave, su día y su celda) y, para las semanas
- * que ya no están en la vista, las de AGENDA_EQUIPO (su "reunión" es "evento — HH:mm" y su fecha).
+ * que ya no están en la vista, las de AGENDA_EQUIPO (su "reunión" es "evento — HH:mm" y su fecha; sin lugar).
  */
 function candidatosDirecta_(renglonesNuestros, guardados) {
   const out = [], vistas = {};
   renglonesNuestros.forEach(function (r) {
     if (r.tipo !== 'reunion' || !r.clave || !r.fecha) return;
     vistas[r.clave] = true;
-    out.push({ clave: r.clave, fecha: r.fecha, evento: eventoCeldaDirecta_(r.texto), hora: horaCeldaDirecta_(r.texto),
+    out.push({ clave: r.clave, fecha: r.fecha, evento: eventoCeldaDirecta_(r.texto), hora: horaCeldaDirecta_(r.texto), lugar: lugarCeldaDirecta_(r.texto),
                texto: str(r.texto).split(/\r?\n/)[0], origen: '"' + AGENDA_SOLAPA_VISTA_MAIL + '" renglón ' + r.fila });
   });
   Object.keys(guardados || {}).forEach(function (k) {
@@ -399,7 +460,7 @@ function candidatosDirecta_(renglonesNuestros, guardados) {
     const g = guardados[k], f = toDate_(g.fecha);
     if (!f || !g.reunion) return;
     const p = str(g.reunion).split(' — ');
-    out.push({ clave: k, fecha: f, evento: eventoCeldaDirecta_(p[0]), hora: p[1] ? _horaAgenda_(p[1]) : '', texto: p[0],
+    out.push({ clave: k, fecha: f, evento: eventoCeldaDirecta_(p[0]), hora: p[1] ? _horaAgenda_(p[1]) : '', lugar: '', texto: p[0],
                origen: RDV_HOJA_AGENDA_EQUIPO });
   });
   return out;
@@ -407,9 +468,14 @@ function candidatosDirecta_(renglonesNuestros, guardados) {
 
 /**
  * El plan de la copia (sin Sheets: lo prueban los tests). Cada reunión de "Agenda Directa" con algo cargado se cruza con UNA
- * reunión del sistema del MISMO DÍA: el mismo texto de evento (si hay varias, desempata la hora); si no, una sola que contenga al
- * otro texto (o al revés). Lo que no cruza, con el motivo. Por campo: se copia si en AGENDA_EQUIPO está vacío; si ya tiene lo
- * mismo, "ya estaba"; si tiene OTRA cosa, no se pisa (conflicto).
+ * reunión del sistema del MISMO DÍA (15/10, revisión: nunca con una de otra hora o de otro lugar):
+ *   - descartadas antes de todo: si las dos tienen hora y es distinta ("hora distinta"); si las dos tienen lugar y es otro
+ *     ("lugar distinto": otra comuna, u otra dirección);
+ *   - de las que quedan, el MISMO texto de evento, y una sola;
+ *   - si no hay ninguna con el mismo texto: una que contenga al otro texto (o al revés), sólo si la hora COINCIDE (o ninguna de las
+ *     dos la tiene), y una sola. Un "Encuentro con Vecinos" genérico ya no cae en la única reunión que lo contiene.
+ * Lo que no cruza, con el motivo. Por campo: se copia si en AGENDA_EQUIPO está vacío; si ya tiene lo mismo, "ya estaba"; si
+ * tiene OTRA cosa, no se pisa (conflicto).
  * → { copias: [{ renglon, cand, como, campos, ya, conflictos }], sinCruce: [{ renglon, motivo }], vacias, enVista, info }
  */
 function planCopiaDirecta_(renglonesDirecta, candidatos, guardados) {
@@ -420,18 +486,31 @@ function planCopiaDirecta_(renglonesDirecta, candidatos, guardados) {
     const cargado = Object.keys(r.campos).filter(function (n) { return _hayValorEquipo_(r.campos[n]); });
     if (!cargado.length) { out.vacias++; return; }
     if (!r.fecha) { out.sinCruce.push({ renglon: r, motivo: 'no tiene un renglón de día arriba (no se sabe la fecha)' }); return; }
-    const ev = eventoCeldaDirecta_(r.texto), hora = horaCeldaDirecta_(r.texto);
+    const ev = eventoCeldaDirecta_(r.texto), hora = horaCeldaDirecta_(r.texto), lugar = lugarCeldaDirecta_(r.texto);
     const delDia = candidatos.filter(function (c) { return ymd_(c.fecha) === ymd_(r.fecha); });
     if (!delDia.length) { out.sinCruce.push({ renglon: r, motivo: 'el sistema no tiene ninguna reunión el ' + fmtFecha_(r.fecha) }); return; }
-    let c = delDia.filter(function (x) { return x.evento && x.evento === ev; }), como = 'mismo evento';
-    if (c.length > 1 && hora) { const c2 = c.filter(function (x) { return x.hora === hora; }); if (c2.length) { c = c2; como = 'mismo evento y hora'; } }
+    const descartes = [];
+    const posibles = delDia.filter(function (x) {
+      if (hora && x.hora && hora !== x.hora) { descartes.push({ x: x, por: 'hora distinta (aquí ' + hora + ', el sistema ' + x.hora + ')' }); return false; }
+      const dl = _lugarDistintoDirecta_(lugar, x.lugar);
+      if (dl) { descartes.push({ x: x, por: dl }); return false; }
+      return true;
+    });
+    let c = posibles.filter(function (x) { return x.evento && x.evento === ev; }), como = 'mismo evento';
     if (!c.length && ev.length >= 8) {
-      c = delDia.filter(function (x) { return x.evento.length >= 8 && (x.evento.indexOf(ev) >= 0 || ev.indexOf(x.evento) >= 0); });
-      como = 'evento parecido (uno contiene al otro)';
-      if (c.length > 1 && hora) { const c2 = c.filter(function (x) { return x.hora === hora; }); if (c2.length) c = c2; }
+      c = posibles.filter(function (x) {
+        const mismaHora = (hora && x.hora && hora === x.hora) || (!hora && !x.hora);
+        return mismaHora && x.evento.length >= 8 && (x.evento.indexOf(ev) >= 0 || ev.indexOf(x.evento) >= 0);
+      });
+      como = 'evento parecido (uno contiene al otro) y la misma hora';
     }
     const lista = delDia.map(function (x) { return '"' + x.texto + '"' + (x.hora ? ' ' + x.hora : ''); }).join('; ');
-    if (!c.length) { out.sinCruce.push({ renglon: r, motivo: 'ninguna reunión del sistema con ese evento ese día (ese día: ' + lista + ')' }); return; }
+    if (!c.length) {
+      const mismoEv = descartes.filter(function (d) { return d.x.evento === ev; });
+      out.sinCruce.push({ renglon: r, motivo: mismoEv.length ? mismoEv.map(function (d) { return d.por; }).join('; ') + ' (ese día: ' + lista + ')'
+                                                             : 'ninguna reunión del sistema con ese evento ese día (ese día: ' + lista + ')' });
+      return;
+    }
     if (c.length > 1) { out.sinCruce.push({ renglon: r, motivo: 'AMBIGUA: ' + c.length + ' reuniones del sistema con ese evento ese día (' + lista + ')' }); return; }
     const cand = c[0];
     if (usadas[cand.clave]) { out.sinCruce.push({ renglon: r, motivo: 'esa reunión del sistema ya la toma el renglón ' + usadas[cand.clave] + ' de "' + AGENDA_SOLAPA_DIRECTA + '"' }); return; }
@@ -441,7 +520,7 @@ function planCopiaDirecta_(renglonesDirecta, candidatos, guardados) {
     cargado.forEach(function (n) {
       const v = r.campos[n], antes = g[n];
       if (!_hayValorEquipo_(antes)) copia.campos[n] = v;
-      else if (antes === v || str(antes) === str(v)) copia.ya.push(n);
+      else if (antes === v || str(antes) === str(v) || (antes instanceof Date && v instanceof Date && ymd_(antes) === ymd_(v))) copia.ya.push(n);
       else copia.conflictos.push(n + ' (en "' + AGENDA_SOLAPA_VISTA_MAIL + '": ' + str(antes) + '; en "' + AGENDA_SOLAPA_DIRECTA + '": ' + str(v) + ')');
     });
     out.copias.push(copia);
@@ -480,19 +559,28 @@ function _copiarAgendaDirecta_(escribe) {
         const guardados = leerEquipoGuardado_();
         const nuestra = ss.getSheetByName(AGENDA_SOLAPA_VISTA_MAIL);
         // lo que hoy tiene "Agenda (mail)" cuenta como guardado (como en la corrida de la hora: manda la vista, campo por campo)
-        const vistaHoy = nuestra ? leerEquipoVistaMail_(nuestra) : {};
+        // (el lector seguro: si no se reconocen las columnas de la vista, TIRA y no se copia nada; mejor eso que perder lo cargado)
+        const vistaHoy = nuestra ? leerEquipoVistaMailSeguro_(nuestra) : {};
         const efectivos = {};
         Object.keys(guardados).forEach(function (k) { efectivos[k] = { campos: Object.assign({}, guardados[k].campos), reunion: guardados[k].reunion, fecha: guardados[k].fecha }; });
         Object.keys(vistaHoy).forEach(function (k) {
           efectivos[k] = efectivos[k] || { campos: {}, reunion: '', fecha: '' };
           Object.assign(efectivos[k].campos, vistaHoy[k].campos);
         });
+        // una casilla con valores propios ("Sí" / "No") sin marcar es "nada cargado", de los dos lados
+        const Dd = leerDisenoDirecta_(ss), sinMarcar = {};
+        Dd.columnas.forEach(function (c) { if (c.casilla) sinMarcar[c.id] = str(c.casilla.no); });
+        const desmarcar = function (campos) {
+          Object.keys(sinMarcar).forEach(function (id) { if (campos && campos[id] != null && typeof campos[id] !== 'boolean' && str(campos[id]) === sinMarcar[id]) campos[id] = false; });
+        };
+        rd.renglones.forEach(function (r) { desmarcar(r.campos); });
+        Object.keys(efectivos).forEach(function (k) { desmarcar(efectivos[k].campos); });
         const cands = candidatosDirecta_(nuestra ? leerRenglonesVistaMail_(nuestra, hoy).renglones : [], guardados);
         const P = planCopiaDirecta_(rd.renglones, cands, efectivos);
         Logger.log('  reuniones del sistema para cruzar: %s | renglones de "%s" con algo cargado: %s (sin nada: %s)', cands.length,
                    AGENDA_SOLAPA_DIRECTA, P.copias.length + P.sinCruce.length, P.vacias);
         P.copias.forEach(function (c) {
-          const que = Object.keys(c.campos).map(function (n) { return n + ' = ' + (c.campos[n] === true ? '☑' : str(c.campos[n])); });
+          const que = Object.keys(c.campos).map(function (n) { return n + ' = ' + (c.campos[n] === true ? '☑' : c.campos[n] instanceof Date ? fmtFecha_(c.campos[n]) : str(c.campos[n])); });
           Logger.log('  %s renglón %s (%s | %s) → %s (%s; %s, %s)%s%s%s', escribe ? 'COPIADO' : 'COPIARÍA', c.renglon.fila, fmtFecha_(c.renglon.fecha),
                      str(c.renglon.texto).split(/\r?\n/)[0], c.cand.clave, c.cand.texto, c.como, c.cand.origen,
                      que.length ? ': ' + que.join('; ') : ': nada nuevo', c.ya.length ? ' | ya estaba: ' + c.ya.join(', ') : '',

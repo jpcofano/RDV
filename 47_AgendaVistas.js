@@ -213,12 +213,17 @@ function formatoVistaMail_(sh) {
     out.encabezado = [f1.slice(0, out.nCols), f2.slice(0, out.nCols)];
     return out;
   }
-  if (_encDirecta_(arriba[0][AGENDA_MAIL_COL_CLAVE - 1]) === 'clave') {
-    out.formato = 'viejo'; out.colClave = AGENDA_MAIL_COL_CLAVE; out.nCols = AGENDA_MAIL_COL_CHECK2;
-    out.columnas = CAMPOS_EQUIPO_VIEJOS_.map(function (n, i) { return { col: AGENDA_MAIL_COL_RESPONSABLE + i, grupo: n, sub: '', id: n, conocida: true }; });
-    out.encabezado = [arriba[0].slice(0, out.nCols), []];
-  }
-  return out;
+  // el de siempre: TODO POR POSICIÓN (A la reunión, B:D el equipo, E la clave), sin importar los títulos (como antes del 15/10)
+  const v = formatoViejoVistaMail_();
+  v.encabezado = [arriba[0].slice(0, v.nCols), []];
+  return v;
+}
+
+/** El formato de siempre de "Agenda (mail)", por posición: A la reunión, B:D el equipo, E la clave, datos desde el renglón 2. */
+function formatoViejoVistaMail_() {
+  return { formato: 'viejo', filaEnc: 1, filaDatos: 2, colInfo: 1, colClave: AGENDA_MAIL_COL_CLAVE, nCols: AGENDA_MAIL_COL_CHECK2,
+           columnas: CAMPOS_EQUIPO_VIEJOS_.map(function (n, i) { return { col: AGENDA_MAIL_COL_RESPONSABLE + i, grupo: n, sub: '', id: n, conocida: true }; }),
+           encabezado: [[], []] };
 }
 
 /**
@@ -253,8 +258,8 @@ function diaDeRenglonAgenda_(valor, mostrado, hoy) {
  * orden: `{ fila, tipo: 'dia'|'reunion', fecha (la del último renglón de día de arriba), texto (la celda Info), clave, campos }`.
  * `campos`: lo del equipo, por nombre ('Responsable', 'CONVOCATORIA · Hecho', …). SÓLO LEE (getValues y getDisplayValues).
  */
-function leerRenglonesVistaMail_(sh, hoy) {
-  const fmt = formatoVistaMail_(sh);
+function leerRenglonesVistaMail_(sh, hoy, formato) {
+  const fmt = formato || formatoVistaMail_(sh);
   const out = { formato: fmt, renglones: [] };
   if (!fmt.formato) return out;
   const ur = sh.getLastRow();
@@ -263,11 +268,15 @@ function leerRenglonesVistaMail_(sh, hoy) {
   const n = ur - fmt.filaDatos + 1;
   const v = sh.getRange(fmt.filaDatos, 1, n, ancho).getValues();
   const vi = sh.getRange(fmt.filaDatos, fmt.colInfo, n, 1).getDisplayValues();
+  // 15/10 (revisión): si "Info" no es la A, el texto del día de un renglón combinado a lo ancho queda en la A (Sheets conserva
+  // sólo la celda de arriba a la izquierda): con la celda de Info vacía, el día se busca ahí
+  const va = fmt.colInfo !== 1 ? sh.getRange(fmt.filaDatos, 1, n, 1).getDisplayValues() : null;
   let dia = null;
   v.forEach(function (r, i) {
     const info = r[fmt.colInfo - 1];
-    const d = diaDeRenglonAgenda_(info, vi[i] && vi[i][0], hoy || hoyMediodia_());
-    if (d) { dia = d; out.renglones.push({ fila: fmt.filaDatos + i, tipo: 'dia', fecha: d, texto: str(vi[i] && vi[i][0]) || str(info) }); return; }
+    let d = diaDeRenglonAgenda_(info, vi[i] && vi[i][0], hoy || hoyMediodia_()), textoDia = str(vi[i] && vi[i][0]) || str(info);
+    if (!d && va && esVacio_(info)) { d = diaDeRenglonAgenda_(r[0], va[i] && va[i][0], hoy || hoyMediodia_()); textoDia = str(va[i] && va[i][0]) || str(r[0]); }
+    if (d) { dia = d; out.renglones.push({ fila: fmt.filaDatos + i, tipo: 'dia', fecha: d, texto: textoDia }); return; }
     const campos = {};
     fmt.columnas.forEach(function (c) {
       const x = r[c.col - 1];
@@ -277,6 +286,50 @@ function leerRenglonesVistaMail_(sh, hoy) {
     const texto = info instanceof Date ? str(vi[i] && vi[i][0]) : str(info);
     if (!texto && !clave && !Object.keys(campos).some(function (k) { return _hayValorEquipo_(campos[k]); })) return;   // vacío
     out.renglones.push({ fila: fmt.filaDatos + i, tipo: 'reunion', fecha: dia, texto: texto, clave: clave, campos: campos });
+  });
+  return out;
+}
+
+/**
+ * Lo que el equipo cargó HOY en "Agenda (mail)", para GUARDARLO antes de reescribirla (15/10, revisión). El formato lo dice la
+ * protección que dejó el sistema la última vez (la descripción de cada formato es otra); si no hay, lo que se reconozca.
+ *   - el de siempre: por POSICIÓN (B:D el equipo, E la clave), sin importar los títulos;
+ *   - el de "Agenda Directa": "Info" y cada columna del equipo por su encabezado; la clave por "clave" o, si alguien le
+ *     cambió el título, por ser la única columna OCULTA. Si falta algo, TIRA ("Agenda (mail)" no se reescribe y el log lo dice
+ *     en grande): reescribirla sin haber podido leer una columna perdería lo cargado en ella.
+ */
+function leerEquipoVistaMailSeguro_(sh) {
+  if (!sh || sh.getLastRow() < 2) return {};
+  const descs = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).map(function (p) { return p.getDescription(); });
+  const escrita = descs.indexOf(DESC_PROTECCION_VISTA_MAIL_DIRECTA) >= 0 ? 'directa' : descs.indexOf(DESC_PROTECCION_VISTA_MAIL) >= 0 ? 'viejo' : '';
+  let fmt = formatoVistaMail_(sh);
+  if (escrita === 'directa' || (!escrita && fmt.formato === 'directa')) {
+    const problemas = [];
+    if (fmt.formato !== 'directa') problemas.push('no se encuentra "' + AGENDA_DIRECTA_INFO + '" en el encabezado');
+    else {
+      if (!fmt.colClave) {
+        const ocultas = [];
+        for (let c = 1; c <= sh.getLastColumn(); c++) if (sh.isColumnHiddenByUser(c)) ocultas.push(c);
+        if (ocultas.length === 1) {
+          fmt.colClave = ocultas[0];
+          fmt.columnas = fmt.columnas.filter(function (c) { return c.col < fmt.colClave; });
+          Logger.log('>>> AVISO "%s": la columna "clave" cambió de título; se usa la columna oculta (%s).', AGENDA_SOLAPA_VISTA_MAIL, fmt.colClave);
+        } else problemas.push('no se encuentra la columna "clave" (ni por el título ni por ser la única oculta)');
+      }
+      const ids = fmt.columnas.map(function (c) { return c.id; });
+      const faltan = AGENDA_DIRECTA_COLUMNAS.map(function (c) { return idColumnaEquipo_(c.grupo, c.sub); }).filter(function (id) { return ids.indexOf(id) < 0; });
+      if (faltan.length) problemas.push('no se encuentran las columnas ' + faltan.join(', ') + ' (¿les cambiaron el título?)');
+    }
+    if (problemas.length) {
+      throw new Error('NO SE REESCRIBE "' + AGENDA_SOLAPA_VISTA_MAIL + '" (lo del equipo se perdería): ' + problemas.join('; ') +
+                      '. Volver a poner los títulos como en "' + AGENDA_SOLAPA_DIRECTA + '".');
+    }
+  } else {
+    fmt = formatoViejoVistaMail_();
+  }
+  const out = {};
+  leerRenglonesVistaMail_(sh, null, fmt).renglones.forEach(function (r) {
+    if (r.tipo === 'reunion' && r.clave) out[r.clave] = { campos: r.campos };
   });
   return out;
 }
@@ -443,7 +496,7 @@ function escribirVistaMailAgenda_(ss, abierta, P, hoy) {
     info[claves[i]] = { reunion: str(it.ev.eventoTexto).replace(/\s+/g, ' ') + (it.ev.hora ? ' — ' + it.ev.hora : ''), fecha: it.ev.fecha || '' };
   });
   // 1. guardar (si falla, tira: la vista no se reescribe)
-  const enVista = leerEquipoVistaMail_(sh0);
+  const enVista = leerEquipoVistaMailSeguro_(sh0);
   const guardados = guardarEquipoAgenda_(leerEquipoGuardado_(), enVista, info);
   // 15/10: con AGENDA_MAIL_FORMATO_DIRECTA, el formato de "Agenda Directa" (47_AgendaDirecta.js); lo guardado, igual que siempre
   const formato0 = formatoVistaMail_(sh0).formato;

@@ -50,7 +50,8 @@ function archivoAgenda(nombres) {
         setFontColor: function (b) { cada(function (fi, co) { h.color[fi + ':' + co] = b; }); return o; },
         setFontWeight: function (w) { cada(function (fi, co) { h.bold[fi + ':' + co] = w; }); return o; },
         setNumberFormat: function () { return o; }, setWrap: function () { return o; }, setVerticalAlignment: function () { return o; },
-        insertCheckboxes: function () { cada(function (fi, co) { h.checks[fi + ':' + co] = true; asegurar(fi, 1); }); return o; },
+        // con valores propios ("Sí" / "No"), la casilla los recuerda
+        insertCheckboxes: function (si, no) { cada(function (fi, co) { h.checks[fi + ':' + co] = si === undefined ? true : { si: si, no: no }; asegurar(fi, 1); }); return o; },
         clearDataValidations: function () { cada(function (fi, co) { delete h.val[fi + ':' + co]; delete h.checks[fi + ':' + co]; }); return o; },
         setDataValidation: function (dv) { cada(function (fi, co) { h.val[fi + ':' + co] = dv; }); return o; },
         // 15/10: combinaciones, bordes, alineación, "pegar formato" y las validaciones (para el formato de "Agenda Directa")
@@ -58,7 +59,8 @@ function archivoAgenda(nombres) {
           const out = [];
           for (let i = 0; i < nr; i++) {
             const f = [];
-            for (let j = 0; j < nc; j++) { const k = (r + i) + ':' + (c + j); f.push(h.val[k] || (h.checks[k] ? { getCriteriaType: function () { return 'CHECKBOX'; } } : null)); }
+            for (let j = 0; j < nc; j++) { const k = (r + i) + ':' + (c + j); const ck = h.checks[k];
+              f.push(h.val[k] || (ck ? { getCriteriaType: function () { return 'CHECKBOX'; }, getCriteriaValues: function () { return typeof ck === 'object' ? [ck.si, ck.no] : []; } } : null)); }
             out.push(f);
           }
           return out;
@@ -94,10 +96,13 @@ function archivoAgenda(nombres) {
       getRangeList: function (l) {
         const rs = l.map(function (a1) { const p = a1.split(':'); const x = a1c(p[0]), y = a1c(p[1] || p[0]); return rango(x[0], x[1], y[0] - x[0] + 1, y[1] - x[1] + 1); });
         const rl = {};
-        ['setBackground', 'setFontColor', 'setFontWeight', 'insertCheckboxes'].forEach(function (m) { rl[m] = function (x) { rs.forEach(function (q) { q[m](x); }); return rl; }; });
+        ['setBackground', 'setFontColor', 'setFontWeight', 'insertCheckboxes', 'setNumberFormat'].forEach(function (m) {
+          rl[m] = function () { const a = arguments; rs.forEach(function (q) { q[m].apply(q, a); }); return rl; };
+        });
         return rl;
       },
       getColumnWidth: function (c) { return h.anchos[c] || 100; },
+      isColumnHiddenByUser: function (c) { return h.ocultas.indexOf(c) >= 0; },
       showColumns: function (c, n) { h.ocultas = h.ocultas.filter(function (x) { return x < c || x > c + (n || 1) - 1; }); },
       insertColumnsAfter: function (c, n) { h.maxCols += n; }, getMaxColumns: function () { return h.maxCols; },
       getConditionalFormatRules: function () { return h.reglas.slice(); },
@@ -602,6 +607,137 @@ console.log('[16] D2 en seco: el diseño que saldría, sin escribir nada');
      /Encuentro con Vecinos Gabino Tapia, Retiro .*‖ Implementador: — \| CONVOCATORIA ☐Hecho/.test(L), 'el encabezado que saldría y las reuniones de hoy en ese formato');
   ok(E.agenda.hojas.map(foto).join('|') === antes && JSON.stringify((E.intermedia('AGENDA_EQUIPO') || { valores: [] }).valores) === antesEq, 'no escribió nada');
   if (process.env.VER) console.log(L);
+}
+
+// =========================== 15/10, revisión: tipos reales, cruce más estricto, posiciones, "Info" que no es la A ===========================
+
+console.log('[17] MEDIA 1: el tipo de cada columna sale de "Agenda Directa"; un texto o una fecha nunca se vuelven una casilla en false');
+{
+  const E = entorno(BASE(), { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa', 'Sugerencia - Equipo Directa'] });
+  const d = ponerDirecta(E).hoja, F = E.ctx.Date;
+  // "CONVOCATORIA · Programado" (E) sin validación: texto o fecha; "CONVOCATORIA · IVR" (F) casilla con valores propios "Sí" / "No"
+  [4, 6, 8, 9].forEach(function (r) { delete d.checks[r + ':5']; d.checks[r + ':6'] = { si: 'Sí', no: 'No' }; d.v[r - 1][5] = 'No'; d.v[r - 1][4] = ''; });
+  d.v[3][4] = '14/10 10hs'; d.v[3][5] = 'Sí';                    // Macri: un texto y la casilla marcada ("Sí")
+  d.v[5][4] = new F(2026, 9, 7, 0, 0, 0);                         // Tapia: una fecha
+  E.ctx.__ab = abierta(E, SEMANA);
+  const ss = 'SpreadsheetApp.openById(AGENDA_COPIA_SS)';
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const h = vista(E);
+  // el equipo escribió un texto en una casilla de la vista (la de Pereyra, "CONVOCATORIA · Hecho")
+  h.v[fila13(E, 'c-3') - 1][2] = 'hecho a mano';
+  E.run('copiarAgendaDirecta()');
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  E.logs.length = 0;
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const r1 = fila13(E, 'c-1'), r2 = fila13(E, 'c-2'), r3 = fila13(E, 'c-3'), g = equipoGuardado(E);
+  ok(h.v[r1 - 1][4] === '14/10 10hs' && !h.checks[r1 + ':5'], 'Macri: "CONVOCATORIA · Programado" = "14/10 10hs" (texto, sin casilla), después de dos reescrituras');
+  ok(h.v[r2 - 1][4] instanceof Date && h.v[r2 - 1][4].getDate() === 7 && !h.checks[r2 + ':5'], 'Tapia: la fecha, tal cual');
+  ok(h.v[r1 - 1][5] === 'Sí' && h.checks[r1 + ':6'] && h.checks[r1 + ':6'].si === 'Sí' && h.v[r2 - 1][5] === 'No',
+     'IVR: casilla con los valores de "Agenda Directa" ("Sí" marcada en Macri, "No" en Tapia)');
+  ok(h.v[r3 - 1][2] === 'hecho a mano' && !h.checks[r3 + ':3'] && /quedaron como TEXTO .*CONVOCATORIA · Hecho: "hecho a mano"/.test(E.log()),
+     'Pereyra: un texto en una columna de casilla queda como TEXTO (sin casilla) y el log lo avisa');
+  ok(g['c-1']['CONVOCATORIA · Programado'] === '14/10 10hs' && g['c-1']['CONVOCATORIA · IVR'] === 'Sí' &&
+     g['c-2']['CONVOCATORIA · Programado'] instanceof Date && g['c-3']['CONVOCATORIA · Hecho'] === 'hecho a mano',
+     'AGENDA_EQUIPO: ninguno se volvió false');
+}
+
+/** Una "Agenda Directa" chica, con `renglones` (cada uno: [Info, Implementador]; un día es un texto o una fecha). */
+function ponerDirectaChica(E, renglones, infoEnB) {
+  const h = E.agenda.getSheetByName('Agenda Directa') || E.agenda.insertSheet('Agenda Directa');
+  const g1 = ['CONVOCATORIA', '', '', '', 'POST', '', 'CONFIRMACIÓN', '', 'CANCELACIÓN', ''];
+  const g2 = ['Hecho', 'Ok Sol', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado'];
+  const vacias = function () { return ['', '', '', '', '', '', '', '', '', '']; };
+  h.v = infoEnB ? [['Implementador', 'Info'].concat(g1), ['', ''].concat(g2)] : [['Info', 'Implementador'].concat(g1), ['', ''].concat(g2)];
+  renglones.forEach(function (x) {
+    const esDia = !x[1] && !/Evento|Hora|Lugar|Encuentro|Seguridad/.test(String(x[0]));
+    if (esDia) h.v.push([x[0], ''].concat(vacias()));                      // el día en la A (combinado a lo ancho)
+    else h.v.push(infoEnB ? [x[1], x[0]].concat(vacias()) : [x[0], x[1]].concat(vacias()));
+  });
+  for (let r = 3; r <= h.v.length; r++) if (h.v[r - 1][1] || h.v[r - 1][0] && /Evento|Encuentro|Seguridad/.test(String(infoEnB ? h.v[r - 1][1] : h.v[r - 1][0]))) {
+    for (let c = 3; c <= 12; c++) h.checks[r + ':' + c] = true;
+  }
+  h.merges = [];
+  return h;
+}
+
+console.log('[18] MEDIA 2: el cruce de la copia única no se equivoca de reunión (hora distinta, lugar distinto, evento genérico)');
+{
+  const base = BASE().concat([filaBase({ Figura: '', agenda_uid: 'c-5' })]);
+  const E = entorno(base, { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa'] });
+  const sem = SEMANA.concat([{ figura: '', fecha: [7, 10], hora: '18:00', evento: 'Seguridad en tu Barrio', lugar: 'Comuna 7 - Plaza Flores', fila: 6 }]);
+  E.ctx.__ab = abierta(E, sem);
+  ponerDirectaChica(E, [
+    ['martes 06/10', ''],
+    ['Evento: Encuentro con Vecinos', 'Mel'],                                                                 // genérico, sin hora
+    ['miércoles 07/10', ''],
+    ['Evento: Seguridad en tu Barrio\nHora: 10:00h\nLugar: Comuna 4 - Parque Patricios', 'Lu'],              // la de las 10, C4: no está
+    ['Evento: Seguridad en tu Barrio\nHora: 18:00h\nLugar: Comuna 7 - Plaza Flores', 'Cris'],                 // la de las 18, C7
+    ['Evento: Seguridad en tu Barrio\nHora: 18:00h\nLugar: Comuna 9 - Mataderos', 'Yami']                     // misma hora, otra comuna
+  ]);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  E.logs.length = 0;
+  const r = E.run('copiarAgendaDirectaEnSeco()');
+  const L = E.log();
+  ok(/SIN CRUCE renglón 6 .*hora distinta \(aquí 10:00, el sistema 18:00\)/.test(L), 'la de las 10:00 (C4): SIN CRUCE, hora distinta');
+  ok(/COPIARÍA renglón 7 .*→ c-5 .*Implementador = Cris/.test(L), 'la de las 18:00 (C7) va a la reunión del sistema');
+  ok(/SIN CRUCE renglón 8 .*lugar distinto \(Comuna 9 \/ Comuna 7\)/.test(L), 'misma hora y otra comuna: SIN CRUCE, lugar distinto');
+  ok(/SIN CRUCE renglón 4 .*ninguna reunión del sistema con ese evento ese día/.test(L) && !/COPIARÍA renglón 4/.test(L),
+     'un "Encuentro con Vecinos" genérico, sin hora, ya no cae en la única reunión que lo contiene');
+  ok(r.copiadas === 1 && r.sinCruce === 3, 'una copiada, tres sin cruce (' + JSON.stringify(r) + ')');
+}
+
+console.log('[19] BAJA 4: el formato de siempre se lee POR POSICIÓN; en el nuevo, un título cambiado no hace perder nada');
+{
+  const E = entorno(BASE(), { solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada'] });
+  E.ctx.__ab = abierta(E, SEMANA);
+  const ss = 'SpreadsheetApp.openById(AGENDA_COPIA_SS)';
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const h = vista(E), t = enVista(E, 'c-2');
+  h.v[t.fila - 1][1] = 'Cris'; h.v[t.fila - 1][2] = true;
+  h.v[0][4] = 'xx'; h.v[0][0] = 'otra cosa';                                    // el equipo cambió los títulos de A y de E
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(enVista(E, 'c-2').resp === 'Cris' && enVista(E, 'c-2').c1 === true && equipoGuardado(E)['c-2'].Responsable === 'Cris',
+     'apagado: con "clave" (E) y la A renombradas, la clave y B:D se leen por posición: no se pierde nada');
+  // el formato nuevo: la "clave" renombrada (sigue oculta) → se usa la columna oculta; un título del equipo renombrado → no se reescribe
+  const E2 = entorno(BASE(), { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa'] });
+  ponerDirecta(E2);
+  E2.ctx.__ab = abierta(E2, SEMANA);
+  E2.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const h2 = vista(E2), r2 = fila13(E2, 'c-2');
+  h2.v[r2 - 1][1] = 'Yami';
+  h2.v[0][12] = 'id';                                                           // "clave" → "id"
+  E2.logs.length = 0;
+  E2.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(equipoGuardado(E2)['c-2'] && equipoGuardado(E2)['c-2'].Implementador === 'Yami' && /se usa la columna oculta \(13\)/.test(E2.log()),
+     '"clave" renombrada: se toma la única columna oculta, y lo del equipo se guarda');
+  h2.v[0][6] = 'POSTE';                                                         // el grupo "POST" renombrado
+  h2.v[fila13(E2, 'c-1') - 1][1] = 'Lu';
+  const antes = JSON.stringify(h2.v);
+  E2.logs.length = 0;
+  E2.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(JSON.stringify(h2.v) === antes && /NO SE REESCRIBE "Agenda \(mail\)" \(lo del equipo se perdería\): no se encuentran las columnas POST · Ok Sol, POST · Programado/.test(E2.log()),
+     'un grupo renombrado ("POST" → "POSTE"): "Agenda (mail)" NO se reescribe y el log lo dice en grande');
+}
+
+console.log('[20] BAJA 5: "Info" no es la A en "Agenda Directa": el día va en la A del renglón combinado y se lee igual');
+{
+  const E = entorno(BASE(), { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa'] });
+  ponerDirectaChica(E, [['martes 06/10', ''], ['Evento: Encuentro con Vecinos Jorge Macri, Belgrano\nHora: 18:00h', 'Lu']], true);
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const h = vista(E);
+  const lunes = h.v.findIndex(function (r) { return r[0] === 'lunes 05/10'; }) + 1;
+  ok(h.v[0][1] === 'Info' && h.v[0][0] === 'Implementador' && lunes > 2 && h.v[lunes - 1][1] === '' &&
+     h.merges.some(function (m) { return m.join() === [lunes, 1, 1, 12].join(); }), 'Info en la B; el día escrito en la A, combinado de A a L');
+  const r = E.run('leerRenglonesVistaMail_(SpreadsheetApp.openById(AGENDA_COPIA_SS).getSheetByName(AGENDA_SOLAPA_VISTA_MAIL), hoyMediodia_())');
+  const reus = r.renglones.filter(function (x) { return x.tipo === 'reunion'; });
+  ok(r.renglones.filter(function (x) { return x.tipo === 'dia'; }).length === 12 && reus.length === 4 &&
+     reus.every(function (x) { return x.fecha && x.clave; }) && /Macri/.test(reus[0].texto) && E.ctx.ymd_(reus[0].fecha) === '20261006',
+     'el lector encuentra los 12 días (en la A) y las 4 reuniones, cada una con su día' +
+     (process.env.VER ? JSON.stringify(r.renglones.map(function (x) { return [x.fila, x.tipo, x.texto, x.clave, x.fecha && E.ctx.ymd_(x.fecha)]; })) : ''));
+  E.logs.length = 0;
+  E.run('copiarAgendaDirectaEnSeco()');
+  ok(/COPIARÍA renglón 4 \(06\/10\/2026 .*→ c-1 .*Implementador = Lu/.test(E.log()), 'y la copia única también lee el día de la A en "Agenda Directa"');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

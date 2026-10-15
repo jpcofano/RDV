@@ -1542,7 +1542,7 @@ function partirCopiaAgenda_(matriz, hoy) {
 
 /** Una solapa de la copia: reescrita entera, con formato y protegida con advertencia. */
 function _escribirSolapaCopiaAgenda_(ss, nombre, matriz, dondeLog) {
-  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
+  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre, ss.getSheets().length);   // 15/10: al final (no corre ninguna otra)
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA) pr.remove();
   });

@@ -138,7 +138,8 @@ function _escribirSolapaAyuda_(ss, nombre, def, escribe, dondeTexto) {
   filas.forEach(function (f) { if (f.texto) Logger.log('    %s', f.texto); });
   if (!escribe) return { solapa: nombre, existe: existe, filas: n, escrita: false };
 
-  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
+  // 15/10 (revisión): una solapa nueva, AL FINAL (insertarla en otro lugar corre a las demás, también a las del equipo)
+  const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre, ss.getSheets().length);
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_AYUDA) pr.remove();
   });
@@ -172,11 +173,15 @@ function _escribirSolapaAyuda_(ss, nombre, def, escribe, dondeTexto) {
   });
   sh.setFrozenRows(1);
   sh.setHiddenGridlines(true);
-  // la primera de la izquierda; si ya lo es, no se mueve nada (15/10: moverla corre a las demás, también a las del equipo)
-  if (ss.getSheets()[0].getName() !== nombre) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
+  // el lugar. En el archivo "Agenda" (LEER): la PRIMERA DE LAS DEL SISTEMA (ordenarSolapasAgenda_ la intercambia con la que ocupe
+  // el primero de sus lugares: una solapa del equipo puesta antes, o entre medio, no se mueve). En el archivo del destino (GUÍA):
+  // la primera de la izquierda, si no lo es ya.
+  if (nombre === AYUDA_SOLAPA_LEER && typeof ordenarSolapasAgenda_ === 'function') ordenarSolapasAgenda_(ss);
+  else if (ss.getSheets()[0].getName() !== nombre) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
   const prot = _protegerAyuda_(sh);
   SpreadsheetApp.flush();
-  Logger.log('>>> "%s" escrita: %s filas, primera de la izquierda, protegida (%s).', nombre, n, prot);
+  Logger.log('>>> "%s" escrita: %s filas, %s, protegida (%s).', nombre, n,
+             nombre === AYUDA_SOLAPA_LEER ? 'primera de las del sistema (las del equipo no se movieron)' : 'primera de la izquierda', prot);
   return { solapa: nombre, existe: existe, filas: n, escrita: true, proteccion: prot };
 }
 
