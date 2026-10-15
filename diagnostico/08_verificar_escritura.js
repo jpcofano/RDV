@@ -205,6 +205,12 @@ function verificarEscritura() {
     Logger.log('  "Tocado por el equipo": %s filas | por columna: %s', ag.filasTocadas,
                Object.keys(ag.tocado).map(function (k) { return k + ' ' + ag.tocado[k]; }).join(' | ') || '—');
     if (ag.duplicados.length) problemas.push('filas de agenda duplicadas (figura + fecha): ' + ag.duplicados.length);
+    // 15/10 (H3): el invariante "una reunión, una fila" (también la Seguridad sin figura, por fecha + tipo + "Lugar (mail)"; sólo
+    // filas vivas; sin el mail, dos filas de la misma figura y día con HORAS distintas cuentan como dos reuniones)
+    Logger.log('  INVARIANTE "una reunión, una fila" (fecha + figura; Seguridad sin figura: fecha + tipo + Lugar (mail)): %s   (tiene que dar 0)',
+               ag.invariante.length);
+    ag.invariante.forEach(function (x) { Logger.log('    %s', x.texto); });
+    if (ag.invariante.length) problemas.push('una reunión en dos filas (invariante de la agenda): ' + ag.invariante.length);
   }
 
   // --- 5) la lista, y si hoy EL MISMO PLAN las escribiría igual ---
@@ -236,7 +242,7 @@ function verificarEscritura() {
            incompletasCerradas: incompletasCerradas.length,
            sinClave: sinClave.length, ambiguas: ambiguas.length, choques: choques.length,
            azulManual: az.manual, azulTotal: az.total, trazaSinAzul: az.trazaSinAzul,
-           distintas: distintas, hoy: hoy };
+           distintas: distintas, hoy: hoy, invarianteAgenda: ag.sinColumnas ? 0 : ag.invariante.length };
 }
 
 /**
@@ -354,8 +360,9 @@ function _ultimaEscrituraRegistrada_diag8() {
 function _filasAgenda_diag8(dest) {
   const A = indicesAgenda_(dest.hdr);
   const out = { sinColumnas: A.faltan.length > 0, filas: 0, duplicados: [], vencidas: [], editadas: [], barrioDeLaAgenda: 0,
-                casiDuplicados: [], tocado: {}, filasTocadas: 0, origen: {} };
+                casiDuplicados: [], tocado: {}, filasTocadas: 0, origen: {}, invariante: [] };
   if (out.sinColumnas) return out;
+  out.invariante = reunionesRepetidasAgenda_(dest.filas, A, null);   // 15/10 (H3), 40_Agenda.js
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
   const limite = new Date(hoyMediodia_().getTime() - AGENDA_DIAS_VENCIDA * 86400000);
   const porFigFecha = new Map();

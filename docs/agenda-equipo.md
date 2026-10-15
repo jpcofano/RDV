@@ -46,6 +46,19 @@ les queda para cargar a ustedes.
   preguntar) o *"No sé"*. Se aplica en la corrida siguiente. **Sólo un mail nuevo con la agenda completa hace
   desaparecer una reunión**: un "Re:" o un reenvío sólo agrega o actualiza. Si un "Actualizo:" trae mucho menos que el
   anterior (menos del 60%), no pregunta nada: puede ser un mail con sólo los cambios.
+- **Próximamente (decisión del 15/10, todavía apagado: `AGENDA_CANCELACION_AUTOMATICA` + `AGENDA_CANCELACION_MODO =
+  'suspender'`): si una reunión sale del mail, el sistema la pone en "Suspendida"; si vuelve, la reactiva.** No pregunta
+  y **nunca borra una fila**. Sólo si: la sacó un mail nuevo con la agenda completa (no un "Re:" ni un reenvío), ese mail
+  no tiene un formato raro y no trae muchas menos reuniones que el anterior; la reunión todavía no había pasado; y la
+  fila está "en agenda" (si ustedes le pusieron otro STATUS —Realizada, Reprogramada…— no se toca). Si se pasa a otro día
+  de la misma semana, se mueve la fecha (no se suspende); si se pasa a otra semana, la vieja queda Suspendida y se crea la
+  nueva. En el archivo "Agenda", "Cambios" dice *"suspendida: salió del mail del …"*; en AGENDA_DUPLICADOS queda una línea
+  "cancelación" con el resultado. Si alguien ya había elegido *"Sigue"*, se respeta.
+- **Próximamente (15/10, apagado): una reunión sin figura y sin dirección** (una Seguridad en tu Barrio "A CONFIRMAR")
+  **no crea fila hasta que llegue la figura o la dirección, o falten 2 días**. Mientras tanto aparece en el archivo
+  "Agenda" como *"pendiente de definir"* (sin fila) y en la solapa AGENDA_PENDIENTES de la intermedia. Y una reunión que
+  cambió dentro de la semana (otra dirección, otro día) se busca entre las filas de esa semana que quedaron sin reunión
+  antes de crear otra: si hay una sola posible, se actualiza; si hay dudas, se pregunta en AGENDA_DUPLICADOS.
 - **"NO PARTICIPA"**: la reunión se hace igual y tiene su fila a nombre de esa figura; los nombres que no participan
   van a la columna **"No participa"**.
 - **Reunión conjunta** (varias figuras): una sola fila, a nombre de la primera que nombra el mail.

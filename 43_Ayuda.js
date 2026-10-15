@@ -46,7 +46,9 @@ const AYUDA_GUIA_ = [
   ['item', 'Se aplica en la próxima hora; el resultado aparece en "resultado".'],
   ['seccion', 'SOLAPA AGENDA_DUPLICADOS (dudas de la agenda)'],
   ['item', 'Reunión parecida a una fila existente: "Es la misma: vincular" · "Son distintas: crear" · "Ya está cargada en otra fila: no crear" · "No sé".'],
-  ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".'],
+  ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".', null, 'cancelPregunta'],
+  // 15/10 (J): con la cancelación automática en modo "suspender" no se pregunta: ver filasAyuda_
+  ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado como "cancelación" (aplicado).', null, 'cancelAuto'],
   ['item', 'Se aplica en la próxima hora.'],
   // 13/10: sólo con FORMULARIOS_SIN_FILA_ACTIVA (si no, la GUÍA nombraría una solapa que no existe): ver _lineasAyuda_
   ['seccion', 'SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)', null, 'formsSinFila'],
@@ -72,7 +74,10 @@ const AYUDA_LEER_ = [
   ['seccion', 'CÓMO SE ACTUALIZA'],
   ['item', 'Sola, cada hora. Toma siempre la ÚLTIMA versión del mail de cada semana.'],
   ['item', 'Si cambia la hora, la dirección o el lugar, se actualiza y queda anotado en "Cambios".'],
-  ['item', 'Si una reunión sale del mail: "Estado en la agenda" = desaparecida (se confirma en la base).'],
+  ['item', 'Si una reunión sale del mail: "Estado en la agenda" = desaparecida (se confirma en la base).', null, 'cancelPregunta'],
+  ['item', 'Si una reunión sale del mail: el sistema la pone en Suspendida en la base ("Cambios": "suspendida: salió del mail del …"); si vuelve, la reactiva.', null, 'cancelAuto'],
+  // 15/10 (H1): sólo con AGENDA_CREAR_SOLO_IDENTIFICADAS
+  ['item', '"Estado en la agenda" = pendiente de definir: una reunión sin figura ni dirección (p. ej. Seguridad "A CONFIRMAR"). La fila de la base se crea cuando llega la figura o la dirección, o 2 días antes.', null, 'pendientes'],
   ['item', 'El lunes, la semana que terminó pasa a "Agenda cerrada".'],
   ['seccion', 'COLORES (AgendaCall y Agenda (mail))'],
   ['item', 'Verde: los días de esta semana que ya pasaron.', 'pasado'],
@@ -112,6 +117,11 @@ function filasAyuda_(def) {
     if (l[3] === 'formsSinFila' && !FORMULARIOS_SIN_FILA_ACTIVA) return;   // la solapa todavía no existe (13/10)
     if (l[3] === 'directa' && !AGENDA_MAIL_FORMATO_DIRECTA) return;        // "Agenda (mail)" todavía con el formato de siempre (15/10)
     if (l[3] === 'noDirecta' && AGENDA_MAIL_FORMATO_DIRECTA) return;        // "Agenda (mail)" ya con el formato de "Agenda Directa"
+    // 15/10 (J): la cancelación automática que sólo suspende reemplaza la pregunta; (H1) "pendiente de definir"
+    const cancelAuto = AGENDA_CANCELACION_AUTOMATICA && AGENDA_CANCELACION_MODO === 'suspender';
+    if (l[3] === 'cancelAuto' && !cancelAuto) return;
+    if (l[3] === 'cancelPregunta' && cancelAuto) return;
+    if (l[3] === 'pendientes' && !AGENDA_CREAR_SOLO_IDENTIFICADAS) return;
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });

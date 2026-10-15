@@ -75,6 +75,7 @@ function agendaDesdeListaDeMails_(lista, meta) {
   _agendaTolerancia_ = [];
   const grupos = new Map();
   r.citasCortadas = 0; r.reenvios = 0; r.respuestasSinAgenda = [];
+  r.mailsRaros = []; r.repetidasEnMail = []; r.semanasSinMailValido = [];   // 15/10 (H4)
   lista = lista.map(function (m) {
     // 07/10: en un "Re:" el cuerpo trae el mail anterior CITADO (y _limpiarLineaAgenda_ le saca el ">"): se lee sólo lo
     // propio. En un reenvío, la agenda del mensaje reenviado, una vez.
@@ -108,18 +109,54 @@ function agendaDesdeListaDeMails_(lista, meta) {
       return false;
     });
     if (!g.versiones.length) return;
-    const parseadas = g.versiones.map(function (m, i) {
-      return _parsearCuerpoAgenda_(m.cuerpo, m.fecha, r, { grupo: g.grupo, semana: g.semanaTexto, version: i + 1,
-                                    versiones: g.versiones.length, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '',
-                                    desde: g.desde, hasta: g.hasta });
+    // 15/10 (H4): cada versión se parsea con su propio contador (para validarla sola) y después se suma a `r`: con la
+    // validación apagada, `r` queda igual que antes.
+    const parsear = function (versiones) {
+      const rvs = [];
+      const ps = versiones.map(function (m, i) {
+        const rv = _rVacio_();
+        rvs.push(rv);
+        return _parsearCuerpoAgenda_(m.cuerpo, m.fecha, rv, { grupo: g.grupo, semana: g.semanaTexto, version: i + 1,
+                                      versiones: versiones.length, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '',
+                                      desde: g.desde, hasta: g.hasta });
+      });
+      return { ps: ps, rvs: rvs };
+    };
+    const quitan = !!(meta && meta.respuestasQuitan);
+    const esRespuesta = function (m) { return !quitan && RE_RESPUESTA_AGENDA_.test(m.asunto || ''); };
+    let px = parsear(g.versiones);
+    // H4: la validación de cada mail (siempre; con AGENDA_VALIDAR_MAILS, el mail raro no se usa y la semana queda con la anterior)
+    const validar = meta && meta.validarMails !== undefined ? !!meta.validarMails : AGENDA_VALIDAR_MAILS;
+    let val = _validarVersionesAgenda_(g, g.versiones, px.ps, px.rvs, esRespuesta);
+    val.forEach(function (v, i) {
+      v.repetidas.forEach(function (x) {
+        r.repetidasEnMail.push({ grupo: g.grupo, semana: g.semanaTexto, asunto: g.versiones[i].asunto, fecha: g.versiones[i].fecha, texto: x });
+      });
+      if (v.motivos.length) {
+        r.mailsRaros.push({ grupo: g.grupo, semana: g.semanaTexto, asunto: g.versiones[i].asunto, fecha: g.versiones[i].fecha,
+                            motivos: v.motivos, usado: !validar });
+      }
+    });
+    if (validar && val.some(function (v) { return v.motivos.length; })) {
+      g.descartados = g.versiones.filter(function (m, i) { return val[i].motivos.length; });
+      g.versiones = g.versiones.filter(function (m, i) { return !val[i].motivos.length; });
+      if (!g.versiones.length) { r.semanasSinMailValido.push(g.grupo + ' | semana del ' + g.semanaTexto); return; }
+      px = parsear(g.versiones);
+      val = _validarVersionesAgenda_(g, g.versiones, px.ps, px.rvs, esRespuesta);
+    }
+    px.rvs.forEach(function (rv) { _sumarContadoresAgenda_(r, rv); });
+    const parseadas = px.ps;
+    // la marca de la misma reunión dos veces en un mail, en las reuniones del mail que la tiene repetida
+    parseadas.forEach(function (lista, i) {
+      if (!val[i].clavesRepetidas.length) return;
+      lista.forEach(function (ev) { if (val[i].clavesRepetidas.indexOf(_claveRepeticionAgenda_(ev)) >= 0) ev.repetidaEnMail = true; });
     });
     const n = parseadas.length;
     // 07/10 (decisión del usuario): un "Re:", "RV:", "RE:" o "Fwd:" sólo AGREGA o ACTUALIZA reuniones; nunca hace
     // desaparecer. Una desaparición la produce sólo un mail NUEVO con la agenda completa. El estado de la semana es el
     // último mail completo (la "base") más lo que agregan o actualizan las respuestas posteriores. Sin ningún mail
     // completo, la unión de todo. `meta.respuestasQuitan` = el comportamiento anterior (todas son versiones), para medir.
-    const quitan = !!(meta && meta.respuestasQuitan);
-    const esResp = g.versiones.map(function (m) { return !quitan && RE_RESPUESTA_AGENDA_.test(m.asunto || ''); });
+    const esResp = g.versiones.map(esRespuesta);
     let base = -1;
     for (let i = n - 1; i >= 0; i--) if (!esResp[i]) { base = i; break; }
     const estado = new Map();
@@ -157,6 +194,8 @@ function agendaDesdeListaDeMails_(lista, meta) {
       ev.versionQueLaSaco = saco ? k + 1 : null;
       ev.mailQueLaSaco = saco ? saco.fecha : null;
       ev.asuntoQueLaSaco = saco ? saco.asunto : '';
+      // 15/10 (J): si el mail que la sacó tiene formato raro (H4; con AGENDA_VALIDAR_MAILS ya no se usa), por qué
+      ev.mailQueLaSacoRaro = saco && val[k] && val[k].motivos.length ? val[k].motivos.join('; ') : '';
       // Sólo cuenta como desaparecida si la reunión todavía era FUTURA cuando se mandó ese mail (06/10, regla 7).
       ev.futuraAlDesaparecer = !!(ev.fecha && saco && ymd_(ev.fecha) >= ymd_(saco.fecha));
       ev.versionParcial = r.parciales.some(function (x) { return x.g === g; });
@@ -265,6 +304,69 @@ function _unificarEntreGrupos_(ultimas) {
 function _rVacio_() {
   return { sinFecha: 0, eventosIncompletos: [], fueraDeSemana: [], fechasCorregidas: [], imagenes: 0, tipos: {}, lineasRaras: {} };
 }
+
+/** Suma los contadores de un "r" descartable (`_rVacio_`) al de la corrida (números, listas y conteos por clave). */
+function _sumarContadoresAgenda_(r, rv) {
+  Object.keys(rv).forEach(function (k) {
+    const x = rv[k];
+    if (typeof x === 'number') r[k] = (r[k] || 0) + x;
+    else if (Array.isArray(x)) { r[k] = r[k] || []; x.forEach(function (e) { r[k].push(e); }); }
+    else if (x && typeof x === 'object') { r[k] = r[k] || {}; Object.keys(x).forEach(function (j) { r[k][j] = (r[k][j] || 0) + x[j]; }); }
+  });
+}
+
+/**
+ * **H4 (15/10): la validación de cada versión de una semana + grupo.** Devuelve, por versión, `{ motivos: [...], repetidas:
+ * [...], clavesRepetidas: [...] }`. `motivos` no vacío = FORMATO RARO (00_Config.js, AGENDA_VALIDAR_MAILS: qué es raro y los
+ * umbrales). `repetidas`: la misma reunión dos veces en el mail (la misma clave). La comparación de cantidades es contra la
+ * versión completa anterior que no fue rara (las respuestas "Re:" no se comparan: sólo agregan o actualizan).
+ */
+function _validarVersionesAgenda_(g, versiones, parseadas, rvs, esRespuesta) {
+  const umbral = function (n) { return Math.max(AGENDA_MAIL_RARO_MIN, Math.ceil(AGENDA_MAIL_RARO_FRACCION * n)); };
+  let previa = null;
+  return versiones.map(function (m, i) {
+    const evs = parseadas[i], rv = rvs[i], motivos = [];
+    const resp = esRespuesta(m);
+    const sinDia = evs.filter(function (ev) { return !ev.fecha; }).length;
+    if (sinDia) motivos.push(sinDia + ' reunión(es) sin día');
+    if (!evs.length && !resp) motivos.push('ninguna reunión en un mail completo');
+    const incompletas = evs.filter(function (ev) {
+      return !ev.hora || !str(ev.lugarTexto).trim() || (!ev.tipo && !(ev.figuras || []).length);
+    }).length;
+    if (evs.length && incompletas >= umbral(evs.length)) motivos.push(incompletas + ' de ' + evs.length + ' reuniones sin Hora entendible, sin Lugar o sin tipo ni figura');
+    const raras = Object.keys(rv.lineasRaras || {}).reduce(function (a, k) { return a + rv.lineasRaras[k]; }, 0);
+    if (raras && raras >= umbral(evs.length)) motivos.push(raras + ' líneas que no son Evento / Hora / Lugar (' + Object.keys(rv.lineasRaras).join(' ') + ')');
+    if (!resp && previa && !motivos.length) {
+      const desde = ymd_(m.fecha);
+      const prevFut = previa.filter(function (ev) { return ev.fecha && ymd_(ev.fecha) >= desde; }).length;
+      const n = evs.length, np = previa.length;
+      if (prevFut - n >= AGENDA_MAIL_RARO_DIF && n < prevFut * AGENDA_MAIL_RARO_MENOS) {
+        motivos.push('MENOS reuniones: ' + n + ' contra ' + prevFut + ' de la versión anterior que todavía no habían pasado');
+      }
+      const claves = {};
+      evs.forEach(function (ev) { claves[ev.clave] = true; });
+      const reconocidas = previa.filter(function (ev) { return claves[ev.clave]; }).length;
+      if (n - np >= AGENDA_MAIL_RARO_DIF && n > np * AGENDA_MAIL_RARO_MAS && reconocidas < np / 2) {
+        motivos.push('MÁS reuniones: ' + n + ' contra ' + np + ' de la anterior, y sólo ' + reconocidas + ' de ésas reconocidas');
+      }
+    }
+    const vistas = {}, rep = {};
+    // la misma reunión dos veces: la misma clave de base (figura + fecha, o tipo + fecha + lugar) Y la misma hora (dos reuniones
+    // de una figura el mismo día a distinta hora son dos reuniones)
+    evs.forEach(function (ev) { const k = _claveRepeticionAgenda_(ev); if (vistas[k]) rep[k] = (rep[k] || 1) + 1; vistas[k] = ev; });
+    const clavesRepetidas = Object.keys(rep);
+    const repetidas = clavesRepetidas.map(function (k) {
+      const ev = vistas[k];
+      return (ev.fecha ? fmtFecha_(ev.fecha) : '(sin día)') + ' ' + (ev.hora || '--:--') + ' | ' + ((ev.figuras || []).join(' + ') || ev.tipo || '(sin figura)') +
+             ' | ' + (ev.lugar || '—') + ' | ' + rep[k] + ' veces en el mail';
+    });
+    if (!resp && !motivos.length) previa = evs;
+    return { motivos: motivos, repetidas: repetidas, clavesRepetidas: clavesRepetidas };
+  });
+}
+
+/** La clave con la que se reconoce la misma reunión dos veces en un mail (H4): la clave de base y la hora. */
+function _claveRepeticionAgenda_(ev) { return str(ev.claveBase) + '|' + str(ev.hora); }
 
 const RE_CITA_AGENDA_ = [
   /^\s*-{2,}\s*(mensaje original|original message)\s*-{2,}\s*$/i,
@@ -497,6 +599,16 @@ function _completarReunion_(ev) {
  * solapamientos (de dos nombres que se pisan, gana el más largo).
  */
 function _figurasConPosicion_(t) {
+  // 15/10: la medición que re-parsea los mails muchas veces (diagnostico/32) prende un memo por texto; en la corrida, null.
+  if (_memoFigurasAgenda_ && _memoFigurasAgenda_.has(t)) return _memoFigurasAgenda_.get(t).map(function (h) { return Object.assign({}, h); });
+  const res = _figurasConPosicionSinMemo_(t);
+  if (_memoFigurasAgenda_) _memoFigurasAgenda_.set(t, res.map(function (h) { return Object.assign({}, h); }));
+  return res;
+}
+/** El memo de `_figurasConPosicion_` (sólo lo prende una medición: `null` = sin memo). */
+var _memoFigurasAgenda_ = null;
+
+function _figurasConPosicionSinMemo_(t) {
   const hallados = [];
   const tomar = function (canon, pos, fin) {
     if (!canon) return;

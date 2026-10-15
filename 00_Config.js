@@ -1495,6 +1495,63 @@ const AGENDA_BARRIO_DEL_MAIL = false;
  * sola fila de la figura ese día, el barrio sólo confirma). En seco: `medirConjuntoRepetido()`.
  */
 const CONJUNTO_REPETIDA_POR_UBICACION = false;
+// ---------- 15/10 (noche): la AGENDA SEGURA — una reunión, una fila (APAGADOS hasta ver los pasos 75 y 76) ----------
+/**
+ * **H1. Crear sólo lo identificado** (15/10, casos 829/830 y 833/835). Con `true`, una reunión del mail SIN figura y SIN
+ * dirección real (`esDireccionReal_`: "A CONFIRMAR" no es dirección) no crea fila en la base todavía: se crea cuando llega la
+ * figura o la dirección, o cuando faltan AGENDA_CREAR_SIN_DEFINIR_DIAS días o menos, lo que pase primero. Mientras tanto el
+ * archivo "Agenda" la muestra igual ("Estado en la agenda" = "pendiente de definir", sin "Fila del destino") y la intermedia
+ * la lista en AGENDA_SOLAPA_PENDIENTES (reescrita en cada corrida). Si ya tiene fila, se vincula / actualiza como siempre.
+ */
+const AGENDA_CREAR_SOLO_IDENTIFICADAS = false;
+const AGENDA_CREAR_SIN_DEFINIR_DIAS = 2;
+const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
+/**
+ * **H2. Conciliación por semana** (15/10). Con `true`, las reuniones del mail que no encontraron fila (o encontraron 2+ filas
+ * de la agenda) se emparejan UNA A UNA con las filas de la agenda de esa semana y ese grupo que quedaron sin reunión
+ * (por figura, "Lugar (mail)", fecha, hora y dirección; nunca dos figuras distintas, nunca dos tipos distintos). Un par
+ * único (cada una es la mejor de la otra) es la misma reunión que cambió: se ACTUALIZA (y se mueve la fecha dentro de la
+ * semana, si la FECHA es del sistema). Si queda una fila compatible sin par, no se crea otra: se PREGUNTA en AGENDA_DUPLICADOS.
+ */
+const AGENDA_CONCILIACION_SEMANAL = false;
+/**
+ * **H3. El invariante "una reunión, una fila"** (15/10). Con `true`, en cada corrida: si dos filas vivas (no Suspendida /
+ * Reprogramada) son la misma reunión —misma fecha + misma figura, o, en una Seguridad sin figura, misma fecha + mismo tipo +
+ * mismo "Lugar (mail)"— y el mail no trae tantas reuniones con esa clave, en ESA SEMANA no se crea nada más, se lista en
+ * AGENDA_DUPLICADOS y se avisa (registrarAviso_('invariante_agenda')). El paso 16 lo cuenta siempre (tiene que dar 0).
+ */
+const AGENDA_INVARIANTE_UNA_FILA = false;
+/**
+ * **H4. Validar los mails** (15/10). Con `true`: (a) un mail con la misma reunión DOS veces (la misma clave: figura + fecha +
+ * hora, o tipo + fecha + lugar + hora) no crea esa reunión y avisa; (b) un mail con FORMATO RARO no se usa en la corrida (la
+ * semana queda con la versión anterior) y se avisa (registrarAviso_('mail_raro')). Raro (`_validarMailAgenda_`):
+ *   - alguna reunión sin día (un "Evento:" antes de cualquier encabezado de día);
+ *   - un mail completo (no "Re:") sin ninguna reunión;
+ *   - reuniones cuya Hora no se entiende, sin Lugar o cuyo Evento no tiene tipo ni figura: AGENDA_MAIL_RARO_MIN o más y al
+ *     menos AGENDA_MAIL_RARO_FRACCION de las reuniones del mail;
+ *   - líneas "Algo:" que no son Evento / Hora / Lugar / Dirección dentro de la agenda: el mismo umbral;
+ *   - (sólo un mail completo, contra la versión completa anterior que se usó) MENOS: tiene menos que
+ *     AGENDA_MAIL_RARO_MENOS de las reuniones de la anterior que todavía no habían pasado al mandarse éste, y AGENDA_MAIL_RARO_DIF
+ *     o más de diferencia; MÁS: más que AGENDA_MAIL_RARO_MAS veces las de la anterior, AGENDA_MAIL_RARO_DIF o más de diferencia y
+ *     menos de la mitad de las anteriores reconocidas (no es "la anterior más reuniones nuevas").
+ * La validación se calcula siempre (la usan el log y la cancelación automática); con `false` no saca ningún mail.
+ */
+const AGENDA_VALIDAR_MAILS = false;
+const AGENDA_MAIL_RARO_MIN = 2;
+const AGENDA_MAIL_RARO_FRACCION = 0.25;
+const AGENDA_MAIL_RARO_MENOS = 0.6;
+const AGENDA_MAIL_RARO_MAS = 2;
+const AGENDA_MAIL_RARO_DIF = 3;
+/**
+ * **J. Cómo se aplica la cancelación automática** (15/10, decisión del usuario: "suspender siempre, nunca borrar"). Sólo
+ * cuenta con AGENDA_CANCELACION_AUTOMATICA = true. 'regla7' = la regla 7 de siempre (la fila que creó la agenda y nadie tocó
+ * se BORRA; las demás, Suspendida). 'suspender' = una reunión futura que salió del mail pasa a "Suspendida", NUNCA se borra
+ * una fila, y sólo con las salvaguardas: la sacó un mail completo (no "Re:"), sin formato raro y sin la protección del 60%; era
+ * futura; la fila está "en agenda"; no es una reprogramación dentro de la semana (eso MUEVE la fecha). Si una salvaguarda
+ * falla, no se suspende y se avisa (registrarAviso_('cancelacion_no_aplicada')); cada suspensión, registrarAviso_('suspendidas').
+ * Para prenderlo: AGENDA_CANCELACION_AUTOMATICA = true y AGENDA_CANCELACION_MODO = 'suspender' (medir antes: paso 78).
+ */
+const AGENDA_CANCELACION_MODO = 'regla7';
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
