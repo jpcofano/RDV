@@ -57,6 +57,9 @@ function clasificarActivadores_() {
     const existe = typeof _globalActivadores_()[fn] === 'function';
     let x = ACTIVADORES_CONOCIDOS_[fn];
     if (fn === ACTIVADOR_DIARIO_FUNCION) x = { que: 'NUEVO', por: 'el activador del pipeline nuevo (99_Pipeline.js)' };
+    if (typeof AUDITORIA_SEMANAL_FUNCION !== 'undefined' && fn === AUDITORIA_SEMANAL_FUNCION) {
+      x = { que: 'NUEVO', por: 'la auditoría semanal de la agenda, los lunes (50_Avisos.js, 15/10)' };
+    }
     if (!x) {
       x = existe ? { que: 'DESCONOCIDO', por: 'no está en docs/triggers-legado.md: mirarlo antes de seguir' }
                  : { que: 'BORRAR', por: 'la función no existe en el proyecto: falla en cada disparo' };

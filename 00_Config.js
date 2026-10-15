@@ -94,6 +94,52 @@ const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
 const PROP_CORRIDA_EN_CURSO = 'CORRIDA_EN_CURSO';
 
 /*
+ * --- La AUDITORÍA SEMANAL y los AVISOS POR MAIL (15/10, H5 y H6; 50_Avisos.js). APAGADOS. ---
+ * AUDITORIA_SEMANAL_ACTIVA: los lunes a las 8 (activador semanal, que se instala A MANO con su paso) corre la auditoría de
+ *   la agenda (paso 66) y escribe el resultado en la solapa AUDITORIA_AGENDA de la intermedia (se reescribe cada lunes).
+ * AVISOS_MAIL_ACTIVO: los mails al dueño del código (MailApp): el resumen del lunes, y los avisos inmediatos (dos corridas
+ *   seguidas cortadas o con error, una parte salteada por tiempo tres corridas seguidas, el invariante de la agenda roto, un
+ *   mail de agenda raro). Como mucho UN mail por tema por día. Con `false`, los avisos sólo van al log.
+ * OJO: MailApp agrega un permiso (script.send_mail). Después del clasp push, el dueño tiene que volver a autorizar el
+ *   script corriendo una vez, desde el editor, el paso de autorizar el mail (si no, el activador de la hora puede fallar).
+ */
+const AUDITORIA_SEMANAL_ACTIVA = false;
+const AVISOS_MAIL_ACTIVO = false;
+/** A quién van los mails (pedido del usuario, 15/10). */
+const AVISOS_MAIL_PARA = 'jpcofano2@gmail.com';
+/** El prefijo del asunto de todos los mails. */
+const AVISOS_MAIL_ASUNTO = '[RDV] ';
+/** La solapa (intermedia) con el resultado de la auditoría semanal de la agenda. */
+const RDV_HOJA_AUDITORIA_AGENDA = 'AUDITORIA_AGENDA';
+/** El activador semanal: la función, el día (ScriptApp.WeekDay) y la hora. */
+const AUDITORIA_SEMANAL_FUNCION = 'auditoriaSemanalAgenda';
+const AUDITORIA_SEMANAL_DIA = 'MONDAY';
+const AUDITORIA_SEMANAL_HORA = 8;
+/** El resumen del lunes corre también la auditoría de cancelaciones (paso 68), si la de la agenda tardó menos que esto. */
+const AUDITORIA_SEMANAL_CANCELACIONES = true;
+const AUDITORIA_SEMANAL_CANCEL_MAX_MS = 150 * 1000;
+/** Las corridas que mira el resumen del lunes (REGISTRO_CORRIDAS): una por hora, una semana. */
+const AUDITORIA_SEMANAL_CORRIDAS = 7 * 24;
+/** La solapa (intermedia) de las reuniones por definir (la crea la agenda; si no existe, el resumen lo dice). */
+const AVISOS_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
+/** Cuántas corridas seguidas cortadas o con error disparan el aviso, y cuántas con la misma parte salteada por tiempo. */
+const AVISOS_CORRIDAS_MALAS_SEGUIDAS = 2;
+const AVISOS_PARTE_SALTEADA_SEGUIDAS = 3;
+/** Propiedades del script: el último día que se mandó cada tema (prefijo), la racha de corridas y la cola de una corrida. */
+const AVISOS_PROP_ULTIMO = 'AVISO_ULTIMO_';
+const AVISOS_PROP_RACHA = 'AVISOS_RACHA_CORRIDAS';
+const AVISOS_PROP_COLA = 'AVISOS_COLA';
+/** La cola guardada en la propiedad (por si la corrida se corta): como mucho estos caracteres (el límite es 9 KB por valor). */
+const AVISOS_COLA_MAX_CHARS = 8000;
+/**
+ * Las reuniones que la agenda suspende (tema 'suspendidas'): no van una por mail. Se anotan en la solapa
+ * AVISOS_SUSPENDIDAS (intermedia) y salen juntas en UN mail por día ("reuniones suspendidas hoy"), en la primera corrida
+ * desde las AVISOS_SUSPENDIDAS_HORA; lo que se suspende después sale en el del día siguiente. El lunes, también en el resumen.
+ */
+const AVISOS_HOJA_SUSPENDIDAS = 'AVISOS_SUSPENDIDAS';
+const AVISOS_SUSPENDIDAS_HORA = 20;
+
+/*
  * --- La escritura en lote (02/10) ---
  * La primera escritura real (02/10 14:50) se cortó a los 6 minutos de Apps Script: escribía celda
  * por celda (leer, escribir, pintar), y cada lectura obliga a vaciar la cola de escrituras. Ahora
