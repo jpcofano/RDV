@@ -49,6 +49,8 @@ const AYUDA_GUIA_ = [
   ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".', null, 'cancelPregunta'],
   // 15/10 (J): con la cancelación automática en modo "suspender" no se pregunta: ver filasAyuda_
   ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado como "cancelación" (aplicado).', null, 'cancelAuto'],
+  // 15/10 (noche): con los colores del mail (AGENDA_COLORES_MAIL) y la cancelación automática: ver filasAyuda_
+  ['item', 'El mail manda: una reunión en ROJO en el mail (Evento, Hora y Lugar) también pasa a Suspendida, aunque siga escrita, si el mail es anterior a la reunión. Sólo si está "en agenda": si el equipo ya le puso otro estado (Realizada…), no se toca y se avisa.', null, 'rojo'],
   ['item', 'Se aplica en la próxima hora.'],
   // 15/10: sólo con AGENDA_ELECCIONES_SIEMPRE (ver filasAyuda_)
   ['item', 'Lo elegido vale aunque después cambie la hora en el mail o el barrio de la fila: la línea no vuelve. Si la fila elegida ya no está, "Ya está cargada en otra fila" igual no crea nada y "Es la misma" vuelve a preguntar.', null, 'eleccionesSiempre'],
@@ -78,6 +80,8 @@ const AYUDA_LEER_ = [
   ['item', 'Si cambia la hora, la dirección o el lugar, se actualiza y queda anotado en "Cambios".'],
   ['item', 'Si una reunión sale del mail: "Estado en la agenda" = desaparecida (se confirma en la base).', null, 'cancelPregunta'],
   ['item', 'Si una reunión sale del mail: el sistema la pone en Suspendida en la base ("Cambios": "suspendida: salió del mail del …"); si vuelve, la reactiva.', null, 'cancelAuto'],
+  ['item', 'Si una reunión está en ROJO en el mail (Evento, Hora y Lugar): está cancelada; el sistema la pone en Suspendida en la base ("Cambios": "suspendida: rojo en la v… del …").', null, 'rojo'],
+  ['item', 'Lo que el mail marca en AMARILLO aparece en "Cambios" ("cambió en el mail (amarillo): …") y en naranja en "Agenda (mail)"; lo VERDE, como "nueva (verde en el mail)".', null, 'amarilloVerde'],
   // 15/10 (H1): sólo con AGENDA_CREAR_SOLO_IDENTIFICADAS
   ['item', '"Estado en la agenda" = pendiente de definir: una reunión sin figura ni dirección (p. ej. Seguridad "A CONFIRMAR"). La fila de la base se crea cuando llega la figura o la dirección, o 2 días antes.', null, 'pendientes'],
   ['item', 'El lunes, la semana que terminó pasa a "Agenda cerrada".'],
@@ -125,6 +129,9 @@ function filasAyuda_(def) {
     if (l[3] === 'cancelPregunta' && cancelAuto) return;
     if (l[3] === 'pendientes' && !AGENDA_CREAR_SOLO_IDENTIFICADAS) return;
     if (l[3] === 'eleccionesSiempre' && !AGENDA_ELECCIONES_SIEMPRE) return;   // 15/10: las decisiones de AGENDA_DUPLICADOS, siempre
+    // 15/10 (noche): los colores del mail (el ROJO cancela sólo con la cancelación automática; AMARILLO / VERDE, aparte)
+    if (l[3] === 'rojo' && !(cancelAuto && AGENDA_COLORES_MAIL)) return;
+    if (l[3] === 'amarilloVerde' && !(AGENDA_COLORES_MAIL && AGENDA_COLORES_AMARILLO_VERDE)) return;
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });

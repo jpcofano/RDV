@@ -56,12 +56,21 @@ les queda para cargar a ustedes.
 - **Próximamente (decisión del 15/10, todavía apagado: `AGENDA_CANCELACION_AUTOMATICA` + `AGENDA_CANCELACION_MODO =
   'suspender'`): si una reunión sale del mail, el sistema la pone en "Suspendida"; si vuelve, la reactiva.** No pregunta
   y **nunca borra una fila**. Sólo si: la sacó un mail nuevo con la agenda completa (no un "Re:" ni un reenvío), ese mail
-  no tiene un formato raro y no trae muchas menos reuniones que el anterior; la reunión todavía no había pasado; y la
-  fila está "en agenda" porque lo puso el sistema (si ustedes le pusieron otro STATUS —Realizada, Reprogramada…— no se toca;
-  si el "en agenda" lo pusieron ustedes, se les pregunta como hoy). Si se pasa a otro día
+  no tiene un formato raro y no trae muchas menos reuniones que el anterior; **el mail es anterior a la fecha y hora de
+  la reunión** (también el mismo día, o aunque la hora ya haya pasado: el mail manda; si el mail es posterior a la
+  reunión, no se toca y se avisa); y la fila está "en agenda" (lo haya puesto el sistema o ustedes; si ustedes le
+  pusieron otro STATUS —Realizada, Reprogramada…— no se toca y se avisa). Si se pasa a otro día
   de la misma semana, se mueve la fecha (no se suspende); si se pasa a otra semana, la vieja queda Suspendida y se crea la
   nueva. En el archivo "Agenda", "Cambios" dice *"suspendida: salió del mail del …"*; en AGENDA_DUPLICADOS queda una línea
   "cancelación" con el resultado. Si alguien ya había elegido *"Sigue"*, se respeta.
+- **Próximamente (15/10, noche, apagado: `AGENDA_COLORES_MAIL`): el COLOR del mail.** Una reunión que el mail marca en
+  **ROJO** (Evento, Hora y Lugar) en su última versión está **cancelada aunque siga escrita**: con la cancelación
+  automática, pasa a "Suspendida" con las mismas reglas de arriba ("Cambios": *"suspendida: rojo en la v3 del 13/10"*), y
+  no se reactiva mientras siga en rojo. Las notas del mail (*"SE CANCELA LA REUNIÓN DE …"*, *"CAMBIO DE DÍA …"*) no
+  deciden nada solas: confirman el color en el aviso y en la auditoría. Si una reunión que suspendió el sistema recibe
+  después asistentes o inscriptos, no se pisa nada: se avisa una vez (por mail y en AUDITORIA_AGENDA) para que ustedes
+  decidan. Más adelante (apagado: `AGENDA_COLORES_AMARILLO_VERDE`): lo AMARILLO aparece en "Cambios" y en naranja en
+  "Agenda (mail)"; lo VERDE, como "nueva".
 - **Próximamente (15/10, apagado): una reunión sin figura y sin dirección** (una Seguridad en tu Barrio "A CONFIRMAR")
   **no crea fila hasta que llegue la figura o la dirección, o falten 2 días**. Mientras tanto aparece en el archivo
   "Agenda" como *"pendiente de definir"* (sin fila) y en la solapa AGENDA_PENDIENTES de la intermedia. Y una reunión que

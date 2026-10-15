@@ -2,8 +2,9 @@
  * 52_RevisarTodo.js — REVISAR TODO (16/10, pedido del usuario): los pasos de revisión de SÓLO LECTURA, uno detrás de otro, en
  * una o varias ejecuciones. Se corre desde 99_Correr.js: `revisarTodo()` (y `reiniciarRevisarTodo()` para empezar de cero).
  *
- * - Los pasos, en orden: 68, 69, 70, 71, 72, 73, 75, 76, 78, 81 (REVISAR_TODO_PASOS). Ninguno escribe la base. NO están: el 74
- *   (escribe AGENDA_EQUIPO y oculta "Sugerencia - Equipo Directa"), el 80 (manda un mail) y el 82 (instala un activador).
+ * - Los pasos, en orden: 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93, 94 (revisarTodoPasos_). Ninguno escribe la base. NO
+ *   están: el 74 (escribe AGENDA_EQUIPO y oculta "Sugerencia - Equipo Directa"), el 80 (manda un mail), el 82 (instala un
+ *   activador) y el 92 (suspende la fila 825).
  * - Cada paso, aislado: si falla, se anota y se sigue con el próximo.
  * - El progreso vive en la propiedad REVISAR_TODO_PROP: qué pasos se hicieron y el resumen de cada uno. Antes de empezar un paso
  *   se mira el reloj: si quedan menos de REVISAR_TODO_MARGEN_MS (o menos de lo que ese paso necesita, minS), para y dice
@@ -27,7 +28,11 @@ function revisarTodoPasos_() {
     { n: 75, que: 'la agenda segura de hoy (en seco)', fn: function () { return paso75_agendaSegura_enSeco(); }, minS: 90 },
     { n: 76, que: 'la agenda desde el 07/09, simulada', fn: function () { return paso76_replayAgendaSegura(); }, minS: 280 },
     { n: 78, que: 'cancelación que suspende vs regla 7', fn: function () { return paso78_cancelacionAutomatica(); }, minS: 90 },
-    { n: 81, que: 'auditoría semanal (en seco)', fn: function () { return paso81_auditoriaSemanal_enSeco(); }, minS: 90 }
+    { n: 81, que: 'auditoría semanal (en seco)', fn: function () { return paso81_auditoriaSemanal_enSeco(); }, minS: 90 },
+    // 16/10: los de "el mail manda" y de AGENDA_DUPLICADOS, también de sólo lectura (el 92 NO: escribe la fila 825)
+    { n: 91, que: 'la fila 825 cancelada en el mail (en seco)', fn: function () { return paso91_cancelarFila825_enSeco(); }, minS: 90 },
+    { n: 93, que: 'cancelaciones por el mail desde el 15/07', fn: function () { return paso93_cancelacionesMail(); }, minS: 120 },
+    { n: 94, que: 'las decisiones de AGENDA_DUPLICADOS', fn: function () { return paso94_eleccionesAgenda(); }, minS: 90 }
   ];
 }
 

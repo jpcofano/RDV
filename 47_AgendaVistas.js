@@ -92,6 +92,11 @@ function celdaMailAgenda_(item) {
     if (/(^|; )hora /.test(c)) naranja.push(valor(hora, iHora));
     if (/(^|; )(dirección|lugar) /.test(c)) naranja.push(valor(lugar, iLugar));
   }
+  // 15/10 (noche, AGENDA_COLORES_AMARILLO_VERDE): las líneas en AMARILLO en el mail, también en naranja
+  (item.amarillo || []).forEach(function (k) {
+    const r = k === 'Evento' ? valor(evento, 0) : (k === 'Hora' ? valor(hora, iHora) : valor(lugar, iLugar));
+    if (!naranja.some(function (x) { return x.desde === r.desde; })) naranja.push(r);
+  });
   const tachada = /^desaparecida|^borrada/.test(str(item.estado));
   return { texto: texto, naranja: naranja.filter(function (r) { return r.hasta > r.desde; }), tachada: tachada };
 }

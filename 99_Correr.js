@@ -1331,10 +1331,10 @@ function paso90_coloresMail() {
 }
 
 /**
- * REVISAR TODO (16/10) — SÓLO LECTURA: corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78 y 81, cada uno aislado (si uno
+ * REVISAR TODO (16/10) — SÓLO LECTURA: corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93 y 94, cada uno aislado (si uno
  * falla, sigue). Si quedan menos de 60 s, para y dice "FALTAN: … — volvé a correr revisarTodo()"; al correrla de nuevo sigue
- * donde quedó. Al terminar: "TERMINADO" y un resumen por paso. NO corre el 74 (escribe), el 80 (manda un mail) ni el 82
- * (instala un activador). Lo único que guarda es su progreso (una propiedad del script).
+ * donde quedó. Al terminar: "TERMINADO" y un resumen por paso. NO corre el 74 (escribe), el 80 (manda un mail), el 82
+ * (instala un activador) ni el 92 (suspende la fila 825). Lo único que guarda es su progreso (una propiedad del script).
  */
 function revisarTodo() {
   _anunciar_('revisarTodo — los pasos de revisión, todos SÓLO LECTURA', 'revisarTodo_()  [52_RevisarTodo.js]',
@@ -1346,6 +1346,36 @@ function revisarTodo() {
 /** Empezar revisarTodo() de cero (borra su progreso). */
 function reiniciarRevisarTodo() {
   return reiniciarRevisarTodo_();
+}
+
+/**
+ * PASO 91 — EN SECO (16/10, "el mail manda"): ¿la agenda suspendería la fila 825 (Mraida 15/10 09:45 Comuna 5)? Con los colores y
+ * la cancelación prendidos SÓLO para esta corrida (no se toca 00_Config.js): el mail, la versión, los campos en rojo, la nota, la
+ * regla de tiempo y el STATUS; y si la lista de STATUS del destino tiene "Cancelada". No escribe nada.
+ */
+function paso91_cancelarFila825_enSeco() {
+  _anunciar_('paso 91 — la fila 825, cancelada en el mail (EN SECO)', 'cancelarFilaAgenda_enSeco(825)  [52_CancelacionMail.js]',
+             'NO escribe nada', 'el log: la reunión, el rojo y la nota, la regla de tiempo, el STATUS → SE SUSPENDERÍA o por qué no; la lista de STATUS');
+  return cancelarFilaAgenda_enSeco(825);
+}
+
+/**
+ * PASO 92 — ESCRIBE, SÓLO LA FILA 825 (16/10): la suspende de verdad (STATUS "Suspendida" + agenda_status_escrito), con el bloqueo
+ * de la corrida de la hora. Se niega si el plan no la suspende o si tocaría cualquier otra celda. Se deshace con el paso 38.
+ * Correrlo sólo después de ver el paso 91.
+ */
+function paso92_cancelarFila825() {
+  _anunciar_('paso 92 — suspender la fila 825 (ESCRIBE, sólo esa fila)', 'cancelarFilaAgenda(825)  [52_CancelacionMail.js]',
+             'SÍ: STATUS REUNIÓN y agenda_status_escrito de la fila 825, y REGISTRO_AGENDA_CAMBIOS (se deshace con el paso 38)',
+             'el log: qué escribió, o por qué se negó');
+  return cancelarFilaAgenda(825);
+}
+
+/** PASO 93 — SÓLO LECTURA (16/10): desde el 15/07, qué filas habría suspendido "el mail manda" (desaparecida o rojo) y si coincide con el equipo. */
+function paso93_cancelacionesMail() {
+  _anunciar_('paso 93 — cancelaciones por el mail desde el 15/07 (SÓLO LECTURA)', 'medirCancelacionesMail({ desde: \'2026-07-15\' })  [diagnostico/35_cancelaciones_mail.js]',
+             'NO escribe nada', 'el log: cada fila que habría suspendido (desaparecida / rojo), el STATUS del equipo (coincide o no), las que frena la regla de tiempo y las que sólo avisaría');
+  return medirCancelacionesMail({ desde: '2026-07-15' });
 }
 
 /**

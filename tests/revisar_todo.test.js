@@ -35,7 +35,8 @@ function entorno() {
   [[68, 'paso68_auditoriaCancelaciones'], [69, 'paso69_duplicadosAgenda'], [70, 'paso70_reglasAgenda_enSeco'], [71, 'paso71_conjuntoRepetido_enSeco'],
    [72, 'paso72_agendaDirecta_enSeco'], [73, 'paso73_copiarAgendaDirecta_enSeco'], [74, 'paso74_copiarAgendaDirecta'], [75, 'paso75_agendaSegura_enSeco'],
    [76, 'paso76_replayAgendaSegura'], [78, 'paso78_cancelacionAutomatica'], [80, 'paso80_probarMailAvisos'], [81, 'paso81_auditoriaSemanal_enSeco'],
-   [82, 'paso82_instalarAuditoriaSemanal']].forEach(function (x) {
+   [82, 'paso82_instalarAuditoriaSemanal'], [91, 'paso91_cancelarFila825_enSeco'], [92, 'paso92_cancelarFila825'], [93, 'paso93_cancelacionesMail'],
+   [94, 'paso94_eleccionesAgenda']].forEach(function (x) {
     ctx[x[1]] = function () {
       llamados.push(x[0]);
       E.t += (E.dur[x[0]] || 10) * 1000;
@@ -65,8 +66,8 @@ const prog = function (E) { return E.props.REVISAR_TODO_PROGRESO ? JSON.parse(E.
 console.log('[1] todo rápido: en orden, sin 74 / 80 / 82, TERMINADO y borra el progreso');
 let E = entorno();
 let r = E.correr();
-ok(E.llamados.join(',') === '68,69,70,71,72,73,75,76,78,81', 'en orden, sólo los de sólo lectura (' + E.llamados.join(',') + ')');
-ok(E.llamados.indexOf(74) < 0 && E.llamados.indexOf(80) < 0 && E.llamados.indexOf(82) < 0, 'no corre el 74 (escribe), el 80 (mail) ni el 82 (activador)');
+ok(E.llamados.join(',') === '68,69,70,71,72,73,75,76,78,81,91,93,94', 'en orden, sólo los de sólo lectura (' + E.llamados.join(',') + ')');
+ok(E.llamados.indexOf(74) < 0 && E.llamados.indexOf(80) < 0 && E.llamados.indexOf(82) < 0 && E.llamados.indexOf(92) < 0, 'no corre el 74 (escribe), el 80 (mail), el 82 (activador) ni el 92 (suspende la 825)');
 ok(r.terminado === true && !prog(E) && E.logs.some(function (l) { return /TERMINADO/.test(l); }), 'TERMINADO y el progreso se borró');
 ok(E.logs.some(function (l) { return /paso 76 \(.*\): OK \(10 s\) \| reuniones 76 · ok true/.test(l); }), 'el RESUMEN corto por paso (OK, segundos y lo que devolvió)');
 
@@ -74,20 +75,20 @@ console.log('[2] un paso que falla no corta los demás');
 E = entorno();
 E.rompe[70] = true;
 r = E.correr();
-ok(r.terminado && E.llamados.length === 10 && /^FALLÓ \(10 s\): falla simulada 70/.test(r.resumen['70']), 'el 70 falla, se anota y siguen los demás');
+ok(r.terminado && E.llamados.length === 13 && /^FALLÓ \(10 s\): falla simulada 70/.test(r.resumen['70']), 'el 70 falla, se anota y siguen los demás');
 
 console.log('[3] sin tiempo: para con "FALTAN" y la siguiente sigue donde quedó');
 E = entorno();
 E.dur = { 68: 120, 69: 120, 70: 100 };        // a los 340 s de la ejecución quedan 20 s
 r = E.correr();
-ok(!r.terminado && E.llamados.join(',') === '68,69,70' && r.faltan.join(',') === '71,72,73,75,76,78,81' &&
-   E.logs.some(function (l) { return /FALTAN: 71, 72, 73, 75, 76, 78, 81 — volvé a correr revisarTodo\(\)/.test(l); }),
+ok(!r.terminado && E.llamados.join(',') === '68,69,70' && r.faltan.join(',') === '71,72,73,75,76,78,81,91,93,94' &&
+   E.logs.some(function (l) { return /FALTAN: 71, 72, 73, 75, 76, 78, 81, 91, 93, 94 — volvé a correr revisarTodo\(\)/.test(l); }),
    'se corta antes del 71 y dice qué falta');
 ok(prog(E) && prog(E).hechos['70'] === true && !prog(E).hechos['71'], 'el progreso quedó guardado');
 E.llamados.length = 0;
 r = E.correr();
-ok(r.terminado && E.llamados.join(',') === '71,72,73,75,76,78,81' && !prog(E), 'la segunda ejecución sigue en el 71 y termina');
-ok(Object.keys(r.resumen).length === 10, 'el resumen final tiene los 10 pasos (de las dos ejecuciones)');
+ok(r.terminado && E.llamados.join(',') === '71,72,73,75,76,78,81,91,93,94' && !prog(E), 'la segunda ejecución sigue en el 71 y termina');
+ok(Object.keys(r.resumen).length === 13, 'el resumen final tiene los 13 pasos (de las dos ejecuciones)');
 
 console.log('[4] un paso largo (el replay, 280 s) espera a una ejecución nueva');
 E = entorno();
@@ -108,7 +109,7 @@ r = E.correr();
 ok(r.murio && E.llamados[0] === 75 && prog(E).intentos['75'] === 1, 'la siguiente lo reintenta (1 corte anotado)');
 E.llamados.length = 0;
 r = E.correr();
-ok(r.terminado && E.llamados.indexOf(75) < 0 && /^SALTEADO/.test(r.resumen['75']) && E.llamados.join(',') === '76,78,81',
+ok(r.terminado && E.llamados.indexOf(75) < 0 && /^SALTEADO/.test(r.resumen['75']) && E.llamados.join(',') === '76,78,81,91,93,94',
    'al segundo corte se saltea y sigue con los demás');
 
 console.log('[6] reiniciarRevisarTodo() empieza de cero');

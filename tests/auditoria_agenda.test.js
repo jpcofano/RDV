@@ -16,7 +16,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = r
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js',
-                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', '47_AgendaVistas.js', '25_Elecciones.js',
+                  '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', '47_AgendaVistas.js', '25_Elecciones.js',
                   'diagnostico/29_auditoria_agenda.js'].filter(function (f) { return fs.existsSync(path.join(RAIZ, f)); });
 const HOY = new Date(2026, 9, 15, 12, 0, 0);
 class D extends Date {
@@ -83,7 +83,9 @@ function crearEntorno() {
   E.hilos = [];
   const mensaje = function (m) {
     return proxyLectura(E, 'mensaje', { getId: function () { return m.id; }, getDate: function () { return m.fecha; },
-      getSubject: function () { return m.asunto; }, getPlainBody: function () { return m.cuerpo; } });
+      getSubject: function () { return m.asunto; }, getPlainBody: function () { return m.cuerpo; },
+      // 15/10 (noche, punto 6): la auditoría lee también el HTML (sólo lectura)
+      getBody: function () { E.htmlLeidos = (E.htmlLeidos || 0) + 1; return m.html || ''; } });
   };
   const hilo = function (h) {
     return proxyLectura(E, 'hilo', { getId: function () { return h.id; },

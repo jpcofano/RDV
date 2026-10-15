@@ -24,6 +24,9 @@
  *   5. las filas que creó la agenda en los últimos 14 días, y lo pendiente en AGENDA_DUPLICADOS;
  *   6. las reuniones AMBIGUAS (más de una fila candidata): por qué no se distinguen y qué las distinguiría;
  *   7. AGENDA_FIGURA_A_COMPLETAR: cada fila de Seguridad sin figura, por qué, y si la base todavía la tiene vacía;
+ *   8. (15/10, noche) las filas que suspendió el sistema y después recibieron asistentes o inscriptos;
+ *   y en la 2 (15/10, noche, punto 6) el COLOR y las NOTAS del mail (con el HTML; 41_AgendaColores.js): una reunión cancelada en
+ *   ROJO entero, o con una nota "SE CANCELA", cuya fila sigue "en agenda" (o que la agenda crearía) NO está OK;
  *   y un RESUMEN con las cuentas y la lista de todo lo que no está OK.
  */
 
@@ -70,9 +73,21 @@ function auditoriaAgenda(opciones) {
     Logger.log('  base "%s": %s filas con datos', RDV_HOJA_DESTINO, C.dest.filas.length);
   });
   _seccionAudAg_(C, 'lectura de los mails', function () {
-    C.mails = opciones.mails ? { fuente: '(lista de prueba)', lista: opciones.mails, errores: [] } : leerMailsAgendaGmail_(C.desdeMails);
+    // 15/10 (noche, punto 6): también el HTML (el color y las notas del mail: una reunión cancelada en ROJO, o con una nota
+    // "SE CANCELA", cuya fila sigue "en agenda" NO está OK). El plan usa los mails como la corrida de la hora (sin colores, salvo
+    // que AGENDA_COLORES_MAIL esté prendido); el color se lee aparte (`C.rColor`), con la misma detección (41_AgendaColores.js)
+    C.mails = opciones.mails ? { fuente: '(lista de prueba)', lista: opciones.mails, errores: [] } : leerMailsAgendaGmail_(C.desdeMails, { html: true, topeMs: null });
     C.r = agendaDesdeListaDeMails_(C.mails.lista, C.mails);
     Logger.log('  mails: %s (%s)', C.mails.lista.length, C.mails.fuente);
+  });
+  _seccionAudAg_(C, 'los colores y las notas del mail', function () {
+    if (!C.mails) throw new Error('no hay mails leídos');
+    C.rColor = agendaDesdeListaDeMails_(C.mails.lista, Object.assign({}, C.mails, { coloresMail: true }));
+    C.colorDe = new Map();
+    C.rColor.unicas.forEach(function (ev) { C.colorDe.set(ev.clave + '|' + ev.grupo, ev); });
+    Logger.log('  colores del mail: versiones con HTML %s | sin HTML %s | reuniones en ROJO ENTERO %s | con nota %s',
+               C.rColor.colores ? C.rColor.colores.versionesConHtml : 0, C.rColor.colores ? C.rColor.colores.versionesSinHtml : 0,
+               C.rColor.colores ? C.rColor.colores.rojas : 0, C.rColor.colores ? C.rColor.colores.notas : 0);
   });
   _seccionAudAg_(C, 'lectura de RDV CONJUNTO', function () { C.conjunto = leerConjuntoPorFecha_(); });
   if (!C.conjunto) C.conjunto = new Map();
@@ -107,10 +122,34 @@ function auditoriaAgenda(opciones) {
   _seccionAudAg_(C, '5. las filas creadas por la agenda y AGENDA_DUPLICADOS', function () { _s5CreadasAudAg_(C); });
   _seccionAudAg_(C, '6. las reuniones ambiguas', function () { _s6AmbiguasAudAg_(C); });
   _seccionAudAg_(C, '7. AGENDA_FIGURA_A_COMPLETAR', function () { _s7FiguraACompletarAudAg_(C); });
+  _seccionAudAg_(C, '8. suspendidas por el sistema con asistentes o inscriptos', function () { _s8SuspendidasConDatosAudAg_(C); });
 
   _resumenAudAg_(C);
   Logger.log('auditoriaAgenda: %s ms', Date.now() - t0);
   return { cuentas: C.cuentas, noOk: C.noOk, errores: C.errores, reuniones: C.reuniones, extra: C.extra };
+}
+
+/**
+ * **8 (15/10, noche).** Las filas que el SISTEMA suspendió (STATUS y agenda_status_escrito "Suspendida") y después recibieron
+ * asistentes (RDV CONJUNTO) o inscriptos: no se pisó nada, pero el equipo tiene que mirarlas (¿se hizo igual?). Todas las
+ * fechas. Van a "no está OK" (y por eso a AUDITORIA_AGENDA, H5).
+ */
+function _s8SuspendidasConDatosAudAg_(C) {
+  if (!C.dest) throw new Error('no se leyó la base');
+  const iAs = C.dest.D ? C.dest.D['Asistentes'] : null, iIns = C.dest.D ? C.dest.D['Inscriptos'] : null;
+  const xs = C.dest.filas.filter(function (f) {
+    if (normStatus_(_valAudAg_(C, f, 'STATUS REUNIÓN')) !== 'suspendida' || normStatus_(_valAudAg_(C, f, 'agenda_status_escrito')) !== 'suspendida') return false;
+    return (iAs != null && _hayDatoAgenda_(f.valores[iAs])) || (iIns != null && _hayDatoAgenda_(f.valores[iIns]));
+  });
+  Logger.log('--- 8. filas que SUSPENDIÓ el sistema y después recibieron asistentes o inscriptos: %s ---', xs.length);
+  xs.forEach(function (f) {
+    const t = 'suspendida por el sistema, con ' + [iAs != null && _hayDatoAgenda_(f.valores[iAs]) ? 'asistentes ' + str(f.valores[iAs]) : '',
+                                                   iIns != null && _hayDatoAgenda_(f.valores[iIns]) ? 'inscriptos ' + str(f.valores[iIns]) : ''].filter(Boolean).join(', ') +
+              ' (no se pisó nada: ¿se hizo igual?) | ' + _filaTextoAudAg_(C, f);
+    Logger.log('  %s', t);
+    _noOkAudAg_(C, '8', t);
+  });
+  C.cuentas['SUSPENDIDAS CON DATOS'] = xs.length;
 }
 
 /** La semana en curso y la siguiente, de lunes a domingo. */
@@ -324,6 +363,7 @@ function _s2ReunionesAudAg_(C) {
         else if (res.difs.length) res.resultado = 'DISTINTO';
       }
     }
+    _cancelaElMailAudAg_(C, ev, res);
     C.cuentas[res.resultado] = (C.cuentas[res.resultado] || 0) + 1;
     C.reuniones.push({ resultado: res.resultado, fila: res.fila, fecha: fmtFecha_(ev.fecha), hora: ev.hora, figura: ev.figuraFila, tipo: ev.tipo,
                        difs: res.difs.map(function (d) { return d.campo; }), otras: res.otras.map(function (o) { return o.fila; }) });
@@ -344,6 +384,39 @@ function _s2ReunionesAudAg_(C) {
   });
   Logger.log('  reuniones: OK %s | DISTINTO %s | FALTA EN LA BASE %s | DUPLICADA %s', C.cuentas.OK, C.cuentas.DISTINTO,
              C.cuentas['FALTA EN LA BASE'], C.cuentas.DUPLICADA);
+}
+
+/**
+ * **Punto 6 (15/10, noche): el color y las notas del mail.** Si el mail CANCELA la reunión —ROJO ENTERO en la última versión
+ * válida, o una nota que la nombra y dice que se cancela / suspende— lo que se espera en la base es "Suspendida": la fila
+ * "Suspendida" está OK (y no es una diferencia); "en agenda", o la agenda la crearía, NO está OK; "Realizada" (u otro) tampoco
+ * (el mail la cancela y la base dice otra cosa: a mirar, como la 824). Sin fila y sin crearla: OK (cancelada, no hace falta).
+ */
+function _cancelaElMailAudAg_(C, ev, res) {
+  const evC = C.colorDe ? C.colorDe.get(ev.clave + '|' + ev.grupo) : null;
+  if (!evC) return;
+  if (evC.colorMail && evC.colorMail.familia) res.notas.push('color en el mail: ' + evC.colorMail.familia + ' (' + evC.colorMail.campos + ')');
+  if (!evC.canceladaEnMail && !evC.notaCancela) { if (evC.notasMail && evC.notasMail.length) res.notas.push(notasTextoAgenda_(evC).replace(/^ \| /, '')); return; }
+  const porque = 'el mail la cancela' + (evC.canceladaEnMail ? ' en rojo (' + evC.canceladaEnMailMotivo + ')' : '') +
+                 (evC.notaCancela ? (evC.canceladaEnMail ? ' y' : '') + ' con nota' : '') + notasTextoAgenda_(evC);
+  // la diferencia de STATUS que puso la comparación ("en agenda (está en el mail)") no vale: lo esperado es Suspendida
+  res.difs = res.difs.filter(function (d) { return d.campo !== 'STATUS REUNIÓN'; });
+  const x = C.plan.filaDe.get(ev.clave);
+  if (!res.fila) {
+    if (x && x.nueva) { res.resultado = 'DISTINTO'; res.notas.push('NO OK: ' + porque + ', y la agenda la CREARÍA'); }
+    else if (res.resultado === 'FALTA EN LA BASE') { res.resultado = 'OK'; res.notas.push('cancelada en el mail: sin fila (no hace falta): ' + porque); }
+    else res.notas.push(porque);
+    return;
+  }
+  const f = C.porFila.get(res.fila);
+  const st = f ? str(_valAudAg_(C, f, 'STATUS REUNIÓN')) : '';
+  if (normStatus_(st) === 'suspendida') { res.notas.push('OK: ' + porque + ' y la fila está Suspendida'); if (!res.difs.length && res.resultado === 'DISTINTO') res.resultado = 'OK'; return; }
+  const asis = f && C.dest.D && C.dest.D['Asistentes'] != null ? f.valores[C.dest.D['Asistentes']] : '';
+  res.difs.push({ campo: 'STATUS REUNIÓN', mail: 'Suspendida (' + porque.replace(/ \| .*$/, '') + ')', base: st,
+                  quien: normStatus_(st) === 'en agenda' ? 'la fila sigue "en agenda" aunque el mail la cancela' :
+                         'el mail la cancela y la base dice "' + st + '"' + (_hayDatoAgenda_(asis) ? ' con ' + str(asis) + ' asistentes' : '') + ' (no se toca: a mirar)',
+                  corto: normStatus_(st) === 'en agenda' ? 'el mail la cancela' : 'el mail la cancela, la base no' });
+  if (res.resultado === 'OK') res.resultado = 'DISTINTO';
 }
 
 /** Lo que dice el mail de cada campo (como lo escribe la agenda). */

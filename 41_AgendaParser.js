@@ -153,6 +153,10 @@ function agendaDesdeListaDeMails_(lista, meta) {
     }
     px.rvs.forEach(function (rv) { _sumarContadoresAgenda_(r, rv); });
     const parseadas = px.ps;
+    // 15/10 (noche, AGENDA_COLORES_MAIL; 41_AgendaColores.js): el color de cada reunión de cada versión y las notas del mail.
+    // Apagado (lo normal), no se toca nada: la salida es la de siempre.
+    const conColores = meta && meta.coloresMail !== undefined ? !!meta.coloresMail : AGENDA_COLORES_MAIL;
+    const notasV = conColores && typeof coloresDeSemanaAgenda_ === 'function' ? coloresDeSemanaAgenda_(g, parseadas, val, r) : null;
     // la marca de la misma reunión dos veces en un mail, en las reuniones del mail que la tiene repetida
     parseadas.forEach(function (lista, i) {
       if (!val[i].clavesRepetidas.length) return;
@@ -171,6 +175,8 @@ function agendaDesdeListaDeMails_(lista, meta) {
     for (let i = base + 1; i < n; i++) parseadas[i].forEach(function (ev) { estado.set(ev.clave, ev); });
     const ultima = Array.from(estado.values());
     if (g.soloMailsRaros) ultima.forEach(function (ev) { ev.soloMailRaro = true; });
+    // 15/10 (noche): ROJO ENTERO en la versión de la que sale cada reunión del estado → cancelada en el mail (y sus notas)
+    if (notasV) cancelacionPorColorAgenda_(ultima, notasV, r);
     g.cantidades = parseadas.map(function (p) { return p.length; });
     g.respuestas = esResp.filter(Boolean).length;
     // Versión parcial: la base contra el mail completo anterior (las respuestas no cuentan).
@@ -958,8 +964,14 @@ function _distanciaAOtroBarrioM_(lng, lat, poligonos, barrio) {
  * hilos de la etiqueta `AGENDA_ETIQUETA_GMAIL` **o** los que traen en el asunto alguna de `AGENDA_ASUNTOS_GMAIL`, en
  * los días desde `desde`, **sin duplicar** (por id de mensaje). Cada uno: `{ fecha, asunto, cuerpo, id, hilo,
  * etiqueta }` (`etiqueta`: si su hilo tenía la etiqueta). Si no trae nada y Gmail falló, TIRA: no se escribe nada.
+ * 15/10 (noche): con `opciones.html` (AGENDA_COLORES_MAIL, o un paso a mano), además el HTML de cada mensaje (`html`, getBody()
+ * del mismo mensaje), los más nuevos primero, hasta `opciones.topeMs` (AGENDA_COLORES_MAIL_MAX_MS; null = sin tope): los que no
+ * entran quedan con `html` vacío (sin color). El resultado lleva `html: { leidos, omitidos, fallas, ms }`. Sin `opciones.html`,
+ * lo de siempre (no se llama a getBody).
  */
-function leerMailsAgendaGmail_(desde) {
+function leerMailsAgendaGmail_(desde, opciones) {
+  const conHtml = !!(opciones && opciones.html);
+  const mensajes = conHtml ? {} : null;
   const vistos = {}, lista = [], enEtiqueta = {};
   const dias = Math.max(1, Math.ceil((Date.now() - desde.getTime()) / 86400000) + 1);
   const agregar = function (hilos, origen) {
@@ -973,6 +985,7 @@ function leerMailsAgendaGmail_(desde) {
         vistos[id] = true;
         lista.push({ fecha: msg.getDate(), asunto: msg.getSubject() || '', cuerpo: String(msg.getPlainBody() || ''), truncado: false,
                      id: id, hilo: idHilo });
+        if (mensajes) mensajes[id] = msg;
       });
     });
   };
@@ -1004,8 +1017,29 @@ function leerMailsAgendaGmail_(desde) {
   if (!lista.length && errores.length) throw new Error('Gmail: ' + errores.join(' | '));
   lista.forEach(function (m) { m.etiqueta = !!enEtiqueta[m.hilo]; });
   lista.sort(function (x, y) { return x.fecha - y.fecha; });
-  return { fuente: 'Gmail: etiqueta "' + AGENDA_ETIQUETA_GMAIL + '" o asunto (' + AGENDA_ASUNTOS_GMAIL.join(' / ') + '), ' + dias + ' días',
-           lista: lista, errores: errores };
+  const out = { fuente: 'Gmail: etiqueta "' + AGENDA_ETIQUETA_GMAIL + '" o asunto (' + AGENDA_ASUNTOS_GMAIL.join(' / ') + '), ' + dias + ' días',
+                lista: lista, errores: errores };
+  if (mensajes) out.html = _leerHtmlMailsAgenda_(lista, mensajes, opciones.topeMs === undefined ? AGENDA_COLORES_MAIL_MAX_MS : opciones.topeMs);
+  return out;
+}
+
+/**
+ * El HTML (getBody) de los mails de `lista`, los MÁS NUEVOS primero, hasta `topeMs` (null = sin tope); los que no entran, y
+ * los que fallan, quedan con `html` ''. Loguea el tiempo (es lo que suman los colores a la corrida de la hora).
+ */
+function _leerHtmlMailsAgenda_(lista, mensajes, topeMs) {
+  const t0 = Date.now();
+  let leidos = 0, omitidos = 0, fallas = 0;
+  for (let i = lista.length - 1; i >= 0; i--) {
+    const m = lista[i];
+    if (topeMs != null && Date.now() - t0 > topeMs) { m.html = ''; omitidos++; continue; }
+    try { m.html = String(mensajes[m.id].getBody() || ''); leidos++; } catch (e) { m.html = ''; fallas++; }
+  }
+  const ms = Date.now() - t0;
+  Logger.log('[agenda] colores del mail: el HTML (getBody) de %s mails en %s ms%s%s', leidos, ms,
+             omitidos ? ' | SIN HTML por el tope de ' + Math.round(topeMs / 1000) + ' s: ' + omitidos + ' (los más viejos: quedan sin color)' : '',
+             fallas ? ' | getBody falló en ' + fallas : '');
+  return { leidos: leidos, omitidos: omitidos, fallas: fallas, ms: ms };
 }
 
 /** ¿No es una dirección? Un link, o un texto sin ningún número en "calle número" (sólo el nombre del lugar). */
