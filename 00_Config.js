@@ -1590,6 +1590,30 @@ const AGENDA_CONCILIACION_SEMANAL = false;
 /** H2 (revisor, 15/10): el puntaje mínimo para emparejar solo (figura 8, "Lugar (mail)" 4, fecha 2, hora 1, dirección 1). Debajo, se pregunta. */
 const AGENDA_CONCILIACION_PUNTAJE_MIN = 4;
 /**
+ * **Las decisiones de AGENDA_DUPLICADOS se aplican SIEMPRE** (15/10, caso Macri 01/10 Belgrano: el equipo eligió "Ya está
+ * cargada en otra fila: no crear" y la línea volvió). Con `true` (40_Agenda.js, `planAgenda_` y `leerEleccionesAgenda_`):
+ *   - "Ya está cargada en otra fila" se aplica aunque la fila elegida ya no esté entre las candidatas (se busca en toda la
+ *     base por su identidad); si la fila ya no existe, igual no se crea ni se vuelve a preguntar (se anota);
+ *   - "Es la misma: vincular" busca la fila elegida en toda la base; si ya no existe, NO crea: vuelve a preguntar, diciéndolo;
+ *   - la identidad tolera el corrimiento: la reunión, por figura (o lugar) + fecha si la hora cambió y es la única con esa base;
+ *     la fila, por figura + fecha si el barrio cambió dentro de la misma comuna y es la única ese día (en la pregunta de
+ *     cancelación, que tiene una sola fila, alcanza figura + fecha) (`eleccionDeReunionAgenda_`, `filaDeEleccionAgenda_`);
+ *   - al leer la solapa, una línea que trae la elección YA guardada (pre-cargada por el sistema) no pisa una elección nueva
+ *     de otra línea de la misma reunión;
+ *   - cada elección aplicada, o cerrada porque su reunión salió del alcance o del mail, queda UNA vez en REGISTRO_AGENDA_CAMBIOS
+ *     ("eleccion_aplicada" / "eleccion_cerrada" / "eleccion_sin_fila"), no en cada corrida.
+ * APAGADO hasta ver el paso 94 (`diagnosticarEleccionesAgenda`, diagnostico/35_elecciones_agenda.js): con `false`, todo como hoy.
+ */
+const AGENDA_ELECCIONES_SIEMPRE = false;
+/**
+ * **Las reuniones CANCELADAS en el mail se cierran solas** (15/10). Si el parser marca una reunión como cancelada en el mail
+ * (`ev.canceladaEnMail`, con `ev.canceladaEnMailMotivo`; p. ej. "rojo en la v2 del 25/09"), la agenda no la crea ni pregunta;
+ * si estaba en AGENDA_DUPLICADOS, la línea queda cerrada ("cancelada en el mail: no se crea"), sin ELEGIR, y se anota una vez
+ * en REGISTRO_AGENDA_CAMBIOS. En `true` no cambia nada por sí solo: la marca la pone el parser sólo con SU interruptor
+ * prendido (la detección del color es de 41_AgendaParser.js, no de acá).
+ */
+const AGENDA_CERRAR_CANCELADAS_MAIL = true;
+/**
  * **H3. El invariante "una reunión, una fila"** (15/10). Con `true`, en cada corrida: si dos filas vivas (no Suspendida /
  * Reprogramada) son la misma reunión —misma fecha + misma figura, o, en una Seguridad sin figura, misma fecha + mismo tipo +
  * mismo "Lugar (mail)"— y el mail no trae tantas reuniones con esa clave, en ESA SEMANA no se crea nada más, se lista en

@@ -31,6 +31,13 @@ les queda para cargar a ustedes.
   esa fila**: la anota como "ya cargada en la fila N (fecha distinta)" (en el archivo "Agenda", con el número de fila).
   Si duda, pregunta en AGENDA_DUPLICADOS, y ahí también está la opción **"Ya está cargada en otra fila: no crear"**.
   Si hay varias filas posibles, aparece una línea por cada una: se elige en la de la fila que corresponde.
+- **Próximamente (15/10, apagado: `AGENDA_ELECCIONES_SIEMPRE`): lo que eligen en AGENDA_DUPLICADOS vale siempre.** Aunque
+  después cambie la hora de la reunión en el mail, o corrijan el barrio de la fila elegida, o la fila deje de aparecer como
+  candidata, la línea no vuelve a aparecer. Si la fila elegida ya no existe: con *"Ya está cargada en otra fila"* el sistema
+  igual no crea nada; con *"Es la misma: vincular"* no crea y vuelve a preguntar, diciendo que la fila ya no está. Cada
+  decisión aplicada (o cerrada porque la reunión salió del mail) queda anotada una sola vez en el registro de la agenda.
+- **Una reunión que el mail marca como cancelada** (cuando se prenda la detección del color en el mail, todavía apagada) no se crea ni se pregunta: si estaba en AGENDA_DUPLICADOS, la línea queda
+  cerrada con *"cancelada en el mail: no se crea"* y no hay nada que elegir.
 - **Si aparece un duplicado después** (alguien cargó una fila para una reunión que el sistema ya había creado), también
   sale en AGENDA_DUPLICADOS, como *"después de crear"*. **El sistema no borra ni junta filas solo**: si es la misma
   reunión, borren la que sobra.
