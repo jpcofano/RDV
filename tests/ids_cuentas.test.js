@@ -197,9 +197,10 @@ ok(E7b.base().escrituras.length === 0 && /no se escribe nada hasta que las agreg
    'en la hora sin las columnas: no las agrega ni escribe (lo hace el paso 57)');
 ok(r7b && r7b.conteo.escribeId === 7 && r7b.conteo.fuera === 1, '(y dice lo que escribiría: 7 IDs; la 811, cerrada, fuera)');
 const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
-const iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iIds = up.indexOf('resIds = idsEnLaHora_(enSeco)'), iPlan = up.indexOf('const plan = calcularPlan_(enSeco, null');
-ok(iAg > 0 && iIds > iAg && iPlan > iIds, 'en _correrUpsertConBloqueo_: después de la agenda y antes del cruce con los formularios');
-ok(/if \(IDS_EN_LA_HORA && !historial\) \{\s*try \{ resIds = idsEnLaHora_\(enSeco\); \}\s*catch/.test(up), 'sólo con IDS_EN_LA_HORA, no en el paso 22, y con try/catch');
+const iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iIds = up.indexOf('resIds = idsEnLaHora_(enSeco)'), iPlan = up.indexOf('plan = calcularPlan_(enSeco, null');
+ok(iAg > 0 && iPlan > iAg && iIds > iPlan, 'en la corrida: después de la agenda y, desde el 15/10, DESPUÉS del cruce (prioridad 3)');
+ok(/if \(IDS_EN_LA_HORA && !historial\) \{\s*if \(!corridaHayTiempo_\('ids'\)\) \{[\s\S]{0,200}\} else \{[\s\S]{0,120}try \{ resIds = idsEnLaHora_\(enSeco\); \}\s*catch/.test(up),
+   'sólo con IDS_EN_LA_HORA, no en el paso 22, con la guarda de tiempo y con try/catch');
 ok(E7.cfg('IDS_EN_LA_HORA') === true, 'IDS_EN_LA_HORA = true desde el 09/10 (pasos 55 a 57 OK)');
 
 // ---------------------------- [8] el huso horario de la lista ----------------------------

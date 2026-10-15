@@ -168,8 +168,10 @@ console.log('[1] prendido (13/10), y el gancho');
   const E = entorno(BASE());
   ok(E.cfg('AGENDA_VISTAS_NUEVAS') === true, 'AGENDA_VISTAS_NUEVAS = true (prendido el 13/10)');
   const src = require('fs').readFileSync(require('path').join(__dirname, '..', '40_Agenda.js'), 'utf8');
-  ok(/_escribirSolapaCopiaAgenda_\(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz\.cerrada\);\s*\/\/[^\n]*\n\s*if \(AGENDA_VISTAS_NUEVAS\) escribirVistasAgenda_\(ss, pz\.abierta, P\);/.test(src),
+  ok(/_escribirSolapaCopiaAgenda_\(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz\.cerrada\);[\s\S]{0,700}?if \(AGENDA_VISTAS_NUEVAS\) escribirVistasAgenda_\(ss, pz\.abierta, P\);/.test(src),
      'las vistas se escriben DESPUÉS de "Agenda" y "Agenda cerrada", y sólo con AGENDA_VISTAS_NUEVAS');
+  ok(/_escribirSolapaCopiaAgenda_\(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz\.cerrada\);[\s\S]{0,400}?if \(typeof _diferirVistasAgenda_ !== 'undefined' && _diferirVistasAgenda_\) \{\s*_vistasAgendaPendientes_ = \{ abierta: pz\.abierta, P: P \};\s*return;/.test(src),
+     '15/10: en la corrida de la hora, las vistas y la copia del archivo RDV quedan para el final (prioridad 5)');
 }
 
 console.log('[2] AgendaCall: las columnas en su orden y un color por fila');

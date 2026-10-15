@@ -17,6 +17,14 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 15/10: LA GUARDA DE TIEMPO y REGISTRO_CORRIDAS (49_Corridas.js), PRENDIDAS (GUARDA_TIEMPO_ACTIVA = true): la corrida
+ *      de la hora va por partes en orden de prioridad (agenda → cruce → IDs → Looker → vistas de Agenda) y la que no alcanza
+ *      no empieza. Cada corrida deja una línea en REGISTRO_CORRIDAS (intermedia).
+ *        paso67_tiemposCorridas()     SÓLO LECTURA: cuánto tarda cada parte (mediana, máximo, cuántas veces se salteó),
+ *                                     de las últimas corridas. Correrlo después de unas horas: decide las aceleraciones.
+ *        paso66_auditoriaAgenda()     SÓLO LECTURA: los mails de agenda contra la base, el archivo "Agenda" y la "Agenda" del
+ *                                     archivo RDV (esta semana y la siguiente), las ambiguas y AGENDA_FIGURA_A_COMPLETAR.
+ *
  *  >>> 13/10: el archivo "Agenda" con dos solapas nuevas ("AgendaCall" y "Agenda (mail)", 47_AgendaVistas.js), PRENDIDAS
  *      (AGENDA_VISTAS_NUEVAS = true): la próxima corrida de la hora las crea y ordena las solapas. Después: paso48_ayuda()
  *      (la LEER nueva). paso64_vistasAgenda_enSeco() sigue sirviendo de vista previa (no escribe nada).
@@ -1282,6 +1290,31 @@ function paso61_seguridadSinCruzar() {
   _anunciar_('paso 61 — Seguridad que sigue sin cruzar', 'medirSeguridadSinCruzar()  [diagnostico/26_ids_cuentas.js]', 'NO escribe nada',
              'el log: cada caso con la comuna leída, el motivo, las filas de esa fecha y esa comuna, y las de la figura de la lista');
   return medirSeguridadSinCruzar();
+}
+
+/**
+ * PASO 66 — SÓLO LECTURA (15/10): la AUDITORÍA DE LA AGENDA (diagnostico/29_auditoria_agenda.js). Los mails desde el lunes de la
+ * semana pasada y la versión que vale; cada reunión de esta semana y la siguiente contra la base; las filas sin reunión en el mail;
+ * las copias (Agenda, AgendaCall, Agenda (mail), Agenda del archivo RDV); las creadas en 14 días y AGENDA_DUPLICADOS; las ambiguas;
+ * AGENDA_FIGURA_A_COMPLETAR. No escribe nada.
+ */
+function paso66_auditoriaAgenda() {
+  _anunciar_('paso 66 — auditoría de la agenda (SÓLO LECTURA)', 'auditoriaAgenda()  [diagnostico/29_auditoria_agenda.js]',
+             'NO escribe nada (ni la base, ni el archivo "Agenda", ni Gmail, ni REGISTRO_AGENDA, ni la cache de geocodificación)',
+             'el log: 1 mails y versiones, 2 reuniones vs base (OK / DISTINTO / FALTA EN LA BASE / DUPLICADA), 3 filas sin mail, ' +
+             '4 copias, 5 creadas (14 días) y AGENDA_DUPLICADOS, 6 ambiguas, 7 AGENDA_FIGURA_A_COMPLETAR, y el RESUMEN');
+  return auditoriaAgenda();
+}
+
+/**
+ * PASO 67 — SÓLO LECTURA (15/10): cuánto tarda cada parte de la corrida de la hora, de las últimas 48 corridas de
+ * REGISTRO_CORRIDAS (49_Corridas.js): mediana, máximo, cuántas veces se salteó por tiempo, y cuántas corridas terminaron,
+ * fallaron o se cortaron. Es la medición para decidir las aceleraciones (los IDs, las vistas, Looker).
+ */
+function paso67_tiemposCorridas() {
+  _anunciar_('paso 67 — cuánto tarda cada parte de la corrida (SÓLO LECTURA)', 'tiemposDeCorridas(48)  [49_Corridas.js]',
+             'NO escribe nada', 'el log: por parte, veces, mediana, máximo y salteadas; los estados de las corridas');
+  return tiemposDeCorridas(48);
 }
 
 /**

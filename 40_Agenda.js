@@ -1403,6 +1403,12 @@ function escribirCopiaAgenda_(matriz, P) {
   _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA, pz.abierta);
   _escribirSolapaCopiaAgenda_(ss, AGENDA_COPIA_SOLAPA_CERRADA, pz.cerrada);
   // 09/10: "AgendaCall" y "Agenda (mail)" (47_AgendaVistas.js), con AGENDA_VISTAS_NUEVAS; las de arriba, igual que siempre
+  // 15/10: en la corrida de la hora, las vistas y la copia del archivo RDV quedan para el FINAL de la corrida (prioridad 5,
+  // con la guarda de tiempo: 49_Corridas.js). En un paso a mano, se escriben acá.
+  if (typeof _diferirVistasAgenda_ !== 'undefined' && _diferirVistasAgenda_) {
+    _vistasAgendaPendientes_ = { abierta: pz.abierta, P: P };
+    return;
+  }
   if (AGENDA_VISTAS_NUEVAS) escribirVistasAgenda_(ss, pz.abierta, P);
   // 13/10: la misma "Agenda", también en el archivo RDV (AGENDA_COPIA_EN_RDV). Aislada: si falla, lo de arriba ya quedó.
   if (AGENDA_COPIA_EN_RDV) {

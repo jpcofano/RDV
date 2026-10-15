@@ -2812,8 +2812,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     **Cuándo corre**: paso 55 (medir, sólo lectura) → paso 56 (el historial en seco) → **paso 57** (el historial, una vez:
     agrega las dos columnas al final si faltan y escribe en todas las filas **cuya reunión ya pasó**) →
     `IDS_EN_LA_HORA = true` (**prendido el 09/10**, después de los pasos 55 a 57: 733 cruzan, conflictos 0): dentro de la
-    corrida de la hora, **después de la agenda** y antes del cruce con los
-    formularios, sólo en las filas activas que ya pasaron (nunca en una cerrada ni en una futura). Si falla, la corrida
+    corrida de la hora, **después de la agenda** y —desde el 15/10, por la guarda de tiempo— **después del cruce** con los
+    formularios (prioridad 3; no dependen de él: leen la base de nuevo), sólo en las filas activas que ya pasaron (nunca en una cerrada ni en una futura). Si falla, la corrida
     sigue; `REGISTRO_UPSERT` lo dice en la columna `ids` (sólo con el interruptor prendido: apagado, la línea es la de
     siempre). Una fila con ID no la borra la agenda al cancelarse (deja de estar intocada): la suspende. El paso 43 limpia
     también el fondo de las celdas vacías de estas dos columnas.
@@ -2869,6 +2869,13 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
                    protegida con advertencia. Paso 65 en seco. APAGADO por decisión del usuario
                    (FORMULARIOS_SIN_FILA_ACTIVA = false); la GUÍA la nombra sólo prendida. Para el equipo:
                    docs/formularios-sin-fila.md                                                                 ← 13/10
+49_Corridas.js     la GUARDA DE TIEMPO y REGISTRO_CORRIDAS de la corrida de la hora: las partes en orden de prioridad
+                   (agenda → cruce, asistentes, escritura, derivadas, elecciones, fichas → IDs → Looker → vistas del
+                   archivo "Agenda" y la copia del archivo RDV); la que no alcanza (GUARDA_INICIO_MAX_MS) no empieza y
+                   queda para la próxima; una línea por corrida (también las cortadas por el límite de 6 min, que registra
+                   la corrida siguiente, y las que no arrancan por el bloqueo). Paso 67: cuánto tarda cada parte   ← 15/10
+diagnostico/29_auditoria_agenda.js  la AUDITORÍA de la agenda (paso 66, SÓLO LECTURA): los mails contra la base, el
+                   archivo "Agenda" y la "Agenda" del archivo RDV; las ambiguas y AGENDA_FIGURA_A_COMPLETAR      ← 15/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
@@ -3711,8 +3718,19 @@ origen", que llevan a trabajos completamente distintos.
   todavía sin barrio; con los barrios cargados, la subzona (regla 10) la manda a Monserrat.
   **07/10 (`PENDIENTE_BARRIO_SOLO_SIN_UBICACION`, con la tanda del 07/10):** sólo para filas sin ninguna
   ubicación (sin barrio, sin comuna, sin eje); una fila con la comuna o el eje del mail se evalúa directo.
+- **La guarda de tiempo (15/10, `49_Corridas.js`, `GUARDA_TIEMPO_ACTIVA`).** El activador fallaba ~23% por "Exceeded maximum
+  execution time": con Gmail o Sheets lentos, la suma de las partes pasaba de 6 min (9:28 del 15/10: agenda 167 s, IDs 120 s,
+  cortada en el cruce a los 361 s). La corrida va por partes en **orden de prioridad** —(1) agenda → (2) cruce, asistentes,
+  escritura, derivadas, elecciones, fichas → (3) IDs → (4) Looker → (5) vistas del archivo "Agenda" y la copia del archivo
+  RDV— y **antes de cada parte** mira el reloj contra `GUARDA_INICIO_MAX_MS`: si no alcanza, la parte **no empieza** (nunca
+  se corta una escritura a la mitad) y queda para la corrida siguiente. Cada parte, aislada: una que falla no corta las demás;
+  un error del cruce o de la escritura se vuelve a tirar al final, para que la ejecución figure como fallida. **Una línea por
+  corrida en `REGISTRO_CORRIDAS`** (intermedia): inicio, total y cada parte en segundos, las salteadas por tiempo y el error
+  completo; la corrida en curso queda en una propiedad, así una corrida que muere por el límite (no se puede atrapar) la
+  registra la siguiente como CORTADA, con la parte en la que murió.
 - **Una corrida por vez** (`LockService`, `ESPERA_BLOQUEO_MS`): si otra corrida tiene el bloqueo,
-  ésta no hace nada y lo loguea. **Cada corrida deja una línea en `REGISTRO_UPSERT`** (intermedia):
+  ésta no hace nada y lo loguea (y, desde el 15/10, lo anota en `REGISTRO_CORRIDAS`: "no arrancó"). **Cada corrida deja una
+  línea en `REGISTRO_UPSERT`** (intermedia):
   hora, modo, filas y celdas escritas, uids, escribiría, pendientes, a revisar y sin match
   `[ventana | total]`.
 - **Enganchar `verificarCambiosRecientes_()` al final de `99_Pipeline.js`** (decisión 11), después

@@ -27,7 +27,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = r
 const { execSync } = require('child_process');
 
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js',
+const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js',
                   '25_Elecciones.js', '26_Fichas.js', 'diagnostico/12_por_que_vacia.js', 'diagnostico/13_fichas_prueba.js',
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
@@ -417,6 +417,98 @@ function crearEntorno(opts) {
     return r;
   };
   return E;
+}
+
+function escenarioGuardaTiempo() {
+  console.log('\n[32] la GUARDA DE TIEMPO y REGISTRO_CORRIDAS (15/10): las partes en orden de prioridad, la que no alcanza no empieza');
+  const reg = function (m) { return m.ssI.hojas['REGISTRO_CORRIDAS']; };
+  const fila = function (m, k) { const h = reg(m); return h && h.v.length > 1 ? h.v[h.v.length - (k || 1)] : null; };
+  const campo = function (m, nombre, k) { const h = reg(m); return fila(m, k)[h.v[0].indexOf(nombre)]; };
+  const dest = function (m) { return JSON.stringify(m.ssD.hojas['RVD JM-CM - ES'].v); };
+
+  // --- una corrida normal: una línea, con la duración de cada parte, y la corrida en curso borrada ---
+  const E = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', IDS_EN_LA_HORA: 'false' } });
+  const m = montar(E, 120, true);
+  const r = E.ejecutar('upsertDestino');
+  ok(!r.error && !!reg(m) && reg(m).v.length === 2, 'una corrida → una línea en REGISTRO_CORRIDAS');
+  ok(campo(m, 'estado') === 'ok' && campo(m, 'modo') === 'real' && typeof campo(m, 'total_s') === 'number' &&
+     typeof campo(m, 'cruce_s') === 'number' && typeof campo(m, 'escritura_s') === 'number' && typeof campo(m, 'derivadas_s') === 'number' &&
+     campo(m, 'ids_s') === '' && campo(m, 'errores') === '',
+     'estado ok, total y la duración de cada parte que corrió (cruce ' + campo(m, 'cruce_s') + ' s, escritura ' + campo(m, 'escritura_s') + ' s); los IDs, apagados: vacío');
+  ok(!E.props[E.cfg('PROP_CORRIDA_EN_CURSO')], 'la corrida en curso (propiedad) queda borrada al terminar');
+
+  // --- la agenda se demoró (215 s antes del cruce): el cruce no empieza; nada se escribe a medias ---
+  const E2 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', IDS_EN_LA_HORA: 'false' } });
+  const m2 = montar(E2, 120, true);
+  const antes2 = dest(m2);
+  const v2 = E2.ctx.verificarHojaDestino_;
+  E2.ctx.verificarHojaDestino_ = function () { const x = v2.apply(this, arguments); E2.reloj += 215000; return x; };
+  const r2 = E2.ejecutar('upsertDestino');
+  ok(!r2.error && dest(m2) === antes2, 'a los 215 s (límite del cruce: 210 s): el cruce NO empieza y la base queda igual, sin error');
+  ok(r2.logs.some(function (l) { return /GUARDA DE TIEMPO: la corrida ya lleva 21\d s \(límite para empezar "cruce": 210 s\)/.test(l); }) &&
+     campo(m2, 'cruce_s') === 'salteada' && /cruce/.test(campo(m2, 'salteadas_por_tiempo')) && campo(m2, 'estado') === 'terminó, con partes salteadas',
+     '   lo dice el log y REGISTRO_CORRIDAS (cruce: "salteada")');
+
+  // --- el cruce se demoró (plan 250 s): los IDs (180 s), Looker (240 s) no empiezan; lo urgente sí corrió ---
+  const E3 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', LOOKER_EN_SISTEMA: 'true', IDS_EN_LA_HORA: 'true' }, costo: { calculo: 250000 } });
+  const m3 = montar(E3, 120, true);
+  let idsLlamados = 0;
+  E3.ctx.idsEnLaHora_ = function () { idsLlamados++; return { resumen: 'x' }; };
+  const r3 = E3.ejecutar('upsertDestino');
+  ok(!r3.error && idsLlamados === 0 && campo(m3, 'ids_s') === 'salteada' && !m3.ssD.hojas['Datos_Unpivot'],
+     'el plan tardó 250 s: los IDs (límite 180 s) y Looker (240 s) quedan para la próxima; no se llamaron');
+  ok(typeof campo(m3, 'escritura_s') === 'number' && typeof campo(m3, 'cruce_s') === 'number',
+     '   lo urgente (el cruce y la escritura) sí corrió; las derivadas, ' + (campo(m3, 'derivadas_s') === 'salteada'
+       ? 'salteadas (la corrida ya pasaba de 270 s)' : campo(m3, 'derivadas_s') + ' s'));
+  const regUp = m3.ssI.hojas['REGISTRO_UPSERT'];
+  ok(regUp && /salteado: guarda de tiempo/.test(regUp.v[regUp.v.length - 1].join('|')), '   REGISTRO_UPSERT lo dice en la columna ids');
+
+  // --- el orden: los IDs DESPUÉS del cruce, la agenda antes ---
+  const E4 = crearEntorno({ config: { IDS_EN_LA_HORA: 'true' } });
+  const m4 = montar(E4, 60, true);
+  const orden = [];
+  const cp = E4.ctx.calcularPlan_;
+  E4.ctx.calcularPlan_ = function () { orden.push('cruce'); return cp.apply(this, arguments); };
+  E4.ctx.idsEnLaHora_ = function () { orden.push('ids'); return { resumen: 'x' }; };
+  E4.ejecutar('upsertDestino');
+  ok(orden.join(',') === 'cruce,ids', 'el orden de prioridad: el cruce y después los IDs (' + orden.join(',') + ')');
+
+  // --- una parte que falla no corta las demás; un error del cruce queda registrado y la ejecución figura como fallida ---
+  const E5 = crearEntorno({ config: { IDS_EN_LA_HORA: 'true' } });
+  const m5 = montar(E5, 60, true);
+  let ids5 = 0;
+  E5.ctx.calcularPlan_ = function () { throw new Error('Service Spreadsheets timed out while accessing document'); };
+  E5.ctx.idsEnLaHora_ = function () { ids5++; return { resumen: 'x' }; };
+  const r5 = E5.ejecutar('upsertDestino');
+  ok(r5.error && /timed out/.test(String(r5.error)) && ids5 === 1, 'el cruce falla: los IDs corren igual, y la ejecución termina en ERROR (como antes)');
+  ok(campo(m5, 'estado') === 'ERROR' && /cruce: Error: Service Spreadsheets timed out/.test(campo(m5, 'errores')),
+     '   REGISTRO_CORRIDAS: ERROR, con el error completo de la parte');
+
+  // --- la corrida anterior se cortó (límite de 6 min, no se puede atrapar): la siguiente la registra como CORTADA ---
+  const E6 = crearEntorno({ config: { IDS_EN_LA_HORA: 'false' } });
+  const m6 = montar(E6, 60, true);
+  E6.props[E6.cfg('PROP_CORRIDA_EN_CURSO')] = JSON.stringify({ id: '20261015-092800', t0: new Date(2026, 9, 15, 9, 28).getTime(), modo: 'real',
+    partes: { agenda: 167000, ids: 120000 }, salteadas: [], errores: [], actual: 'cruce' });
+  E6.ejecutar('upsertDestino');
+  ok(reg(m6).v.length === 3 && /CORTADA en "cruce"/.test(campo(m6, 'estado', 2)) && campo(m6, 'agenda_s', 2) === 167 && campo(m6, 'ids_s', 2) === 120,
+     'la corrida que murió (9:28: agenda 167 s, IDs 120 s, cortada en el cruce) queda como CORTADA, con lo que alcanzó a hacer');
+  ok(campo(m6, 'estado', 1) === 'ok', '   y la de ahora, ok');
+
+  // --- otra corrida tiene el bloqueo: ésta no arranca, y queda anotado ---
+  const E7 = crearEntorno({});
+  const m7 = montar(E7, 30, true);
+  E7.ctx.LockService = { getScriptLock: function () { return { tryLock: function () { return false; }, releaseLock: function () {} }; } };
+  const r7 = E7.ejecutar('upsertDestino');
+  ok(!r7.error && r7.resultado === null && /no arrancó: otra corrida tenía el bloqueo/.test(campo(m7, 'estado')),
+     'con el bloqueo ocupado: no hace nada, sin error, y REGISTRO_CORRIDAS dice "no arrancó"');
+
+  // --- sin la guarda (GUARDA_TIEMPO_ACTIVA = false): todo como antes, aunque se pase ---
+  const E8 = crearEntorno({ config: { GUARDA_TIEMPO_ACTIVA: 'false', IDS_EN_LA_HORA: 'false' } });
+  const m8 = montar(E8, 60, true);
+  const v8 = E8.ctx.verificarHojaDestino_;
+  E8.ctx.verificarHojaDestino_ = function () { const x = v8.apply(this, arguments); E8.reloj += 215000; return x; };
+  E8.ejecutar('upsertDestino');
+  ok(typeof campo(m8, 'cruce_s') === 'number', 'GUARDA_TIEMPO_ACTIVA = false: el cruce corre igual (sólo se registra)');
 }
 
 // ============================== los datos sintéticos ==============================
@@ -2624,7 +2716,8 @@ function escenarioLooker() {
   const mt = montar(Et, 120, true);
   preparar(Et, mt);
   const rt = Et.ejecutar('upsertDestino');
-  ok(!rt.error && !mt.ssD.hojas['Datos_Unpivot'] && rt.logs.some(function (l) { return /no se rehacen en ésta/.test(l); }),
+  // 15/10: con la guarda de tiempo, a esa altura ya se saltearon las derivadas (límite 270 s), y sin la ID no hay tablero
+  ok(!rt.error && !mt.ssD.hojas['Datos_Unpivot'] && rt.logs.some(function (l) { return /no se rehacen en ésta|quedaron para la corrida siguiente/.test(l); }),
      'sin tiempo (la corrida ya lleva más de 4 minutos): no rehace el tablero en ésta, y lo dice');
 
   // --- una fórmula en la columna ID: ni la ID ni las solapas ---
@@ -2750,6 +2843,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--fichas0810') >= 0) escenarioFichas0810();
   else if (process.argv.indexOf('--id') >= 0) escenarioInvestigarId();
   else if (process.argv.indexOf('--looker') >= 0) escenarioLooker();
+  else if (process.argv.indexOf('--guarda') >= 0) escenarioGuardaTiempo();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2796,6 +2890,7 @@ escenarioFichas0810();
 escenarioInvestigarId();
 escenarioLooker();
 escenarioPaso47();
+escenarioGuardaTiempo();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

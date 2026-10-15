@@ -1,4 +1,4 @@
-# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV; FORMULARIOS_SIN_FILA, escrita y apagada por decisión del usuario: 0.z, lo último)
+# Estado de la migración — al 2026-10-08 (destino: el real; migración hecha; antes de Agenda: derivadas 0.u, oradores 0.v, fichas en el destino 0.w; AGENDA etapa 1, medir: 0.x; REVISAR_MATCH con el formato aprobado, prendido: 0.y; AGENDA etapa 2, crear y actualizar: 0.z; ubicación en tres niveles y la tanda del 07/10, prendidas el 07/10 y el 08/10: 0.z, al final; las fichas del 08/10, prendidas: 0.z; el tablero de Looker, prendido el 08/10: 0.z; los IDs de los encuentros ("ID cuentas"), escritos y apagados hasta los pasos 55–57: 0.z, al final; la noche del 08/10, `manana()` y qué prender: 0.z; el GUARDIÁN, escrito y apagado hasta los pasos 58–59: 0.z; las dos vistas nuevas del archivo "Agenda", prendidas el 13/10, y la "Agenda" también en el archivo RDV; FORMULARIOS_SIN_FILA, escrita y apagada por decisión del usuario; la guarda de tiempo y REGISTRO_CORRIDAS, prendidas el 15/10, y la auditoría de la agenda (paso 66): 0.z, lo último)
 
 Punto de retomada. **`CLAUDE.md` sigue siendo la fuente de verdad** sobre qué hace el sistema y
 por qué; este archivo dice sólo **dónde quedamos y qué sigue**, para poder abrir el repo en otra
@@ -1950,6 +1950,49 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
    cargue algo en Responsable / Check 1 / Check 2.
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
+
+#### La corrida de la hora: la GUARDA DE TIEMPO y REGISTRO_CORRIDAS (15/10) — PRENDIDAS; las aceleraciones, después de medir
+
+**La causa** (el usuario, con los mensajes de Ejecuciones): el activador de `upsertDiario` fallaba ~23% por **"Exceeded
+maximum execution time"**. No era un error de lógica: con Gmail o Sheets lentos, la suma de las partes pasaba de 6 min. La de
+las 9:28: agenda 167 s, IDs 120 s (leer la lista externa), cortada en el cruce a los 361 s; la de las 10:28 hizo lo mismo en
+163 s (agenda 85 s, IDs 13 s). Un agente leyó la corrida entera (sólo lectura): el bloqueo (`LockService`) ya estaba y alcanza
+(si está ocupado vuelve sin error); el único control de tiempo era el corte de la escritura entre tandas y el de Looker; el
+plan, los asistentes, la escritura y las elecciones no estaban aislados; Looker escribía sin flush. `clasp logs` no sirve sin
+un proyecto de GCP (no se tocó la configuración).
+
+**Lo hecho** (`49_Corridas.js`; CLAUDE.md, Fase 7):
+- las partes en **orden de prioridad**: (1) agenda → (2) cruce, asistentes, escritura, derivadas, elecciones, fichas → (3) IDs
+  (antes iban antes del cruce: no dependen de él) → (4) Looker → (5) vistas del archivo "Agenda" (AgendaCall, Agenda (mail)) y
+  la copia "Agenda" del archivo RDV (antes, adentro de la agenda: ahora la agenda las deja para el final);
+- la **guarda**: no se empieza una parte si la corrida ya lleva más de `GUARDA_INICIO_MAX_MS` (cruce 210 s, derivadas y
+  fichas 270 s, IDs 180 s, Looker y vistas 240 s; la agenda, sin límite: va primero). Queda para la próxima, anotada;
+- cada parte **aislada**; un error del cruce o de la escritura se vuelve a tirar al final (la ejecución sigue figurando como
+  fallida). Looker y las vistas hacen su flush adentro de su try;
+- **REGISTRO_CORRIDAS** (intermedia): inicio, total, cada parte en segundos (o "salteada"), las salteadas y el error
+  completo. Las cortadas por el límite las registra la corrida siguiente ("CORTADA en <parte>"); las que no arrancan por el
+  bloqueo, también. **`paso67_tiemposCorridas()`** (sólo lectura): por parte, mediana, máximo y cuántas veces se salteó.
+- Tests: `tests/escritura_lote.test.js` [32] (el reloj simulado: el cruce que no empieza a los 215 s, los IDs y Looker que no
+  empiezan con el plan en 250 s, el orden, una parte que falla, la corrida cortada, el bloqueo, la guarda apagada).
+
+**Las aceleraciones (punto 3 del usuario): NO aplicadas todavía — primero medir con REGISTRO_CORRIDAS.** Lo que se sabe hoy:
+
+| cambio | cuánto tarda hoy | cuánto ahorraría | nota |
+|---|---|---|---|
+| IDs: leer la lista externa sólo si cambió | 13 s (10:28) a 120 s (9:28) | casi todo, en las corridas sin cambios (la lectura de la base de los IDs queda) | la fecha de modificación del archivo pide **DriveApp** (un permiso nuevo: hay que volver a autorizar el script). Sin eso: leerla cada N horas |
+| vistas de Agenda + copia en RDV: sólo si cambió la huella | sin medir (hoy dentro de los 85-167 s de la agenda) | lo que midan `vistas_agenda` en REGISTRO_CORRIDAS, en las corridas sin cambios | hay que agregar una huella de las reuniones (en memoria, barata): hoy no existe |
+| Looker: sólo si cambió la base | sin medir | lo que mida `looker`, en las corridas sin cambios | la huella de la base ya existe (`huellasDelPlan_`) |
+
+Con la guarda, una corrida lenta ya no muere: deja para la próxima lo que no alcanza. Las aceleraciones sirven para que lo
+salteado se salte menos. **Qué correr:** dejar pasar unas horas y correr `paso67_tiemposCorridas()`.
+
+**La auditoría de la agenda (sólo lectura): `paso66_auditoriaAgenda()`** (`diagnostico/29_auditoria_agenda.js`, escrita
+por un agente). Mails desde el 05/10 y la versión que vale; cada reunión de esta semana (12/10–17/10) y la siguiente
+(19/10–24/10) contra la base (OK / DISTINTO —campo, valores y si la tocó el equipo— / FALTA EN LA BASE / DUPLICADA); las
+filas de la base sin reunión en el mail; las cuatro copias (Agenda, AgendaCall, Agenda (mail), Agenda del archivo RDV); las
+creadas en 14 días y AGENDA_DUPLICADOS; las **ambiguas** (cada candidata al lado del mail, la regla que no desempató y qué la
+desambiguaría: el caso "22/10 Seguridad en tu Barrio, filas 833 y 835"); y **AGENDA_FIGURA_A_COMPLETAR** (cada una con su
+motivo y si la Figura sigue vacía). No escribe nada (ni la cache de geocodificación). Test: `tests/auditoria_agenda.test.js`.
 
 #### FORMULARIOS_SIN_FILA (13/10) — escrita y APAGADA por decisión del usuario ("dejalo apagado por ahora")
 

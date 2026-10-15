@@ -294,7 +294,7 @@ console.log('[5] apagado y prendido');
   const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
   const iG = up.indexOf('resGuardian = guardianAntesDeEscribir_(enSeco)'), iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iC = up.indexOf('try { tomarCopiaSiAlineada_(); }');
   ok(iG > 0 && iG < iAg && iC > iAg, 'la corrida de la hora: el guardián ANTES de la agenda (y de todo), la copia al final');
-  ok(/if \(GUARDIAN_ACTIVO\) \{\s*try \{ resGuardian = guardianAntesDeEscribir_\(enSeco\); \}/.test(up) && /if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,300}?try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
+  ok(/if \(GUARDIAN_ACTIVO\) \{[\s\S]{0,120}?try \{ resGuardian = guardianAntesDeEscribir_\(enSeco\); \}/.test(up) && /if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,500}?try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
      '   las dos, sólo con GUARDIAN_ACTIVO');
   ok(/if \(resGuardian\.frenar && !enSeco\) \{[\s\S]{0,400}enSeco = true;/.test(up), '   si frena, el resto de la corrida va en seco (no escribe nada en la base)');
   // prendido: las escrituras del sistema dejan el sello
@@ -469,7 +469,7 @@ console.log('[8] las columnas del sistema que NACEN después del paso 59 (13/10)
   ok(r3.nuevas.length === 1 && ocultas.indexOf(cV) >= 0 && protecciones.some(function (p) { return p.c === cV && p.adv; }),
      '   y la corrida siguiente la termina: oculta y protegida');
   const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
-  ok(/if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,200}try \{ asegurarColumnasNuevasGuardian_\(\); \}[\s\S]{0,200}try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
+  ok(/if \(GUARDIAN_ACTIVO && !enSeco\) \{[\s\S]{0,300}try \{ asegurarColumnasNuevasGuardian_\(\); \}[\s\S]{0,200}try \{ tomarCopiaSiAlineada_\(\); \}/.test(up),
      'la corrida de la hora: al final, sólo con GUARDIAN_ACTIVO y no en seco, antes de la copia');
 }
 

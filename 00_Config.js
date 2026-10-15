@@ -64,6 +64,36 @@ const LINEA_BASE_AZULES = {
 const ESPERA_BLOQUEO_MS = 30000;
 
 /*
+ * --- La GUARDA DE TIEMPO y REGISTRO_CORRIDAS (15/10; 49_Corridas.js) ---
+ * El 15/10 la corrida de la hora fallaba ~23% por "Exceeded maximum execution time" (6 min de Apps Script): cuando Gmail o
+ * Sheets están lentos, la suma de las partes pasa de 6 min (la de las 9:28: agenda 167 s, IDs 120 s, cortada en el cruce a
+ * los 361 s). Ahora las partes van en ORDEN DE PRIORIDAD (decisión del usuario): (1) la agenda → (2) el cruce con los
+ * formularios, asistentes, escritura, derivadas, elecciones y fichas → (3) los IDs → (4) Looker → (5) las vistas del archivo
+ * "Agenda" (AgendaCall, Agenda (mail)) y la copia "Agenda" del archivo RDV. Antes de empezar una parte: si la corrida ya
+ * lleva más que su límite, NO se empieza (nunca se corta una escritura a la mitad) y queda para la corrida siguiente; se
+ * anota en el log y en REGISTRO_CORRIDAS.
+ */
+const GUARDA_TIEMPO_ACTIVA = true;
+/**
+ * No empezar la parte si la corrida (medida desde que arranca, con la espera del bloqueo) ya lleva más de esto. El límite de
+ * Apps Script es 360 s; cada límite deja lugar para lo que tarda esa parte en un día lento. La agenda va primero y no tiene
+ * límite. La escritura tiene además su propio corte entre tandas (UPSERT_CORTE_PROPIO_MS). Se calibran con REGISTRO_CORRIDAS
+ * (paso 67: cuánto tarda cada parte).
+ */
+const GUARDA_INICIO_MAX_MS = {
+  cruce: 210 * 1000,          // leer B y la base (~1 min en un día lento) y escribir por tandas, con su corte a los 4 min 30 s
+  derivadas: 270 * 1000,
+  reportes: 270 * 1000,       // las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH: se rehacen en la próxima
+  ids: 180 * 1000,            // leer la lista externa tardó hasta 120 s (15/10, 9:28)
+  looker: 240 * 1000,         // (LOOKER_TIEMPO_MAX_MS)
+  vistas_agenda: 240 * 1000   // AgendaCall, Agenda (mail) y la "Agenda" del archivo RDV
+};
+/** Una línea por corrida (intermedia): inicio, duración total y de cada parte, lo que se salteó por tiempo, el error completo. */
+const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
+/** La corrida en curso, parte por parte (propiedad del script): si la ejecución se corta, la siguiente la registra como cortada. */
+const PROP_CORRIDA_EN_CURSO = 'CORRIDA_EN_CURSO';
+
+/*
  * --- La escritura en lote (02/10) ---
  * La primera escritura real (02/10 14:50) se cortó a los 6 minutos de Apps Script: escribía celda
  * por celda (leer, escribir, pintar), y cada lectura obliga a vaciar la cola de escrituras. Ahora
@@ -172,7 +202,8 @@ const DESC_PROTECCION_DERIVADAS = 'RDV: columna derivada, la calcula el sistema 
  * script-atado-base/, al lado del repo); sus activadores los borró el usuario.
  */
 const LOOKER_EN_SISTEMA = true;   // PRENDIDO el 08/10 (pruebas A, B y C de las 19:00: aprobado); el script atado, vacío (Migrado.js)
-/** Si la corrida de la hora ya lleva más que esto al llegar al tablero, no lo rehace (lo hace la próxima): no la lleva al límite de 6 min. */
+/** Si la corrida de la hora ya lleva más que esto al llegar al tablero, no lo rehace (lo hace la próxima): no la lleva al límite de 6 min.
+ *  Desde el 15/10 lo aplica la guarda de tiempo (GUARDA_INICIO_MAX_MS.looker, el mismo valor). */
 const LOOKER_TIEMPO_MAX_MS = 4 * 60 * 1000;
 /** Las solapas del tablero, en el archivo del destino, con el nombre que lee Looker (no cambian). */
 const RDV_HOJA_UNPIVOT = 'Datos_Unpivot';

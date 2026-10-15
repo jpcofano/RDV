@@ -1588,6 +1588,7 @@ function _correrUpsert_(enSeco, opciones) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(ESPERA_BLOQUEO_MS)) {
     Logger.log('>>> Hay otra corrida del upsert en curso: ésta no hace nada (LockService).');
+    corridaSinBloqueo_(t0, enSeco);   // 15/10: queda en REGISTRO_CORRIDAS
     return null;
   }
   try {
@@ -1598,20 +1599,42 @@ function _correrUpsert_(enSeco, opciones) {
 }
 
 function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
+  // REGISTRO_CORRIDAS (15/10, 49_Corridas.js): la corrida parte por parte; al final (también si falló), una línea.
+  corridaIniciar_(t0, enSeco, historial);
+  let errFinal = null;
+  try { return _correrUpsertPartes_(enSeco, t0, historial, soloUids); }
+  catch (err) { errFinal = err; throw err; }
+  finally {
+    _diferirVistasAgenda_ = false;
+    corridaCerrar_(errFinal);
+  }
+}
+
+/**
+ * Las partes de la corrida, en ORDEN DE PRIORIDAD (15/10): (1) la agenda → (2) el cruce con los formularios, asistentes,
+ * escritura, derivadas, elecciones y fichas → (3) los IDs → (4) Looker → (5) las vistas del archivo "Agenda" y la copia del
+ * archivo RDV. Antes de empezar cada una, la guarda de tiempo (GUARDA_INICIO_MAX_MS): si no alcanza, no empieza y queda para
+ * la próxima. Cada parte, aislada: si falla, las demás siguen y el error queda en REGISTRO_CORRIDAS. Un error del cruce o de
+ * la escritura se vuelve a tirar al final (después de las demás partes), para que la ejecución figure como fallida.
+ */
+function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   // La guarda (02/10): la solapa destino existe y, si es la copia, tiene los encabezados del real.
   // Si no, error ANTES de calcular: no se escribe nada.
   verificarHojaDestino_(ssDestino_());
+  let errorCritico = null;
 
   // EL GUARDIÁN (09/10, GUARDIAN_ACTIVO; 46_Guardian.js): antes de escribir NADA, las columnas del sistema contra su copia:
   // restaura, reubica (desalineación) o, si no puede reubicar sin ambigüedad, esta corrida no escribe nada más en la base
   // (sigue en seco: los reportes se regeneran). Si el guardián mismo falla, tampoco: con la base sin controlar no se escribe.
   let resGuardian = null;
   if (GUARDIAN_ACTIVO) {
+    const tG = _ahoraMs_(); corridaEmpieza_('guardian');
     try { resGuardian = guardianAntesDeEscribir_(enSeco); }
     catch (err) {
       Logger.log('>>> ### EL GUARDIÁN FALLÓ: %s. Esta corrida NO escribe nada en la base (sigue en seco). ###', err);
       resGuardian = { error: String(err && err.message || err), frenar: true };
     }
+    corridaAnotar_('guardian', tG, resGuardian && resGuardian.error ? resGuardian.error : null);
     if (resGuardian.frenar && !enSeco) {
       Logger.log('>>> ### EL GUARDIÁN FRENÓ LA CORRIDA: no se escribe nada en la base (agenda, IDs, datos, derivadas, tablero). ' +
                  'Mirar REGISTRO_PROTECCION y el log de arriba. ###');
@@ -1619,29 +1642,22 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
     }
   }
 
-  // La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
+  // (1) La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
   // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
   // 07/10: el error queda también en REGISTRO_AGENDA (si la intermedia responde); el upsert sigue igual.
+  // 15/10: las vistas del archivo "Agenda" y la copia del archivo RDV quedan para el final (prioridad 5).
   if (AGENDA_ACTIVA && !historial) {
-    const tA = Date.now();
+    const tA = _ahoraMs_(); let errA = null; corridaEmpieza_('agenda');
+    _diferirVistasAgenda_ = true;
     try { correrAgendaEnBloqueo_(enSeco); }
     catch (err) {
+      errA = err;
       Logger.log('>>> La agenda falló: %s (el cruce con los formularios sigue igual).', err);
       try { _registrarAgenda_(null, enSeco, tA, 'la agenda falló dentro del upsert: ' + (err && err.message || err)); }
       catch (e) { Logger.log('>>> y no se pudo registrar en REGISTRO_AGENDA: %s', e); }
     }
-  }
-
-  // Los IDs de los encuentros (08/10, IDS_EN_LA_HORA; 45_IdsCuentas.js): después de la agenda, que crea y mueve filas; sólo
-  // filas activas, por la regla general (sólo celda vacía). No en el paso 22: el historial de los IDs es el paso 57. Si
-  // falla, lo dice y la corrida sigue.
-  let resIds = null;
-  if (IDS_EN_LA_HORA && !historial) {
-    try { resIds = idsEnLaHora_(enSeco); }
-    catch (err) {
-      Logger.log('>>> Los IDs de los encuentros fallaron: %s (la corrida sigue igual).', err);
-      resIds = { error: String(err && err.message || err) };
-    }
+    _diferirVistasAgenda_ = false;
+    corridaAnotar_('agenda', tA, errA);
   }
 
   // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas
@@ -1653,45 +1669,79 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
                'escritas entran por RDV_UID y se completan; las que faltan, se escriben.', anterior);
   }
 
-  const plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
-  plan.res.ids = resIds;
-  plan.res.guardian = resGuardian;
-  logResumen_(plan);                 // ← ANTES de escribir nada
-  _logColumnasB_(plan.cands);
-  // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
-  plan.asistentes = cruzarAsistentes_(plan.dest, plan.comunas);
-  Logger.log('--- Asistentes (RDV CONJUNTO, figura + fecha) ---');
-  _logCruceAsistentes_(plan.asistentes, false);
-
-  if (!enSeco) {
-    const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes, historial, soloUids);
-    plan.res.escritas = w.celdas;
-    plan.res.uidsEstampados = w.uids;
-    plan.res.escritura = w;
-    Logger.log('>>> Escritura en "%s": %s filas tocadas de %s con algo que escribir, en %s tandas (%s ms; ' +
-               'la más lenta %s ms).', RDV_HOJA_DESTINO, w.filasHechas, w.filasPendientes, w.tandas,
-               w.msEscritura, w.tandaMax);
-    Logger.log('    celdas de dato %s | traza %s | uuids estampados %s | STATUS → Realizada %s',
-               w.celdas, w.trazas, w.uids, w.realizadas);
-    Logger.log('    por columna: %s', Object.keys(w.porColumna).map(function (k) {
-      return k + ' ' + w.porColumna[k]; }).join(' | ') || 'nada');
-    if (w.completa) {
-      props.deleteProperty(PROP_ESCRITURA_INCOMPLETA);
-      Logger.log('    COMPLETA: no queda ninguna fila con algo que escribir.');
-    } else {
-      const estado = Utilities.formatDate(new Date(), RDV_TZ, 'dd/MM HH:mm') + ' en "' + RDV_HOJA_DESTINO +
-                     '", ' + w.filasHechas + ' de ' + w.filasPendientes + ' filas' +
-                     (historial ? ' (TODO EL HISTORIAL: seguir con paso22_completarHistorial)' : '');
-      props.setProperty(PROP_ESCRITURA_INCOMPLETA, estado);
-      Logger.log('    CORTE PROPIO a los %s ms (límite %s): quedan %s filas para la próxima corrida. ' +
-                 'Nada quedó a medias: se corta entre tandas.', new Date() - t0, UPSERT_CORTE_PROPIO_MS,
-                 w.filasPendientes - w.filasHechas);
-      if (historial) {
-        Logger.log('    >>> FALTAN %s filas del historial: volver a correr paso22_completarHistorial(). Sigue sola: ' +
-                   'las ya escritas entran por RDV_UID.', w.filasPendientes - w.filasHechas);
-      }
-    }
+  // (2) EL CRUCE con los formularios: el plan (leer B, la base, Comunas, las elecciones), en memoria.
+  let plan = null;
+  if (!corridaHayTiempo_('cruce')) {
+    corridaSaltear_('cruce', 'el cruce con los formularios (y la escritura, las derivadas, las elecciones y las fichas)');
   } else {
+    const tC = _ahoraMs_(); let errC = null; corridaEmpieza_('cruce');
+    try {
+      plan = calcularPlan_(enSeco, null, historial ? { historial: true } : null);
+      plan.res.guardian = resGuardian;
+      logResumen_(plan);                 // ← ANTES de escribir nada
+      _logColumnasB_(plan.cands);
+    } catch (err) {
+      errC = err; plan = null; errorCritico = errorCritico || err;
+      Logger.log('>>> ### EL CRUCE FALLÓ: %s. No se escribe nada del cruce en esta corrida (la agenda, los IDs, el tablero y ' +
+                 'las vistas siguen). ###', err);
+    }
+    corridaAnotar_('cruce', tC, errC);
+  }
+
+  // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
+  if (plan) {
+    const tAs = _ahoraMs_(); let errAs = null; corridaEmpieza_('asistentes');
+    try {
+      plan.asistentes = cruzarAsistentes_(plan.dest, plan.comunas);
+      Logger.log('--- Asistentes (RDV CONJUNTO, figura + fecha) ---');
+      _logCruceAsistentes_(plan.asistentes, false);
+    } catch (err) {
+      errAs = err; errorCritico = errorCritico || err;
+      Logger.log('>>> ### LOS ASISTENTES FALLARON: %s. Esta corrida no escribe el cruce (sin asistentes, la escritura no ' +
+                 'sabe qué hacer con Asistentes ni STATUS). ###', err);
+    }
+    corridaAnotar_('asistentes', tAs, errAs);
+    if (errAs) plan = null;
+  }
+
+  if (plan && !enSeco) {
+    // La escritura en lote: se corta sola entre tandas (UPSERT_CORTE_PROPIO_MS); nunca a la mitad de una tanda.
+    const tE = _ahoraMs_(); let errE = null; corridaEmpieza_('escritura');
+    try {
+      const w = aplicarDecisiones_(plan.dest, plan.decisiones, t0, plan.asistentes, historial, soloUids);
+      plan.res.escritas = w.celdas;
+      plan.res.uidsEstampados = w.uids;
+      plan.res.escritura = w;
+      Logger.log('>>> Escritura en "%s": %s filas tocadas de %s con algo que escribir, en %s tandas (%s ms; ' +
+                 'la más lenta %s ms).', RDV_HOJA_DESTINO, w.filasHechas, w.filasPendientes, w.tandas,
+                 w.msEscritura, w.tandaMax);
+      Logger.log('    celdas de dato %s | traza %s | uuids estampados %s | STATUS → Realizada %s',
+                 w.celdas, w.trazas, w.uids, w.realizadas);
+      Logger.log('    por columna: %s', Object.keys(w.porColumna).map(function (k) {
+        return k + ' ' + w.porColumna[k]; }).join(' | ') || 'nada');
+      if (w.completa) {
+        props.deleteProperty(PROP_ESCRITURA_INCOMPLETA);
+        Logger.log('    COMPLETA: no queda ninguna fila con algo que escribir.');
+      } else {
+        const estado = Utilities.formatDate(new Date(), RDV_TZ, 'dd/MM HH:mm') + ' en "' + RDV_HOJA_DESTINO +
+                       '", ' + w.filasHechas + ' de ' + w.filasPendientes + ' filas' +
+                       (historial ? ' (TODO EL HISTORIAL: seguir con paso22_completarHistorial)' : '');
+        props.setProperty(PROP_ESCRITURA_INCOMPLETA, estado);
+        Logger.log('    CORTE PROPIO a los %s ms (límite %s): quedan %s filas para la próxima corrida. ' +
+                   'Nada quedó a medias: se corta entre tandas.', new Date() - t0, UPSERT_CORTE_PROPIO_MS,
+                   w.filasPendientes - w.filasHechas);
+        if (historial) {
+          Logger.log('    >>> FALTAN %s filas del historial: volver a correr paso22_completarHistorial(). Sigue sola: ' +
+                     'las ya escritas entran por RDV_UID.', w.filasPendientes - w.filasHechas);
+        }
+      }
+    } catch (err) {
+      errE = err; errorCritico = errorCritico || err;
+      Logger.log('>>> ### LA ESCRITURA FALLÓ: %s (las filas ya escritas quedan; la próxima corrida completa las celdas ' +
+                 'vacías). ###', err);
+    }
+    corridaAnotar_('escritura', tE, errE);
+  } else if (plan) {
     Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones calculadas y no ' +
                'aplicadas.', plan.decisiones.length);
   }
@@ -1699,65 +1749,142 @@ function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   // Las derivadas por script (05/10): en TODAS las filas, sólo donde cambió, sin color. En seco sólo cuenta.
   // Con LOOKER_EN_SISTEMA (08/10), también la ID (la derivada 12).
   let idListo = false, porQueNoId = 'las derivadas no se recalcularon (DERIVADAS_POR_SCRIPT)';
-  if (DERIVADAS_POR_SCRIPT) {
+  if (DERIVADAS_POR_SCRIPT && plan) {
+    if (!corridaHayTiempo_('derivadas')) {
+      porQueNoId = 'las derivadas quedaron para la corrida siguiente (guarda de tiempo)';
+      corridaSaltear_('derivadas', 'las derivadas (y por eso el tablero de Looker)');
+    } else {
+      const tD = _ahoraMs_(); let errD = null; corridaEmpieza_('derivadas');
+      try {
+        const d = recalcDerivadas_(RDV_HOJA_DESTINO, !enSeco);
+        plan.res.derivadas = d.total;
+        idListo = d.conFormula.indexOf(COLUMNA_ID) < 0 && (!lookerEnSistema_() || d.conId);
+        porQueNoId = !d.conId ? 'la base no tiene la columna "' + COLUMNA_ID + '"' : 'la columna "' + COLUMNA_ID + '" tiene fórmula';
+      } catch (err) {
+        errD = err;
+        porQueNoId = 'las derivadas fallaron';
+        Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
+      }
+      corridaAnotar_('derivadas', tD, errD);
+    }
+  } else if (DERIVADAS_POR_SCRIPT) {
+    porQueNoId = 'el cruce no corrió en esta corrida';
+  }
+
+  const fallaron = [];
+  if (plan) {
+    // Las elecciones: se guardan con su resultado y se vuelven a mostrar en las solapas regeneradas. Siempre que hubo
+    // cruce (sin guarda de tiempo): dicen qué elecciones se aplicaron en esta corrida.
+    const tEl = _ahoraMs_(); let errEl = null; corridaEmpieza_('elecciones');
     try {
-      const d = recalcDerivadas_(RDV_HOJA_DESTINO, !enSeco);
-      plan.res.derivadas = d.total;
-      idListo = d.conFormula.indexOf(COLUMNA_ID) < 0 && (!lookerEnSistema_() || d.conId);
-      porQueNoId = !d.conId ? 'la base no tiene la columna "' + COLUMNA_ID + '"' : 'la columna "' + COLUMNA_ID + '" tiene fórmula';
+      guardarElecciones_(plan.elecciones, plan.eleccionesAp, enSeco, !enSeco && plan.res.escritura ? plan.res.escritura.completa : false);
+      marcarEleccionesEnReportes_(plan);
     } catch (err) {
-      porQueNoId = 'las derivadas fallaron';
-      Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
+      errEl = err;
+      Logger.log('>>> Las elecciones NO se guardaron: %s (el resto de la corrida sigue; la próxima las vuelve a leer).', err);
+    }
+    corridaAnotar_('elecciones', tEl, errEl);
+
+    // Los reportes (las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH): se rehacen en cada corrida.
+    if (!corridaHayTiempo_('reportes')) {
+      corridaSaltear_('reportes', 'las fichas de ' + RDV_HOJA_REVISAR + ', ' + RDV_HOJA_EMPAREJAR + ' y ' + RDV_HOJA_SIN_MATCH);
+    } else {
+      const tR = _ahoraMs_(); corridaEmpieza_('reportes');
+      if (historial) {
+        // Las fichas, sólo de los últimos DIAS_ACTIVOS días (armarFichas_ filtra con esFilaActiva_); lo viejo
+        // sin resolver, a HISTORICO_SIN_RESOLVER. SIN_MATCH y EMPAREJAR los regenera la próxima corrida normal.
+        escribirReportes_(plan, fallaron, [RDV_HOJA_REVISAR]);
+        _intentar_(fallaron, RDV_HOJA_HISTORICO, function () { escribirHistoricoSinResolver_(plan); });
+      } else {
+        escribirReportes_(plan, fallaron, null);
+      }
+      if (fallaron.length) {
+        Logger.log('>>> NO se pudieron escribir: %s. Los demás reportes SÍ quedaron escritos, y los',
+                   fallaron.join(', '));
+        Logger.log('    números de arriba son válidos igual. Para rehacer sólo uno: %s',
+                   'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
+      }
+      corridaAnotar_('reportes', tR, fallaron.length ? 'no se escribieron: ' + fallaron.join(', ') : null);
     }
   }
-  // El tablero de Looker (08/10, FASE 2 del script atado): Datos_Unpivot y Aux_Maximos, desde RVD con la ID ya recalculada.
-  // Sin la ID escrita (fórmula en la columna, o las derivadas fallaron) no se reescriben: quedarían con otra ID que RVD.
+
+  // (3) Los IDs de los encuentros (08/10, IDS_EN_LA_HORA; 45_IdsCuentas.js): después de la agenda, que crea y mueve filas;
+  // sólo filas activas, por la regla general (sólo celda vacía). No en el paso 22: el historial de los IDs es el paso 57.
+  // 15/10: después del cruce (prioridad 3): no dependen de él (leen la base de nuevo). Si fallan, la corrida sigue.
+  let resIds = null;
+  if (IDS_EN_LA_HORA && !historial) {
+    if (!corridaHayTiempo_('ids')) {
+      resIds = { salteado: 'guarda de tiempo' };
+      corridaSaltear_('ids', 'los IDs de los encuentros');
+    } else {
+      const tI = _ahoraMs_(); corridaEmpieza_('ids');
+      try { resIds = idsEnLaHora_(enSeco); }
+      catch (err) {
+        Logger.log('>>> Los IDs de los encuentros fallaron: %s (la corrida sigue igual).', err);
+        resIds = { error: String(err && err.message || err) };
+      }
+      corridaAnotar_('ids', tI, resIds && resIds.error ? resIds.error : null);
+    }
+  }
+  if (plan) plan.res.ids = resIds;
+
+  // (4) El tablero de Looker (08/10, FASE 2 del script atado): Datos_Unpivot y Aux_Maximos, desde RVD con la ID ya
+  // recalculada. Sin la ID escrita (fórmula en la columna, o las derivadas fallaron) no se reescriben: quedarían con otra ID.
   if (lookerEnSistema_() && !historial) {
     if (!idListo) Logger.log('>>> Tablero de Looker: la ID (derivada 12) no se recalculó en esta corrida (%s): %s y %s no se ' +
                              'reescriben (quedan las de antes).', porQueNoId, RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
-    else if (new Date() - t0 > LOOKER_TIEMPO_MAX_MS) {
+    else if (!corridaHayTiempo_('looker')) {
       Logger.log('>>> Tablero de Looker: la corrida ya lleva %s s; %s y %s no se rehacen en ésta (las rehace la próxima).',
                  Math.round((new Date() - t0) / 1000), RDV_HOJA_UNPIVOT, RDV_HOJA_AUX_MAXIMOS);
+      corridaSaltear_('looker', 'el tablero de Looker');
     } else {
-      try { plan.res.looker = escribirSolapasLooker_(enSeco); }
-      catch (err) { Logger.log('>>> El tablero de Looker NO se reescribió: %s (el resto de la corrida sigue).', err); }
+      const tL = _ahoraMs_(); let errL = null; corridaEmpieza_('looker');
+      try {
+        const lk = escribirSolapasLooker_(enSeco);
+        if (plan) plan.res.looker = lk;
+        SpreadsheetApp.flush();   // 15/10: que un error de la escritura salga acá, no en el flush implícito del final
+      } catch (err) { errL = err; Logger.log('>>> El tablero de Looker NO se reescribió: %s (el resto de la corrida sigue).', err); }
+      corridaAnotar_('looker', tL, errL);
     }
   }
 
-  // Las elecciones: se guardan con su resultado y se vuelven a mostrar en las solapas regeneradas.
-  guardarElecciones_(plan.elecciones, plan.eleccionesAp, enSeco, !enSeco && plan.res.escritura ? plan.res.escritura.completa : false);
-  marcarEleccionesEnReportes_(plan);
-
-  const fallaron = [];
-  if (historial) {
-    // Las fichas, sólo de los últimos DIAS_ACTIVOS días (armarFichas_ filtra con esFilaActiva_); lo viejo
-    // sin resolver, a HISTORICO_SIN_RESOLVER. SIN_MATCH y EMPAREJAR los regenera la próxima corrida normal.
-    escribirReportes_(plan, fallaron, [RDV_HOJA_REVISAR]);
-    _intentar_(fallaron, RDV_HOJA_HISTORICO, function () { escribirHistoricoSinResolver_(plan); });
-  } else {
-    escribirReportes_(plan, fallaron, null);
-  }
-  if (fallaron.length) {
-    Logger.log('>>> NO se pudieron escribir: %s. Los demás reportes SÍ quedaron escritos, y los',
-               fallaron.join(', '));
-    Logger.log('    números de arriba son válidos igual. Para rehacer sólo uno: %s',
-               'soloRevisarMatch() / soloEmparejarManual() / soloSinMatch()');
+  // (5) Las vistas del archivo "Agenda" (AgendaCall, Agenda (mail)) y la copia "Agenda" del archivo RDV, que la agenda dejó
+  // para el final (15/10). Si no hay tiempo, las escribe la próxima corrida (con su agenda).
+  if (_vistasAgendaPendientes_) {
+    if (!corridaHayTiempo_('vistas_agenda')) {
+      _vistasAgendaPendientes_ = null;
+      corridaSaltear_('vistas_agenda', 'las vistas del archivo "Agenda" y la copia del archivo RDV');
+    } else {
+      const tV = _ahoraMs_(); let errV = null; corridaEmpieza_('vistas_agenda');
+      try { escribirVistasAgendaDiferidas_(); }
+      catch (err) { errV = err; Logger.log('>>> Las vistas de la agenda NO se escribieron: %s (el resto de la corrida sigue).', err); }
+      corridaAnotar_('vistas_agenda', tV, errV);
+    }
   }
 
   // El guardián: la copia de las columnas del sistema, al final (después de todo lo que escribió esta corrida).
   if (GUARDIAN_ACTIVO && !enSeco) {
+    const tGc = _ahoraMs_(); corridaEmpieza_('guardian_copia');
     // 13/10: una columna del sistema que nació en esta corrida (o después del paso 59) queda protegida (y oculta si es técnica)
     try { asegurarColumnasNuevasGuardian_(); }
     catch (err) { Logger.log('>>> El guardián no pudo proteger las columnas nuevas: %s', err); }
     try { tomarCopiaSiAlineada_(); }
     catch (err) { Logger.log('>>> El guardián no pudo tomar la copia: %s (la próxima corrida la tomará; ésa no compara).', err); }
+    corridaAnotar_('guardian_copia', tGc, null);
   }
 
-  _registrarCorrida_(plan, enSeco, t0, fallaron, soloUids ? 'historial, sólo ' + soloUids.size + ' filas (paso 47b)' : historial);
-  Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
-             ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
-             plan.res.cerradasSinResolver);
-  return plan.res;
+  if (plan) {
+    const tRu = _ahoraMs_(); corridaEmpieza_('registro_upsert');
+    _registrarCorrida_(plan, enSeco, t0, fallaron, soloUids ? 'historial, sólo ' + soloUids.size + ' filas (paso 47b)' : historial);
+    corridaAnotar_('registro_upsert', tRu, null);
+    Logger.log('tiempo de corrida: %s s (%s ms) | filas activas: %s | cerradas: %s (sin resolver: %s)',
+               ((new Date() - t0) / 1000).toFixed(1), new Date() - t0, plan.res.activas, plan.res.cerradas,
+               plan.res.cerradasSinResolver);
+  } else {
+    Logger.log('tiempo de corrida: %s s (%s ms) | el cruce no corrió en esta corrida', ((new Date() - t0) / 1000).toFixed(1), new Date() - t0);
+  }
+  if (errorCritico) throw errorCritico;
+  return plan ? plan.res : null;
 }
 
 /**
@@ -1812,7 +1939,7 @@ function _registrarCorrida_(plan, enSeco, t0, fallaron, historial) {
                   r.looker ? RDV_HOJA_UNPIVOT + ' ' + r.looker.unpivot + ' | ' + RDV_HOJA_AUX_MAXIMOS + ' ' + r.looker.aux +
                              ' | reuniones ' + r.looker.reuniones : '']
                   // 08/10: los IDs de los encuentros (IDS_EN_LA_HORA): escritos, ya estaban, sin cruzar; o el error
-                  .concat(IDS_EN_LA_HORA || GUARDIAN_ACTIVO ? [r.ids ? (r.ids.error ? 'error: ' + r.ids.error : r.ids.resumen || '') : ''] : [])
+                  .concat(IDS_EN_LA_HORA || GUARDIAN_ACTIVO ? [r.ids ? (r.ids.error ? 'error: ' + r.ids.error : r.ids.salteado ? 'salteado: ' + r.ids.salteado : r.ids.resumen || '') : ''] : [])
                   .concat(GUARDIAN_ACTIVO ? [r.guardian ? (r.guardian.error ? 'error: ' + r.guardian.error : r.guardian.resumen || '') : ''] : []));
   } catch (err) {
     Logger.log('[upsert] no se pudo escribir %s: %s (la corrida igual terminó)', RDV_HOJA_REGISTRO, err);
