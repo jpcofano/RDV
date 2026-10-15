@@ -1951,6 +1951,36 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### "El mail manda" (16/10): cancelada en el mail = Suspendida — escrito y APAGADO
+
+Detalle en CLAUDE.md, sección 0 (J). Interruptores, todos apagados:
+- `AGENDA_COLORES_MAIL`: lee el HTML; el rojo entero marca la reunión como cancelada.
+- `AGENDA_COLORES_AMARILLO_VERDE`: amarillo y verde a la copia.
+- `AGENDA_CANCELACION_AUTOMATICA` (modo `'suspender'`): suspende.
+
+**Para ver antes de prender:**
+- **paso 91**: la fila 825 en seco. Dice si la suspendería y por qué: el mail, la versión, los campos en rojo, la nota, la
+  regla de tiempo y el STATUS. También dice si la lista de STATUS del destino tiene "Cancelada".
+- **paso 92**: la 825 de verdad, sólo esa fila. Escribe STATUS y `agenda_status_escrito`, se deshace con el paso 38, y se
+  niega si el plan tocaría cualquier otra cosa.
+- **paso 93**: la medición desde el 15/07.
+- **paso 66**: la auditoría ahora también mira el color y las notas.
+
+**Lo que corrigió el revisor (16/10):**
+- Una fila sin `agenda_uid` queda con su uid al suspenderse, también en el paso 92. Si no, la nota `suspendida_rojo` no se
+  reconocía y la corrida de la hora la reactivaba.
+- El rojo no suspende una fila "ya cargada en otra fila", conciliada o de otra fecha.
+- "Sigue" se lee igual que en la cancelación por desaparecida.
+- El paso 92 verifica la identidad de la fila (Mraida, 15/10) y la relee justo antes de escribir. Si el equipo insertó o borró
+  filas arriba, no hace nada. Además escribe sólo esa fila (sin líneas de otras reuniones en el registro).
+- Para deshacer el paso 92 si pasó una corrida de la hora en el medio: `deshacerAgenda(false, '<id de corrida que loguea>')`.
+
+**Dudas abiertas del agente:**
+- Una reunión que desaparece con un mail de un día posterior a la reunión no se trata como cancelación y no avisa.
+- `cancelacion_no_aplicada` sale sólo por mails de las últimas 24 h, así que la 824 (mail del 13/10) hoy no avisaría.
+- El costo real de leer el HTML en Apps Script sólo se ve en el log de la corrida.
+- "Rojo" es sólo el fondo; la letra roja no cuenta.
+
 #### AGENDA_DUPLICADOS no aplicaba la decisión (16/10) — arreglo escrito y APAGADO (`AGENDA_ELECCIONES_SIEMPRE`)
 
 Caso: "Ya está cargada en otra fila: no crear" en Macri 01/10 15:00 Belgrano (candidata, la fila 804), y la corrida siguiente

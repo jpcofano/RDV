@@ -1356,7 +1356,7 @@ function reiniciarRevisarTodo() {
 function paso91_cancelarFila825_enSeco() {
   _anunciar_('paso 91 — la fila 825, cancelada en el mail (EN SECO)', 'cancelarFilaAgenda_enSeco(825)  [52_CancelacionMail.js]',
              'NO escribe nada', 'el log: la reunión, el rojo y la nota, la regla de tiempo, el STATUS → SE SUSPENDERÍA o por qué no; la lista de STATUS');
-  return cancelarFilaAgenda_enSeco(825);
+  return cancelarFilaAgenda_enSeco(825, { esperado: { figura: 'Mraida', fecha: '2026-10-15' } });
 }
 
 /**
@@ -1368,7 +1368,7 @@ function paso92_cancelarFila825() {
   _anunciar_('paso 92 — suspender la fila 825 (ESCRIBE, sólo esa fila)', 'cancelarFilaAgenda(825)  [52_CancelacionMail.js]',
              'SÍ: STATUS REUNIÓN y agenda_status_escrito de la fila 825, y REGISTRO_AGENDA_CAMBIOS (se deshace con el paso 38)',
              'el log: qué escribió, o por qué se negó');
-  return cancelarFilaAgenda(825);
+  return cancelarFilaAgenda(825, { esperado: { figura: 'Mraida', fecha: '2026-10-15' } });
 }
 
 /** PASO 93 — SÓLO LECTURA (16/10): desde el 15/07, qué filas habría suspendido "el mail manda" (desaparecida o rojo) y si coincide con el equipo. */

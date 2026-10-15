@@ -457,6 +457,21 @@ ok(otras === 0 && cambiadas.join(',') === 'STATUS REUNIÓN,agenda_status_escrito
 ok(E.avisos.some(function (a) { return a[0] === 'suspendidas' && /paso 92/.test(a[1]); }), 'y el aviso "suspendidas"');
 E.run('deshacerAgenda(false)');
 ok(celda(E, i91, 'STATUS REUNIÓN') === 'en agenda', 'deshacer (paso 38) la vuelve a "en agenda"');
+// 16/10 (revisor): la identidad esperada (si el equipo insertó o borró filas arriba, el número es de otra reunión)
+let f0 = foto(E.D);
+let r92e = E.run('cancelarFilaAgenda(' + n91 + ', { mails: __m, geocodificar: __g, conjunto: new Map(), elecciones: new Map(), esperado: { figura: "Mraida", fecha: "2026-10-15" } })');
+ok(r92e.error === 'la fila no es la esperada' && foto(E.D) === f0, 'paso 92 con otra figura esperada (Mraida): se NIEGA y no escribe nada');
+// (en seco: en este entorno el reloj y el uuid son fijos, y dos corridas reales tendrían el mismo id para deshacer)
+r92e = E.run('cancelarFilaAgenda_enSeco(' + n91 + ', { mails: __m, geocodificar: __g, conjunto: new Map(), elecciones: new Map(), esperado: { figura: "Sabor", fecha: "2026-10-15" } })');
+ok(!r92e.error && r92e.suspenderia === true && foto(E.D) === f0, 'con la figura y la fecha esperadas: pasa el control (y la suspendería)');
+// 16/10 (revisor, ALTA): una fila SIN agenda_uid: el paso 92 le estampa el uid (si no, la corrida de la hora la reactivaría)
+E.D.v[i91][E.C('agenda_uid')] = '';
+const filaSinUid = E.D.v[i91].slice();
+const r92u = E.run('cancelarFilaAgenda(' + n91 + ', { mails: __m, geocodificar: __g, conjunto: new Map(), elecciones: new Map() })');
+const camb2 = filaSinUid.map(function (v, j) { return String(v) !== String(E.D.v[i91][j]) ? E.hdr[j] : null; }).filter(Boolean).sort();
+ok(r92u.suspendida === true && !!celda(E, i91, 'agenda_uid') && camb2.join(',') === ['STATUS REUNIÓN', 'agenda_status_escrito', 'agenda_uid'].sort().join(','),
+   'fila sin agenda_uid: Suspendida y con su uid (sólo STATUS, agenda_status_escrito y agenda_uid): ' + camb2.join(','));
+E.run('deshacerAgenda(false)');
 
 // ============================== 7. paso 93 y la auditoría (paso 66) ==============================
 

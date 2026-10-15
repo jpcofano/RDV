@@ -247,15 +247,27 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 - **J, la cancelación automática SÓLO SUSPENDE** (15/10 noche; `AGENDA_CANCELACION_AUTOMATICA = true`, con
   `AGENDA_CANCELACION_MODO = 'suspender'`, que es el valor por defecto: la regla 7 que borra exige escribir `'regla7'` a
   propósito; APAGADA hasta el paso 78).
-  - **Cuándo suspende:** una reunión que desaparece de un mail completo (que pasó H4 y la protección del 60%) y que todavía
-    no pasó **hoy**, con la fila en "en agenda" **puesto por el sistema** (`agenda_status_escrito`) y sin ser una
-    reprogramación de la misma semana. La fila pasa a "Suspendida" y **nunca se borra**, ni siquiera si alguien elige "Se
-    canceló". Un "en agenda" que puso el equipo se pregunta en AGENDA_DUPLICADOS, como hoy.
-  - **Cuándo vuelve:** si la reunión reaparece, vuelve a "en agenda".
+  - **"El mail manda"** (decisión del usuario, 16/10). Una reunión está cancelada por el mail si:
+    - desaparece de un mail completo (que pasó H4 y la protección del 60%); o
+    - está en **ROJO entero** (Evento + Hora + Lugar, fondo rojo) en la última versión válida de su semana, con
+      `AGENDA_COLORES_MAIL` prendido.
+  - **Cuándo suspende:** la fila tiene que estar "en agenda" (la haya puesto el sistema o el equipo). Se suspende aunque sea
+    el mismo día o ya haya pasado la hora, **siempre que el mail que la cancela sea anterior a la fecha y hora de la
+    reunión**. Si el mail es posterior, no se toca y se avisa. Una reprogramación de la misma semana no se suspende: mueve la
+    fecha. La fila pasa a "Suspendida" y **nunca se borra**, ni siquiera si alguien elige "Se canceló".
+  - **Otro STATUS** (Realizada, por ejemplo la 824): no se toca y se avisa.
+  - **Cuándo vuelve:** si la reunión reaparece, vuelve a "en agenda". Una suspendida por rojo no se reactiva mientras siga en
+    rojo; con los colores apagados no se reactiva sola (queda la nota `suspendida_rojo` en REGISTRO_AGENDA_CAMBIOS).
+  - **Si después le llegan datos:** una suspendida por el sistema que recibe asistentes o inscriptos no se pisa. Se avisa
+    una vez por fila (`suspendida_con_datos`) y figura en la auditoría.
+  - **Los colores** (`41_AgendaColores.js`, `AGENDA_COLORES_MAIL`, APAGADO): la agenda lee también el HTML del mail, como
+    mucho `AGENDA_COLORES_MAIL_MAX_MS`. Las notas del encabezado ("SE CANCELA…", "CAMBIO DE DÍA…") no actúan solas: van al
+    aviso y a la auditoría (paso 66) como confirmación del color. Amarillo y verde van sólo a la copia, con
+    `AGENDA_COLORES_AMARILLO_VERDE` (APAGADO).
   - **Qué queda registrado:** REGISTRO_AGENDA_CAMBIOS, la columna "Cambios", AGENDA_DUPLICADOS (como resuelta), el aviso
     `suspendidas` y el resumen semanal.
-  - **Lo que no toca:** un STATUS que puso el equipo, una reunión que ya pasó y un "Sigue" elegido. Si una salvaguarda
-    frena la suspensión, se avisa `cancelacion_no_aplicada`.
+  - **Lo que no toca:** un STATUS que no sea "en agenda" y un "Sigue" elegido. Si una salvaguarda frena la suspensión, se avisa
+    `cancelacion_no_aplicada`.
   - Con el modo `'regla7'` (el de hoy), todo como antes.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
@@ -2937,6 +2949,12 @@ diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 
                    arriba si algo no está OK) y los AVISOS POR MAIL (resumen semanal + avisos inmediatos, uno por tema por día;
                    registrarAviso_). Manda con GmailApp (sin permiso nuevo). No escribe la base. APAGADOS
                    (AUDITORIA_SEMANAL_ACTIVA, AVISOS_MAIL_ACTIVO); pasos 80-83                                    ← 15/10
+41_AgendaColores.js  los COLORES y las NOTAS del mail (HTML), movidos del paso 90: rojo / amarillo / verde por reunión y
+                   campo, las notas "SE CANCELA…" ligadas a su reunión. Sólo con AGENDA_COLORES_MAIL (APAGADO)      ← 16/10
+52_CancelacionMail.js  la fila 825 (o cualquiera): el paso 91 (en seco: si "el mail manda" la suspendería y por qué) y el 92
+                   (REAL, sólo esa fila: STATUS + agenda_status_escrito, con el bloqueo; se deshace con el paso 38)  ← 16/10
+diagnostico/35_cancelaciones_mail.js  paso 93, SÓLO LECTURA: desde el 15/07, qué filas habría suspendido "el mail manda"
+                   (desaparecida / rojo) y si coincide con el STATUS del equipo                                  ← 16/10
 diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una decisión (paso 94, SÓLO LECTURA): cada elección,
                    aplicada o por qué no (cambió la hora o el barrio, la fila ya no es candidata, una línea la pisó…)  ← 16/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,

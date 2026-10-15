@@ -52,6 +52,18 @@ function _cancelarFilaAgenda_(fila, enSeco, opciones) {
   if (!f) { Logger.log('>>> la fila %s no tiene datos.', fila); return fin({ error: 'la fila no tiene datos' }); }
   const val = function (n) { return A[n] == null ? '' : f.valores[A[n]]; };
   const col = function (n) { return A[n] == null ? null : A[n] + 1; };
+  // 16/10 (revisor): la fila se identifica por NÚMERO; `opciones.esperado` = { figura (texto o regex), fecha 'yyyy-MM-dd' } la
+  // confirma (si el equipo insertó o borró filas arriba, el número es de otra reunión): si no coincide, no se hace nada.
+  const esp = opciones.esperado;
+  if (esp) {
+    const figOk = !esp.figura || (esp.figura instanceof RegExp ? esp.figura.test(f.figura || '') : normalizeText_(f.figura || '').indexOf(normalizeText_(esp.figura)) >= 0);
+    const fecOk = !esp.fecha || (f.fecha && ymd_(f.fecha) === String(esp.fecha).replace(/-/g, ''));
+    if (!figOk || !fecOk) {
+      Logger.log('>>> la fila %s es %s %s, no la esperada (%s %s): NO SE HACE NADA. ¿Se insertaron o borraron filas arriba?', fila,
+                 f.figura || '(sin figura)', f.fecha ? fmtFecha_(f.fecha) : '(sin fecha)', String(esp.figura || ''), esp.fecha || '');
+      return fin({ error: 'la fila no es la esperada', fila: fila, figura: f.figura, fecha: f.fecha ? fmtFecha_(f.fecha) : '' });
+    }
+  }
   // E: la lista de STATUS de la base (la validación de datos; sólo lectura): ¿existe "Cancelada"?
   const vs = validacionStatusAgenda_(sh, A);
   Logger.log('  STATUS REUNIÓN, la validación de datos: %s', vs.texto);
@@ -113,16 +125,31 @@ function _cancelarFilaAgenda_(fila, enSeco, opciones) {
   const permitidas = [col('STATUS REUNIÓN'), col('agenda_status_escrito'), col('agenda_uid')];
   const ajena = a.escrituras.filter(function (e) { return e.fila !== fila || permitidas.indexOf(e.col) < 0; });
   if (ajena.length) { Logger.log('>>> NO SE ESCRIBE NADA: la suspensión tocaría otra cosa (%s).', JSON.stringify(ajena)); out.error = 'tocaría otra cosa'; return fin(out); }
-  const planF = Object.assign({}, P, { acciones: [a], yaCargadas: [], figuraPorDireccion: [], historial: null,
+  // 16/10 (revisor): si la fila no tiene agenda_uid, se lo estampa ESTA acción (en el plan entero lo ponía otra acción de la misma
+  // fila, que acá no va): sin el uid, la nota del registro no se reconoce y la corrida de la hora la reactivaría
+  const aF = Object.assign({}, a, { escrituras: a.escrituras.slice() });
+  if (esVacio_(val('agenda_uid')) && !aF.escrituras.some(function (e) { return e.col === col('agenda_uid'); })) {
+    aF.escrituras.push({ fila: fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
+  }
+  // 16/10 (revisor): justo antes de escribir, la fila de nuevo (lectura fresca): la misma Figura, FECHA y agenda_uid que al planear
+  const fresca = sh.getRange(fila, 1, 1, dest.hdr.length).getValues()[0];
+  const igual = ['Figura', 'FECHA', 'agenda_uid'].every(function (n) {
+    return A[n] == null || valorAgendaComparable_(fresca[A[n]], n) === valorAgendaComparable_(f.valores[A[n]], n);
+  });
+  if (!igual) { Logger.log('>>> NO SE ESCRIBE NADA: la fila %s cambió mientras se calculaba (Figura / FECHA / agenda_uid).', fila); out.error = 'la fila cambió'; return fin(out); }
+  // sólo esta acción: sin las líneas del registro de otras reuniones (canceladas en el mail, elecciones) y el formato sólo en esta fila
+  const planF = Object.assign({}, P, { acciones: [aF], yaCargadas: [], figuraPorDireccion: [], historial: null, canceladasMail: [],
+                                       eleccionesUsadas: [], eleccionesSinFila: [], eleccionesCerradas: [],
                                        resumen: { mails: P.resumen.mails, reunionesEnAlcance: P.resumen.reunionesEnAlcance, suspender: 1 } });
+  const destF = Object.assign({}, dest, { filas: [f] });
   const corrida = _idCorridaAgenda_();
-  try { planF.escrito = aplicarPlanAgenda_(sh, dest, planF, corrida); }
+  try { planF.escrito = aplicarPlanAgenda_(sh, destF, planF, corrida); }
   catch (err) { Logger.log('>>> %s', err && err.message || err); out.error = String(err && err.message || err); return fin(out); }
   _completarRegistroAgenda_(planF, t0);
   out.corrida = corrida;
   out.escritas = planF.escrito.hechas.length;
   out.suspendida = planF.escrito.hechas.some(function (e) { return e.col === col('STATUS REUNIÓN'); });
-  Logger.log('>>> corrida %s: %s', corrida, out.suspendida ? 'la fila ' + fila + ' quedó SUSPENDIDA (deshacer: paso 38)'
+  Logger.log('>>> corrida %s: %s', corrida, out.suspendida ? 'la fila ' + fila + ' quedó SUSPENDIDA (deshacer: paso 38 con esta corrida, deshacerAgenda(false, \'' + corrida + '\'))'
                                                           : 'NO se escribió: la celda ya no tenía lo esperado (alguien la cambió mientras corría)');
   if (out.suspendida && typeof registrarAviso_ === 'function') {
     try {

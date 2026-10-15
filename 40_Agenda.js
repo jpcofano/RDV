@@ -941,6 +941,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const x = P.filaDe.get(ev.clave);
     const f = x && x.fila && !x.nueva ? (x.f || filaPorNumero.get(x.fila)) : null;
     if (!f) { evalua('no: sin fila en la base' + (x && x.nueva ? ' (la agenda la crearía)' : '')); return; }
+    // 16/10 (revisor): la fila de "ya cargada en otra fila" (o de otra fecha: la reunión se pasó de día y el equipo ya tiene la
+    // fila nueva) NO es la de esta reunión del mail: no se suspende
+    if (x.yaCargada || x.conciliada) { evalua('no: la fila ' + f.fila + ' es "ya cargada en otra fila" / conciliada, no la de esta reunión', f); return; }
+    if (!f.fecha || !ev.fecha || ymd_(f.fecha) !== ymd_(ev.fecha)) { evalua('no: la fila ' + f.fila + ' es de otra fecha (' + (f.fecha ? fmtFecha_(f.fecha) : 'sin fecha') + ')', f); return; }
     if (!suspenderSiempre) { evalua('no: la cancelación automática (modo "suspender") está apagada', f); return; }
     if (validarMails && ev.soloMailRaro) { noAplicada('su semana sólo tiene mails con formato raro', f); return; }
     if (ev.colorMail && ev.colorMail.mailRaro) { noAplicada('el mail en rojo tiene formato raro (' + ev.colorMail.mailRaro + ')', f); return; }
@@ -954,8 +958,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
     const statusDelSistema = normStatus_(val(f, 'agenda_status_escrito')) === 'en agenda';
     const idC = 'cancelacion|' + idReunionAgenda_(ev);
-    const el = elecciones.get(idC);
-    if (el && el.idFila === idFilaAgenda_(f) && el.eleccion === 'sigue') {
+    const el = elDe(idC);   // 16/10 (revisor): como en el paso 7
+    if (el && esLaElegida(el, f, true) && el.eleccion === 'sigue') {
       P.cancelacionSigue.push({ ev: ev, f: f });
       evalua('no: el equipo eligió "Sigue"', f, { tiempo: tiempo, statusDelSistema: statusDelSistema });
       return;
@@ -1549,7 +1553,9 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
   plan.acciones.forEach(function (a) {
     const fila = a.fila || (a.f && a.f.fila);
     const e = a.escrituras.filter(function (x) { return x.col === colUid; })[0];
-    uidDe[fila] = e ? e.valor : (a.f && A.agenda_uid != null ? str(a.f.valores[A.agenda_uid]) : '');
+    const nuevo = e ? e.valor : (a.f && A.agenda_uid != null ? str(a.f.valores[A.agenda_uid]) : '');
+    // 16/10 (revisor): una acción posterior de la misma fila (sin escribir el uid) no pisa con '' el que le estampa otra
+    if (nuevo || !uidDe[fila]) uidDe[fila] = nuevo;
   });
   // 1a. los fondos de lo que se va a pisar (una lectura)
   const ultima = sh.getLastRow();
