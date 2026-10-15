@@ -12,6 +12,8 @@ _archivo/**
 
 # Clones o copias anidadas del repo (ej. RDV/): duplicarían cada función del proyecto.
 RDV/**
+# Las copias de trabajo de los agentes (git worktrees, 15/10): cada una es el proyecto entero.
+.claude/**
 # Código de OTROS proyectos de Apps Script, bajado para leerlo (Agenda etapa 1: "CODIGOS Ajuste RDV").
 # Subirlo lo metería en nuestro scope global.
 _externo/**

@@ -17,6 +17,20 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 15/10 (2): la auditoría del paso 66 → correcciones (todo lo que escribe, APAGADO) y una auditoría de cancelaciones.
+ *        paso68_auditoriaCancelaciones()     SÓLO LECTURA: desde el 07/09, lo que desapareció del mail, lo marcado/tachado,
+ *                                            RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", las vencidas; y el resumen.
+ *        paso69_duplicadosAgenda()           SÓLO LECTURA: duplicados que ya creó la agenda (como 829/830).
+ *        paso70_reglasAgenda_enSeco()        EN SECO: Seguridad por grupo + fecha + comuna del mail, "A CONFIRMAR" no es
+ *                                            dirección, el barrio del "Lugar (mail)" (AGENDA_SEGURIDAD_POR_COMUNA,
+ *                                            AGENDA_BARRIO_DEL_MAIL). CAMBIA en lo demás: 0.
+ *        paso71_conjuntoRepetido_enSeco()    EN SECO: RDV CONJUNTO con la figura dos veces el mismo día
+ *                                            (CONJUNTO_REPETIDA_POR_UBICACION).
+ *        paso72_agendaDirecta_enSeco()       EN SECO: "Agenda (mail)" con el formato de "Agenda Directa"
+ *                                            (AGENDA_MAIL_FORMATO_DIRECTA).
+ *        paso73_copiarAgendaDirecta_enSeco() EN SECO: qué copiaría de "Agenda Directa" (una vez).
+ *        paso74_copiarAgendaDirecta()        ESCRIBE (una vez): lo copia a AGENDA_EQUIPO y oculta "Sugerencia - Equipo Directa".
+ *      Después: cada interruptor a true + clasp push, según lo que decida el usuario; y paso48_ayuda() (LEER).
  *  >>> 15/10: LA GUARDA DE TIEMPO y REGISTRO_CORRIDAS (49_Corridas.js), PRENDIDAS (GUARDA_TIEMPO_ACTIVA = true): la corrida
  *      de la hora va por partes en orden de prioridad (agenda → cruce → IDs → Looker → vistas de Agenda) y la que no alcanza
  *      no empieza. Cada corrida deja una línea en REGISTRO_CORRIDAS (intermedia).
@@ -1304,6 +1318,63 @@ function paso66_auditoriaAgenda() {
              'el log: 1 mails y versiones, 2 reuniones vs base (OK / DISTINTO / FALTA EN LA BASE / DUPLICADA), 3 filas sin mail, ' +
              '4 copias, 5 creadas (14 días) y AGENDA_DUPLICADOS, 6 ambiguas, 7 AGENDA_FIGURA_A_COMPLETAR, y el RESUMEN');
   return auditoriaAgenda();
+}
+
+/**
+ * PASO 68 — SÓLO LECTURA (15/10): la AUDITORÍA DE CANCELACIONES (diagnostico/31_auditoria_cancelaciones.js), del 07/09 a la
+ * semana siguiente: las desaparecidas del mail, las marcadas (palabras y TACHADO del HTML), RDV CONJUNTO, la CANCELACIÓN de
+ * "Agenda Directa" y las filas vencidas; el resumen: ya refleja / no refleja / contradictorias. No escribe nada.
+ */
+function paso68_auditoriaCancelaciones() {
+  _anunciar_('paso 68 — auditoría de cancelaciones (SÓLO LECTURA)', 'auditoriaCancelaciones()  [diagnostico/31_auditoria_cancelaciones.js]',
+             'NO escribe nada (ni la base, ni el archivo "Agenda", ni Gmail, ni etiquetas, ni caches)',
+             'el log, del 07/09 al 24/10: 1 desaparecidas del mail, 2 marcadas (palabras y TACHADO del HTML), 3 RDV CONJUNTO, ' +
+             '4 Agenda Directa (CANCELACIÓN), 5 filas vencidas, y el RESUMEN (ya refleja / no refleja / contradictorias)');
+  return auditoriaCancelaciones();
+}
+
+/** PASO 69 — SÓLO LECTURA (15/10): los duplicados que ya creó la agenda (como 829/830) y las creadas que borró el equipo. */
+function paso69_duplicadosAgenda() {
+  _anunciar_('paso 69 — duplicados creados por la agenda (SÓLO LECTURA)', 'duplicadosAgenda()  [diagnostico/30_duplicados_agenda.js]',
+             'NO escribe nada', 'el log: 1 duplicados probables, 2 misma fecha y lugar con direcciones distintas, 3 creadas y borradas por el equipo');
+  return duplicadosAgenda();
+}
+
+/** PASO 70 — EN SECO (15/10): la agenda con AGENDA_SEGURIDAD_POR_COMUNA y AGENDA_BARRIO_DEL_MAIL prendidas. */
+function paso70_reglasAgenda_enSeco() {
+  _anunciar_('paso 70 — Seguridad y barrio del mail en la agenda (EN SECO)', 'medirReglasAgenda1510()  [diagnostico/30_duplicados_agenda.js]',
+             'NO escribe nada', 'el log: cada reunión que cambia (hoy → con la regla) y CAMBIA en lo demás (tiene que dar 0)');
+  return medirReglasAgenda1510();
+}
+
+/** PASO 71 — EN SECO (15/10): Asistentes/oradores con CONJUNTO_REPETIDA_POR_UBICACION. */
+function paso71_conjuntoRepetido_enSeco() {
+  _anunciar_('paso 71 — RDV CONJUNTO repetido (EN SECO)', 'medirConjuntoRepetido()  [diagnostico/30_duplicados_agenda.js]',
+             'NO escribe nada', 'el log: las filas de RDV CONJUNTO repetidas, qué cambia por fila y CAMBIA en lo demás (tiene que dar 0)');
+  return medirConjuntoRepetido();
+}
+
+/** PASO 72 — EN SECO (15/10): "Agenda (mail)" con el formato de "Agenda Directa" (AGENDA_MAIL_FORMATO_DIRECTA). */
+function paso72_agendaDirecta_enSeco() {
+  _anunciar_('paso 72 — "Agenda (mail)" con el formato de "Agenda Directa" (EN SECO)', 'vistaMailDirectaEnSeco()  [47_AgendaDirecta.js]',
+             'NO escribe nada (ni el archivo "Agenda", ni AGENDA_EQUIPO)',
+             'el log: si "Agenda Directa" coincide o por qué va el respaldo; cada columna (letra, tipo, ancho), el encabezado que saldría y las reuniones de hoy en ese formato');
+  return vistaMailDirectaEnSeco();
+}
+
+/** PASO 73 — EN SECO (15/10): qué copiaría de "Agenda Directa" a "Agenda (mail)" (una vez). */
+function paso73_copiarAgendaDirecta_enSeco() {
+  _anunciar_('paso 73 — copiar lo cargado en "Agenda Directa" (EN SECO)', 'copiarAgendaDirectaEnSeco()  [47_AgendaDirecta.js]',
+             'NO escribe nada', 'el log: COPIARÍA (renglón → reunión, campo = valor), NO SE PISA, SIN CRUCE con el motivo, y "OCULTARÍA" la sugerencia');
+  return copiarAgendaDirectaEnSeco();
+}
+
+/** PASO 74 — ESCRIBE, UNA VEZ (15/10): copia lo cargado en "Agenda Directa" y oculta "Sugerencia - Equipo Directa". */
+function paso74_copiarAgendaDirecta() {
+  _anunciar_('paso 74 — copiar lo cargado en "Agenda Directa" (UNA VEZ)', 'copiarAgendaDirecta()  [47_AgendaDirecta.js]',
+             'SÍ: AGENDA_EQUIPO (intermedia; sin pisar nada), las celdas de "Agenda (mail)" si ya tiene el formato nuevo, y OCULTA "Sugerencia - Equipo Directa" (no la borra). "Agenda Directa" sólo se lee',
+             'el log: COPIADO / NO SE PISA / SIN CRUCE');
+  return copiarAgendaDirecta();
 }
 
 /**

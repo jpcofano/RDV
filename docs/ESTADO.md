@@ -1951,6 +1951,44 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### Después del paso 66 (15/10, tarde): correcciones APAGADAS y la auditoría de cancelaciones
+
+El usuario corrió la auditoría (paso 66) y pidió, en paralelo (cuatro agentes, cada uno en su worktree; un revisor para D y
+otro para G): **todo lo que escribe, detrás de un interruptor APAGADO, con su paso en seco**.
+
+- **A — Seguridad en la agenda** (`AGENDA_SEGURIDAD_POR_COMUNA`): "A CONFIRMAR" no es dirección; una Seguridad es la fila de esa
+  fecha con el mismo "Lugar (mail)" (comuna), y se actualiza en vez de crear otra. Causa (agente): en las candidatas sin figura
+  de `planAgenda_` la fila se buscaba por dirección escrita o Dirección = Lugar; "a confirmar" = "a confirmar" hacía candidatas a
+  las dos del 22/10 (833/835, ambiguas), y cuando la dirección pasaba de "A CONFIRMAR" a una calle ninguna regla encontraba la
+  fila y se creaba otra (829). La 829 que borró el equipo no se recrea (con la regla prendida o apagada).
+- **B — barrio del mail** (`AGENDA_BARRIO_DEL_MAIL`): caso 824 (Macri 15/10, Villa Santa Rita).
+- **C — RDV CONJUNTO**: nadie la escribe (verificado). Hoy, Macri dos veces el 15/10 (843 / 849): las dos caen en la fila de la
+  base y podía escribir los asistentes de la otra; `CONJUNTO_REPETIDA_POR_UBICACION` (apagado) elige por ubicación o dirección, y
+  si no puede no escribe. Pregunta abierta (no se cambió): la figura de una Seguridad de ese día sale de RDV CONJUNTO y hoy sería
+  "Jorge Macri".
+- **D — "Agenda (mail)" con el formato de "Agenda Directa"** (`AGENDA_MAIL_FORMATO_DIRECTA`, `47_AgendaDirecta.js`): el formato se
+  lee de Directa (o un respaldo); lo del equipo se guarda por agenda_uid (Responsable / Check 1 / Check 2 se conservan aparte, no
+  se mapean); "Agenda Directa" y "Sugerencia - Equipo Directa" no se tocan (el orden de las solapas del sistema ya no corre a las
+  del equipo); la copia única desde Directa (pasos 73-74) no pisa nada distinto y oculta la sugerencia; LEER, sólo prendido.
+- **E — la auditoría** leía "otras semanas 14": lo más probable, Sheets convirtió "martes 13/10" en fecha; un lector común acepta
+  texto y fecha (y el formato Directa).
+- **G — auditoría de cancelaciones** (paso 68, sólo lectura): el parser de la agenda **pierde el tachado** (lee `getPlainBody`,
+  41_AgendaParser.js:852); la auditoría lee también el HTML. Revisada: un tachado sólo en Hora/Lugar es "cambio tachado", no
+  cancelación; la reprogramación pide una reunión NUEVA posterior con la misma hora o lugar; las citas de Outlook se cortan.
+
+**Qué correr (en este orden), y predicciones de los agentes:**
+1. `paso68_auditoriaCancelaciones()` — el informe; después se deciden las reglas (leer el tachado, tomar "Suspendida" de RDV CONJUNTO).
+2. `paso69_duplicadosAgenda()` — sin duplicados probables en la Comuna 11; la 829, "borrada por el equipo; la que quedó: 830".
+3. `paso70_reglasAgenda_enSeco()` — 15/10 C11: hoy crearía otra → con la regla, actualiza la 830 (si todavía dice A CONFIRMAR); 22/10
+   C12 / C14: hoy AMBIGUAS → la 833 / la 835; 824: Barrio (vacío) → Villa Santa Rita; CAMBIA en lo demás: 0.
+4. `paso71_conjuntoRepetido_enSeco()` — sin asistentes cargados en 843/849, no cambia nada.
+5. `paso72_agendaDirecta_enSeco()` → `paso73_copiarAgendaDirecta_enSeco()` → `paso74_copiarAgendaDirecta()` →
+   `AGENDA_MAIL_FORMATO_DIRECTA = true` + clasp push → `paso48_ayuda()`.
+6. Las otras tres, cuando el usuario decida: `AGENDA_SEGURIDAD_POR_COMUNA`, `AGENDA_BARRIO_DEL_MAIL`,
+   `CONJUNTO_REPETIDA_POR_UBICACION` = true + clasp push.
+Tests nuevos: `agenda_seguridad_1510` (55), `auditoria_cancelaciones` (46), `agenda_vistas` [11]-[16], `auditoria_agenda` [11]-[12],
+`ayuda` [3c].
+
 #### La corrida de la hora: la GUARDA DE TIEMPO y REGISTRO_CORRIDAS (15/10) — PRENDIDAS; las aceleraciones, después de medir
 
 **La causa** (el usuario, con los mensajes de Ejecuciones): el activador de `upsertDiario` fallaba ~23% por **"Exceeded

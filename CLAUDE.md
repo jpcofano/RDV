@@ -219,6 +219,14 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   guardadas en ELECCIONES_AGENDA). Una fila que creó y que el equipo borró **no la vuelve a crear** mientras la reunión
   siga en el mail (lo sabe por las líneas `crear_id` de REGISTRO_AGENDA_CAMBIOS); sin ese historial, la corrida real no
   crea. "Origen fila" y "Tocado por el equipo" dicen quién creó la fila y qué cambió el equipo (docs/agenda-equipo.md).
+- **Seguridad en tu Barrio, por su identidad del mail** (15/10, después de la auditoría del paso 66; `AGENDA_SEGURIDAD_POR_COMUNA`,
+  APAGADO hasta el paso 70): "A CONFIRMAR" —o un texto sin calle y número— **no es una dirección** (`esDireccionReal_`): nunca
+  cuenta como "misma Dirección" ni "misma dirección escrita". Una reunión sin figura es la fila de la agenda de **esa fecha con
+  el mismo "Lugar (mail)"** (la comuna), el mismo tipo en "Evento (mail)" y un grupo compatible (`mismaReunionSinFiguraAgenda_`):
+  se ACTUALIZA (p. ej. "A CONFIRMAR" → la calle), no se crea otra. Casos: la 829 (duplicada de la 830; la borró el equipo y no se
+  recrea) y las 833 / 835 del 22/10 (ambiguas: cada una es la de su comuna). **El barrio del mail** (`AGENDA_BARRIO_DEL_MAIL`,
+  APAGADO): si "Lugar (mail)" es un barrio de Comunas, se escribe como Barrio del sistema (con `agenda_barrio_escrito`) aunque la
+  dirección no sirva (caso: la 824); si la dirección se geocodifica a otro barrio, no escribe nada.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
@@ -290,7 +298,7 @@ antes de que nadie haya cargado nada en ellas.
 | 2 | **Intermedia** — "Base intermedia Reuniones de Vecinos". El script está atado acá (`getActive()`) | `1dNLcBjh1ncEVBeALD-szhIlcRGkfOiMaPJp2tGqrsyM` | sí |
 | 3 | **Origen inscriptos** — `Hoja1` | `1W7mzk0cTmiabfEMZ56M9pDsqf6jK6I2fDpqbpP3dWQg` | **no** |
 | 4 | **Agenda** (legado) — la lee y escribe el flujo Agenda del legado | `1hP8zMN8Ep7s1w9zb3Fllix2q_OqIhVwkrED0KCoVh4U` | sí |
-| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10); desde el 09/10, con `AGENDA_VISTAS_NUEVAS`, cinco: LEER | Agenda | AgendaCall | Agenda (mail) | Agenda cerrada (`47_AgendaVistas.js`). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
+| 5 | **"Agenda"** (06/10) — la copia de la agenda que escribe el sistema (`AGENDA_COPIA_SS`): solapa "Agenda" (la semana en curso) y "Agenda cerrada" (las que terminaron; 07/10); desde el 09/10, con `AGENDA_VISTAS_NUEVAS`, cinco: LEER | Agenda | AgendaCall | Agenda (mail) | Agenda cerrada (`47_AgendaVistas.js`). **"Agenda Directa" y "Sugerencia - Equipo Directa" son del EQUIPO** (15/10): el sistema no las escribe, protege ni mueve (sólo lee Directa); las solapas del sistema se reordenan entre los lugares que ya ocupan. Con `AGENDA_MAIL_FORMATO_DIRECTA` (APAGADO hasta el paso 72) "Agenda (mail)" toma el formato de "Agenda Directa" (`47_AgendaDirecta.js`). Ningún código del legado la abre | `1_W4qryMY0_s1Vxdk5mxov4ABUvWyFSq7dN1HU7uk4j0` | sí (reporteseinformesgcba) |
 | 6 | **Lista de IDs de los encuentros** (08/10) — "Base reuniones - Digital - Call Center", del equipo de campañas (`RDV_SS_IDS`): solapas "Agenda JM" y "Agenda funcionarios". **Se lee, nunca se escribe** | `12b0v67FbxjuIndK7DgVU3MYxx-k0yBIS9gtyV45rFaY` | **no** |
 
 Solapas que importan:
@@ -1812,6 +1820,12 @@ caminos independientes, y el que alimenta la transición es el que hoy funciona.
 > 780**; el destino tiene Asistentes en 798 filas y sólo 7 con el color del sistema: **los carga el
 > equipo**. Se escriben sólo en celda vacía (hoy, 9); las que difieren (41) se cuentan, nunca se pisan.
 
+> **15/10: RDV CONJUNTO es de sólo lectura** (no es nuestra): verificado, ningún código la escribe (la leen `cruzarAsistentes_`,
+> `leerConjuntoPorFecha_` y un diagnóstico). **La figura dos veces el mismo día** (Macri 15/10, filas 843 Villa Santa Rita y 849
+> Villa Devoto, misma dirección): hoy las dos caen en la misma fila de la base y el barrio sólo confirma (podía escribir los
+> asistentes de la otra). Con `CONJUNTO_REPETIDA_POR_UBICACION` (APAGADO hasta el paso 71) vale la única cuya ubicación coincide,
+> si no la única con la misma dirección; si no decide, no escribe y lo lista (`_resolverConjuntoRepetido_`).
+
 El flujo Agenda, además, evita pisarla a propósito
 ([Agenda push a base.js:387](Agenda%20push%20a%20base.js#L387)): `// NO tocar asistentes`.
 
@@ -2876,6 +2890,14 @@ diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medir
                    la corrida siguiente, y las que no arrancan por el bloqueo). Paso 67: cuánto tarda cada parte   ← 15/10
 diagnostico/29_auditoria_agenda.js  la AUDITORÍA de la agenda (paso 66, SÓLO LECTURA): los mails contra la base, el
                    archivo "Agenda" y la "Agenda" del archivo RDV; las ambiguas y AGENDA_FIGURA_A_COMPLETAR      ← 15/10
+47_AgendaDirecta.js  "Agenda (mail)" con el formato de "Agenda Directa" (la solapa del EQUIPO, que sólo se lee): Info |
+                   Implementador | CONVOCATORIA | CONFIRMACIÓN | POST | CANCELACIÓN, leído de Directa en cada corrida (o un
+                   respaldo); lo del equipo, por agenda_uid en AGENDA_EQUIPO (las columnas viejas se conservan); la copia
+                   única desde Directa (pasos 73-74). APAGADO (AGENDA_MAIL_FORMATO_DIRECTA)                 ← 15/10
+diagnostico/30_duplicados_agenda.js  los duplicados que creó la agenda (paso 69) y las mediciones en seco de las reglas
+                   de Seguridad / barrio del mail (paso 70) y de RDV CONJUNTO repetido (paso 71). SÓLO LECTURA   ← 15/10
+diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 68, SÓLO LECTURA): desaparecidas del
+                   mail, marcadas o TACHADAS (HTML), RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", vencidas      ← 15/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1
