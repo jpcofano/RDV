@@ -354,5 +354,48 @@ ok(r.errores.length === 1 && /Agenda \(mail\)/.test(r.errores[0]), 'falla sólo 
 ok(r.cuentas.OK === 2 && r.cuentas['FIGURA A COMPLETAR'] === 2 && /SECCIONES QUE FALLARON: 1/.test(L2), 'las demás siguen y el resumen lo dice');
 ok(E.escrituras.length === 0, 'y tampoco escribió nada');
 
+console.log('[11] "Agenda (mail)" con los días que Sheets convirtió en FECHA (15/10: la auditoría decía "otras semanas 14")');
+{
+  E = montar();
+  const COPIA = vm.runInContext('AGENDA_COPIA_SS', E.ctx), SOL = vm.runInContext('AGENDA_SOLAPA_VISTA_MAIL', E.ctx);
+  let conAnio = 0;
+  const filas = [['Reunión (como el mail)', 'Responsable', 'Check 1', 'Check 2', 'clave']].concat(E.copias.mail.map(function (r) {
+    const m = /^\S+ (\d{2})\/(\d{2})$/.exec(r[0]);
+    if (!m) return r;
+    // "martes 13/10" guardado como fecha (lo que hace Sheets al escribirlo); uno, con el año equivocado: se vuelve a inferir
+    return [new D(conAnio++ === 3 ? 2025 : 2026, +m[2] - 1, +m[1], 0, 0, 0), '', '', '', ''];
+  }));
+  E.poner(COPIA, SOL, filas);
+  r = E.run('auditoriaAgenda()');
+  const c11 = (r.extra.copias || {})['Agenda (mail)'] || {};
+  ok(c11.reuniones === 6 && c11.faltan === 0 && c11.sobran === 0 && c11.distintas === 0,
+     'las 6 reuniones de las dos semanas, cada una en su día (' + JSON.stringify(c11) + ')');
+  ok(/"Agenda \(mail\)" \(archivo "Agenda"\): 6 reuniones .* otras semanas 0/.test(E.logs.join('\n')), 'y ninguna en "otras semanas"');
+  ok(E.escrituras.length === 0, 'sin escribir nada');
+}
+
+console.log('[12] "Agenda (mail)" con el formato de "Agenda Directa" (dos renglones de encabezado, las columnas por su texto)');
+{
+  E = montar();
+  const COPIA = vm.runInContext('AGENDA_COPIA_SS', E.ctx), SOL = vm.runInContext('AGENDA_SOLAPA_VISTA_MAIL', E.ctx);
+  const f1 = ['Info', 'Implementador', 'CONVOCATORIA', '', '', '', 'CONFIRMACIÓN', '', 'POST', '', 'CANCELACIÓN', '', 'clave'];
+  const f2 = ['', '', 'Hecho', 'Ok Sol', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', ''];
+  const datos = E.copias.mail.map(function (r) {
+    const x = f1.map(function () { return ''; });
+    x[0] = r[0];
+    if (r[4]) { x[1] = 'Lu'; x[2] = true; for (let j = 3; j < 12; j++) x[j] = false; x[12] = r[4]; }
+    return x;
+  });
+  E.poner(COPIA, SOL, [f1, f2].concat(datos));
+  r = E.run('auditoriaAgenda()');
+  const c12 = (r.extra.copias || {})['Agenda (mail)'] || {};
+  ok(c12.reuniones === 6 && c12.faltan === 0 && c12.sobran === 0 && c12.distintas === 0, 'las 6 reuniones, igual que el mail (' + JSON.stringify(c12) + ')');
+  ok(E.escrituras.length === 0 && r.errores.length === 0, 'sin escribir nada y sin errores');
+  const fmt = E.run('formatoVistaMail_(SpreadsheetApp.openById(AGENDA_COPIA_SS).getSheetByName(AGENDA_SOLAPA_VISTA_MAIL))');
+  ok(fmt.formato === 'directa' && fmt.colClave === 13 && fmt.filaDatos === 3 && fmt.columnas.length === 11 &&
+     fmt.columnas[1].id === 'CONVOCATORIA · Hecho' && fmt.columnas[3].id === 'CONVOCATORIA · Programado' && fmt.columnas[10].id === 'CANCELACIÓN · Programado',
+     'el formato se reconoce por el texto: 11 columnas del equipo ("CONVOCATORIA · Hecho" … "CANCELACIÓN · Programado"), la clave en la 13');
+}
+
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

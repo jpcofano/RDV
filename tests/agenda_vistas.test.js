@@ -21,19 +21,27 @@ function archivoAgenda(nombres) {
   const ss = {
     hojas: hojas,
     getSheetByName: function (n) { return hojas.filter(function (h) { return h.nombre === n; })[0] || null; },
-    insertSheet: function (n) { const h = hoja(n); hojas.push(h); return h; },
+    // como Google: con índice (base 0), en ese lugar; sin índice, al final (15/10: el sistema inserta siempre al final)
+    insertSheet: function (n, i) { const h = hoja(n); if (i == null || i >= hojas.length) hojas.push(h); else hojas.splice(i, 0, h); return h; },
+    getSheets: function () { return hojas.slice(); },
+    movidas: 0,
     setActiveSheet: function (h) { ss.activa = h; return h; },
     moveActiveSheet: function (pos) { const i = hojas.indexOf(ss.activa); hojas.splice(i, 1); hojas.splice(pos - 1, 0, ss.activa); },
     getName: function () { return 'Agenda'; }
   };
   const hoja = function (nombre) {
-    const h = { nombre: nombre, v: [], rich: {}, bg: {}, color: {}, bold: {}, val: {}, checks: {}, ocultas: [], reglas: [], prot: null, anchos: {} };
+    const h = { nombre: nombre, v: [], rich: {}, bg: {}, color: {}, bold: {}, val: {}, checks: {}, ocultas: [], reglas: [], prot: null, anchos: {},
+               merges: [], oculta: false, maxCols: 26, bordes: {} };
     const asegurar = function (r, c) { while (h.v.length < r) h.v.push([]); h.v.forEach(function (f) { while (f.length < c) f.push(''); }); };
     const rango = function (r, c, nr, nc) {
       nr = nr || 1; nc = nc || 1;
       const cada = function (fn) { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) fn(r + i, c + j, i, j); };
       const o = {
         getValues: function () { const out = []; for (let i = 0; i < nr; i++) { const f = []; for (let j = 0; j < nc; j++) { const x = h.v[r - 1 + i]; f.push(x && x[c - 1 + j] !== undefined ? x[c - 1 + j] : ''); } out.push(f); } return out; },
+        // lo que se ve: una fecha, como "martes 13/10" (el formato que le pone Sheets a "martes 13/10" si lo convierte en fecha)
+        getDisplayValues: function () { return o.getValues().map(function (f) { return f.map(function (x) {
+          if (x instanceof Date) return ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][x.getDay()] + ' ' + ('0' + x.getDate()).slice(-2) + '/' + ('0' + (x.getMonth() + 1)).slice(-2);
+          return typeof x === 'boolean' ? (x ? 'TRUE' : 'FALSE') : String(x == null ? '' : x); }); }); },
         setValues: function (m) { asegurar(r + nr - 1, c + nc - 1); cada(function (fi, co, i, j) { h.v[fi - 1][co - 1] = m[i][j]; }); return o; },
         setValue: function (x) { asegurar(r, c); h.v[r - 1][c - 1] = x; return o; },
         setRichTextValues: function (m) { asegurar(r + nr - 1, c + nc - 1); cada(function (fi, co, i, j) { h.v[fi - 1][co - 1] = m[i][j].text; h.rich[fi + ':' + co] = m[i][j]; }); return o; },
@@ -42,10 +50,38 @@ function archivoAgenda(nombres) {
         setFontColor: function (b) { cada(function (fi, co) { h.color[fi + ':' + co] = b; }); return o; },
         setFontWeight: function (w) { cada(function (fi, co) { h.bold[fi + ':' + co] = w; }); return o; },
         setNumberFormat: function () { return o; }, setWrap: function () { return o; }, setVerticalAlignment: function () { return o; },
-        insertCheckboxes: function () { cada(function (fi, co) { h.checks[fi + ':' + co] = true; h.v[fi - 1] = h.v[fi - 1] || []; }); return o; },
+        insertCheckboxes: function () { cada(function (fi, co) { h.checks[fi + ':' + co] = true; asegurar(fi, 1); }); return o; },
         clearDataValidations: function () { cada(function (fi, co) { delete h.val[fi + ':' + co]; delete h.checks[fi + ':' + co]; }); return o; },
         setDataValidation: function (dv) { cada(function (fi, co) { h.val[fi + ':' + co] = dv; }); return o; },
-        _a: [r, c, nr, nc]
+        // 15/10: combinaciones, bordes, alineación, "pegar formato" y las validaciones (para el formato de "Agenda Directa")
+        getDataValidations: function () {
+          const out = [];
+          for (let i = 0; i < nr; i++) {
+            const f = [];
+            for (let j = 0; j < nc; j++) { const k = (r + i) + ':' + (c + j); f.push(h.val[k] || (h.checks[k] ? { getCriteriaType: function () { return 'CHECKBOX'; } } : null)); }
+            out.push(f);
+          }
+          return out;
+        },
+        getMergedRanges: function () {
+          return h.merges.filter(function (m) { return m[0] <= r + nr - 1 && m[0] + m[2] - 1 >= r && m[1] <= c + nc - 1 && m[1] + m[3] - 1 >= c; })
+            .map(function (m) { return { getRow: function () { return m[0]; }, getColumn: function () { return m[1]; }, getNumRows: function () { return m[2]; }, getNumColumns: function () { return m[3]; } }; });
+        },
+        merge: function () { if (!h.merges.some(function (m) { return m.join() === [r, c, nr, nc].join(); })) h.merges.push([r, c, nr, nc]); return o; },
+        breakApart: function () { h.merges = h.merges.filter(function (m) { return !(m[0] <= r + nr - 1 && m[0] + m[2] - 1 >= r && m[1] <= c + nc - 1 && m[1] + m[3] - 1 >= c); }); return o; },
+        setBorder: function () { cada(function (fi, co) { h.bordes[fi + ':' + co] = true; }); return o; },
+        setHorizontalAlignment: function () { return o; },
+        copyTo: function (dest, tipo) {   // "pegar formato": fondos, letra, negrita, bordes y combinaciones
+          const d = dest._h, dr = dest._a[0], dc = dest._a[1];
+          cada(function (fi, co, i, j) {
+            const k = fi + ':' + co, kd = (dr + i) + ':' + (dc + j);
+            ['bg', 'color', 'bold', 'bordes'].forEach(function (p) { if (h[p][k] !== undefined) d[p][kd] = h[p][k]; });
+          });
+          o.getMergedRanges().forEach(function (m) { d.merges.push([m.getRow() - r + dr, m.getColumn() - c + dc, m.getNumRows(), m.getNumColumns()]); });
+          d.pegados = (d.pegados || []).concat([tipo]);
+          return o;
+        },
+        _h: h, _a: [r, c, nr, nc]
       };
       return o;
     };
@@ -55,8 +91,19 @@ function archivoAgenda(nombres) {
       copyTo: function (dest) { const c = dest.insertSheet('Copia de ' + h.nombre); c.v = JSON.parse(JSON.stringify(h.v)); return c; },
       getIndex: function () { return ssRef.hojas.indexOf(h) + 1; },
       getRange: rango,
-      getRangeList: function (l) { return { setBackground: function (b) { l.forEach(function (a1) { const p = a1.split(':'); const x = a1c(p[0]), y = a1c(p[1] || p[0]); rango(x[0], x[1], y[0] - x[0] + 1, y[1] - x[1] + 1).setBackground(b); }); } }; },
+      getRangeList: function (l) {
+        const rs = l.map(function (a1) { const p = a1.split(':'); const x = a1c(p[0]), y = a1c(p[1] || p[0]); return rango(x[0], x[1], y[0] - x[0] + 1, y[1] - x[1] + 1); });
+        const rl = {};
+        ['setBackground', 'setFontColor', 'setFontWeight', 'insertCheckboxes'].forEach(function (m) { rl[m] = function (x) { rs.forEach(function (q) { q[m](x); }); return rl; }; });
+        return rl;
+      },
+      getColumnWidth: function (c) { return h.anchos[c] || 100; },
+      showColumns: function (c, n) { h.ocultas = h.ocultas.filter(function (x) { return x < c || x > c + (n || 1) - 1; }); },
+      insertColumnsAfter: function (c, n) { h.maxCols += n; }, getMaxColumns: function () { return h.maxCols; },
+      getConditionalFormatRules: function () { return h.reglas.slice(); },
+      hideSheet: function () { h.oculta = true; return h; }, isSheetHidden: function () { return h.oculta; },
       getLastRow: function () { for (let i = h.v.length; i >= 1; i--) if (h.v[i - 1].some(function (x) { return x !== '' && x !== null && x !== undefined; })) return i; return 0; },
+      getLastColumn: function () { let m = 0; h.v.forEach(function (f) { for (let j = f.length; j >= 1; j--) if (f[j - 1] !== '' && f[j - 1] != null) { m = Math.max(m, j); break; } }); return m; },
       getMaxRows: function () { return Math.max(h.v.length, 100); },
       clear: function () { h.v = []; h.rich = {}; h.bg = {}; h.color = {}; h.bold = {}; },
       setFrozenRows: function () {}, autoResizeColumns: function () {}, setColumnWidth: function (c, w) { h.anchos[c] = w; },
@@ -79,13 +126,19 @@ function archivoAgenda(nombres) {
   return ss;
 }
 
-function entorno(baseFilas) {
+function entorno(baseFilas, opciones) {
   const HDR = hdrBase();
-  const E = crearEntornoIds({ bloqueBase: [HDR].concat(baseFilas || []), maxColsBase: HDR.length, extra: ['40_Agenda.js', '47_AgendaVistas.js'] });
-  const ss = archivoAgenda(['Agenda cerrada', 'LEER', 'Agenda']);          // en otro orden: el sistema las ordena
+  const o = opciones || {};
+  // 15/10: `o.directa` prende AGENDA_MAIL_FORMATO_DIRECTA; `o.solapas`: las solapas del archivo "Agenda" (y su orden)
+  const E = crearEntornoIds({ bloqueBase: [HDR].concat(baseFilas || []), maxColsBase: HDR.length,
+    extra: ['40_Agenda.js', '47_AgendaVistas.js', '47_AgendaDirecta.js'],
+    reemplazos: o.directa ? { '00_Config.js': [['const AGENDA_MAIL_FORMATO_DIRECTA = false;', 'const AGENDA_MAIL_FORMATO_DIRECTA = true;']] } : {} });
+  const ss = archivoAgenda(o.solapas || ['Agenda cerrada', 'LEER', 'Agenda']);          // en otro orden: el sistema las ordena
   E.archivos[E.cfg('AGENDA_COPIA_SS')] = { ss: ss, hojas: {} };
   const SA = E.ctx.SpreadsheetApp;
   SA.ProtectionType = { SHEET: 'SHEET', RANGE: 'RANGE' };
+  SA.CopyPasteType = { PASTE_FORMAT: 'PASTE_FORMAT' };
+  SA.DataValidationCriteria = { CHECKBOX: 'CHECKBOX', VALUE_IN_LIST: 'VALUE_IN_LIST', VALUE_IN_RANGE: 'VALUE_IN_RANGE' };
   SA.newRichTextValue = function () {
     const v = { text: '', estilos: [], link: '' };
     const b = { setText: function (t) { v.text = t; return b; }, setTextStyle: function (a, z, st) { v.estilos.push({ desde: a, hasta: z, st: st }); return b; },
@@ -345,6 +398,210 @@ console.log('[10] la "Agenda" también en el archivo RDV (13/10): la misma matri
   const leg2 = require('fs').readFileSync(require('path').join(__dirname, '..', 'Solapa agenda base final.js'), 'utf8');
   ok(/function syncAgendaSheetInBaseFromAgenda_2\(\) \{\s*\/\/[^\n]*\n[^\n]*\n\s*if \(typeof AGENDA_COPIA_EN_RDV !== 'undefined' && AGENDA_COPIA_EN_RDV\) \{[^}]*return;/.test(leg2),
      'el espejo del legado (syncAgendaSheetInBaseFromAgenda_2) no escribe nada con AGENDA_COPIA_EN_RDV');
+}
+
+// =========================== 15/10: "Agenda Directa" (del equipo) y "Agenda (mail)" con su formato ===========================
+
+/**
+ * "Agenda Directa", la solapa del equipo, simulada (inventada). Los grupos en OTRO orden que el respaldo (POST antes que
+ * CONFIRMACIÓN) y "Ok Sol." / "Ok sol" escritos distinto: el sistema tiene que reconocerlas por el texto. Un día como texto, otro
+ * que Sheets convirtió en fecha. Desplegable en Implementador, casillas, una regla de color y una protección del equipo.
+ */
+function ponerDirecta(E) {
+  const F = E.ctx.Date;
+  const h = E.agenda.getSheetByName('Agenda Directa') || E.agenda.insertSheet('Agenda Directa');
+  const no = function () { return [false, false, false, false, false, false, false, false, false, false]; };
+  const dia = function (x) { return [x, '', '', '', '', '', '', '', '', '', '', '']; };
+  h.v = [
+    ['Info', 'Implementador', 'CONVOCATORIA', '', '', '', 'POST', '', 'CONFIRMACIÓN', '', 'CANCELACIÓN', ''],
+    ['', '', 'Hecho', 'Ok Sol.', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok sol', 'Programado'],
+    dia('martes 06/10'),
+    ['Evento: Encuentro con Vecinos Jorge Macri, Belgrano\nHora: 18:00h\nLugar: Club Belgrano, Av. Cabildo 100', 'Lu'].concat([true]).concat(no().slice(1)),
+    dia(new F(2026, 9, 8, 0, 0, 0)),                                                     // el día, que Sheets hizo fecha
+    ['*Encuentro con Vecinos Gabino Tapia, Retiro*', 'Cris', false, false, false, false, true, false, false, false, false, false],
+    dia('viernes 09/10'),
+    ['Evento: Café con Ana Pereyra, Palermo', ''].concat(no()),                         // nada cargado
+    ['Evento: Una reunión que el mail no tiene', 'Mel', true, false, false, false, false, false, false, false, false, false]
+  ];
+  h.merges = [[1, 1, 2, 1], [1, 2, 2, 1], [1, 3, 1, 4], [1, 7, 1, 2], [1, 9, 1, 2], [1, 11, 1, 2], [3, 1, 1, 12], [5, 1, 1, 12], [7, 1, 1, 12]];
+  for (let c = 1; c <= 12; c++) { h.bg['1:' + c] = '#1C4587'; h.color['1:' + c] = '#FFFFFF'; h.bg['2:' + c] = '#C9DAF8'; }
+  [3, 5, 7].forEach(function (r) { for (let c = 1; c <= 12; c++) { h.bg[r + ':' + c] = '#38761D'; h.color[r + ':' + c] = '#FFFFFF'; h.bold[r + ':' + c] = 'bold'; } });
+  h.anchos = { 1: 380, 2: 140 };
+  for (let c = 3; c <= 12; c++) h.anchos[c] = 64;
+  const lista = { getCriteriaType: function () { return 'VALUE_IN_LIST'; }, getCriteriaValues: function () { return [['Lu', 'Cris', 'Mel', 'Yami', 'Sofi'], true]; },
+                  copy: function () { return { build: function () { return { copiaDe: lista }; } }; } };
+  const regla = { getRanges: function () { return [{ getColumn: function () { return 2; }, getNumColumns: function () { return 1; } }]; },
+                  copy: function () { const b = { setRanges: function (x) { b.rangos = x; return b; }, build: function () { return { copiaDe: regla, rangos: b.rangos }; } }; return b; } };
+  [4, 6, 8, 9].forEach(function (r) { h.val[r + ':2'] = lista; for (let c = 3; c <= 12; c++) h.checks[r + ':' + c] = true; });
+  h.reglas = [regla];
+  h.protect().setDescription('del equipo');
+  return { hoja: h, lista: lista, regla: regla };
+}
+/** Todo lo que se puede ver de una solapa (para comprobar que el sistema NO la tocó). */
+const foto = function (h) {
+  return JSON.stringify([h.v, h.bg, h.color, h.bold, Object.keys(h.val).sort(), h.checks, h.merges, h.oculta, h.prot && h.prot.desc,
+                         h.anchos, h.reglas.length, h.ocultas, h.getIndex()]);
+};
+const fila13 = function (E, k) { const h = vista(E); for (let i = 2; i < h.v.length; i++) if (h.v[i][12] === k) return i + 1; return 0; };
+const equipoGuardado = function (E) {
+  const h = E.intermedia('AGENDA_EQUIPO');
+  if (!h) return {};
+  const hdr = h.valores[0], out = {};
+  h.valores.slice(1).forEach(function (r) { const o = {}; hdr.forEach(function (n, j) { o[n] = r[j]; }); out[r[0]] = o; });
+  return out;
+};
+
+console.log('[11] D1: las solapas del equipo no se mueven ni se tocan (el sistema ordena las suyas entre los lugares que ya ocupan)');
+{
+  const E = entorno(BASE(), { solapas: ['Agenda cerrada', 'Agenda Directa', 'LEER', 'Agenda', 'Sugerencia - Equipo Directa'] });
+  const d = ponerDirecta(E).hoja, sug = E.agenda.getSheetByName('Sugerencia - Equipo Directa');
+  const antesD = foto(d), antesS = foto(sug);
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  igual(nombres(E.agenda), ['LEER', 'Agenda Directa', 'Agenda', 'AgendaCall', 'Sugerencia - Equipo Directa', 'Agenda (mail)', 'Agenda cerrada'],
+        'las del sistema, en su orden, en los lugares que ya ocupaban; "Agenda Directa" sigue 2ª y "Sugerencia…" 5ª');
+  ok(foto(d) === antesD && foto(sug) === antesS, '"Agenda Directa" y "Sugerencia - Equipo Directa": exactamente como estaban (valores, formato, protección, lugar)');
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  ok(!/intercambios entre solapas/.test(E.log().split('"Agenda (mail)": ').pop()) && foto(d) === antesD, 'la segunda vez ya están en orden: no se mueve nada');
+  let tiro = '';
+  try { E.run('insertarSolapaAgendaAlFinal_(SpreadsheetApp.openById(AGENDA_COPIA_SS), AGENDA_SOLAPA_DIRECTA)'); } catch (e) { tiro = String(e); }
+  ok(/es una solapa del equipo/.test(tiro), 'el sistema se niega a crear o escribir una solapa del equipo');
+}
+
+console.log('[12] D2: "Agenda (mail)" copia el formato de "Agenda Directa" (desde el formato de siempre, con Responsable cargado)');
+let E12 = null;
+{
+  const E = entorno(BASE(), { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa', 'Sugerencia - Equipo Directa'] });
+  E12 = E;
+  ok(E.cfg('AGENDA_MAIL_FORMATO_DIRECTA') === true, '(el interruptor, prendido en este entorno)');
+  const P = ponerDirecta(E), d = P.hoja, sug = E.agenda.getSheetByName('Sugerencia - Equipo Directa');
+  const antesD = foto(d), antesS = foto(sug);
+  // "Agenda (mail)" con el formato de siempre, con Responsable / Check 1 en la de Tapia
+  vista(E).v = [['Reunión (como el mail)', 'Responsable', 'Check 1', 'Check 2', 'clave', '', 'Responsables (opciones)'],
+                ['jueves 08/10', '', '', '', '', '', 'Lu'], ['Evento: Encuentro con Vecinos Gabino Tapia, Retiro', 'Cris', true, false, 'c-2', '', 'Cris']];
+  vista(E).ocultas = [5];
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const h = vista(E), g = equipoGuardado(E);
+  if (process.env.VER) console.log(E.log());
+  ok(g['c-2'] && g['c-2'].Responsable === 'Cris' && g['c-2']['Check 1'] === true, 'lo de siempre (Responsable / Check 1) quedó guardado en AGENDA_EQUIPO');
+  igual(E.intermedia('AGENDA_EQUIPO').valores[0].slice(7), E.run('idsDirecta_()'), 'AGENDA_EQUIPO suma, a la derecha, las 11 columnas nuevas');
+  igual([h.v[0].slice(0, 13), h.v[1].slice(0, 12)], [d.v[0].concat(['clave']), d.v[1]], 'el encabezado: los dos renglones de "Agenda Directa", tal cual, y "clave"');
+  igual(h.merges.filter(function (m) { return m[0] <= 2; }).map(String).sort(), d.merges.filter(function (m) { return m[0] <= 2; }).map(String).sort(),
+        'las combinaciones del encabezado, las mismas');
+  ok(h.bg['1:3'] === '#1C4587' && h.color['1:3'] === '#FFFFFF' && h.bg['2:5'] === '#C9DAF8' && (h.pegados || []).indexOf('PASTE_FORMAT') >= 0,
+     'los colores del encabezado, copiados ("pegar formato")');
+  ok(h.anchos[1] === 380 && h.anchos[2] === 140 && h.anchos[7] === 64, 'los anchos de "Agenda Directa"');
+  ok(h.ocultas.join() === '13' && h.v[0][12] === 'clave', 'la clave en la 13, oculta (la E de antes ya no está oculta)');
+  const r1 = fila13(E, 'c-1'), r2 = fila13(E, 'c-2');
+  ok(r1 > 2 && /^Evento: Encuentro con Vecinos Jorge Macri/.test(h.v[r1 - 1][0]) && h.bg[r1 + ':1'] === '#D9EAD3', 'Info: la celda de la reunión, con el color de su semana');
+  ok(h.val[r1 + ':2'] && h.val[r1 + ':2'].copiaDe === P.lista && h.checks[r1 + ':3'] && h.checks[r1 + ':12'] && !h.val[r1 + ':3'],
+     'Implementador: el desplegable de "Agenda Directa"; casillas en los grupos');
+  const lunes = h.v.findIndex(function (r) { return r[0] === 'lunes 05/10'; }) + 1;
+  ok(lunes > 2 && h.merges.some(function (m) { return m.join() === [lunes, 1, 1, 12].join(); }) && h.bg[lunes + ':1'] === '#38761D' &&
+     !h.checks[lunes + ':3'] && !h.val[lunes + ':2'], 'los días: combinados a lo ancho, con el formato del día de "Agenda Directa"; sin casillas ni desplegable');
+  ok(h.reglas.length === 1 && h.reglas[0].copiaDe === P.regla, 'la regla de color de Implementador, copiada');
+  ok(h.prot && h.prot.adv && h.prot.desc === E.cfg('DESC_PROTECCION_VISTA_MAIL_DIRECTA') && h.prot.libres.length === 11, 'protegida con advertencia; libres, las 11 columnas del equipo');
+  ok(foto(d) === antesD && foto(sug) === antesS, '"Agenda Directa" y "Sugerencia…": intactas');
+  // el equipo carga en el formato nuevo; Tapia se mueve al viernes: lo suyo la sigue (y Responsable sigue guardado aparte)
+  h.v[r2 - 1][1] = 'Yami'; h.v[r2 - 1][6] = true;                                   // Implementador y POST · Ok Sol (columna G)
+  const sem2 = SEMANA.map(function (x) { return Object.assign({}, x); });
+  sem2[1].fecha = [9, 10]; sem2[1].hora = '20:00';
+  E.ctx.__ab = abierta(E, sem2);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const r2b = fila13(E, 'c-2'), g2 = equipoGuardado(E);
+  ok(r2b > 0 && vista(E).v[r2b - 1][1] === 'Yami' && vista(E).v[r2b - 1][6] === true && /Hora: 20:00h/.test(vista(E).v[r2b - 1][0]),
+     'Tapia cambió de día: su Implementador y su "POST · Ok Sol" la siguen');
+  ok(g2['c-2'].Responsable === 'Cris' && g2['c-2'].Implementador === 'Yami' && g2['c-2']['POST · Ok Sol'] === true,
+     'AGENDA_EQUIPO: lo viejo (Responsable) y lo nuevo (Implementador, POST · Ok Sol), juntos');
+}
+
+console.log('[13] volver atrás (interruptor apagado): "Agenda (mail)" vuelve al formato de siempre y no se pierde nada');
+{
+  const E = entorno(BASE(), { solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada'] });
+  const src = vista(E12), h = vista(E);
+  ['v', 'merges', 'ocultas', 'val', 'checks', 'bg'].forEach(function (p) { h[p] = JSON.parse(JSON.stringify(src[p])); });
+  h.prot = src.prot;
+  E.archivos[E.cfg('RDV_SS_INTERMEDIA')].hojas['AGENDA_EQUIPO'] = E12.archivos[E12.cfg('RDV_SS_INTERMEDIA')].hojas['AGENDA_EQUIPO'];
+  const sem2 = SEMANA.map(function (x) { return Object.assign({}, x); });
+  sem2[1].fecha = [9, 10]; sem2[1].hora = '20:00';
+  E.ctx.__ab = abierta(E, sem2);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const t = enVista(E, 'c-2'), g = equipoGuardado(E);
+  ok(h.v[0].slice(0, 5).join('|') === 'Reunión (como el mail)|Responsable|Check 1|Check 2|clave' && h.merges.length === 0 && h.ocultas.join() === '5',
+     'el formato de siempre: sin combinaciones, la clave en la E (y sólo ésa oculta)');
+  ok(t && t.resp === 'Cris' && t.c1 === true, 'Tapia vuelve a mostrar su Responsable y su Check 1');
+  ok(g['c-2'].Implementador === 'Yami' && g['c-2']['POST · Ok Sol'] === true, 'y lo del formato nuevo sigue guardado en AGENDA_EQUIPO');
+  ok(!(h.prot && h.prot.desc === E.cfg('DESC_PROTECCION_VISTA_MAIL_DIRECTA')) && h.prot.desc === E.cfg('DESC_PROTECCION_VISTA_MAIL'), 'la protección de siempre (no quedan dos)');
+}
+
+console.log('[14] sin "Agenda Directa": el diseño de respaldo');
+{
+  const E = entorno(BASE(), { directa: true });
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const h = vista(E);
+  igual(h.v[0].slice(0, 13), ['Info', 'Implementador', 'CONVOCATORIA', '', '', '', 'CONFIRMACIÓN', '', 'POST', '', 'CANCELACIÓN', '', 'clave'], 'renglón 1: los grupos');
+  igual(h.v[1].slice(0, 12), ['', '', 'Hecho', 'Ok Sol', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado'], 'renglón 2: las subcolumnas');
+  igual(h.merges.filter(function (m) { return m[0] <= 2; }).map(String).sort(), ['1,1,2,1', '1,11,1,2', '1,2,2,1', '1,3,1,4', '1,7,1,2', '1,9,1,2'], 'las combinaciones');
+  const r1 = fila13(E, 'c-1');
+  ok(h.v[0][14] === 'Implementadores (opciones)' && h.v[2][14] === 'Lu' && h.val[r1 + ':2'].rango.join() === '3,15,20,1' && h.reglas.length === 4,
+     'Implementador: desplegable desde las opciones (columna O), un color por opción');
+  ok(h.bordes['1:1'] && h.bg['1:3'] === '#C9DAF8' && h.checks[r1 + ':3'], 'encabezado con bordes y colores por grupo; casillas');
+  ok(/diseño de respaldo — no existe la solapa "Agenda Directa"/.test(E.log()), 'el log dice por qué va el respaldo');
+}
+
+console.log('[15] D3 y D4: copiar lo que el equipo cargó en "Agenda Directa" (en seco y de verdad) y ocultar la sugerencia');
+{
+  const E = entorno(BASE(), { directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa', 'Sugerencia - Equipo Directa'] });
+  const d = ponerDirecta(E).hoja, sug = E.agenda.getSheetByName('Sugerencia - Equipo Directa');
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  vista(E).v[fila13(E, 'c-2') - 1][1] = 'Yami';                              // en "Agenda (mail)", Tapia ya tiene otro Implementador
+  const antesD = foto(d), antesEq = JSON.stringify((E.intermedia('AGENDA_EQUIPO') || { valores: [] }).valores), antesV = JSON.stringify(vista(E).v);
+  E.logs.length = 0;
+  let r = E.run('copiarAgendaDirectaEnSeco()');
+  let L = E.log();
+  ok(/COPIARÍA renglón 4 \(06\/10\/2026 \| Evento: Encuentro con Vecinos Jorge Macri, Belgrano\) → c-1 .*mismo evento.*Implementador = Lu; CONVOCATORIA · Hecho = ☑/.test(L),
+     'Macri 06/10: copiaría Implementador y CONVOCATORIA · Hecho');
+  ok(/COPIARÍA renglón 6 \(08\/10\/2026 .*→ c-2 .*POST · Ok Sol = ☑.*NO SE PISA: Implementador \(en "Agenda \(mail\)": Yami; en "Agenda Directa": Cris\)/.test(L),
+     'Tapia 08/10 (el día era una fecha; el evento sin "Evento:"): copiaría POST · Ok Sol y NO pisa el Implementador que ya tiene');
+  ok(/SIN CRUCE renglón 9 \(09\/10\/2026 \| Evento: Una reunión que el mail no tiene\): ninguna reunión del sistema con ese evento ese día \(ese día: "Evento: Café con Ana Pereyra, Palermo" 19:00\)/.test(L),
+     'la que no cruza, con el motivo y las reuniones de ese día');
+  ok(/con algo cargado: 3 \(sin nada: 1\)/.test(L) && /"Sugerencia - Equipo Directa": la OCULTARÍA/.test(L), 'cuenta las vacías; diría que oculta la sugerencia');
+  ok(r.copiadas === 2 && r.campos === 3 && r.sinCruce === 1 && r.conflictos === 1, 'el resumen: 2 reuniones, 3 valores, 1 sin cruce, 1 conflicto');
+  ok(JSON.stringify((E.intermedia('AGENDA_EQUIPO') || { valores: [] }).valores) === antesEq && JSON.stringify(vista(E).v) === antesV && !sug.oculta && foto(d) === antesD,
+     'EN SECO: no escribió nada (ni AGENDA_EQUIPO, ni las solapas)');
+  r = E.run('copiarAgendaDirecta()');
+  const g = equipoGuardado(E);
+  ok(g['c-1'].Implementador === 'Lu' && g['c-1']['CONVOCATORIA · Hecho'] === true && g['c-2'].Implementador === 'Yami' && g['c-2']['POST · Ok Sol'] === true,
+     'AGENDA_EQUIPO: lo copiado, y lo que ya tenía "Agenda (mail)" sin pisar');
+  ok(sug.oculta === true && E.agenda.getSheetByName('Sugerencia - Equipo Directa') === sug, '"Sugerencia - Equipo Directa": oculta, no borrada');
+  ok(foto(d) === antesD, '"Agenda Directa": intacta (sólo se leyó)');
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');
+  const h = vista(E), r1 = fila13(E, 'c-1');
+  ok(h.v[r1 - 1][1] === 'Lu' && h.v[r1 - 1][2] === true, 'la reescritura siguiente lo muestra en "Agenda (mail)"');
+  E.logs.length = 0;
+  r = E.run('copiarAgendaDirecta()');
+  ok(r.campos === 0 && /ya estaba: Implementador, CONVOCATORIA · Hecho/.test(E.log()) && /ya está oculta/.test(E.log()), 'otra vez: nada nuevo ("ya estaba"; ya oculta)');
+}
+
+console.log('[16] D2 en seco: el diseño que saldría, sin escribir nada');
+{
+  const E = entorno(BASE(), { solapas: ['LEER', 'Agenda', 'Agenda (mail)', 'Agenda Directa'] });
+  ponerDirecta(E);
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), __ab, {})');          // la vista de siempre
+  const antes = E.agenda.hojas.map(foto).join('|'), antesEq = JSON.stringify((E.intermedia('AGENDA_EQUIPO') || { valores: [] }).valores);
+  E.logs.length = 0;
+  const r = E.run('vistaMailDirectaEnSeco()');
+  const L = E.log();
+  ok(r.fuente === 'directa' && /ENCONTRADA y coincide/.test(L) && /POST · Ok Sol → columna G \| casilla \| ancho 64/.test(L) &&
+     /Implementador → columna B \| desplegable: Lu, Cris, Mel, Yami, Sofi/.test(L), 'qué columna encontró y dónde, el desplegable, los anchos');
+  ok(/renglón 1: Info \| Implementador \| CONVOCATORIA \| · \| · \| · \| POST/.test(L) && /la clave: columna M \(oculta\)/.test(L) && /■■■ LUNES 05\/10 ■■■/.test(L) &&
+     /Encuentro con Vecinos Gabino Tapia, Retiro .*‖ Implementador: — \| CONVOCATORIA ☐Hecho/.test(L), 'el encabezado que saldría y las reuniones de hoy en ese formato');
+  ok(E.agenda.hojas.map(foto).join('|') === antes && JSON.stringify((E.intermedia('AGENDA_EQUIPO') || { valores: [] }).valores) === antesEq, 'no escribió nada');
+  if (process.env.VER) console.log(L);
 }
 
 console.log('\n' + chequeos + ' chequeos.');

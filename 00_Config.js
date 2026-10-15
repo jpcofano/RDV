@@ -1621,6 +1621,43 @@ const RDV_HOJA_FORMS_SIN_FILA = 'FORMULARIOS_SIN_FILA';
 const FORMULARIOS_SIN_FILA_LINEA = 'Un formulario sin fila suele ser una reunión que falta cargar en la base.';
 const DESC_PROTECCION_FORMS_SIN_FILA = 'RDV: la escribe el sistema en cada corrida — es un reporte, no se edita';
 const DESC_PROTECCION_VISTA_MAIL = 'RDV: la escribe el sistema — sólo se editan las columnas del equipo (Responsable, Check 1, Check 2) y las opciones';
+// ===================== "Agenda (mail)" con el formato de "Agenda Directa" (15/10; 47_AgendaDirecta.js) =====================
+/**
+ * **"Agenda (mail)" con el formato de la solapa del equipo "Agenda Directa"** (decisión del usuario, 15/10): Info | Implementador
+ * | CONVOCATORIA (Hecho, Ok Sol, Programado, IVR) | CONFIRMACIÓN (Ok Sol, Programado) | POST (Ok Sol, Programado) | CANCELACIÓN
+ * (Ok Sol, Programado); dos renglones de encabezado combinados (1: los grupos; 2: las subcolumnas), los días combinados a lo
+ * ancho, Implementador con desplegable y casillas en los grupos. El sistema LEE "Agenda Directa" en cada reescritura y copia su
+ * aspecto (encabezado, combinaciones, colores, anchos, el desplegable, el estilo de los días); si no está o no tiene esos
+ * encabezados, usa el diseño de abajo. Las columnas se reconocen POR EL TEXTO del encabezado (grupo + subcolumna), nunca por la
+ * letra. Lo que carga el equipo se guarda en AGENDA_EQUIPO por la clave de la reunión, como Responsable / Check 1 / Check 2 (que
+ * se siguen guardando, aparte). APAGADO hasta que el usuario lo decida: primero `vistaMailDirectaEnSeco()` (el diseño que
+ * saldría) y la copia de lo que ya cargó el equipo en "Agenda Directa" (`copiarAgendaDirectaEnSeco()` / `copiarAgendaDirecta()`).
+ */
+const AGENDA_MAIL_FORMATO_DIRECTA = false;
+/** Las solapas DEL EQUIPO en el archivo "Agenda": el sistema nunca las escribe, protege, mueve ni borra (sólo lee "Agenda Directa";
+ *  "Sugerencia - Equipo Directa" se oculta una sola vez, con `copiarAgendaDirecta()`). */
+const AGENDA_SOLAPA_DIRECTA = 'Agenda Directa';
+const AGENDA_SOLAPA_SUGERENCIA_DIRECTA = 'Sugerencia - Equipo Directa';
+const AGENDA_SOLAPAS_DEL_EQUIPO = [AGENDA_SOLAPA_DIRECTA, AGENDA_SOLAPA_SUGERENCIA_DIRECTA];
+/** El encabezado de la celda de la reunión (Evento / Hora / Lugar). */
+const AGENDA_DIRECTA_INFO = 'Info';
+/** Las columnas del equipo, en el orden del diseño de respaldo. `tipo`: 'lista' (desplegable) o 'casilla'. En AGENDA_EQUIPO cada
+ *  una se guarda con el nombre "GRUPO · Subcolumna" (o sólo el grupo). Una columna de más en "Agenda Directa" se copia igual. */
+const AGENDA_DIRECTA_COLUMNAS = [
+  { grupo: 'Implementador', sub: '', tipo: 'lista' },
+  { grupo: 'CONVOCATORIA', sub: 'Hecho', tipo: 'casilla' }, { grupo: 'CONVOCATORIA', sub: 'Ok Sol', tipo: 'casilla' },
+  { grupo: 'CONVOCATORIA', sub: 'Programado', tipo: 'casilla' }, { grupo: 'CONVOCATORIA', sub: 'IVR', tipo: 'casilla' },
+  { grupo: 'CONFIRMACIÓN', sub: 'Ok Sol', tipo: 'casilla' }, { grupo: 'CONFIRMACIÓN', sub: 'Programado', tipo: 'casilla' },
+  { grupo: 'POST', sub: 'Ok Sol', tipo: 'casilla' }, { grupo: 'POST', sub: 'Programado', tipo: 'casilla' },
+  { grupo: 'CANCELACIÓN', sub: 'Ok Sol', tipo: 'casilla' }, { grupo: 'CANCELACIÓN', sub: 'Programado', tipo: 'casilla' }
+];
+/** El diseño de respaldo (sin "Agenda Directa"): colores del encabezado por grupo, los días y los anchos. */
+const AGENDA_DIRECTA_RESPALDO = {
+  encabezadoFondo: '#D9D9D9', encabezadoLetra: '#000000',
+  grupoFondo: { 'CONVOCATORIA': '#C9DAF8', 'CONFIRMACIÓN': '#D9EAD3', 'POST': '#FCE5CD', 'CANCELACIÓN': '#F4CCCC' },
+  diaFondo: '#000000', diaLetra: '#FFFFFF', anchoInfo: 460, anchoImplementador: 120, anchoCasilla: 80
+};
+const DESC_PROTECCION_VISTA_MAIL_DIRECTA = 'RDV: la escribe el sistema (formato "Agenda Directa") — sólo se editan las columnas del equipo';
 
 /** Paso 16: una fila "en agenda" con la fecha pasada hace más de estos días es un aviso. */
 const AGENDA_DIAS_VENCIDA = 2;

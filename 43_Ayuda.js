@@ -65,7 +65,10 @@ const AYUDA_LEER_ = [
   ['item', 'Las reuniones de la semana, tomadas del mail "Agenda Encuentros de vecinos con …" (CM y Ministros y JM).'],
   ['item', '"Agenda": la semana en curso. "Agenda cerrada": las semanas anteriores.'],
   ['item', '"AgendaCall": las mismas reuniones que "Agenda", con otro orden de columnas y un color por fila.'],
-  ['item', '"Agenda (mail)": la semana como se ve el mail: un renglón negro por día y una celda por reunión (Evento / Hora / Lugar).'],
+  ['item', '"Agenda (mail)": la semana como se ve el mail: un renglón negro por día y una celda por reunión (Evento / Hora / Lugar).', null, 'noDirecta'],
+  // 15/10: con AGENDA_MAIL_FORMATO_DIRECTA, "Agenda (mail)" tiene el formato de "Agenda Directa" (47_AgendaDirecta.js): ver filasAyuda_
+  ['item', '"Agenda (mail)": la semana como se ve el mail, con el formato de "Agenda Directa": Info (Evento / Hora / Lugar) y las columnas del equipo; un renglón por día.', null, 'directa'],
+  ['item', '"Agenda Directa" es del equipo: el sistema no la escribe, no la mueve y no la protege (sólo la lee para copiar su formato).', null, 'directa'],
   ['seccion', 'CÓMO SE ACTUALIZA'],
   ['item', 'Sola, cada hora. Toma siempre la ÚLTIMA versión del mail de cada semana.'],
   ['item', 'Si cambia la hora, la dirección o el lugar, se actualiza y queda anotado en "Cambios".'],
@@ -76,11 +79,17 @@ const AYUDA_LEER_ = [
   ['item', 'Amarillo: hoy y lo que queda de esta semana.', 'hoy'],
   ['item', 'Rosado: la semana siguiente.', 'siguiente'],
   ['item', 'En "Agenda (mail)": lo que cambió entre versiones del mail, en naranja y negrita; una reunión que salió del mail, tachada en gris.'],
-  ['seccion', 'COLUMNAS DEL EQUIPO ("Agenda (mail)")'],
-  ['item', 'Responsable (desplegable), Check 1 y Check 2 (casillas): las carga el equipo. Son lo único que se edita en esa solapa.'],
-  ['item', 'Los títulos se pueden cambiar: el sistema reconoce esas columnas por su lugar (B, C y D), no por el nombre.'],
-  ['item', 'Lo que se carga no se pierde: se guarda por reunión y vuelve a su lugar aunque cambie la hora, el día o el orden. Si la reunión sale del mail, queda tachada con lo cargado.'],
-  ['item', 'Los nombres del desplegable están en la columna G ("Responsables (opciones)"): se agregan o cambian ahí.'],
+  ['seccion', 'COLUMNAS DEL EQUIPO ("Agenda (mail)")', null, 'noDirecta'],
+  ['item', 'Responsable (desplegable), Check 1 y Check 2 (casillas): las carga el equipo. Son lo único que se edita en esa solapa.', null, 'noDirecta'],
+  ['item', 'Los títulos se pueden cambiar: el sistema reconoce esas columnas por su lugar (B, C y D), no por el nombre.', null, 'noDirecta'],
+  ['item', 'Lo que se carga no se pierde: se guarda por reunión y vuelve a su lugar aunque cambie la hora, el día o el orden. Si la reunión sale del mail, queda tachada con lo cargado.', null, 'noDirecta'],
+  ['item', 'Los nombres del desplegable están en la columna G ("Responsables (opciones)"): se agregan o cambian ahí.', null, 'noDirecta'],
+  ['seccion', 'COLUMNAS DEL EQUIPO ("Agenda (mail)", formato "Agenda Directa")', null, 'directa'],
+  ['item', 'Implementador (desplegable); CONVOCATORIA (Hecho, Ok Sol, Programado, IVR), CONFIRMACIÓN, POST y CANCELACIÓN (Ok Sol, Programado), casillas: las carga el equipo. Son lo único que se edita en esa solapa.', null, 'directa'],
+  ['item', 'El sistema reconoce cada columna por el texto de su encabezado (grupo y subcolumna): no cambiar los títulos.', null, 'directa'],
+  ['item', 'Lo que se carga no se pierde: se guarda por reunión y vuelve a su lugar aunque cambie la hora, el día o el orden. Si la reunión sale del mail, queda tachada con lo cargado.', null, 'directa'],
+  ['item', 'Se puede trabajar en "Agenda (mail)" o en "Agenda Directa": lo de "Agenda (mail)" lo guarda el sistema; lo de "Agenda Directa" queda en esa solapa (el sistema no la toca).', null, 'directa'],
+  ['item', 'El desplegable de Implementador es el mismo de "Agenda Directa" (si allá no hay, sus nombres están a la derecha, en "Implementadores (opciones)").', null, 'directa'],
   ['seccion', 'QUÉ SIGNIFICAN LAS COLUMNAS (las menos obvias)'],
   ['item', 'Barrio calculado: sale de la dirección. Vacío si no hay dirección o el lugar está en un límite (ver "Sin barrio porque").'],
   ['item', 'No participa / Conjunta con: figuras marcadas "NO PARTICIPA" y las que comparten la reunión.'],
@@ -101,6 +110,8 @@ function filasAyuda_(def) {
   const colores = _coloresAyuda_(), out = [];
   def.forEach(function (l) {
     if (l[3] === 'formsSinFila' && !FORMULARIOS_SIN_FILA_ACTIVA) return;   // la solapa todavía no existe (13/10)
+    if (l[3] === 'directa' && !AGENDA_MAIL_FORMATO_DIRECTA) return;        // "Agenda (mail)" todavía con el formato de siempre (15/10)
+    if (l[3] === 'noDirecta' && AGENDA_MAIL_FORMATO_DIRECTA) return;        // "Agenda (mail)" ya con el formato de "Agenda Directa"
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });
@@ -161,8 +172,8 @@ function _escribirSolapaAyuda_(ss, nombre, def, escribe, dondeTexto) {
   });
   sh.setFrozenRows(1);
   sh.setHiddenGridlines(true);
-  ss.setActiveSheet(sh);
-  ss.moveActiveSheet(1);                                   // la primera de la izquierda
+  // la primera de la izquierda; si ya lo es, no se mueve nada (15/10: moverla corre a las demás, también a las del equipo)
+  if (ss.getSheets()[0].getName() !== nombre) { ss.setActiveSheet(sh); ss.moveActiveSheet(1); }
   const prot = _protegerAyuda_(sh);
   SpreadsheetApp.flush();
   Logger.log('>>> "%s" escrita: %s filas, primera de la izquierda, protegida (%s).', nombre, n, prot);
