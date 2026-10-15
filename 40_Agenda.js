@@ -217,6 +217,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
   const cmp = function (v, n) { return valorAgendaComparable_(v, n); };
   const col = function (n) { return A[n] == null ? null : A[n] + 1; };
+  // 15/10: las reglas nuevas, con su interruptor (la medición en seco las fuerza por `opciones`).
+  const seguridadPorComuna = opciones.seguridadPorComuna !== undefined ? !!opciones.seguridadPorComuna : AGENDA_SEGURIDAD_POR_COMUNA;
 
   // Índices del destino
   const porFigFecha = new Map(), porFecha = new Map(), usadas = new Set();
@@ -264,9 +266,19 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     } else {
       const delDia = porFecha.get(ymd_(ev.fecha)) || [];
       const dir = normalizeText_(ev.lugarTexto);
-      c = delDia.filter(function (f) {
-        if (!esVacio_(val(f, 'agenda_uid')) && normalizeText_(val(f, 'agenda_direccion_escrita')) === dir && dir) return true;
-        if (!f.figura && (ubica(ev, f) || (dir && normalizeText_(val(f, 'Dirección')) === dir))) return true;
+      // 15/10 (AGENDA_SEGURIDAD_POR_COMUNA, casos 829/830 y 833/835): "A CONFIRMAR" no es una dirección (no identifica
+      // nada: dos Seguridad del mismo día la comparten), y la fila de la agenda con el mismo "Lugar (mail)", el mismo tipo
+      // y un grupo compatible ES la reunión (aunque la dirección haya cambiado de "A CONFIRMAR" a una calle).
+      const dirVale = !seguridadPorComuna || esDireccionReal_(ev.lugarTexto);
+      if (seguridadPorComuna) {
+        c = delDia.filter(function (f) {
+          return mismaReunionSinFiguraAgenda_(ev, str(val(f, 'agenda_uid')), str(val(f, 'Lugar (mail)')), str(val(f, 'Evento (mail)')),
+                                              str(val(f, 'agenda_mail')));
+        });
+      }
+      if (!c.length) c = delDia.filter(function (f) {
+        if (dirVale && !esVacio_(val(f, 'agenda_uid')) && normalizeText_(val(f, 'agenda_direccion_escrita')) === dir && dir) return true;
+        if (!f.figura && (ubica(ev, f) || (dirVale && dir && normalizeText_(val(f, 'Dirección')) === dir))) return true;
         return ubica(ev, f) && !nombradas.has(normalizeText_(f.figura) + '|' + ymd_(f.fecha));
       });
     }
@@ -677,6 +689,53 @@ function _origenAgenda_(ev) {
   return str(ev.asunto) + ' | ' + Utilities.formatDate(ev.mailFecha, RDV_TZ, 'dd/MM/yyyy HH:mm');
 }
 
+// ===================== 15/10: la reunión sin figura por su identidad del mail (AGENDA_SEGURIDAD_POR_COMUNA) =====================
+
+/**
+ * ¿Es una dirección de verdad? Sólo con calle y número (`direccionComparable_`). "A CONFIRMAR (NO SE COMUNICA LA
+ * DIRECCIÓN)", un nombre de lugar o nada: no. Una "dirección" que no es dirección no identifica ninguna reunión: dos
+ * Seguridad del mismo día la comparten (caso 833/835).
+ */
+function esDireccionReal_(s) {
+  const t = str(s);
+  if (!t || /\ba confirmar\b|\bno se comunica\b/.test(normalizeText_(t))) return false;
+  return direccionComparable_(t) != null;
+}
+
+/** El tipo de reunión (AGENDA_TIPOS, el mismo orden que el parser) de un texto de evento del mail; '' si no se reconoce. */
+function tipoAgendaDeTexto_(texto) {
+  const n = normalizeText_(texto);
+  for (let i = 0; i < AGENDA_TIPOS.length; i++) if (AGENDA_TIPOS[i].re.test(n)) return AGENDA_TIPOS[i].tipo;
+  return '';
+}
+
+/** El grupo del mail ("CM y Ministros", "JM"…) de un agenda_mail ("asunto | dd/MM/yyyy HH:mm"); '' si no se lee. */
+function grupoDeAgendaMail_(agendaMail) {
+  const asunto = str(agendaMail).replace(/\s*\|\s*\d{1,2}\/\d{1,2}\/\d{4}(?:\s+\d{1,2}:\d{2})?\s*$/, '');
+  if (!asunto) return '';
+  const sem = _semanaAgenda_(asunto, '', new Date());
+  return sem && sem.grupo && sem.grupo !== '(sin grupo)' ? sem.grupo : '';
+}
+
+/**
+ * **¿La fila es la de esta reunión SIN figura?** (15/10, AGENDA_SEGURIDAD_POR_COMUNA): una Seguridad en tu Barrio se
+ * identifica por grupo + fecha + el LUGAR que dice el mail (la comuna), no por la dirección (que llega "A CONFIRMAR" y
+ * después cambia). La fila (de la misma fecha: eso lo mira quien llama) tiene que ser de la agenda (agenda_uid), con el
+ * mismo "Lugar (mail)", el mismo tipo en "Evento (mail)" y, si los dos se leen, un grupo de la reunión (el suyo o uno de
+ * los otros grupos que la traen). La Figura de la fila no importa: la de una Seguridad la completa RDV CONJUNTO.
+ */
+function mismaReunionSinFiguraAgenda_(ev, uid, lugarMail, eventoMail, agendaMail) {
+  if (!ev || ev.figuraFila || !uid || !ev.lugar || !lugarMail || !eventoMail) return false;
+  if (normalizeText_(lugarMail) !== normalizeText_(ev.lugar)) return false;
+  if (tipoAgendaDeTexto_(eventoMail) !== (ev.tipo || '')) return false;
+  const g = grupoDeAgendaMail_(agendaMail);
+  if (g && ev.grupo && ev.grupo !== '(sin grupo)') {
+    const deLaReunion = [ev.grupo].concat(ev.otrosGrupos || []).map(normalizeText_);
+    if (deLaReunion.indexOf(normalizeText_(g)) < 0) return false;
+  }
+  return true;
+}
+
 /**
  * Vincular una fila que ya existía (regla 4): agenda_uid, y sólo las celdas vacías. Una celda del equipo que
  * replica lo que dice el mail queda anotada como del sistema (sigue al mail); una que dice otra cosa, no.
@@ -799,6 +858,8 @@ function _barrioAgenda_(opciones, P) {
   let cache = null, poligonos = null;
   const nuevas = [];
   P.geocodeNuevas = nuevas;
+  // 15/10: con su interruptor (la medición en seco lo fuerza por `opciones.barrioDelMail`)
+  const barrioDelMail = opciones && opciones.barrioDelMail !== undefined ? !!opciones.barrioDelMail : AGENDA_BARRIO_DEL_MAIL;
   let llamadas = 0;
   const memo = new Map();
   return function (ev) {
@@ -809,9 +870,16 @@ function _barrioAgenda_(opciones, P) {
   };
   function _barrioAgendaUna_(ev) {
     const sumar = function (k) { P.barrio[k] = (P.barrio[k] || 0) + 1; };
+    // 15/10 (AGENDA_BARRIO_DEL_MAIL, caso 824): sin barrio por la dirección, el barrio que el mail da como lugar (si Comunas
+    // lo tiene), salvo que la dirección se haya geocodificado bien a OTRO barrio (`res`): ahí se contradicen y no va nada.
+    const vacio = function (clave, b, res) {
+      const m = barrioDelMail ? barrioDelLugarMailAgenda_(ev, res) : null;
+      if (m) { sumar('escrito (el barrio del mail, "Lugar (mail)")'); return m; }
+      sumar(clave);
+      return b;
+    };
     if (!ev.direccion || _noEsDireccion_(ev.direccion)) {
-      sumar('sin dirección (A CONFIRMAR o sin altura)');
-      return { barrio: '', motivo: ev.direccionAConfirmar ? 'A CONFIRMAR' : 'sin dirección con altura' };
+      return vacio('sin dirección (A CONFIRMAR o sin altura)', { barrio: '', motivo: ev.direccionAConfirmar ? 'A CONFIRMAR' : 'sin dirección con altura' });
     }
     if (!poligonos) poligonos = _poligonosBarrios_();
     const consulta = _consultaGeocode_(ev.direccion);
@@ -821,7 +889,7 @@ function _barrioAgenda_(opciones, P) {
       if (!cache) cache = _leerCacheGeocode_();
       g = cache.get(consulta);
       if (!g) {
-        if (llamadas >= GEOCODE_MAX_POR_CORRIDA) { sumar('pendiente: tope de geocodificación'); return { barrio: '', motivo: 'tope' }; }
+        if (llamadas >= GEOCODE_MAX_POR_CORRIDA) return vacio('pendiente: tope de geocodificación', { barrio: '', motivo: 'tope' });
         g = _geocodificar_(consulta, true);
         llamadas++;
         if (g.estado !== 'ERROR') { cache.set(consulta, g); nuevas.push(g); }
@@ -835,9 +903,21 @@ function _barrioAgenda_(opciones, P) {
       if (regla.nota) (P.notasEje = P.notasEje || []).push({ ev: ev, barrio: res.barrio, nota: regla.nota });
       return { barrio: res.barrio, motivo: 'cumple', por: regla.por || '', nota: regla.nota || '' };
     }
-    sumar('vacío: ' + regla.motivo.replace(/\d+ m/, 'N m'));
-    return { barrio: '', motivo: regla.motivo, res: res };
+    return vacio('vacío: ' + regla.motivo.replace(/\d+ m/, 'N m'), { barrio: '', motivo: regla.motivo, res: res }, res);
   }
+}
+
+/**
+ * **El barrio desde "Lugar (mail)"** (15/10, AGENDA_BARRIO_DEL_MAIL, caso 824): si el mail da como lugar un BARRIO (no una
+ * comuna ni un eje: `ev.lugarTipo` 'barrio') que Comunas tiene, ese barrio canónico. `null` si no, o si la dirección se
+ * geocodificó bien (`res.estado` 'ok') a OTRO barrio: el mail y la dirección se contradicen y no se escribe ninguno.
+ */
+function barrioDelLugarMailAgenda_(ev, res) {
+  if (!ev || ev.lugarTipo !== 'barrio' || !ev.barrio) return null;
+  const canon = _canonBarrioAg_(ev.barrio);
+  if (!canon || comunaDeBarrio_(canon) == null) return null;
+  if (res && res.estado === 'ok' && res.barrio && normalizeText_(_canonBarrioAg_(res.barrio) || res.barrio) !== normalizeText_(canon)) return null;
+  return { barrio: canon, motivo: 'cumple', por: 'el barrio del mail ("Lugar (mail)")' };
 }
 
 // ===================== Seguridad en tu Barrio: la figura desde RDV CONJUNTO =====================

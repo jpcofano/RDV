@@ -4917,6 +4917,36 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     }
   });
   const conflictos = new Set(), conflictosOr = new Set();
+  // 15/10: 2+ filas de RDV CONJUNTO en la misma fila de la base → la de su ubicación (CONJUNTO_REPETIDA_POR_UBICACION;
+  // la medición en seco lo fuerza con opciones.repetidaPorUbicacion).
+  const repetida = opciones && opciones.repetidaPorUbicacion !== undefined ? !!opciones.repetidaPorUbicacion : CONJUNTO_REPETIDA_POR_UBICACION;
+  const pendientes = [];
+  r.repetidasElegidas = []; r.repetidasSinDecidir = [];
+  /** Los asistentes y oradores de una fila de RDV CONJUNTO, a su fila de la base (con los conflictos de siempre). */
+  const tomarValores = function (i, row, f, nombre, asis) {
+    if (!(asis > 0)) { r.sinAsistentes++; r.filasSinAsis[f.fila] = true; return; }
+    const ya = r.porFila.get(f.fila);
+    if (ya && ya.asis !== asis) {
+      if (!conflictos.has(f.fila)) r.conflicto.push({ f: f, a: ya.asis, b: asis });
+      conflictos.add(f.fila);
+      return;
+    }
+    r.porFila.set(f.fila, { asis: asis, nombre: nombre, filaConjunto: i + 1 });
+    // Los oradores, de la misma fila de RDV CONJUNTO (sólo de las que tienen asistentes, como Asistentes).
+    COLUMNAS_ORADORES.forEach(function (n, j) {
+      const v = row[iOr[j]];
+      if (esVacio_(v)) return;
+      const o = r.oradores.get(f.fila) || {};
+      if (o[n] !== undefined && !_igualOrador_(o[n], v)) {
+        const clave = f.fila + '|' + n;
+        if (!conflictosOr.has(clave)) r.conflictoOradores.push({ f: f, col: n, a: o[n], b: v });
+        conflictosOr.add(clave);
+        return;
+      }
+      o[n] = v;
+      r.oradores.set(f.fila, o);
+    });
+  };
   for (let i = 1; i < vals.length; i++) {
     const row = vals[i];
     if (row.every(function (v) { return esVacio_(v); })) continue;
@@ -4963,35 +4993,65 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     }
     r.encuentran++;
     r.parDe.set(i + 1, f.fila);                       // fila de RDV CONJUNTO → fila del destino (para medir, paso 45)
-    if (!(asis > 0)) { r.sinAsistentes++; r.filasSinAsis[f.fila] = true; continue; }
-    const ya = r.porFila.get(f.fila);
-    if (ya && ya.asis !== asis) {
-      if (!conflictos.has(f.fila)) r.conflicto.push({ f: f, a: ya.asis, b: asis });
-      conflictos.add(f.fila);
-      continue;
-    }
-    r.porFila.set(f.fila, { asis: asis, nombre: nombre });
-    // Los oradores, de la misma fila de RDV CONJUNTO (sólo de las que tienen asistentes, como Asistentes).
-    COLUMNAS_ORADORES.forEach(function (n, j) {
-      const v = row[iOr[j]];
-      if (esVacio_(v)) return;
-      const o = r.oradores.get(f.fila) || {};
-      if (o[n] !== undefined && !_igualOrador_(o[n], v)) {
-        const clave = f.fila + '|' + n;
-        if (!conflictosOr.has(clave)) r.conflictoOradores.push({ f: f, col: n, a: o[n], b: v });
-        conflictosOr.add(clave);
-        return;
-      }
-      o[n] = v;
-      r.oradores.set(f.fila, o);
-    });
+    // 15/10 (CONJUNTO_REPETIDA_POR_UBICACION): los valores se toman después, cuando se sabe si otra fila de RDV CONJUNTO
+    // cae en la misma fila de la base (abajo). Apagado, en el acto, como siempre.
+    if (repetida) { pendientes.push({ i: i, row: row, f: f, nombre: nombre, bar: bar, asis: asis }); continue; }
+    tomarValores(i, row, f, nombre, asis);
   }
+  if (repetida) _resolverConjuntoRepetido_(r, pendientes, iDir, iDirD, iOr, comunas, tomarValores);
   conflictos.forEach(function (fila) { r.porFila.delete(fila); r.oradores.delete(fila); });
   conflictosOr.forEach(function (clave) {
     const p = clave.split('|'), o = r.oradores.get(Number(p[0]));
     if (o) delete o[p[1]];
   });
   return r;
+}
+
+/**
+ * **RDV CONJUNTO repetido** (15/10, CONJUNTO_REPETIDA_POR_UBICACION; caso Macri 15/10: Villa Santa Rita y Villa Devoto con
+ * la misma dirección, para UNA fila de la base). Las filas de RDV CONJUNTO ya cruzadas (`pendientes`), agrupadas por la fila
+ * de la base en la que cayeron. Con una sola, como siempre. Con 2+:
+ *   1. la ÚNICA cuya ubicación coincide con la de la fila (`_ubicConjuntoFila_` === true) si TODAS las otras no coinciden
+ *      (=== false; una que no se puede comparar no deja decidir);
+ *   2. si no, la ÚNICA con la misma dirección que la fila (exacta; si no hay, parecida; "A CONFIRMAR" no es dirección);
+ *   3. si no, y todas traen lo mismo (asistentes y oradores), todas: no hay nada que elegir (es lo de antes);
+ *   4. si no, NINGUNA: no se escribe nada en esa fila y se lista (`r.repetidasSinDecidir`).
+ * Las elegidas por 1 o 2 quedan en `r.repetidasElegidas`. Sólo lee: `tomarValores` llena porFila y oradores.
+ */
+function _resolverConjuntoRepetido_(r, pendientes, iDir, iDirD, iOr, comunas, tomarValores) {
+  const grupos = new Map();
+  pendientes.forEach(function (p) {
+    if (!grupos.has(p.f.fila)) grupos.set(p.f.fila, []);
+    grupos.get(p.f.fila).push(p);
+  });
+  const huella = function (p) {
+    return [p.asis > 0 ? p.asis : ''].concat(iOr.map(function (k) { return esVacio_(p.row[k]) ? '' : String(p.row[k]).trim(); })).join('|');
+  };
+  grupos.forEach(function (lista, fila) {
+    if (lista.length === 1) { const p = lista[0]; tomarValores(p.i, p.row, p.f, p.nombre, p.asis); return; }
+    const f = lista[0].f;
+    const desc = function (p) { return 'RDV CONJUNTO fila ' + (p.i + 1) + ' (' + (p.bar || 'sin barrio') + (iDir != null && str(p.row[iDir]) ? ', ' + str(p.row[iDir]) : '') + ')'; };
+    let elegidas = null, por = '';
+    const u = lista.map(function (p) { return _ubicConjuntoFila_(p.bar, f, comunas); });
+    const si = lista.filter(function (p, k) { return u[k] === true; });
+    if (si.length === 1 && u.filter(function (x) { return x === false; }).length === lista.length - 1) { elegidas = si; por = 'ubicación'; }
+    if (!elegidas && iDir != null && iDirD != null) {
+      const ex = lista.filter(function (p) { return compararDirecciones_(p.row[iDir], f.valores[iDirD]) === 'exacta'; });
+      const pa = ex.length ? ex : lista.filter(function (p) { return compararDirecciones_(p.row[iDir], f.valores[iDirD]) === 'parecida'; });
+      if (pa.length === 1) { elegidas = pa; por = 'dirección ' + (ex.length ? 'exacta' : 'parecida'); }
+    }
+    if (!elegidas && lista.every(function (p) { return huella(p) === huella(lista[0]); })) { elegidas = lista; por = 'iguales'; }
+    if (!elegidas) {
+      r.repetidasSinDecidir.push({ f: f, filas: lista.map(function (p) { return p.i + 1; }), texto: lista.map(desc).join(' / '),
+                                   valores: lista.map(function (p) { return p.asis > 0 ? p.asis : '(sin asistentes)'; }) });
+      return;
+    }
+    if (por !== 'iguales') {
+      r.repetidasElegidas.push({ f: f, por: por, elegida: elegidas[0].i + 1, texto: desc(elegidas[0]),
+                                 descartadas: lista.filter(function (p) { return elegidas.indexOf(p) < 0; }).map(desc).join(' / ') });
+    }
+    elegidas.forEach(function (p) { tomarValores(p.i, p.row, p.f, p.nombre, p.asis); });
+  });
 }
 
 /**
@@ -5073,6 +5133,14 @@ function _logCruceAsistentes_(r, detalle) {
              r.destinoSinBarrio, r.sinAsistentes, r.conflicto.length);
   Logger.log('  oradores: filas con algún valor %s | dos valores distintos para la misma fila (no se escriben) %s',
              r.oradores.size, r.conflictoOradores.length);
+  // 15/10 (CONJUNTO_REPETIDA_POR_UBICACION): sólo con la regla prendida hay algo que decir.
+  if ((r.repetidasElegidas && r.repetidasElegidas.length) || (r.repetidasSinDecidir && r.repetidasSinDecidir.length)) {
+    Logger.log('  RDV CONJUNTO repetido (2+ filas para una fila de la base): elegida por ubicación o dirección %s | sin decidir ' +
+               '(no se escribe) %s', r.repetidasElegidas.length, r.repetidasSinDecidir.length);
+    r.repetidasSinDecidir.slice(0, 20).forEach(function (x) {
+      Logger.log('    NO SE ESCRIBE fila %s | %s %s | %s', x.f.fila, x.f.figura, x.f.fecha ? fmtFecha_(x.f.fecha) : '', x.texto);
+    });
+  }
   r.conflictoOradores.slice(0, 20).forEach(function (x) {
     Logger.log('    fila %s | %s | %s: %s / %s', x.f.fila, x.f.figura, x.col, x.a, x.b);
   });

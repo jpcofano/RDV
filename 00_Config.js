@@ -1470,6 +1470,31 @@ const AGENDA_OPCIONES_CANCELACION = ['Se canceló: suspender/borrar', 'Sigue', '
  * (sólo lectura) dice qué cruces cambiarían; tiene que dar 0 cambios en los que ya están bien.
  */
 const CRUCE_CONJUNTO_POR_DIRECCION = true;   // 07/10: prendido con el paso 45 (CAMBIA 0, PIERDE 0; ESTADO 0.z)
+// ---------- 15/10: Seguridad en la agenda, el barrio del mail y RDV CONJUNTO repetido (APAGADOS hasta ver el en seco) ----------
+/**
+ * **La reunión SIN figura (Seguridad en tu Barrio) por su identidad del mail** (15/10, caso 829/830 y 833/835). Con `true`,
+ * en las candidatas de la agenda (`planAgenda_`, regla 4): (1) "A CONFIRMAR" —o cualquier texto sin calle y número— NO es
+ * una dirección: nunca cuenta como "misma Dirección" ni como "misma dirección escrita"; (2) una fila de la agenda de esa
+ * fecha con el mismo "Lugar (mail)" (la comuna que dice el mail), el mismo tipo ("Evento (mail)") y un grupo compatible
+ * (el de agenda_mail) ES la reunión: se actualiza (p. ej. la dirección "A CONFIRMAR" → "Navarro 3974"), no se crea otra.
+ * Con `false`, como antes. En seco: `medirReglasAgenda1510()` (diagnostico/30_duplicados_agenda.js).
+ */
+const AGENDA_SEGURIDAD_POR_COMUNA = false;
+/**
+ * **El barrio desde "Lugar (mail)"** (15/10, caso 824): con `true`, si el mail nombra un BARRIO como lugar (no una comuna
+ * ni un eje) y Comunas lo tiene, la agenda escribe ese Barrio (con su traza agenda_barrio_escrito, sólo donde ya podía
+ * escribir el Barrio) aunque la dirección sea "A CONFIRMAR". Si la dirección se geocodifica bien a OTRO barrio, no se
+ * escribe (se contradicen). Con `false`, el barrio sale sólo de la dirección. En seco: `medirReglasAgenda1510()`.
+ */
+const AGENDA_BARRIO_DEL_MAIL = false;
+/**
+ * **RDV CONJUNTO con la misma figura dos veces el mismo día para UNA fila de la base** (15/10, caso Macri 15/10: Villa
+ * Santa Rita y Villa Devoto con la misma dirección). Con `true`, en `cruzarAsistentes_`: si 2+ filas de RDV CONJUNTO caen en
+ * la misma fila de la base, vale la ÚNICA cuya ubicación coincide con la de la fila (y las otras no coinciden); si no, la
+ * única con la misma dirección; si no decide y no traen lo mismo, NO se escribe y se lista. Con `false`, como antes (con una
+ * sola fila de la figura ese día, el barrio sólo confirma). En seco: `medirConjuntoRepetido()`.
+ */
+const CONJUNTO_REPETIDA_POR_UBICACION = false;
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
