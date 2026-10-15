@@ -1615,10 +1615,55 @@ const AGENDA_MAIL_RARO_DIF = 3;
  * futura; la fila está "en agenda"; no es una reprogramación dentro de la semana (eso MUEVE la fecha). Si una salvaguarda
  * falla, no se suspende y se avisa (registrarAviso_('cancelacion_no_aplicada')); cada suspensión, registrarAviso_('suspendidas').
  * Para prenderlo: AGENDA_CANCELACION_AUTOMATICA = true y AGENDA_CANCELACION_MODO = 'suspender' (medir antes: paso 78).
+ *
+ * 15/10 (noche, decisión del usuario: "EL MAIL MANDA"), con el modo 'suspender':
+ *   - CANCELADA EN EL MAIL = (a) desapareció en una versión nueva completa (lo de arriba), o (b) está en ROJO ENTERO (Evento,
+ *     Hora y Lugar) en la última versión válida de su semana (sólo con AGENDA_COLORES_MAIL, abajo). Las dos → "Suspendida";
+ *   - EL TIEMPO (reemplaza el resguardo "no tocar una reunión que ya pasó hoy"): se suspende —también el mismo día, o si ya
+ *     pasó la hora— SIEMPRE QUE el mail que la cancela sea ANTERIOR a la fecha y hora de la reunión (la del mail; si no trae,
+ *     la de la fila; sin ninguna, el final de ese día). Mail posterior a la reunión: no se toca y se avisa
+ *     (cancelacion_no_aplicada). Una desaparecida cuyo mail es de un día POSTERIOR a la reunión no es una cancelación (como
+ *     siempre: "ya había pasado cuando salió del mail"), no avisa;
+ *   - sólo filas con STATUS "en agenda" (la ponga el sistema o el equipo: el mail manda); ya "Suspendida": nada; otro STATUS
+ *     (Realizada, Reprogramada…): no se toca y se avisa (cancelacion_no_aplicada; caso: la 824, Realizada con asistentes);
+ *   - nunca se borra; las demás salvaguardas siguen (60%, formato raro H4, la reprogramación dentro de la semana se MUEVE).
  */
 // 15/10 (revisor): 'suspender' por defecto: prender sólo AGENDA_CANCELACION_AUTOMATICA nunca puede borrar filas. La regla 7 que
 // borra pide escribir 'regla7' a propósito. Mientras la automática esté apagada, esto no cambia nada.
 const AGENDA_CANCELACION_MODO = 'suspender';
+// ---------- 15/10 (noche): LOS COLORES DEL MAIL (41_AgendaColores.js; APAGADOS hasta ver los pasos 91 y 93) ----------
+/**
+ * **Leer el color del mail de agenda** (decisión del usuario: CANCELADA EN EL MAIL = SUSPENDIDA). Con `true`: la agenda lee
+ * además el HTML de cada mail (getBody(), el mismo mensaje; los más nuevos primero y con el tope de tiempo de abajo) y a cada
+ * reunión de cada versión le pone `ev.colorMail` = { familia, porCampo: {día, Evento, Hora, Lugar}, entera, rojoEntero }, con
+ * la MISMA detección que el paso 90 (VERDE / AMARILLO / ROJO / OTRO por el tono del fondo; "entera" = al menos
+ * COLORES_MAIL_ENTERA de las letras de Evento, Hora y Lugar con ese fondo). Una reunión en ROJO ENTERO en la última versión
+ * válida de su semana + grupo (la versión de la que sale en el estado de la semana: la última completa, o un "Re:"
+ * posterior que la vuelve a nombrar —un "Re:" agrega o actualiza, también el color—) queda `ev.canceladaEnMail = true` y
+ * `ev.canceladaEnMailMotivo = 'rojo en la vN del dd/MM'`. Las NOTAS del mail ("SE CANCELA …", "CAMBIO DE DÍA …", "CAMBIA DE
+ * LUGAR …": COLORES_MAIL_PALABRAS) se pegan a la reunión que nombran (figura, comuna o barrio): `ev.notasMail`,
+ * `ev.notaCancela`. Las notas NO actúan solas: van al aviso y a la auditoría (paso 66) como confirmación del color.
+ * La suspensión por rojo la hace la cancelación automática (AGENDA_CANCELACION_AUTOMATICA + modo 'suspender', arriba). Una
+ * fila que el sistema suspendió por rojo NO se reactiva mientras siga en rojo; con este interruptor apagado, nunca se
+ * reactiva sola (no se puede saber si dejó de estar en rojo). Con `false`: no se lee el HTML y nada cambia.
+ */
+const AGENDA_COLORES_MAIL = false;
+/** El tope de tiempo de leer el HTML (getBody) en la corrida de la hora: los mails más viejos que no entran quedan sin color. */
+const AGENDA_COLORES_MAIL_MAX_MS = 60 * 1000;
+/** Una fracción de las letras de la línea (sin la etiqueta) con un color: "entera" desde acá (paso 90). */
+const COLORES_MAIL_ENTERA = 0.8;
+/** Las palabras de las notas del mail (sobre el texto normalizado: sin tildes ni mayúsculas). Con /g: usar sólo con match. */
+const COLORES_MAIL_PALABRAS = /suspend|cancel|cambi\w*\s+(?:de\s+|el\s+|la\s+)?(?:dia|fecha|horario|hora|lugar)|reprogram|posterg|a confirmar|a definir|no se realiza|se pasa\b|se cae\b|se baja\b/g;
+/** De esas notas, las que dicen que la reunión NO se hace (confirman el rojo). */
+const AGENDA_NOTA_CANCELA = /suspend|cancel|no se realiza|se cae\b|se baja\b/;
+/**
+ * **AMARILLO y VERDE** (punto 5, después; APAGADO). Con `true` (y AGENDA_COLORES_MAIL): AMARILLO → en la copia del archivo
+ * "Agenda", "Cambios" dice 'cambió en el mail (amarillo): Hora / Lugar' y "Agenda (mail)" pinta esas líneas en naranja;
+ * VERDE → "Cambios" dice 'nueva (verde en el mail)'. Nunca escribe la base.
+ */
+const AGENDA_COLORES_AMARILLO_VERDE = false;
+/** La propiedad del script con las filas suspendidas por el sistema que ya avisaron que recibieron asistentes o inscriptos. */
+const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';

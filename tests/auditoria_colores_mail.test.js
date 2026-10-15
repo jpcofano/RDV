@@ -16,7 +16,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = r
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js', '51_FormatoLectura.js',
-                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', '47_AgendaVistas.js', '25_Elecciones.js', '45_IdsCuentas.js',
+                  '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', '47_AgendaVistas.js', '25_Elecciones.js', '45_IdsCuentas.js',
                   'diagnostico/31_auditoria_cancelaciones.js', 'diagnostico/34_colores_mail.js'].filter(function (f) { return fs.existsSync(path.join(RAIZ, f)); });
 const HOY = new Date(2026, 9, 15, 12, 0, 0);
 class D extends Date {

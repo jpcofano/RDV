@@ -13,7 +13,7 @@ process.env.TZ = 'America/Argentina/Buenos_Aires';
 const vm = require('vm'), fs = require('fs'), path = require('path');
 
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', 'diagnostico/03_muestras_mail.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js',
+const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', 'diagnostico/03_muestras_mail.js', '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js',
                   'diagnostico/16_agenda_medicion.js'];
 
 const pad = function (n) { return ('0' + n).slice(-2); };

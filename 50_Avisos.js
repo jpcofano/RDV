@@ -24,6 +24,8 @@
  *     'invariante_agenda'       "una reunión, una fila" roto (lo registra la agenda);
  *     'mail_raro'               un mail de agenda raro (lo registra la agenda);
  *     'cancelacion_no_aplicada' una salvaguarda frenó una cancelación (lo registra la agenda);
+ *     'suspendida_con_datos'    una fila que suspendió el sistema recibió después asistentes o inscriptos: no se pisó nada
+ *                               (lo registra la agenda, una vez por fila; 15/10, noche);
  * - 'suspendidas' (lo registra la agenda, una línea por reunión suspendida): NO va de a una. Se anota en la solapa
  *   AVISOS_SUSPENDIDAS (intermedia) y sale en UN mail por día, "reuniones suspendidas hoy", en la primera corrida desde las
  *   AVISOS_SUSPENDIDAS_HORA; el lunes, además, en el resumen semanal.
@@ -51,6 +53,7 @@ const AVISOS_TITULOS_ = {
   mail_raro: 'llegó un mail de agenda raro',
   cancelacion_no_aplicada: 'una cancelación de la agenda NO se aplicó (la frenó una salvaguarda)',
   suspendidas: 'reuniones suspendidas hoy',
+  suspendida_con_datos: 'una reunión que el sistema suspendió recibió asistentes o inscriptos (no se pisó nada)',
   resumen_semanal: 'resumen semanal'
 };
 /** Cuántos textos entran en un mail (los demás: "y N más"). */
@@ -431,7 +434,8 @@ function filasAuditoriaAgenda_(R) {
             k('FALTA EN LA BASE') + ' | DUPLICADA ' + k('DUPLICADA')]);
     m.push(['resumen', 'filas de la base sin reunión en el mail: ' + k('FILA SIN MAIL') + ' | ambiguas: ' + k('AMBIGUAS') +
             ' | creadas (14 días) con algo para revisar: ' + k('CREADAS CON PROBLEMAS') + ' | AGENDA_DUPLICADOS pendientes: ' +
-            k('DUPLICADOS PENDIENTES') + ' | Seguridad sin figura: ' + k('FIGURA A COMPLETAR')]);
+            k('DUPLICADOS PENDIENTES') + ' | Seguridad sin figura: ' + k('FIGURA A COMPLETAR') +
+            (c['SUSPENDIDAS CON DATOS'] != null ? ' | suspendidas por el sistema con asistentes o inscriptos: ' + c['SUSPENDIDAS CON DATOS'] : '')]);
     const copias = (res.extra && res.extra.copias) || {};
     Object.keys(copias).forEach(function (n) {
       const x = copias[n];

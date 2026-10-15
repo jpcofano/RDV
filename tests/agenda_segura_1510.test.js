@@ -15,7 +15,7 @@ const vm = require('vm'), fs = require('fs'), path = require('path'), crypto = r
 
 const RAIZ = path.join(__dirname, '..');
 const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.js', '20_UpsertDestino.js', '49_Corridas.js',
-                  '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
+                  '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
                   'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js',
                   'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js', '25_Elecciones.js',
                   'diagnostico/22_previsualizar.js', 'diagnostico/30_duplicados_agenda.js', 'diagnostico/32_medir_agenda_segura.js'];
@@ -500,13 +500,18 @@ q = caso('sigue', [J1, J2], null, { cancelacionAutomatica: false });
 ok(q.status === 'en agenda' && dups(q.X).some(function (x) { return x[3] === 'cancelación' && /elegir/.test(x[2]); }), 'APAGADA: se pregunta (como hoy)');
 r = correr(q.X, false, [J1, J2]);
 ok(celda(q.X, q.k, 'STATUS REUNIÓN') === 'Suspendida', 'y la pregunta pendiente se resuelve con la regla en la corrida siguiente (prendida)');
-// 15/10 (revisor): salió del mail siendo futura, pero HOY ya pasó (espera los asistentes): no se suspende
+// 15/10 (noche, "el mail manda"; reemplaza el resguardo del revisor "no una que ya pasó hoy"): el mail que la sacó (15/10
+// 09:00) es ANTERIOR a la reunión (17/10 10:00): se suspende aunque hoy (18/10) ya haya pasado
 q = caso('pasada hoy', [J1, J2], null, { hoy: dia(18) });
-ok(q.status === 'en agenda' && q.rr.suspender === 0, 'salió del mail siendo futura, pero hoy (18/10) ya pasó: no se suspende (podría pasar a Realizada)');
-// 15/10 (revisor): un "en agenda" que NO escribió el sistema (agenda_status_escrito vacío) se PREGUNTA, no se suspende solo
+ok(q.status === 'Suspendida' && q.rr.suspender === 1, 'salió del mail ANTES de la reunión y hoy (18/10) ya pasó: se suspende igual (el mail manda)');
+// el mail que la saca es del mismo día pero POSTERIOR a la hora de la reunión (17/10 11:00 contra 10:00): no se toca y se avisa
+q = caso('mail posterior', [J1, mail(17, 11, [MUZZIO, MACRI('A CONFIRMAR')], ASUNTO_12)], null, { hoy: dia(17) });
+ok(q.status === 'en agenda' && q.rr.suspender === 0 && q.rr.cancelNoAplicada === 1 &&
+   q.X.avisos.some(function (a) { return a[0] === 'cancelacion_no_aplicada' && /posterior a la reunión/.test(a[1]); }),
+   'el mail que la saca es posterior a la reunión (mismo día, después de la hora): no se toca y se avisa');
+// 15/10 (noche, "el mail manda"): un "en agenda" que NO escribió el sistema (agenda_status_escrito vacío) también se suspende
 q = caso('en agenda del equipo', [J1, J2], function (X, k) { X.D.v[k][X.C('agenda_status_escrito')] = ''; });
-ok(q.status === 'en agenda' && q.rr.suspender === 0 && dups(q.X).some(function (x) { return x[3] === 'cancelación' && /elegir/.test(x[2]); }),
-   'un "en agenda" que puso el equipo: se pregunta en AGENDA_DUPLICADOS, no se suspende solo');
+ok(q.status === 'Suspendida' && q.rr.suspender === 1, 'un "en agenda" que puso el equipo: también se suspende (el mail manda; antes se preguntaba)');
 // 15/10 (revisor): el modo por defecto de 00_Config.js es "suspender" (prender sólo la automática nunca borra)
 ok(/const AGENDA_CANCELACION_MODO = 'suspender';/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '00_Config.js'), 'utf8')),
    'AGENDA_CANCELACION_MODO = \'suspender\' por defecto en 00_Config.js');

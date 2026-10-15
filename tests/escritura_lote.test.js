@@ -32,7 +32,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/07_formulas_destino.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/09_validar_cuentas.js', 'diagnostico/10_mal_escritas.js',
                   'diagnostico/11_repintar.js', 'diagnostico/14_activadores.js', '99_Pipeline.js', '30_Derivadas.js', 'diagnostico/15_oradores.js',
-                  '27_RevisarFormato.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
+                  '27_RevisarFormato.js', '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/20_columnas_b.js',
                   'diagnostico/21_ubicacion.js', 'diagnostico/23_fichas_cercanas.js',
                   'diagnostico/24_columna_id.js', '44_Looker.js', 'diagnostico/25_looker_pruebas.js',
                   '45_IdsCuentas.js', 'diagnostico/26_ids_cuentas.js'];

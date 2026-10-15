@@ -28,6 +28,11 @@
  * el parser de la agenda (41_AgendaParser.js) y la lectura de la lista de IDs (`leerListaIds_`, 45_IdsCuentas.js: sólo
  * openById + getValues). Una lectura de Gmail por mensaje (la de diagnostico/31).
  *
+ * 15/10 (noche): la LECTURA DEL COLOR (`_colorColMail_`, `_htmlALineasColMail_`, `_letrasColMail_`, `_coloresDeMailColMail_`,
+ * `_principalColMail_`, `_camposTextoColMail_`…) y COLORES_MAIL_NOMBRES / COLORES_MAIL_CITA se MOVIERON a producción
+ * (41_AgendaColores.js), y COLORES_MAIL_ENTERA / COLORES_MAIL_PALABRAS a 00_Config.js: la agenda las usa con
+ * AGENDA_COLORES_MAIL. Este paso las llama igual (los mismos nombres): mide con la MISMA detección que usa la agenda.
+ *
  * LÍMITES de la lectura del color: las reglas de <style> se resuelven sólo para selectores de UNA clase (".x", "span.x"); un
  * color puesto por id, por selector compuesto o heredado por CSS de otra forma, no se ve. El fondo de un contenedor
  * (<table>/<tr>/<td>/<div>) sí se hereda a lo que tiene adentro (es lo que se ve). Un resaltado hecho con una imagen o con
@@ -44,26 +49,10 @@ const COLORES_MAIL_DIAS_BASE = 14;
 const COLORES_MAIL_DIAS_MOVIDA = 21;
 /** El caso del usuario: el "1 a 1" de Macri del martes 11/08 en Villa Riachuelo (mail del 07/08, grupo JM, semana del 10/08). */
 const COLORES_MAIL_CASO = { figura: 'Jorge Macri', fecha: '2026-08-11', barrio: 'Villa Riachuelo', grupo: 'JM', mail: '2026-08-07' };
-/** Las palabras que se marcan en las notas (sobre el texto normalizado: sin tildes ni mayúsculas). */
-const COLORES_MAIL_PALABRAS = /suspend|cancel|cambi\w*\s+(?:de\s+|el\s+|la\s+)?(?:dia|fecha|horario|hora|lugar)|reprogram|posterg|a confirmar|a definir|no se realiza|se pasa\b|se cae\b|se baja\b/g;
-/** Una fracción de las letras de la línea (sin la etiqueta) con un color: "entera" desde acá. */
-const COLORES_MAIL_ENTERA = 0.8;
 /** Cuántos ejemplos por lista, como mucho (para que el log se pueda leer). */
 const COLORES_MAIL_MAX_EJEMPLOS = 40;
-/** Los nombres de colores CSS / Outlook (mso-highlight) que se reconocen, a hex. */
-const COLORES_MAIL_NOMBRES = {
-  white: '#ffffff', window: '#ffffff', black: '#000000', windowtext: '#000000', red: '#ff0000', darkred: '#8b0000', maroon: '#800000',
-  green: '#008000', lime: '#00ff00', darkgreen: '#006400', lightgreen: '#90ee90', yellowgreen: '#9acd32', greenyellow: '#adff2f',
-  yellow: '#ffff00', lightyellow: '#ffffe0', darkyellow: '#808000', olive: '#808000', gold: '#ffd700', khaki: '#f0e68c',
-  orange: '#ffa500', darkorange: '#ff8c00', blue: '#0000ff', darkblue: '#00008b', navy: '#000080', lightblue: '#add8e6',
-  cyan: '#00ffff', aqua: '#00ffff', darkcyan: '#008b8b', teal: '#008080', magenta: '#ff00ff', fuchsia: '#ff00ff',
-  darkmagenta: '#8b008b', purple: '#800080', pink: '#ffc0cb', gray: '#808080', grey: '#808080', darkgray: '#a9a9a9',
-  darkgrey: '#a9a9a9', silver: '#c0c0c0', lightgray: '#d3d3d3', lightgrey: '#d3d3d3', whitesmoke: '#f5f5f5'
-};
 /** Las familias que se buscan, en el orden en que se listan. */
 const COLORES_MAIL_FAMILIAS = ['VERDE', 'AMARILLO', 'ROJO', 'OTRO'];
-/** La marca de una línea de cita en el texto que se le pasa a `_propioDeHtmlAudCan_` (la misma que diagnostico/31). */
-const COLORES_MAIL_CITA = String.fromCharCode(0xE002);
 
 // ===================== El punto de entrada =====================
 
@@ -129,287 +118,6 @@ function _seccionColMail_(C, nombre, fn) {
     Logger.log('>>> la sección "%s" FALLÓ: %s (las demás siguen)', nombre, m);
     C.errores.push(nombre + ': ' + m);
   }
-}
-
-// ===================== Los colores =====================
-
-/**
- * Un valor de color CSS → `null` (no hay color: transparent, none, inherit, initial, unset, currentcolor, alfa 0, o no se
- * entiende) o `{ raw, hex, blanco, familia, tono }` (`blanco`: blanco o casi blanco, todos los canales ≥ 240: tapa el
- * fondo de afuera pero no es un resaltado).
- */
-function _colorColMail_(valor) {
-  const raw = str(valor).toLowerCase().replace(/\s*!important\s*$/, '').replace(/\s+/g, ' ').trim();
-  if (!raw || /^(transparent|none|inherit|initial|unset|currentcolor|auto|revert)$/.test(raw)) return null;
-  let rgb = null, alfa = 1;
-  let m = /^#([0-9a-f]{3,8})$/.exec(raw);
-  if (m) {
-    const h = m[1];
-    if (h.length === 3 || h.length === 4) {
-      rgb = [0, 1, 2].map(function (i) { return parseInt(h[i] + h[i], 16); });
-      if (h.length === 4) alfa = parseInt(h[3] + h[3], 16) / 255;
-    } else if (h.length === 6 || h.length === 8) {
-      rgb = [0, 2, 4].map(function (i) { return parseInt(h.slice(i, i + 2), 16); });
-      if (h.length === 8) alfa = parseInt(h.slice(6, 8), 16) / 255;
-    } else return null;
-  }
-  if (!rgb) {
-    m = /^rgba?\(\s*([^)]*)\)$/.exec(raw);
-    if (m) {
-      const partes = m[1].split(/\s*[,\/]\s*|\s+/).filter(Boolean);
-      if (partes.length < 3) return null;
-      rgb = partes.slice(0, 3).map(function (p) { return /%$/.test(p) ? Math.round(parseFloat(p) * 2.55) : Math.round(parseFloat(p)); });
-      if (partes[3] != null) alfa = /%$/.test(partes[3]) ? parseFloat(partes[3]) / 100 : parseFloat(partes[3]);
-      if (rgb.some(function (x) { return isNaN(x); })) return null;
-    }
-  }
-  if (!rgb && COLORES_MAIL_NOMBRES[raw]) { const c = _colorColMail_(COLORES_MAIL_NOMBRES[raw]); if (c) c.raw = raw; return c; }
-  if (!rgb) return null;
-  if (!(alfa > 0)) return null;
-  rgb = rgb.map(function (x) { return Math.max(0, Math.min(255, x)); });
-  const hex = '#' + rgb.map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
-  const c = _familiaColMail_(rgb);
-  return { raw: raw, hex: hex, blanco: c.blanco, familia: c.familia, tono: c.tono };
-}
-
-/** La familia de un color rgb: por el tono (HSL). Gris/negro y casi blanco aparte. */
-function _familiaColMail_(rgb) {
-  const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  if (Math.min(rgb[0], rgb[1], rgb[2]) >= 240) return { blanco: true, familia: 'BLANCO', tono: 'blanco' };
-  if (d < 0.1) return { blanco: false, familia: 'OTRO', tono: max < 0.2 ? 'negro' : 'gris' };
-  let h;
-  if (max === r) h = 60 * (((g - b) / d) % 6);
-  else if (max === g) h = 60 * ((b - r) / d + 2);
-  else h = 60 * ((r - g) / d + 4);
-  if (h < 0) h += 360;
-  if (h < 15 || h >= 340) return { blanco: false, familia: 'ROJO', tono: 'rojo' };
-  if (h < 40) return { blanco: false, familia: 'OTRO', tono: 'naranja' };
-  if (h < 70) return { blanco: false, familia: 'AMARILLO', tono: 'amarillo' };
-  if (h < 170) return { blanco: false, familia: 'VERDE', tono: 'verde' };
-  if (h < 200) return { blanco: false, familia: 'OTRO', tono: 'celeste' };
-  if (h < 260) return { blanco: false, familia: 'OTRO', tono: 'azul' };
-  return { blanco: false, familia: 'OTRO', tono: 'violeta/rosa' };
-}
-
-/** El primer color de un valor de "background" (shorthand): rgb()/rgba(), #hex o un nombre. */
-function _colorDeFondoCortoColMail_(valor) {
-  const toks = String(valor || '').toLowerCase().match(/rgba?\([^)]*\)|#[0-9a-f]{3,8}\b|[a-z]+/g) || [];
-  for (let i = 0; i < toks.length; i++) {
-    if (/^(transparent|none|inherit|initial|unset)$/.test(toks[i])) return null;
-    const c = _colorColMail_(toks[i]);
-    if (c) return c;
-  }
-  return null;
-}
-
-/**
- * El fondo y el color de texto que DECLARA un elemento: `{ fondo, color }` (cada uno `undefined` si no declara, o el
- * objeto de `_colorColMail_`). Primero las reglas de clase de <style>, después el atributo style (que manda), y los
- * atributos bgcolor / color (de <font>); <mark> sin fondo declarado es amarillo.
- */
-function _declaracionColMail_(nombre, attrs, clases) {
-  const out = { fondo: undefined, color: undefined };
-  const aplicar = function (decls) {
-    String(decls || '').split(';').forEach(function (d) {
-      const i = d.indexOf(':');
-      if (i < 0) return;
-      const p = d.slice(0, i).trim().toLowerCase(), v = d.slice(i + 1).trim();
-      if (p === 'background-color' || p === 'mso-highlight') { const c = _colorColMail_(v); if (c) out.fondo = c; }
-      else if (p === 'background') { const c = _colorDeFondoCortoColMail_(v); if (c) out.fondo = c; }
-      else if (p === 'color') { const c = _colorColMail_(v); if (c) out.color = c; }
-    });
-  };
-  const attr = function (n) {
-    const m = new RegExp('\\b' + n + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i').exec(attrs);
-    return m ? (m[1] != null ? m[1] : (m[2] != null ? m[2] : m[3])) : null;
-  };
-  const bg = attr('bgcolor');
-  if (bg != null) { const c = _colorColMail_(bg); if (c) out.fondo = c; }
-  if (nombre === 'font') { const fc = attr('color'); if (fc != null) { const c = _colorColMail_(fc); if (c) out.color = c; } }
-  const cls = attr('class');
-  if (cls && clases) cls.split(/\s+/).forEach(function (k) { if (clases[k]) aplicar(clases[k]); });
-  const st = attr('style');
-  if (st != null) aplicar(_entidadesAudCan_(st));
-  if (nombre === 'mark' && out.fondo === undefined) out.fondo = _colorColMail_('yellow');
-  return out;
-}
-
-/** Las reglas de UNA clase de los bloques <style> (".x { … }", "span.x, p.y { … }") → { clase: declaraciones }. */
-function _clasesDeEstiloColMail_(html) {
-  const out = {};
-  String(html || '').replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, function (x, css) {
-    css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/([^{}]+)\{([^}]*)\}/g, function (y, sel, decls) {
-      sel.split(',').forEach(function (s) {
-        const m = /^\s*(?:[a-z][a-z0-9]*)?\.([\w-]+)\s*$/i.exec(s);
-        if (m) out[m[1]] = (out[m[1]] ? out[m[1]] + ';' : '') + decls;
-      });
-      return y;
-    });
-    return x;
-  });
-  return out;
-}
-
-/**
- * El HTML de un mail a LÍNEAS con color: `[{ segs: [{ t, fondo, color }], cita }]`. El fondo de cada texto es el del
- * elemento más de adentro que declara uno (blanco tapa: queda sin fondo); el color de texto, igual. Los bloques (div, p,
- * br, li, tr, td de tabla no, h1-h6…) cortan línea; una cita (Gmail, Outlook) deja una línea marcada (`cita`), como en
- * diagnostico/31 (`_htmlATextoMarcadoAudCan_`).
- */
-function _htmlALineasColMail_(html) {
-  const clases = _clasesDeEstiloColMail_(html);
-  const h = String(html || '').replace(/<(style|script|head)\b[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
-  const vacios = { br: 1, img: 1, hr: 1, meta: 1, input: 1, wbr: 1, link: 1, col: 1, area: 1, base: 1 };
-  const bloque = /^(div|p|br|li|tr|h[1-6]|table|ul|ol|blockquote|hr)$/;
-  const pila = [], lineas = [];
-  let actual = null;
-  const nueva = function () { actual = { segs: [], cita: false }; lineas.push(actual); };
-  nueva();
-  const efectivo = function (k) {
-    for (let i = pila.length - 1; i >= 0; i--) {
-      const c = pila[i][k];
-      if (c !== undefined) return c.blanco ? null : c;
-    }
-    return null;
-  };
-  const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>|([^<]+)/g;
-  let m;
-  while ((m = re.exec(h)) !== null) {
-    if (m[4] != null) {
-      const t = _entidadesAudCan_(m[4].replace(/\s+/g, ' '));
-      if (t) actual.segs.push({ t: t, fondo: efectivo('fondo'), color: efectivo('color') });
-      continue;
-    }
-    const cierra = !!m[1], nombre = m[2].toLowerCase(), attrs = m[3] || '';
-    if (bloque.test(nombre)) nueva();
-    if (!cierra && (nombre === 'blockquote' || nombre === 'hr' || /class\s*=\s*["'][^"']*gmail_quote/i.test(attrs) || /divRplyFwdMsg/i.test(attrs) ||
-                    /border-top\s*:\s*solid\s*#(e1e1e1|b5c4df)/i.test(attrs))) { actual.cita = true; nueva(); }
-    if (vacios[nombre] || /\/\s*$/.test(attrs)) continue;
-    if (!cierra) {
-      const d = _declaracionColMail_(nombre, attrs, clases);
-      pila.push({ nombre: nombre, fondo: d.fondo, color: d.color });
-    } else {
-      for (let i = pila.length - 1; i >= 0; i--) if (pila[i].nombre === nombre) { pila.length = i; break; }
-    }
-  }
-  return lineas;
-}
-
-/** El texto de una línea (como lo vería el texto plano, sin limpiar). */
-function _textoLineaColMail_(l) {
-  return l.segs.map(function (s) { return s.t; }).join('').replace(/[ \t]+/g, ' ').trim();
-}
-
-/**
- * Las letras de una línea con cada color: `{ total, fondo: {FAMILIA: n}, fondoRaw: {raw: n}, texto: {FAMILIA: n},
- * textoRaw: {raw: n} }`. Sin la etiqueta ("Evento:", "Hora:", "Lugar:") ni los espacios. El color de texto gris/negro
- * (el de siempre) no cuenta.
- */
-function _letrasColMail_(l) {
-  const out = { total: 0, fondo: {}, fondoRaw: {}, texto: {}, textoRaw: {}, c: {} };
-  const crudo = l.segs.map(function (s) { return s.t; }).join('');
-  const et = /^[\s*_\-•·>]*(evento|hora|lugar|direcci[oó]n)\s*:/i.exec(crudo);
-  let saltar = et ? et[0].length : 0;
-  l.segs.forEach(function (s) {
-    for (let i = 0; i < s.t.length; i++) {
-      if (saltar > 0) { saltar--; continue; }
-      if (/[\s*_]/.test(s.t[i])) continue;
-      out.total++;
-      if (s.fondo) {
-        out.fondo[s.fondo.familia] = (out.fondo[s.fondo.familia] || 0) + 1;
-        out.fondoRaw[s.fondo.raw] = (out.fondoRaw[s.fondo.raw] || 0) + 1;
-        out.c[s.fondo.raw] = s.fondo;
-      }
-      if (s.color && !(s.color.familia === 'OTRO' && /gris|negro/.test(s.color.tono))) {
-        out.texto[s.color.familia] = (out.texto[s.color.familia] || 0) + 1;
-        out.textoRaw[s.color.raw] = (out.textoRaw[s.color.raw] || 0) + 1;
-        out.c['t:' + s.color.raw] = s.color;
-      }
-    }
-  });
-  return out;
-}
-
-/** Suma `b` en `a` (cuentas de `_letrasColMail_`). */
-function _sumarLetrasColMail_(a, b) {
-  a.total += b.total;
-  ['fondo', 'fondoRaw', 'texto', 'textoRaw'].forEach(function (k) { Object.keys(b[k]).forEach(function (x) { a[k][x] = (a[k][x] || 0) + b[k][x]; }); });
-  Object.keys(b.c).forEach(function (x) { a.c[x] = b.c[x]; });
-  return a;
-}
-
-function _letrasVaciasColMail_() { return { total: 0, fondo: {}, fondoRaw: {}, texto: {}, textoRaw: {}, c: {} }; }
-
-/** "AMARILLO 12/14 (#ffff00)" de una cuenta, o '' si no tiene fondo. */
-function _textoLetrasColMail_(x, k) {
-  k = k || 'fondo';
-  const fams = Object.keys(x[k]);
-  if (!fams.length) return '';
-  const raw = Object.keys(x[k + 'Raw']).join(', ');
-  return fams.map(function (f) { return f + ' ' + x[k][f] + '/' + x.total; }).join(' + ') + ' (' + raw + ')';
-}
-
-/**
- * Los colores de un mail, por reunión: el HTML a líneas (en una respuesta o reenvío, sólo lo propio: `_propioDeHtmlAudCan_`),
- * línea por línea con las MISMAS reglas que `_parsearCuerpoAgenda_` (encabezado del día, "Evento:", "Hora:", "Lugar:",
- * continuación). La k-ésima línea "Evento:" es la k-ésima reunión que devuelve el parser sobre ese mismo texto. Devuelve
- * `{ evs, porReunion: Map(k → { campos: {día, Evento, Hora, Lugar, otra}, total }), fuera: [{ texto, letras }] }`.
- */
-function _coloresDeMailColMail_(m) {
-  let lineas = _htmlALineasColMail_(m.html);
-  if (RE_RESPUESTA_AGENDA_.test(m.asunto || '')) {
-    // _propioDeHtmlAudCan_ trabaja con textos: se le pasan objetos String con el índice de la línea, y devuelve un tramo
-    const textos = lineas.map(function (l, i) { const s = new String((l.cita ? COLORES_MAIL_CITA : '') + _textoLineaColMail_(l)); s.i = i; return s; });
-    const limpiaDe = function (x) { return String(x || '').split(COLORES_MAIL_CITA).join(''); };
-    lineas = _propioDeHtmlAudCan_(textos, limpiaDe, m.asunto).map(function (s) { return lineas[s.i]; });
-  }
-  const porReunion = new Map(), fuera = [], textos = [];
-  let k = -1, campo = null, dia = null;
-  const anotar = function (kk, cmp, letras) {
-    if (!porReunion.has(kk)) porReunion.set(kk, { campos: {}, total: _letrasVaciasColMail_() });
-    const pr = porReunion.get(kk);
-    pr.campos[cmp] = _sumarLetrasColMail_(pr.campos[cmp] || _letrasVaciasColMail_(), letras);
-    _sumarLetrasColMail_(pr.total, letras);
-  };
-  lineas.forEach(function (l) {
-    const crudo = _textoLineaColMail_(l);
-    textos.push(crudo);
-    const limpia = _limpiarLineaAgenda_(crudo);
-    if (/^\[image:/i.test(limpia)) return;
-    if (!limpia) { campo = null; return; }
-    const letras = _letrasColMail_(l);
-    const conColor = Object.keys(letras.fondo).length || Object.keys(letras.texto).length;
-    if (/^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\s*[.:]?$/.test(normalizeText_(limpia))) {
-      dia = conColor ? letras : null; campo = null;
-      return;
-    }
-    const et = /^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*(.*)$/i.exec(limpia);
-    if (et) {
-      const e = normalizeText_(et[1]);
-      if (e === 'evento') {
-        k++; campo = 'Evento';
-        if (dia) anotar(k, 'día', dia);
-      } else if (k >= 0) campo = e === 'hora' ? 'Hora' : 'Lugar';
-      if (conColor && k >= 0) anotar(k, campo || e, letras);
-      else if (conColor) fuera.push({ texto: limpia, letras: letras });
-      return;
-    }
-    if (conColor) {
-      if (k >= 0 && campo) anotar(k, campo + ' (continuación)', letras);
-      else fuera.push({ texto: limpia, letras: letras });
-    }
-  });
-  const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
-  const evs = _parsearCuerpoAgenda_(textos.join('\n'), m.fecha, _rVacio_(), { grupo: sem ? sem.grupo : '', semana: sem ? sem.texto : '',
-    version: 0, versiones: 0, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '', desde: sem ? sem.desde : null, hasta: sem ? sem.hasta : null });
-  return { evs: evs, porReunion: porReunion, fuera: fuera, sem: sem };
-}
-
-/** La familia principal de una reunión (la de más letras de fondo) y si hay más de una. */
-function _principalColMail_(total) {
-  const fams = Object.keys(total.fondo).sort(function (a, b) { return total.fondo[b] - total.fondo[a]; });
-  return { familia: fams[0] || '', otras: fams.slice(1) };
 }
 
 // ===================== 1. La paleta =====================
@@ -485,17 +193,6 @@ function _paletaColMail_(mapa, c, letras, m, clave) {
   x.letras += letras;
   x.mails.add(m.id || m.asunto + m.fecha);
   if (clave) x.reuniones.add(clave);
-}
-
-/** "día AMARILLO 8/8; Evento VERDE 40/42 (entera); Hora —" */
-function _camposTextoColMail_(campos) {
-  return Object.keys(campos).map(function (k) {
-    const x = campos[k];
-    const p = _principalColMail_(x);
-    const entera = p.familia && x.total && x.fondo[p.familia] / x.total >= COLORES_MAIL_ENTERA;
-    return k + ' ' + (_textoLetrasColMail_(x) || 'sin fondo') + (entera ? ' (entera)' : (p.familia ? ' (parcial)' : '')) +
-           (Object.keys(x.texto).length ? ' | texto ' + _textoLetrasColMail_(x, 'texto') : '');
-  }).join('; ');
 }
 
 function _ocurrenciaPlanaColMail_(o) {

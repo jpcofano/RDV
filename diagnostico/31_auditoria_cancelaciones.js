@@ -624,34 +624,8 @@ function _tachadosDeMailAudCan_(m) {
  * "-----Mensaje original-----", una línea con ">", "El … escribió:" / "On … wrote:", o un bloque "De:/From: … Enviado:/Sent:".
  */
 function _propioDeHtmlAudCan_(lineas, limpiaDe, asunto) {
-  const Q = AUDITORIA_CANCEL_CITA;
-  const cab = /^\s*(de|from|enviado|sent|date|fecha|para|to|cc|cco|asunto|subject)\s*:/i;
-  const l = function (i) { return limpiaDe(lineas[i]); };
-  const cabOutlook = function (i) {
-    if (!/^\s*(de|from)\s*:/i.test(l(i))) return false;
-    for (let j = i + 1; j <= i + 3 && j < lineas.length; j++) if (/^\s*(enviado|sent|date|fecha)\s*:/i.test(l(j))) return true;
-    return false;
-  };
-  const saltarCab = function (j) {
-    while (j < lineas.length && (cab.test(l(j)) || !l(j).trim())) j++;
-    return j;
-  };
-  let ini = 0;
-  const iR = lineas.findIndex(function (x, i) { return RE_REENVIO_AGENDA_.test(l(i)); });
-  if (iR >= 0) ini = saltarCab(iR + 1);
-  else if (/^\s*((fwd?|rv|wg|tr)\s*:)/i.test(asunto || '')) {
-    for (let i = 0; i < lineas.length; i++) if (cabOutlook(i)) { ini = saltarCab(i); break; }
-  }
-  for (let i = ini; i < lineas.length; i++) {
-    const t = l(i);
-    let cita = lineas[i].indexOf(Q) >= 0 || RE_CITA_AGENDA_.some(function (re) { return re.test(t); }) || /^\s*>/.test(t) || cabOutlook(i);
-    if (!cita && /^\s*(el|on)\s/i.test(t)) {
-      const junto = [t, l(i + 1), l(i + 2)];
-      cita = junto.some(function (x, k) { return RE_ESCRIBIO_AGENDA_.test(junto.slice(0, k + 1).join(' ')); });
-    }
-    if (cita) return lineas.slice(ini, i);
-  }
-  return lineas.slice(ini);
+  // 15/10 (noche): movida a producción (41_AgendaColores.js), la misma para los colores de la agenda
+  return _propioDeHtmlAgenda_(lineas, limpiaDe, asunto, AUDITORIA_CANCEL_CITA);
 }
 
 /**
@@ -689,15 +663,8 @@ function _htmlATextoMarcadoAudCan_(html) {
   return out.replace(/\uE001\uE000/g, '').split('\n').map(function (l) { return l.replace(/[ \t]+/g, ' ').trim(); }).join('\n');
 }
 
-function _entidadesAudCan_(t) {
-  const nombres = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó',
-    uacute: 'ú', Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', ntilde: 'ñ', Ntilde: 'Ñ', uuml: 'ü', Uuml: 'Ü',
-    iexcl: '¡', iquest: '¿', ordm: 'º', ordf: 'ª', deg: '°', ndash: '–', mdash: '—', laquo: '«', raquo: '»', ldquo: '“', rdquo: '”' };
-  return String(t).replace(/&(#x[0-9a-f]+|#\d+|[a-zA-Z]+);/gi, function (x, e) {
-    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return isNaN(n) ? x : String.fromCharCode(n); }
-    return nombres[e] != null ? nombres[e] : x;
-  });
-}
+/** Las entidades HTML a texto (15/10, noche: movida a producción, 41_AgendaColores.js). */
+function _entidadesAudCan_(t) { return _entidadesHtmlAgenda_(t); }
 
 // ===================== 3. RDV CONJUNTO =====================
 
