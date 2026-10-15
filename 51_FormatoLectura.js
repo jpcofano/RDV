@@ -21,7 +21,8 @@ function llevaFormatoLectura_(nombre) {
 
 /**
  * El formato para leer de una solapa recién escrita. `matriz`: lo que se escribió (para medir sin volver a leer; si falta,
- * se lee). `opciones.filaEncabezado` (1 por defecto).
+ * se lee). `opciones.filaEncabezado` (1 por defecto); `opciones.columnaDescripcion`: el índice (desde 0) de la columna
+ * ancha, cuando el encabezado no la dice (15/10: AUDITORIA_AGENDA, "sección | texto").
  */
 function formatoLectura_(sh, matriz, opciones) {
   if (!FORMATO_LECTURA_ACTIVO || !sh) return null;
@@ -42,7 +43,7 @@ function formatoLectura_(sh, matriz, opciones) {
       if (/^(elegir|comentario)$/i.test(h)) sh.getRange(fe, k + 1).setBackground(FORMATO_RESALTE_ELEGIR);
     });
     // los anchos
-    const desc = columnaDescripcionLectura_(enc);
+    const desc = o.columnaDescripcion != null ? o.columnaDescripcion : columnaDescripcionLectura_(enc);
     const anchos = [];
     for (let k = 0; k < nC; k++) {
       const w = anchoColumnaLectura_(enc[k] || '', m.slice(fe).map(function (r) { return r[k]; }), k === desc);

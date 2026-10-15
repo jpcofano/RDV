@@ -38,9 +38,9 @@
  * --- El permiso (15/10: GmailApp, no MailApp) ---
  * Se manda con GmailApp.sendEmail, desde la cuenta que corre el script. El proyecto ya tiene el permiso completo de Gmail
  * (la agenda lee los mails con GmailApp), así que NO suma ningún permiso nuevo y no hace falta reautorizar: el activador de
- * la hora no corre el riesgo de fallar por "se requiere autorización". (MailApp habría sumado script.send_mail: como
- * appsscript.json no declara oauthScopes, Apps Script los deduce del código, y el activador quedaba sin autorización hasta
- * que el dueño aceptara.) No usar MailApp en ningún archivo del proyecto.
+ * la hora no corre el riesgo de fallar por "se requiere autorización". (El servicio de mail aparte de Apps Script habría sumado el permiso
+ * script.send_mail: como appsscript.json no declara oauthScopes, Apps Script los deduce del código, y el activador quedaba
+ * sin autorización hasta que el dueño aceptara.) No usar ese servicio en ningún archivo del proyecto.
  */
 
 /** Los títulos de cada tema (el asunto del mail). */
@@ -163,8 +163,17 @@ function avisosAlIniciarCorrida_(previa) {
 function avisosAlCerrarCorrida_(c, estado) {
   if (!AVISOS_MAIL_ACTIVO || !c) return;
   try {
-    const r = _avisosRacha_(c, estado, (c.errores || []).length > 0);
-    Object.keys(r).forEach(function (t) { _avisosEncolar_(t, r[t], false); });
+    // 15/10 (revisor): la racha cuenta sólo las corridas REALES de la hora (no las en seco ni las del historial, paso 22)
+    const r = c.modo === 'real' ? _avisosRacha_(c, estado, (c.errores || []).length > 0) : {};
+    // 15/10 (revisor): sin tiempo para mandar (la corrida ya pasa de AVISOS_ENVIO_MAX_MS), se guarda todo y lo manda la siguiente
+    const tarde = typeof corridaTranscurridoMs_ === 'function' && c.t0 && (Date.now() - c.t0) > AVISOS_ENVIO_MAX_MS;
+    Object.keys(r).forEach(function (t) { _avisosEncolar_(t, r[t], tarde); });
+    if (tarde) {
+      _avGuardarCola_();
+      Logger.log('AVISOS: la corrida ya lleva %s s: los avisos quedan guardados y los manda la corrida siguiente.', Math.round((Date.now() - c.t0) / 1000));
+      _avisosCola_ = null;
+      return;
+    }
     const cola = _avisosCola_ || {};
     _avisosCola_ = null;
     _avisosVaciar_(cola);
@@ -277,7 +286,7 @@ function _avisosSuspendidasDelDia_() {
   const v = n >= 2 ? sh.getRange(2, 1, n - 1, 3).getValues() : [];
   const pend = [];
   v.forEach(function (r, i) { if (str(r[1]) && !str(r[2])) pend.push(i); });
-  if (!pend.length) { props.setProperty(clave, hoy); return false; }
+  if (!pend.length) return false;   // 15/10 (revisor): sin pendientes NO se marca el día (lo que anote esta corrida sale hoy)
   const lineas = pend.slice(0, AVISOS_MAX_LINEAS_MAIL_).map(function (i) {
     const d = v[i][0] instanceof Date ? v[i][0] : null;
     const cuando = d ? (Utilities.formatDate(d, RDV_TZ, 'yyyy-MM-dd') === hoy ? Utilities.formatDate(d, RDV_TZ, 'HH:mm') : _avFechaHora_(d)) : '?';
@@ -341,6 +350,12 @@ function auditoriaSemanal_(enSeco, opciones) {
   catch (err) { R.falla = String(err && err.message || err); Logger.log('>>> LA AUDITORÍA FALLÓ: %s', R.falla); }
   R.lineas = _avLogDesde_(largo);
   const tAg = Date.now() - t0;
+  // 15/10 (revisor): la solapa con lo de la agenda se escribe YA (si después la ejecución se pasa de los 6 min con las
+  // cancelaciones, lo central de H5 ya quedó); al final se reescribe completa.
+  if (!enSeco) {
+    try { const m0 = filasAuditoriaAgenda_(R); _avEscribirHojaAuditoria_(m0, m0.ok); }
+    catch (err) { Logger.log('>>> la solapa %s (parcial) NO se escribió: %s', RDV_HOJA_AUDITORIA_AGENDA, err); }
+  }
   if (!AUDITORIA_SEMANAL_CANCELACIONES) R.cancelNota = 'apagada (AUDITORIA_SEMANAL_CANCELACIONES = false)';
   else if (typeof auditoriaCancelaciones !== 'function') R.cancelNota = 'no está en el proyecto';
   else if (tAg > AUDITORIA_SEMANAL_CANCEL_MAX_MS) {
@@ -350,7 +365,8 @@ function auditoriaSemanal_(enSeco, opciones) {
     // 15/10: un período MÓVIL (las últimas 6 semanas hasta el sábado de la semana que viene): el fijo del paso 68 envejece
     const h = hoyMediodia_(), aSab = (6 - h.getDay() + 7) % 7 + 7;
     const per = { desde: new Date(h.getFullYear(), h.getMonth(), h.getDate() - 42, 12), hasta: new Date(h.getFullYear(), h.getMonth(), h.getDate() + aSab, 12) };
-    try { R.cancel = auditoriaCancelaciones(Object.assign(per, opciones.cancelaciones || {})); }
+    R.cancelPeriodo = Object.assign(per, opciones.cancelaciones || {});
+    try { R.cancel = auditoriaCancelaciones(R.cancelPeriodo); }
     catch (err) { R.cancelNota = 'falló: ' + String(err && err.message || err); }
   }
   try { R.pendientes = _avLeerPendientes_(); } catch (err) { R.pendientes = { error: String(err && err.message || err) }; }
@@ -440,7 +456,7 @@ function _avEscribirHojaAuditoria_(matriz, ok) {
   const datos = matriz.map(function (r) { return [r[0], r[1]]; });
   sh.getRange(1, 1, datos.length, 2).setValues(datos);
   if (typeof formatoLectura_ === 'function') {
-    try { formatoLectura_(sh, datos, { filaEncabezado: 2 }); } catch (err) { Logger.log('>>> el formato de %s falló: %s', RDV_HOJA_AUDITORIA_AGENDA, err); }
+    try { formatoLectura_(sh, datos, { filaEncabezado: 2, columnaDescripcion: 1 }); } catch (err) { Logger.log('>>> el formato de %s falló: %s', RDV_HOJA_AUDITORIA_AGENDA, err); }
   }
   sh.getRange(1, 1, 1, 2).setBackground(ok ? '#D9EAD3' : '#CC0000').setFontColor(ok ? '#274E13' : '#FFFFFF').setFontWeight('bold');
   SpreadsheetApp.flush();
@@ -488,8 +504,10 @@ function mailSemanal_(R) {
   }
   L.push('');
   // 2. cancelaciones
-  L.push('2. CANCELACIONES QUE LA BASE NO REFLEJA (paso 68' + (typeof AUDITORIA_CANCEL_DESDE !== 'undefined' ?
-         ', período fijo ' + AUDITORIA_CANCEL_DESDE + ' a ' + AUDITORIA_CANCEL_HASTA : '') + ')');
+  // 15/10 (revisor): el período que se usó de verdad (el móvil), no el fijo del paso 68
+  const fmtP = function (d) { return d instanceof Date ? Utilities.formatDate(d, RDV_TZ, 'dd/MM/yyyy') : String(d); };
+  L.push('2. CANCELACIONES QUE LA BASE NO REFLEJA (paso 68' + (R.cancelPeriodo ?
+         ', del ' + fmtP(R.cancelPeriodo.desde) + ' al ' + fmtP(R.cancelPeriodo.hasta) : '') + ')');
   if (R.cancel && R.cancel.resumen) {
     const rr = R.cancel.resumen;
     L.push('   no reflejadas: ' + (rr.noRefleja || []).length);

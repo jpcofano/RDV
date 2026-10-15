@@ -112,11 +112,11 @@ const FORMATO_RESALTE_ELEGIR = '#FFE599';
  * --- La AUDITORÍA SEMANAL y los AVISOS POR MAIL (15/10, H5 y H6; 50_Avisos.js). APAGADOS. ---
  * AUDITORIA_SEMANAL_ACTIVA: los lunes a las 8 (activador semanal, que se instala A MANO con su paso) corre la auditoría de
  *   la agenda (paso 66) y escribe el resultado en la solapa AUDITORIA_AGENDA de la intermedia (se reescribe cada lunes).
- * AVISOS_MAIL_ACTIVO: los mails al dueño del código (MailApp): el resumen del lunes, y los avisos inmediatos (dos corridas
+ * AVISOS_MAIL_ACTIVO: los mails al dueño del código (con GmailApp): el resumen del lunes, y los avisos inmediatos (dos corridas
  *   seguidas cortadas o con error, una parte salteada por tiempo tres corridas seguidas, el invariante de la agenda roto, un
  *   mail de agenda raro). Como mucho UN mail por tema por día. Con `false`, los avisos sólo van al log.
- * OJO: MailApp agrega un permiso (script.send_mail). Después del clasp push, el dueño tiene que volver a autorizar el
- *   script corriendo una vez, desde el editor, el paso de autorizar el mail (si no, el activador de la hora puede fallar).
+ * El permiso: se manda con GmailApp, que el proyecto ya tiene autorizado por la agenda (lee los mails): no hay que volver a
+ *   autorizar nada (15/10).
  */
 const AUDITORIA_SEMANAL_ACTIVA = false;
 const AVISOS_MAIL_ACTIVO = false;
@@ -145,7 +145,9 @@ const AVISOS_PROP_ULTIMO = 'AVISO_ULTIMO_';
 const AVISOS_PROP_RACHA = 'AVISOS_RACHA_CORRIDAS';
 const AVISOS_PROP_COLA = 'AVISOS_COLA';
 /** La cola guardada en la propiedad (por si la corrida se corta): como mucho estos caracteres (el límite es 9 KB por valor). */
-const AVISOS_COLA_MAX_CHARS = 8000;
+const AVISOS_COLA_MAX_CHARS = 5000;
+/** Si la corrida ya lleva más que esto al cerrar, los avisos no se mandan en ésta: se guardan y los manda la siguiente. */
+const AVISOS_ENVIO_MAX_MS = 320 * 1000;   // 15/10: con margen (el límite de una propiedad es 9 KB en BYTES: tildes, escapes)
 /**
  * Las reuniones que la agenda suspende (tema 'suspendidas'): no van una por mail. Se anotan en la solapa
  * AVISOS_SUSPENDIDAS (intermedia) y salen juntas en UN mail por día ("reuniones suspendidas hoy"), en la primera corrida

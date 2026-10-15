@@ -278,7 +278,21 @@ ok(E.mails.length === 2 && /\(1\)$/.test(E.mails[1].subject) && /\[15\/10\/2026 
    'al día siguiente a las 20: sólo la que faltaba, con su fecha');
 E.a(20, 2);
 E.run('corridaIniciar_(new Date(), false, false); corridaCerrar_(null)');
-ok(E.mails.length === 2 && E.props.AVISO_ULTIMO_suspendidas === '2026-10-17', 'sin nada nuevo: no hay mail (y el día queda revisado)');
+ok(E.mails.length === 2 && E.props.AVISO_ULTIMO_suspendidas !== '2026-10-17', 'sin nada nuevo: no hay mail, y el día NO queda marcado (15/10, revisor: lo que anote una corrida posterior sale ese mismo día)');
+// 15/10 (revisor): una corrida EN SECO no cuenta para la racha
+E = crearEntorno(ON);
+E.a(10);
+E.run('corridaIniciar_(new Date(), true, false); corridaAnotar_("ids", Date.now(), new Error("x")); corridaCerrar_(null)');
+E.run('corridaIniciar_(new Date(), true, false); corridaAnotar_("ids", Date.now(), new Error("x")); corridaCerrar_(null)');
+ok(!E.props.AVISOS_RACHA_CORRIDAS && E.mails.length === 0, 'dos corridas EN SECO con error: no cuentan para la racha ni mandan mail');
+// 15/10 (revisor): al cerrar tarde (más de AVISOS_ENVIO_MAX_MS), no se manda: se guarda y lo manda la siguiente
+E = crearEntorno(ON);
+E.a(10);
+E.run('corridaIniciar_(new Date(Date.now() - 340 * 1000), false, false); registrarAviso_("mail_raro", "un mail raro"); corridaCerrar_(null)');
+ok(E.mails.length === 0 && /mail_raro/.test(E.props.AVISOS_COLA || ''), 'cerrando a los 340 s: no manda, la cola queda guardada');
+E.run('_corrida_ = null; _avisosCola_ = null; corridaIniciar_(new Date(), false, false)');
+ok(E.mails.length === 1 && /un mail raro/.test(E.mails[0].body), 'la corrida siguiente lo manda al empezar');
+
 // muchas: el tope del mail y el de la propiedad
 E = crearEntorno(ON);
 E.a(20);

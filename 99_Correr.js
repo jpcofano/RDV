@@ -1320,6 +1320,47 @@ function paso66_auditoriaAgenda() {
   return auditoriaAgenda();
 }
 
+/** PASO 90 — SÓLO LECTURA (15/10): las marcas de COLOR del mail (HTML): qué quiere decir el verde, el amarillo y el rojo. */
+function paso90_coloresMail() {
+  _anunciar_('paso 90 — los colores del mail (SÓLO LECTURA)', 'coloresMail()  [diagnostico/34_colores_mail.js]',
+             'NO escribe nada (ni la base, ni la lista de IDs, ni Gmail, ni etiquetas, ni caches)',
+             'el log, últimos 92 días: 1 la paleta (fondo y texto), 2 qué pasó con cada color (versión anterior / siguientes / ' +
+             'base / lista de IDs), 3 el caso Macri 11/08 Villa Riachuelo, 4 las notas "Actualizo", 5 "Hora: A CONFIRMAR" y ' +
+             '"(NO PARTICIPA)", y el RESUMEN');
+  return coloresMail();
+}
+
+/** PASO 80 (15/10, H6): la PRUEBA del mail de avisos. Con AVISOS_MAIL_ACTIVO = false no manda nada. No pide permiso nuevo. */
+function paso80_probarMailAvisos() {
+  _anunciar_('paso 80 — prueba del mail de avisos', 'autorizarMailAvisos()  [50_Avisos.js]',
+             'manda UN mail de prueba a ' + AVISOS_MAIL_PARA + ' sólo con AVISOS_MAIL_ACTIVO = true; nada en las planillas',
+             'el log y el mail (GmailApp: el permiso de Gmail ya está autorizado por la agenda)');
+  return autorizarMailAvisos();
+}
+
+/** PASO 81 — EN SECO (15/10, H5): la auditoría semanal del lunes, sin escribir la solapa ni mandar el mail. */
+function paso81_auditoriaSemanal_enSeco() {
+  _anunciar_('paso 81 — auditoría semanal EN SECO', 'auditoriaSemanalAgenda_enSeco()  [50_Avisos.js]',
+             'NO escribe nada: ni ' + RDV_HOJA_AUDITORIA_AGENDA + ', ni la base, ni mails',
+             'el log: cómo quedaría la solapa ' + RDV_HOJA_AUDITORIA_AGENDA + ' (primeras 60 filas) y el texto del resumen');
+  return auditoriaSemanalAgenda_enSeco();
+}
+
+/** PASO 82 (15/10, H5): instala el activador semanal (lunes). Se niega con AUDITORIA_SEMANAL_ACTIVA = false; no duplica. */
+function paso82_instalarAuditoriaSemanal() {
+  _anunciar_('paso 82 — instalar el activador semanal', 'instalarAuditoriaSemanal_()  [50_Avisos.js]',
+             'crea UN activador (' + AUDITORIA_SEMANAL_FUNCION + ', ' + AUDITORIA_SEMANAL_DIA + ' ' + AUDITORIA_SEMANAL_HORA + ' h); nada en las planillas',
+             'el log. Anotarlo en docs/triggers-legado.md');
+  return instalarAuditoriaSemanal_();
+}
+
+/** PASO 83 (15/10, H5): borra el activador semanal (sólo ése). */
+function paso83_borrarAuditoriaSemanal() {
+  _anunciar_('paso 83 — borrar el activador semanal', 'borrarAuditoriaSemanal_()  [50_Avisos.js]',
+             'borra sólo los activadores de ' + AUDITORIA_SEMANAL_FUNCION, 'el log');
+  return borrarAuditoriaSemanal_();
+}
+
 /**
  * PASO 68 — SÓLO LECTURA (15/10): la AUDITORÍA DE CANCELACIONES (diagnostico/31_auditoria_cancelaciones.js), del 07/09 a la
  * semana siguiente: las desaparecidas del mail, las marcadas (palabras y TACHADO del HTML), RDV CONJUNTO, la CANCELACIÓN de
