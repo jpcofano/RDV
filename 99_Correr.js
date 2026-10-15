@@ -1348,6 +1348,17 @@ function reiniciarRevisarTodo() {
   return reiniciarRevisarTodo_();
 }
 
+/**
+ * PASO 94 — SÓLO LECTURA (16/10): por qué AGENDA_DUPLICADOS no aplica una decisión (el caso Macri 01/10 Belgrano / fila 804
+ * primero): para cada elección cargada, si el plan de hoy la consume y, si no, por qué (cambió la hora o el barrio, la fila ya no
+ * es candidata, una línea vieja la pisó…), y qué haría con AGENDA_ELECCIONES_SIEMPRE prendido. No escribe nada.
+ */
+function paso94_eleccionesAgenda() {
+  _anunciar_('paso 94 — las decisiones de AGENDA_DUPLICADOS (SÓLO LECTURA)', 'diagnosticarEleccionesAgenda()  [diagnostico/35_elecciones_agenda.js]',
+             'NO escribe nada', 'el log: el caso Macri 01/10 (ids al elegir y hoy, reuniones del mail, líneas, filas), y cada elección: aplicada o por qué no');
+  return diagnosticarEleccionesAgenda();
+}
+
 /** PASO 75 — EN SECO (15/10, H1-H4): la agenda de HOY como quedaría con las cuatro reglas prendidas. No escribe nada. */
 function paso75_agendaSegura_enSeco() {
   _anunciar_('paso 75 — la agenda segura (EN SECO)', 'medirAgendaSegura()  [diagnostico/32_medir_agenda_segura.js]',

@@ -2937,6 +2937,8 @@ diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 
                    arriba si algo no está OK) y los AVISOS POR MAIL (resumen semanal + avisos inmediatos, uno por tema por día;
                    registrarAviso_). Manda con GmailApp (sin permiso nuevo). No escribe la base. APAGADOS
                    (AUDITORIA_SEMANAL_ACTIVA, AVISOS_MAIL_ACTIVO); pasos 80-83                                    ← 15/10
+diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una decisión (paso 94, SÓLO LECTURA): cada elección,
+                   aplicada o por qué no (cambió la hora o el barrio, la fila ya no es candidata, una línea la pisó…)  ← 16/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,
                    que escribe, ni el 80 / 82), cada uno aislado; el progreso en una propiedad: si no alcanza el tiempo
                    dice "FALTAN" y la siguiente sigue donde quedó; al final TERMINADO + resumen                    ← 16/10

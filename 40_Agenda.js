@@ -354,7 +354,15 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (!siempre) return false;
     if (unica && baseIdReunionAgenda_(el.idFila) && baseIdReunionAgenda_(el.idFila) === baseIdReunionAgenda_(idFilaAgenda_(f)) &&
         el.idFila.split('|')[0]) return true;
-    return filaDeEleccionAgenda_(dest.filas, el.idFila).f === f;
+    const x = filaDeEleccionAgenda_(dest.filas, el.idFila);
+    return x.f === f && flexibleSegura(x, null);
+  };
+  /** 16/10 (revisor): una fila hallada SÓLO por figura + fecha (no por su id_fila exacto) vale si NO es la fila de otra reunión
+   *  (sin agenda_uid) y el mail trae UNA sola reunión de esa figura ese día. Si no, la elección se vuelve a preguntar. */
+  const flexibleSegura = function (x, ev) {
+    if (!x || !x.f) return false;
+    if (x.como === 'exacta') return true;
+    return esVacio_(val(x.f, 'agenda_uid')) && (!ev || (cuentaBase[baseIdReunionAgenda_(idReunionAgenda_(ev))] || 0) === 1);
   };
   const comunaDeEv = function (ev) { return ev.comuna != null ? ev.comuna : (ev.barrio ? _comunaBarrioAg_(ev.barrio) : null); };
   /** Filas del equipo (sin agenda_uid) parecidas a una reunión (punto 7): la misma figura a ±AGENDA_DUP_DIAS días, o la
@@ -470,7 +478,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       // 15/10 (AGENDA_ELECCIONES_SIEMPRE): la fila elegida, en toda la base (aunque ya no sea candidata ni tenga agenda_uid)
       if (!fe && siempre) {
         const x = filaDeEleccionAgenda_(dest.filas.filter(function (f) { return !usadas.has(f.fila); }), elV.idFila);
-        fe = x.f;
+        fe = flexibleSegura(x, ev) ? x.f : null;
       }
       if (fe) {
         usadas.add(fe.fila);
@@ -512,22 +520,22 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     // 15/10 (AGENDA_ELECCIONES_SIEMPRE): lo que ya decidió el equipo, antes que cualquier otra regla que pueda volver a preguntar
     // (la conciliación, "casi duplicados" con otras candidatas): "ya cargada" no depende de que la fila siga siendo candidata.
     if (siempre && elV && (elV.eleccion === 'ya_cargada' || elV.eleccion === 'vincular')) {
-      const x = filaDeEleccionAgenda_(dest.filas, elV.idFila);
+      const x0 = filaDeEleccionAgenda_(dest.filas, elV.idFila);
+      // 16/10 (revisor): sólo la fila exacta, o una hallada por figura + fecha que no es de otra reunión
+      const x = flexibleSegura(x0, ev) ? x0 : { f: null, como: '', filas: x0.filas,
+        motivo: x0.f ? 'la fila ' + x0.f.fila + ' se parece a la elegida pero es de otra reunión de la agenda, o el mail trae varias de esa figura ese día' : x0.motivo };
       if (elV.eleccion === 'ya_cargada' && x.f) {
         P.eleccionesAplicadas.push({ id: idR0, eleccion: 'ya_cargada', fila: x.f.fila });
         P.eleccionesUsadas.push({ id: idR0, el: elV, eleccion: 'ya_cargada', f: x.f, como: x.como });
         _yaCargada_(P, ev, idR0, x.f, 'elegido', val);
         return;
       }
-      // la fila elegida ya no está en la base (o es ambigua): "ya cargada" igual no crea ni pregunta; "vincular" no crea y pregunta
+      // la fila elegida ya no está en la base (o es ambigua): no se crea, y se vuelve a PREGUNTAR (16/10, revisor: también
+      // "ya cargada" — sin la fila, la reunión quedaría sin fila para siempre y en silencio)
       const motivoSin = x.f ? 'la fila elegida (' + x.f.fila + ') ya la tomó otra reunión del mail' : x.motivo;
       P.eleccionesSinFila.push({ id: idR0, ev: ev, el: elV, eleccion: elV.eleccion, motivo: motivoSin });
-      if (elV.eleccion === 'ya_cargada') {
-        P.filaDe.set(ev.clave, { fila: null, status: '', yaCargadaSinFila: true });
-      } else {
-        P.duplicados.push({ tipo: 'eleccion_sin_fila', ev: ev, id: idR0, eleccion: elV, motivo: motivoSin, candidatas: [] });
-        P.filaDe.set(ev.clave, { fila: null, status: '', duplicado: true });
-      }
+      P.duplicados.push({ tipo: 'eleccion_sin_fila', ev: ev, id: idR0, eleccion: elV, motivo: motivoSin, candidatas: [] });
+      P.filaDe.set(ev.clave, { fila: null, status: '', duplicado: true });
       return;
     }
     // Crear, al final — salvo que ya se vaya a crear en esta misma corrida la misma reunión (figura + fecha + hora; sin

@@ -1951,6 +1951,39 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### AGENDA_DUPLICADOS no aplicaba la decisión (16/10) — arreglo escrito y APAGADO (`AGENDA_ELECCIONES_SIEMPRE`)
+
+Caso: "Ya está cargada en otra fila: no crear" en Macri 01/10 15:00 Belgrano (candidata, la fila 804), y la corrida siguiente
+volvió a mostrar la misma línea. El código tiene **cinco** formas de perder una elección, todas reproducidas en
+`tests/agenda_elecciones.test.js`. Cuál fue la del caso real lo dice el **paso 94** (`diagnosticarEleccionesAgenda()`, sólo
+lectura), con los datos de verdad:
+
+1. **La hora cambió entre versiones del mail.** La reunión se identifica por figura + fecha + hora, así que con otra hora es
+   otro id: la línea vuelve con ELEGIR vacío.
+2. **"Ya cargada" y "vincular" sólo valían si la fila elegida seguía siendo candidata.** Si dejaba de serlo, la línea volvía; y
+   sin ninguna candidata, la reunión **se creaba**, contra lo elegido.
+3. **El barrio de la fila cambió.** La fila se identifica por figura + fecha + barrio, así que tampoco se encontraba.
+4. **Una línea con "No sé" de otra candidata pisaba la elección nueva.** El sistema vuelve a mostrar "No sé" en ELEGIR, y esa
+   línea, más abajo en la solapa, ganaba. Es lo que mejor encaja con "volvió el mismo texto".
+5. **La conciliación semanal (H2, apagada) no miraba "ya cargada".**
+
+No era el alcance: una reunión fuera del alcance no genera línea.
+
+**El arreglo** (`AGENDA_ELECCIONES_SIEMPRE`, **APAGADO** hasta ver el paso 94):
+- **Las elecciones resisten el corrimiento.** La reunión se encuentra también por figura + fecha si cambió la hora, siempre que
+  sea una sola. La fila elegida se busca en toda la base, por su id o por figura + fecha en la misma comuna. Esto último sólo si
+  esa fila no es de otra reunión de la agenda y el mail trae una sola reunión de esa figura ese día: lo agregó el revisor.
+- **"Ya cargada" se aplica antes que cualquier otra regla.** Si su fila ya no existe, no se crea y **se vuelve a preguntar**
+  (también corrección del revisor; antes la reunión quedaba sin fila, en silencio).
+- **Una línea re-mostrada no pisa una elección nueva.**
+- **Cada elección aplicada o cerrada se anota una sola vez** en REGISTRO_AGENDA_CAMBIOS (`eleccion_aplicada`,
+  `eleccion_sin_fila`, `eleccion_cerrada`). Al prender el interruptor va a haber una sola tanda de `eleccion_cerrada`, por las
+  elecciones viejas.
+
+**Las reuniones canceladas en el mail** (`AGENDA_CERRAR_CANCELADAS_MAIL`) no se crean ni se preguntan, y su línea se cierra con
+"cancelada en el mail: no se crea". Sólo actúa cuando el parser marca la reunión como cancelada, y eso depende de la lectura del
+color, que todavía está apagada.
+
 #### revisarTodo() (16/10): los pasos de revisión, juntos
 
 `revisarTodo()` en 99_Correr.js (`52_RevisarTodo.js`) corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78 y 81, todos de

@@ -376,16 +376,17 @@ elegir(E, /01\/10\/2026/, 'Ya está cargada en otra fila: no crear');
 sacarDeCandidatas(E);
 r = correr(E, false, [V1]);
 ok(r.crear === 0 && r.duplicadosAntes === 0 && r.yaCargadas === 1 && macri01(E) === 0, 'PRENDIDO: se busca la fila en toda la base: ya cargada, no se crea ni se pregunta');
-// la fila elegida se BORRA: "ya cargada" igual no crea ni pregunta (se anota una vez)
+// la fila elegida se BORRA: "ya cargada" no crea, y se vuelve a PREGUNTAR (16/10, revisor: si no, la reunión queda sin fila
+// para siempre y en silencio); se anota una vez
 const borrarBelgrano = function (X) { const i = filaBelgrano(X); X.D.v.splice(i, 1); X.D.bg.splice(i, 1); };
 borrarBelgrano(E);
 r = correr(E, false, [V1]);
-ok(r.crear === 0 && r.duplicadosAntes === 0 && r.eleccionesSinFila === 1 && lineas01(E).length === 0, 'la fila elegida se borró: no se crea ni se pregunta (sin fila ' + r.eleccionesSinFila + ')');
+ok(r.crear === 0 && r.eleccionesSinFila === 1 && lineas01(E).length === 1, 'la fila elegida se borró: no se crea y se vuelve a preguntar (sin fila ' + r.eleccionesSinFila + ', líneas ' + lineas01(E).length + ')');
 r = correr(E, false, [V1]);
 ok(cambiosTipo(E, 'eleccion_sin_fila').length === 1, 'REGISTRO_AGENDA_CAMBIOS "eleccion_sin_fila": una sola vez');
 const es01 = function (r) { return /Macri/.test(r.join(' | ')) && r.some(function (x) { return x instanceof Date && x.getDate() === 1 && x.getMonth() === 9; }); };
 let lc = lineaCopiaTodas(E, es01);
-ok(lc.length && /ya cargada en otra fila/.test(lc[0].estado), 'el archivo "Agenda" lo dice — ' + JSON.stringify(lc[0] && lc[0].estado));
+ok(lc.length && /duplicado: ver AGENDA_DUPLICADOS/.test(lc[0].estado), 'el archivo "Agenda" lo dice — ' + JSON.stringify(lc[0] && lc[0].estado));
 
 // ============================== [4] el barrio de la fila elegida cambió (el id_fila cambia) ==============================
 
@@ -408,6 +409,16 @@ r = correr(E, false, [V1b]);
 ok(r.crear === 0 && r.duplicadosAntes === 0 && r.yaCargadas === 1 && /barrio cambió/.test((cambiosTipo(E, 'eleccion_aplicada')[0] || [])[5]),
    'PRENDIDO: la fila se encuentra por figura + fecha (única ese día): aplicada — ' + (cambiosTipo(E, 'eleccion_aplicada')[0] || [])[5]);
 ok(iN > 0 && E.D.v[iN][E.C('Barrio')] === 'Núñez' && !E.D.v[iN][E.C('agenda_uid')], 'y la fila no se toca');
+// 16/10 (revisor, ALTA): la fila parecida (misma figura y día, otro barrio) es de OTRA reunión de la agenda (tiene agenda_uid):
+// no se toma; la elección se vuelve a preguntar y no se crea nada
+E = montar(true, filasUna, SI);
+correr(E, false, [V1b]);
+elegir(E, /01\/10\/2026/, 'Ya está cargada en otra fila: no crear');
+cambiarBarrio(E);
+let filaNunez; E.D.v[filaNunez = E.D.v.findIndex(function (x) { return x[E.C('Barrio')] === 'Núñez' && x[E.C('Figura')] === 'Jorge Macri'; })][E.C('agenda_uid')] = 'c-otra-reunion';
+r = correr(E, false, [V1b]);
+ok(r.crear === 0 && r.yaCargadas === 0 && r.eleccionesSinFila === 1 && lineas01(E).length === 1,
+   'PRENDIDO: la parecida es de otra reunión (agenda_uid): no se usa; se vuelve a preguntar y no se crea (sin fila ' + r.eleccionesSinFila + ')');
 
 // ============================== [5] una línea pre-cargada de otra candidata pisaba la elección nueva ==============================
 
