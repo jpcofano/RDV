@@ -9,7 +9,8 @@
 'use strict';
 const vm = require('vm'), fs = require('fs'), path = require('path');
 const RAIZ = path.join(__dirname, '..');
-const ARCHIVOS = ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayuda.js'];
+// 15/10: 47_AgendaVistas.js por ordenarSolapasAgenda_ (la LEER va a la primera de las del sistema, sin mover las del equipo)
+const ARCHIVOS = ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayuda.js', '47_AgendaVistas.js'];
 
 let fallas = 0;
 function ok(cond, que) { console.log((cond ? '  ok   ' : '  FALLA ') + que); if (!cond) fallas++; }
@@ -23,6 +24,7 @@ function crearEntorno(formsSinFila, formatoDirecta) {
     }
     _f(f, c) { const k = f + ',' + c; return this.fmt[k] = this.fmt[k] || {}; }
     getName() { return this.nombre; }
+    getIndex() { return this.p.hojas.indexOf(this) + 1; }
     getMaxRows() { return this.maxFilas; }
     getMaxColumns() { return this.maxCols; }
     deleteColumns(c, n) { this.maxCols -= n; }
@@ -68,7 +70,7 @@ function crearEntorno(formsSinFila, formatoDirecta) {
     if (!E.planillas[id]) {
       const p = { hojas: [], activa: null,
         getSheetByName: function (n) { return p.hojas.filter(function (h) { return h.nombre === n; })[0] || null; },
-        insertSheet: function (n) { const h = new Hoja(n); p.hojas.push(h); p.activa = h; return h; },
+        insertSheet: function (n, i) { const h = new Hoja(n); h.p = p; if (i == null || i >= p.hojas.length) p.hojas.push(h); else p.hojas.splice(i, 0, h); p.activa = h; return h; },
         getSheets: function () { return p.hojas.slice(); },
         setActiveSheet: function (h) { p.activa = h; return h; },
         moveActiveSheet: function (pos) { p.hojas = p.hojas.filter(function (x) { return x !== p.activa; }); p.hojas.splice(pos - 1, 0, p.activa); } };
@@ -201,6 +203,19 @@ E.run('escribirSolapasAyuda(true)');
 ok(gg.protecciones.length === 1 && gg.protecciones[0].aviso === false &&
    gg.protecciones[0].editores.every(function (e) { return e.getEmail() === 'yo@x'; }),
    'la que había quedado de advertencia pasa a real (sólo quien corre el script)');
+
+console.log('[6] 15/10: en el archivo "Agenda", la LEER va a la PRIMERA DE LAS DEL SISTEMA; las del equipo no se mueven');
+{
+  const E6 = crearEntorno();
+  const ag = E6.planilla(E6.run('AGENDA_COPIA_SS'));
+  ['Agenda Directa', 'Agenda', 'Sugerencia - Equipo Directa', 'Agenda cerrada'].forEach(function (n) { ag.insertSheet(n); });
+  E6.run('escribirSolapasAyuda(true)');
+  ok(ag.getSheets().map(function (h) { return h.nombre; }).join(' | ') === 'Agenda Directa | LEER | Sugerencia - Equipo Directa | Agenda | Agenda cerrada',
+     'LEER en el primer lugar de las del sistema (2º); "Agenda Directa" sigue 1ª y "Sugerencia…" 3ª (' + ag.getSheets().map(function (h) { return h.nombre; }).join(' | ') + ')');
+  E6.run('escribirSolapasAyuda(true)');
+  ok(ag.getSheets().map(function (h) { return h.nombre; }).join(' | ') === 'Agenda Directa | LEER | Sugerencia - Equipo Directa | Agenda | Agenda cerrada',
+     'otra vez: nada se mueve');
+}
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
