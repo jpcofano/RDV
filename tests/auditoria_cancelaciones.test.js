@@ -54,7 +54,14 @@ function crearEntorno() {
           for (let i = 0; i < nf; i++) { const r = []; for (let j = 0; j < nc; j++) { const fila = h.v[f - 1 + i]; r.push(fila && fila[c - 1 + j] !== undefined ? fila[c - 1 + j] : ''); } o.push(r); }
           return o;
         };
-        return proxyLectura(E, nombre + '!rango', { getValues: leer, getValue: function () { return leer()[0][0]; } });
+        // las celdas combinadas (una lectura): las de la hoja que caen en el rango; `h.combinadasFallan` simula que no se pueden leer
+        const combinadas = function () {
+          if (h.combinadasFallan) throw new Error('no se pudieron leer las celdas combinadas (simulado)');
+          return (h.combinadas || []).filter(function (m) { return m[0] >= f && m[0] < f + nf; }).map(function (m) {
+            return { getRow: function () { return m[0]; }, getColumn: function () { return m[1]; }, getNumRows: function () { return m[2]; }, getNumColumns: function () { return m[3]; } };
+          });
+        };
+        return proxyLectura(E, nombre + '!rango', { getValues: leer, getValue: function () { return leer()[0][0]; }, getMergedRanges: combinadas });
       }
     };
     h.proxy = proxyLectura(E, nombre, h.lect);
@@ -144,22 +151,48 @@ const B = {
   elena08: ['*Jueves 08/10*', 'Evento: Encuentro con Vecinos Elena Inventada, Caballito', 'Hora: 19:00h', 'Lugar: Av. Rivadavia 5000, Club'],
   fabio14: ['*Miércoles 14/10*', 'Evento: Encuentro con Vecinos Fabio Simulado, Flores (SUSPENDIDA)', 'Hora: 18:00h', 'Lugar: Rivadavia 7000, Plaza'],
   ana16: ['*Viernes 16/10*', 'Evento: Encuentro con Vecinos Ana Prueba, Recoleta', 'Hora: 19:00h', 'Lugar: Av. Santa Fe 1234, Club'],
-  diego20: ['*Martes 20/10*', 'Evento: Encuentro con Vecinos Diego Ficticio, Caballito', 'Hora: 18:00h', 'Lugar: Av. Rivadavia 5000, Club']
+  diego20: ['*Martes 20/10*', 'Evento: Encuentro con Vecinos Diego Ficticio, Caballito', 'Hora: 18:00h', 'Lugar: Av. Rivadavia 5000, Club'],
+  // Elena el lunes 21/09 (sale en la v2) y su reunión de la semana siguiente, que YA ESTABA en el mail de esa semana
+  elena21: ['*Lunes 21/09*', 'Evento: Encuentro con Vecinos Elena Inventada, Caballito', 'Hora: 17:00h', 'Lugar: Av. Rivadavia 5000, Club'],
+  elena29: ['*Martes 29/09*', 'Evento: Encuentro con Vecinos Elena Inventada, Caballito', 'Hora: 17:00h', 'Lugar: Av. Rivadavia 5000, Club'],
+  diego26: ['*Sábado 26/09*', 'Evento: Encuentro con Vecinos Diego Ficticio, Flores', 'Hora: 11:00h', 'Lugar: Rivadavia 7000, Plaza'],
+  // Bruno el 15/10: la hora vieja tachada y la nueva al lado (un CAMBIO, no una cancelación)
+  bruno15: ['*Jueves 15/10*', 'Evento: Encuentro con Vecinos Bruno Ensayo, Palermo', 'Hora: 17:00 18:00h', 'Lugar: Serrano 1500, Plaza'],
+  // "se pasa" solo: un cambio de lugar (señal débil)
+  fabio21: ['*Miércoles 21/10*', 'Evento: Encuentro con Vecinos Fabio Simulado, Flores', 'Hora: 18:00h', 'Lugar: Se pasa al Club Social, Rivadavia 7100'],
+  // una conjunta suspendida: Carla (sin fila ese día) y Ana (con OTRA reunión ese día, a otra hora y en otro lugar)
+  conj23: ['*Viernes 23/10*', 'Evento: Encuentro con Vecinos Carla Muestra y Ana Prueba, Boedo (SUSPENDIDA)', 'Hora: 18:00h', 'Lugar: Boedo 900, Club']
 };
-// El HTML del mail de la semana del 12/10: Fabio dice SUSPENDIDA; Ana del 16/10, TACHADA (<s> y line-through).
+// El HTML del mail de la semana del 12/10: Fabio dice SUSPENDIDA; Ana del 16/10, TACHADA ENTERA (<s> y line-through); Bruno del
+// 15/10, sólo la hora vieja tachada.
 const HTML_SEM3 = '<div dir="ltr"><div><b>Mi&eacute;rcoles 14/10</b></div>' +
   '<div>Evento: Encuentro con Vecinos Fabio Simulado, Flores (SUSPENDIDA)</div><div>Hora: 18:00h</div><div>Lugar: Rivadavia 7000, Plaza</div><br>' +
+  '<div><b>Jueves 15/10</b></div><div>Evento: Encuentro con Vecinos Bruno Ensayo, Palermo</div><div>Hora: <s>17:00</s> 18:00h</div>' +
+  '<div>Lugar: Serrano 1500, Plaza</div><br>' +
   '<div><b>Viernes 16/10</b></div><div><s>Evento: Encuentro con Vecinos Ana Prueba, Recoleta</s></div>' +
   '<div><span style="text-decoration: line-through;">Hora: 19:00h</span></div><div>Lugar: Av. Santa Fe 1234, Club</div></div>';
+// Un "RE:" de Outlook: lo propio (Diego 20/10, igual) y, debajo del borde de Outlook y el bloque De/Enviado, la versión VIEJA
+// citada con una reunión TACHADA (Carla 22/10). Lo citado no es de este mail: no es una cancelación.
+const HTML_RE_OUTLOOK = '<html><head><style>p{margin:0}</style></head><body><div class="WordSection1">' +
+  '<p>Actualizo:</p><p><b>Martes 20/10</b></p><p>Evento: Encuentro con Vecinos Diego Ficticio, Caballito</p><p>Hora: 18:00h</p>' +
+  '<p>Lugar: Av. Rivadavia 5000, Club</p>' +
+  '<div style="border:none;border-top:solid #E1E1E1 1.0pt;padding:3.0pt 0cm 0cm 0cm"><p><b>De:</b> Persona Inventada<br><b>Enviado:</b> ' +
+  'miércoles, 14 de octubre de 2026 10:00<br><b>Para:</b> Equipo<br><b>Asunto:</b> ' + SEM4 + '</p></div>' +
+  '<p><b>Jueves 22/10</b></p><p><s>Evento: Encuentro con Vecinos Carla Muestra, Boedo</s></p><p><s>Hora: 18:00h</s></p></div></body></html>';
 const MAILS = [
-  { id: 'm1', hilo: 'h1', fecha: new D(2026, 8, 18, 10, 0), asunto: SEM1, cuerpo: cuerpo([B.ana22, B.bruno23, B.carla24]) },
-  // la v2, COMPLETA: Ana del 22/09 desaparece (futura) y Carla pasa del 24 al 25/09
-  { id: 'm2', hilo: 'h2', fecha: new D(2026, 8, 20, 10, 0), asunto: SEM1, cuerpo: cuerpo([B.bruno23, B.carla25]) },
+  { id: 'm7', hilo: 'h7', fecha: new D(2026, 8, 19, 10, 0), asunto: 'Agenda Encuentros de vecinos con CM y Ministros - Semana del 28/09 al 03/10',
+    cuerpo: cuerpo([B.elena29]) },
+  { id: 'm1', hilo: 'h1', fecha: new D(2026, 8, 18, 10, 0), asunto: SEM1, cuerpo: cuerpo([B.elena21, B.ana22, B.bruno23, B.carla24, B.diego26]) },
+  // la v2, COMPLETA: Ana del 22/09 y Elena del 21/09 desaparecen (futuras) y Carla pasa del 24 al 25/09
+  { id: 'm2', hilo: 'h2', fecha: new D(2026, 8, 20, 10, 0), asunto: SEM1, cuerpo: cuerpo([B.bruno23, B.carla25, B.diego26]) },
   { id: 'm3', hilo: 'h3', fecha: new D(2026, 9, 1, 10, 0), asunto: SEM2, cuerpo: cuerpo([B.diego06('18:00'), B.elena08]) },
   // el "Re:" sólo trae a Diego con otra hora: NO saca a Elena
   { id: 'm4', hilo: 'h3', fecha: new D(2026, 9, 3, 9, 0), asunto: 'Re: ' + SEM2, cuerpo: cuerpo([['Actualizo:'], B.diego06('18:30')]) },
-  { id: 'm5', hilo: 'h5', fecha: new D(2026, 9, 9, 10, 0), asunto: SEM3, cuerpo: cuerpo([B.fabio14, B.ana16]), html: HTML_SEM3 },
-  { id: 'm6', hilo: 'h6', fecha: new D(2026, 9, 14, 10, 0), asunto: SEM4, cuerpo: cuerpo([B.diego20]) }
+  { id: 'm5', hilo: 'h5', fecha: new D(2026, 9, 9, 10, 0), asunto: SEM3, cuerpo: cuerpo([B.fabio14, B.bruno15, B.ana16]), html: HTML_SEM3 },
+  { id: 'm6', hilo: 'h6', fecha: new D(2026, 9, 14, 10, 0), asunto: SEM4, cuerpo: cuerpo([B.diego20, B.fabio21, B.conj23]) },
+  { id: 'm8', hilo: 'h6', fecha: new D(2026, 9, 15, 8, 0), asunto: 'RE: ' + SEM4, html: HTML_RE_OUTLOOK,
+    cuerpo: cuerpo([['Actualizo:'], B.diego20, ['________________________________', 'De: Persona Inventada', 'Enviado: miércoles, 14 de octubre de 2026 10:00',
+                    'Asunto: ' + SEM4, '', '*Jueves 22/10*', 'Evento: Encuentro con Vecinos Carla Muestra, Boedo', 'Hora: 18:00h']]) }
 ];
 
 function montar() {
@@ -179,6 +212,12 @@ function montar() {
   filas.push(R({ Figura: 'Ana Prueba', Barrio: 'Recoleta', FECHA: F(16, 10), HORA: '19:00', 'STATUS REUNIÓN': 'en agenda' }));                       // 14
   filas.push(R({ Figura: 'Diego Ficticio', Barrio: 'Caballito', FECHA: F(20, 10), HORA: '18:00', 'STATUS REUNIÓN': 'en agenda' }));                   // 15
   filas.push(R({ Figura: 'Carla Muestra', Barrio: 'Boedo', FECHA: F(9, 10), HORA: '18:00', 'STATUS REUNIÓN': 'en agenda' }));                        // 16: vencida
+  filas.push(R({ Figura: 'Elena Inventada', Barrio: 'Caballito', FECHA: F(21, 9), HORA: '17:00', 'STATUS REUNIÓN': 'Suspendida' }));                // 17
+  filas.push(R({ Figura: 'Elena Inventada', Barrio: 'Caballito', FECHA: F(29, 9), HORA: '17:00', 'Dirección': 'Av. Rivadavia 5000, Club',
+                 'STATUS REUNIÓN': 'Realizada', Asistentes: 15 }));                                                                                     // 18: otra reunión
+  filas.push(R({ Figura: 'Bruno Ensayo', Barrio: 'Palermo', FECHA: F(15, 10), HORA: '18:00', 'STATUS REUNIÓN': 'en agenda' }));                     // 19
+  filas.push(R({ Figura: 'Fabio Simulado', Barrio: 'Flores', FECHA: F(21, 10), HORA: '18:00', 'STATUS REUNIÓN': 'en agenda' }));                    // 20
+  filas.push(R({ Figura: 'Ana Prueba', Barrio: 'Recoleta', FECHA: F(23, 10), HORA: '10:00', 'Dirección': 'Av. Santa Fe 1234, Club', 'STATUS REUNIÓN': 'en agenda' })); // 21
   const DEST = cfg('RDV_SS_DESTINO'), COPIA = cfg('AGENDA_COPIA_SS');
   E.poner(DEST, cfg('RDV_HOJA_DESTINO'), filas);
   E.poner(DEST, 'Comunas', [['Barrio', 'Comuna', 'Poblacion', 'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'Eje geográfico']]
@@ -197,16 +236,23 @@ function montar() {
   E.poner(DEST, cfg('AGENDA_SOLAPA_DUPLICADOS'), [enc,
     dup({ ELEGIR: 'Se canceló: suspender/borrar', resultado: 'aplicado', tipo: 'cancelación', 'reunión del mail': '22/09/2026 18:00 | Ana Prueba',
           id_reunion: 'cancelacion|ana prueba|20260922|18:00', id_fila: 'ana prueba|20260922|recoleta' })]);
-  // "Agenda Directa": dos filas de encabezado (grupos combinados), renglones de día, casillas
-  const g1 = ['Info', 'Implementador', 'CONVOCATORIA', '', '', '', 'CONFIRMACIÓN', '', 'POST', '', 'CANCELACIÓN', ''];
-  const g2 = ['', '', 'Hecho', 'Ok Sol', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado'];
-  const nada = function () { return [false, false, false, false, false, false, false, false, false, false]; };
-  const conCancel = nada(); conCancel[8] = true;
-  E.poner(COPIA, 'Agenda Directa', [g1, g2,
-    ['martes 20/10', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Evento: Encuentro con Vecinos Diego Ficticio, Caballito\nHora: 18:00h\nLugar: Av. Rivadavia 5000, Club', 'Juan Inventado'].concat(conCancel),
-    ['miércoles 21/10', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Evento: Encuentro con Vecinos Elena Inventada, Caballito\nHora: 19:00h\nLugar: Otra 123', 'Pepa Inventada'].concat(nada())]);
+  // "Agenda Directa": dos filas de encabezado (grupos combinados), renglones de día, casillas; a la derecha de CANCELACIÓN, una
+  // columna "Comentarios" con texto (no es CANCELACIÓN)
+  const g1 = ['Info', 'Implementador', 'CONVOCATORIA', '', '', '', 'CONFIRMACIÓN', '', 'POST', '', 'CANCELACIÓN', '', ''];
+  const g2 = ['', '', 'Hecho', 'Ok Sol', 'Programado', 'IVR', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Ok Sol', 'Programado', 'Comentarios'];
+  const casillas = function (cancelOk, cancelProg, comentario) {
+    return [false, false, false, false, false, false, false, false, cancelOk, cancelProg, comentario || ''];
+  };
+  const vacia = function (t) { return [t, '', '', '', '', '', '', '', '', '', '', '', '']; };
+  const directa = E.poner(COPIA, 'Agenda Directa', [g1, g2,
+    // antes del primer renglón de día: CANCELACIÓN marcada, sin día reconocido
+    ['Evento: Encuentro con Vecinos Ana Prueba, Recoleta\nHora: 09:00h', 'Nadie'].concat(casillas(true, false)),
+    vacia('martes 20/10'),
+    ['Evento: Encuentro con Vecinos Diego Ficticio, Caballito\nHora: 18:00h\nLugar: Av. Rivadavia 5000, Club', 'Juan Inventado'].concat(casillas(true, false, 'llamar a la sede')),
+    vacia('miércoles 21 de octubre'),
+    // Implementador escrito como un día (no es un renglón de día); CANCELACIÓN Programado con un texto que no es marca; Comentarios con texto
+    ['Evento: Encuentro con Vecinos Fabio Simulado, Flores\nHora: 18:00h', 'lunes 19/10'].concat(casillas(false, 'pendiente', 'se suspende?'))]);
+  directa.combinadas = [[1, 3, 1, 4], [1, 7, 1, 2], [1, 9, 1, 2], [1, 11, 1, 2], [1, 1, 2, 1], [1, 2, 2, 1]];
   const porHilo = {};
   MAILS.forEach(function (m) { (porHilo[m.hilo] = porHilo[m.hilo] || []).push(m); });
   E.hilos = Object.keys(porHilo).map(function (k) { return { id: k, mensajes: porHilo[k] }; });
@@ -236,20 +282,39 @@ ok(/\[REFLEJADA\] 22\/09\/2026 18:00 \| Ana Prueba.*la sacó la v2 \(mail comple
 ok(/AGENDA_DUPLICADOS: línea 2 \(cancelación\): ELEGIR "Se canceló: suspender\/borrar"/.test(L), 'y lo que dice AGENDA_DUPLICADOS');
 const carla = de(r, 'mail (desapareció)').filter(function (h) { return /24\/09\/2026/.test(h.reunion); })[0] || {};
 ok(carla.dice === 'reprogramada' && carla.veredicto === 'REFLEJADA', 'Carla 24/09 → 25/09: reprogramada, y la base la tiene en la fecha nueva (' + JSON.stringify(carla) + ')');
-ok(/¿se movió\?: sí, al 25\/09\/2026 19:00 \(misma semana, nueva en la última versión\)/.test(L), 'el log dice a qué fecha se movió');
-ok(!de(r, 'mail (desapareció)').some(function (h) { return /Elena/.test(h.reunion); }), 'el "Re:" que no trae a Elena NO la hace desaparecer');
+ok(/¿se movió\?: sí, al 25\/09\/2026 19:00 \(misma semana, nueva, misma hora y mismo lugar\)/.test(L), 'el log dice a qué fecha se movió y por qué');
+ok(!de(r, 'mail (desapareció)').some(function (h) { return /08\/10\/2026.*Elena/.test(h.reunion); }), 'el "Re:" que no trae a Elena 08/10 NO la hace desaparecer');
 ok(/08\/10\/2026 19:00 \| Elena Inventada.*no está en "Re: Agenda.*SIGUE/.test(L), 'y el log lo dice: falta en el "Re:" pero sigue');
+const ele = de(r, 'mail (desapareció)', 17)[0] || {};
+ok(ele.dice === 'cancelada' && ele.veredicto === 'REFLEJADA', 'Elena 21/09: su reunión del 29/09 YA ESTABA en el mail de esa semana → NO es reprogramación (' + JSON.stringify(ele) + ')');
+ok(/\[REFLEJADA\] 21\/09\/2026 17:00 \| Elena Inventada.*¿se movió\?: sin reprogramación clara/.test(L) &&
+   /sin reprogramación clara: 29\/09\/2026 17:00 ya estaba en la primera versión de su semana \(no es nueva\)/.test(L), 'y el log dice por qué no');
+ok(!r.resumen.yaRefleja.concat(r.resumen.dudosas).some(function (t) { return /fila 18/.test(t); }), 'la fila 18 (la otra reunión de Elena) no se usa como "la fecha nueva"');
 
 console.log('[3] marcadas en el mail');
 const fab = de(r, 'mail (palabra)', 13)[0] || {};
 ok(fab.veredicto === 'NO REFLEJADA' && /suspendid/.test(fab.detalle), 'Fabio 14/10: "SUSPENDIDA" en el evento, la base "en agenda" → NO REFLEJADA');
 const tach = de(r, 'mail (tachada)', 14)[0] || {};
 ok(tach.veredicto === 'NO REFLEJADA', 'Ana 16/10: TACHADA en el HTML, la base "en agenda" → NO REFLEJADA (' + JSON.stringify(tach) + ')');
-ok(r.tachado.mails === 1 && r.tachado.reuniones.length === 1 && /Evento "Encuentro con Vecinos Ana Prueba, Recoleta"/.test(r.tachado.reuniones[0].campos.join()) &&
-   /Hora "19:00h"/.test(r.tachado.reuniones[0].campos.join()), 'un mail con tachado, una reunión (evento y hora): ' + JSON.stringify(r.tachado.reuniones));
+ok(r.tachado.mails === 1 && r.tachado.reuniones.length === 1 && /Evento \(entera\) "Encuentro con Vecinos Ana Prueba, Recoleta"/.test(r.tachado.reuniones[0].campos.join()) &&
+   /Hora \(entera\) "19:00h"/.test(r.tachado.reuniones[0].campos.join()), 'un mail con tachado, una reunión tachada entera (evento y hora): ' + JSON.stringify(r.tachado.reuniones));
 ok(/getPlainBody\(\) \(41_AgendaParser\.js, leerMailsAgendaGmail_\): el texto plano NO trae el tachado/.test(L) && /el tachado SE PIERDE/.test(L) &&
-   /que el texto plano trae SIN marca: 2/.test(L), 'el log dice que el parser pierde el tachado (y que el texto plano lo trae sin marca)');
+   /que el texto plano trae SIN marca: 3/.test(L), 'el log dice que el parser pierde el tachado (y que el texto plano lo trae sin marca)');
 ok(!r.tachado.reuniones.some(function (t) { return /Fabio/.test(t.reunion); }), 'Fabio no está tachado');
+// ALTA 1: tachar sólo la hora vieja y escribir la nueva al lado es un CAMBIO
+ok(de(r, 'mail (tachada)', 19).length === 0 && r.tachado.cambios.length === 1 && /Bruno Ensayo/.test(r.tachado.cambios[0].reunion) &&
+   /Hora \(parcial\) "17:00"/.test(r.tachado.cambios[0].campos.join()), 'Bruno 15/10: sólo la hora vieja tachada → CAMBIO TACHADO, no cancelación (' + JSON.stringify(r.tachado.cambios) + ')');
+ok(/\[CAMBIO TACHADO\] 15\/10\/2026 17:00 \| Bruno Ensayo/.test(L) && /OJO: la agenda lee la hora TACHADA \(17:00\)/.test(L), 'y el log avisa que la agenda lee la hora tachada');
+ok(r.cambios.some(function (c) { return c.tipo === 'cambio tachado' && c.filas[0] === 19; }), 'va a la lista de posibles cambios, no al resumen de cancelaciones');
+// MEDIA 3: el "RE:" de Outlook cita la versión vieja con una reunión tachada: no es de este mail
+ok(!r.tachado.reuniones.concat(r.tachado.cambios).some(function (t) { return /Carla Muestra/.test(t.reunion); }) &&
+   !de(r, 'mail (tachada)').some(function (h) { return /22\/10/.test(h.reunion); }), 'el "RE:" de Outlook: lo tachado en la cita NO es una cancelación');
+// BAJA 6: "se pasa" solo
+ok(de(r, 'mail (palabra)', 20).length === 0 && r.cambios.some(function (c) { return /se pasa/.test(c.tipo) && c.filas[0] === 20; }) &&
+   /\[POSIBLE CAMBIO\] 21\/10\/2026 18:00 \| Fabio Simulado \| .*señal DÉBIL/.test(L), 'Fabio 21/10 "Se pasa al Club Social": posible cambio (señal débil), no cancelación');
+// BAJA 8: la conjunta suspendida; Ana tiene ese día OTRA reunión (otra hora y otro lugar): no es su fila
+const conj = de(r, 'mail (palabra)').filter(function (h) { return /23\/10\/2026/.test(h.reunion); })[0] || {};
+ok(conj.veredicto === 'SIN FILA' && conj.filas.length === 0, 'la conjunta Carla + Ana 23/10: la fila de Ana a las 10:00 en otro lugar NO es la suya → SIN FILA (' + JSON.stringify(conj) + ')');
 
 console.log('[4] RDV CONJUNTO');
 ok(/la columna de estado es "Estado" \(H, por encabezado\)/.test(L), 'la columna de estado, por encabezado');
@@ -260,10 +325,21 @@ ok(de(r, 'RDV CONJUNTO').some(function (h) { return h.veredicto === 'SIN FILA' &
 ok(!de(r, 'RDV CONJUNTO').some(function (h) { return /Diego|Carla|Elena/.test(h.reunion); }), 'Realizada / Programado / fuera del período: no se listan');
 
 console.log('[5] Agenda Directa');
-ok(/encabezado en las filas 1 y 2 \| Info: A \| CANCELACIÓN: K "Ok Sol", L "Programado"/.test(L), 'lee el encabezado de dos filas (grupo combinado + sub-columna)');
+ok(/encabezado en las filas 1 y 2 \| Info: A \| CANCELACIÓN: K "Ok Sol", L "Programado" \| el grupo, por las celdas combinadas/.test(L),
+   'lee el encabezado de dos filas por las celdas combinadas (Comentarios, a la derecha, NO es CANCELACIÓN)');
 const dir = de(r, 'Agenda Directa', 15)[0] || {};
-ok(dir.veredicto === 'NO REFLEJADA' && /CANCELACIÓN: Ok Sol/.test(dir.detalle), 'Diego 20/10: CANCELACIÓN marcada, la base "en agenda" → NO REFLEJADA (' + JSON.stringify(dir) + ')');
-ok(de(r, 'Agenda Directa').length === 1, 'la reunión sin nada en CANCELACIÓN no se lista');
+ok(dir.veredicto === 'NO REFLEJADA' && /CANCELACIÓN: Ok Sol$/.test(dir.detalle), 'Diego 20/10: CANCELACIÓN marcada, la base "en agenda" → NO REFLEJADA (' + JSON.stringify(dir) + ')');
+ok(de(r, 'Agenda Directa').length === 1, 'Fabio 21/10 ("pendiente" no es una marca; "Comentarios" no es CANCELACIÓN) no se lista');
+ok(/\[SIN DÍA RECONOCIDO\] renglón 3 \| .*Ana Prueba.*CANCELACIÓN: Ok Sol/.test(L), 'una CANCELACIÓN sin renglón de día arriba: se dice');
+ok(/con CANCELACIÓN marcada en el período: 1 \| marcadas sin día reconocido: 1/.test(L), '"miércoles 21 de octubre" es un día; "lunes 19/10" en Implementador no');
+E = montar();
+E.planilla(vm.runInContext('AGENDA_COPIA_SS', E.ctx)).hojas['Agenda Directa'].combinadasFallan = true;
+r = E.run('auditoriaCancelaciones()');
+const L5 = E.logs.join('\n');
+ok(/CANCELACIÓN: K "Ok Sol", L "Programado" \| el grupo, no se pudieron leer las celdas combinadas/.test(L5) && de(r, 'Agenda Directa').length === 1 &&
+   E.escrituras.length === 0, 'sin poder leer las combinadas: arrastra sólo sobre las sub-columnas conocidas (corta en "Comentarios")');
+E = montar();
+r = E.run('auditoriaCancelaciones()');
 
 console.log('[6] filas vencidas');
 ok(r.vencidas.length === 1 && r.vencidas[0].fila === 16, 'Carla 09/10 "en agenda" sin Asistentes: vencida (' + JSON.stringify(r.vencidas) + ')');
@@ -290,6 +366,16 @@ E = montar();
 delete E.planilla(vm.runInContext('AGENDA_COPIA_SS', E.ctx)).hojas['Agenda Directa'];
 r = E.run('auditoriaCancelaciones()');
 ok(r.errores.length === 0 && /"Agenda Directa": NO EXISTE/.test(E.logs.join('\n')) && r.vencidas.length === 1, 'lo dice y la auditoría termina');
+
+console.log('[10] reprogramada, pero la fila de la fecha nueva no es clara: DUDOSA, no REFLEJADA');
+E = montar();
+const hb = E.planilla(vm.runInContext('RDV_SS_DESTINO', E.ctx)).hojas[vm.runInContext('RDV_HOJA_DESTINO', E.ctx)];
+hb.v[9][HDR.indexOf('STATUS REUNIÓN')] = 'Suspendida';   // la fila 10 (Carla 25/09): ya no es una reunión vigente
+r = E.run('auditoriaCancelaciones()');
+const carla2 = de(r, 'mail (desapareció)').filter(function (h) { return /24\/09\/2026/.test(h.reunion); })[0] || {};
+ok(carla2.veredicto === 'DUDOSA' && r.resumen.dudosas.length === 1 && /la fila de la fecha nueva no es clara \(filas: 10 \(Suspendida\)\)/.test(E.logs.join('\n')),
+   'Carla 24/09 → 25/09 con la fila del 25/09 Suspendida: DUDOSA (' + JSON.stringify(carla2) + ')');
+ok(E.escrituras.length === 0, 'y no escribió nada');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

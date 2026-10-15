@@ -10,11 +10,14 @@
  *   1. DESAPARECIDAS DEL MAIL: estaban en una versión del mail de su semana + grupo y no en la última. Con la misma lectura
  *      que la agenda (`agendaDesdeListaDeMails_`, 41_AgendaParser.js): un "Re:"/"RV:"/"Fwd:" sólo agrega o actualiza; sólo
  *      un mail COMPLETO hace desaparecer una reunión. Con la versión que la sacó, si era futura cuando desapareció, si
- *      reaparece en otra fecha (posible reprogramación), qué dice la base y qué dice AGENDA_DUPLICADOS;
- *   2. MARCADAS EN EL MAIL: siguen en el mail, pero con "suspendida", "cancelada", "reprogramada", "posterga", "se pasa",
- *      "no se realiza" en el evento, la hora o el lugar; o TACHADAS en el HTML (<s>, <strike>, <del>, line-through). El
- *      parser de la agenda lee getPlainBody() (41_AgendaParser.js, leerMailsAgendaGmail_): el tachado no le llega. Acá se
- *      lee además getBody() (el HTML), sólo para medir;
+ *      reaparece en otra fecha (reprogramación sólo si la reunión de la fecha nueva es POSTERIOR, NUEVA y con la misma hora
+ *      o lugar), qué dice la base y qué dice AGENDA_DUPLICADOS;
+ *   2. MARCADAS EN EL MAIL: siguen en el mail, pero con "suspendida", "cancelada", "reprogramada", "posterga", "no se
+ *      realiza" en el evento, la hora o el lugar ("se pasa" solo es una señal débil: posible cambio); o TACHADAS en el HTML
+ *      (<s>, <strike>, <del>, line-through): cancelación sólo si está tachada la línea "Evento:" entera o el día entero;
+ *      tachar sólo la hora o el lugar es un CAMBIO. En una respuesta o reenvío, sólo lo propio (no la cita, de Gmail ni de
+ *      Outlook). El parser de la agenda lee getPlainBody() (41_AgendaParser.js, leerMailsAgendaGmail_): el tachado no le
+ *      llega. Acá se lee además getBody() (el HTML), sólo para medir;
  *   3. RDV CONJUNTO: filas del período con un estado distinto de Realizada / Programado, contra la fila de la base (el
  *      cruce de `cruzarAsistentes_`: figura por tokens + fecha; con 2+ filas, la dirección y después el barrio);
  *   4. "Agenda Directa" (archivo "Agenda", del equipo): las reuniones con algo marcado en CANCELACIÓN;
@@ -41,6 +44,14 @@ const AUDITORIA_CANCEL_PALABRAS_REPROG = /reprogramad|postergad|posterga|\bse pa
 /** Encabezados posibles de la columna de estado de RDV CONJUNTO (si ninguno está, se busca por el contenido). */
 const AUDITORIA_CANCEL_ENC_ESTADO = ['estado', 'status', 'estado reunion', 'estado reunión', 'status reunion', 'status reunión',
   'estado del evento', 'estado evento', 'estado del encuentro', 'situacion', 'situación'];
+/** Las marcas internas del HTML pasado a texto (caracteres de uso privado: no aparecen en un mail): tachado y cita. */
+const AUDITORIA_CANCEL_INI = String.fromCharCode(0xE000);
+const AUDITORIA_CANCEL_FIN = String.fromCharCode(0xE001);
+const AUDITORIA_CANCEL_CITA = String.fromCharCode(0xE002);
+/** Las sub-columnas conocidas de "Agenda Directa" (para arrastrar el grupo si no se pueden leer las celdas combinadas). */
+const AUDITORIA_CANCEL_SUBCOLUMNAS = ['hecho', 'ok sol', 'programado', 'ivr'];
+/** Una casilla marcada: true, o una marca explícita. */
+const AUDITORIA_CANCEL_MARCA = /^(true|verdadero|si|x|✓|✔|☑)$/;
 /** Valores de estado que se reconocen (para encontrar la columna por contenido). */
 const AUDITORIA_CANCEL_RE_ESTADO = /^(realizad|programad|suspendid|cancelad|reprogramad|postergad|en agenda|no se realiz)/;
 
@@ -59,7 +70,8 @@ function auditoriaCancelaciones(opciones) {
     hoy: hoy, desde: desde, hasta: hasta,
     desdeMails: new Date(desde.getFullYear(), desde.getMonth(), desde.getDate() - AUDITORIA_CANCEL_DIAS_MAILS_ANTES, 0, 0, 0),
     enPeriodo: function (f) { return !!f && ymd_(f) >= ymd_(desde) && ymd_(f) <= ymd_(hasta); },
-    cuentas: {}, hallazgos: [], errores: [], vencidas: [], tachado: { mails: 0, reuniones: [], fuera: 0 },
+    cuentas: {}, hallazgos: [], errores: [], vencidas: [], tachado: { mails: 0, reuniones: [], cambios: [], fuera: 0 },
+    cambios: [],               // posibles cambios (no cancelaciones): "se pasa" solo, y el tachado parcial (hora / lugar)
     conjRealizada: new Map()   // fila de la base → fila de RDV CONJUNTO que dice "Realizada" (para las contradicciones)
   };
   Logger.log('=== auditoriaCancelaciones (paso 68) — SÓLO LECTURA: no escribe nada (ni la base, ni el archivo "Agenda", ni Gmail) ===');
@@ -91,7 +103,7 @@ function auditoriaCancelaciones(opciones) {
   const resumen = _resumenAudCan_(C);
   Logger.log('auditoriaCancelaciones: %s ms', Date.now() - t0);
   return { cuentas: C.cuentas, resumen: resumen, hallazgos: C.hallazgos.map(_hallazgoPlanoAudCan_), vencidas: C.vencidas,
-           tachado: C.tachado, errores: C.errores };
+           tachado: C.tachado, cambios: C.cambios, errores: C.errores };
 }
 
 /** Una sección aislada: si falla, se dice y la auditoría sigue. */
@@ -207,23 +219,27 @@ function _ubicaAudCan_(ev, f) {
  * Las filas de la base de una reunión (del mail o de "Agenda Directa"), como las candidatas de la agenda (regla 4 de
  * `planAgenda_`): con figura, las filas de esa figura (o de la siguiente que nombra) ese día; sin figura, las de ese día
  * con la misma dirección o, sin figura, la misma ubicación. Con 2+, desempata la HORA si deja una.
+ * Una conjunta: las filas de la SEGUNDA figura (o siguientes) sólo si son la misma reunión (la misma hora o el mismo
+ * lugar); una fila de otra figura nombrada ese día puede ser otra reunión suya (revisión del 15/10).
  */
 function _filasDeEventoAudCan_(C, ev, fecha) {
   fecha = fecha || ev.fecha;
   if (!fecha || !C.dest) return [];
   const delDia = C.dest.filas.filter(function (f) { return f.fecha && ymd_(f.fecha) === ymd_(fecha); });
+  const dir = str(ev.lugarTexto);
+  const mismoLugar = function (f) {
+    const d = str(_valAudCan_(C, f, 'Dirección')), de = str(_valAudCan_(C, f, 'agenda_direccion_escrita'));
+    return !!dir && (normalizeText_(de) === normalizeText_(dir) || /exacta|parecida/.test(compararDirecciones_(dir, d)));
+  };
+  const mismaHora = function (f) { return !!ev.hora && valorAgendaComparable_(_valAudCan_(C, f, 'HORA'), 'HORA') === ev.hora; };
   let c = [];
   const figs = ev.figuras || [];
   for (let i = 0; !c.length && i < figs.length; i++) {
     c = delDia.filter(function (f) { return normalizeText_(f.figura) === normalizeText_(figs[i]); });
+    if (i > 0) c = c.filter(function (f) { return mismaHora(f) || mismoLugar(f) || _ubicaAudCan_(ev, f); });
   }
   if (!figs.length) {
-    const dir = str(ev.lugarTexto);
-    c = delDia.filter(function (f) {
-      const d = str(_valAudCan_(C, f, 'Dirección')), de = str(_valAudCan_(C, f, 'agenda_direccion_escrita'));
-      if (dir && (normalizeText_(de) === normalizeText_(dir) || /exacta|parecida/.test(compararDirecciones_(dir, d)))) return true;
-      return !f.figura && _ubicaAudCan_(ev, f);
-    });
+    c = delDia.filter(function (f) { return mismoLugar(f) || (!f.figura && _ubicaAudCan_(ev, f)); });
   }
   if (c.length > 1 && ev.hora) {
     const h = c.filter(function (f) { return valorAgendaComparable_(_valAudCan_(C, f, 'HORA'), 'HORA') === ev.hora; });
@@ -309,28 +325,37 @@ function _s1DesaparecidasAudCan_(C) {
       veredicto = 'NO ES CANCELACIÓN';
       nota = 'ya había pasado cuando salió del mail (la agenda no la toca)';
       pasadas++;
-    } else if (reprog) {
+    } else if (reprog && reprog.ev) {
       dice = 'reprogramada';
       const filasNueva = _filasDeEventoAudCan_(C, reprog.ev);
-      if (filasNueva.length === 1 && !filas.length) { veredicto = 'REFLEJADA'; nota = 'reprogramada: la base tiene la fila del ' + fmtFecha_(reprog.ev.fecha) + ' (fila ' + filasNueva[0].fila + ', ' + (_statusAudCan_(C, filasNueva[0]) || 'sin STATUS') + ') y ninguna en la fecha vieja'; }
-      else {
+      const textoNueva = filasNueva.length ? filasNueva.map(function (f) { return f.fila + ' (' + (_statusAudCan_(C, f) || 'sin STATUS') + ')'; }).join(', ') : 'ninguna';
+      const stNueva = filasNueva.length === 1 ? normStatus_(_statusAudCan_(C, filasNueva[0])) : '';
+      if (!filas.length && filasNueva.length === 1 && (stNueva === 'en agenda' || stNueva === 'realizada')) {
+        veredicto = 'REFLEJADA';
+        nota = 'reprogramada: la base tiene la fila del ' + fmtFecha_(reprog.ev.fecha) + ' (fila ' + filasNueva[0].fila + ', ' + _statusAudCan_(C, filasNueva[0]) +
+               ') y ninguna en la fecha vieja';
+      } else if (!filas.length) {
+        // la fila de la fecha nueva no es clara (ninguna, varias, o con un STATUS que no es de una reunión vigente): no se afirma nada
+        veredicto = 'DUDOSA';
+        nota = 'reprogramada al ' + fmtFecha_(reprog.ev.fecha) + ', pero la fila de la fecha nueva no es clara (filas: ' + textoNueva + '): revisar a mano';
+      } else {
         veredicto = _veredictoAudCan_(C, filas);
-        nota = 'reprogramada al ' + fmtFecha_(reprog.ev.fecha) + ' (' + reprog.como + '); filas de la fecha nueva: ' +
-               (filasNueva.length ? filasNueva.map(function (f) { return f.fila + ' (' + (_statusAudCan_(C, f) || 'sin STATUS') + ')'; }).join(', ') : 'ninguna');
-        if (veredicto === 'SIN FILA') { veredicto = 'NO REFLEJADA'; nota += ' — la base no tiene la reunión en ninguna de las dos fechas'; }
+        nota = 'reprogramada al ' + fmtFecha_(reprog.ev.fecha) + ' (' + reprog.como + '); filas de la fecha nueva: ' + textoNueva;
       }
     } else {
       veredicto = _veredictoAudCan_(C, filas);
-      if (d.versionParcial) nota = 'OJO: la versión que la sacó es PARCIAL (menos del ' + Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100) + '% de las reuniones): la agenda no suspende';
+      if (reprog && reprog.dudas) nota = 'sin reprogramación clara: ' + reprog.dudas;
+      if (d.versionParcial) nota = (nota ? nota + '; ' : '') + 'OJO: la versión que la sacó es PARCIAL (menos del ' + Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100) + '% de las reuniones): la agenda no suspende';
     }
     Logger.log('  [%s] %s | %s, semana %s | %s; %s | futura al desaparecer: %s | ¿se movió?: %s', veredicto, _evTextoAudCan_(d), d.grupo, d.semana,
-               vista, saco, d.futuraAlDesaparecer ? 'sí' : 'NO', reprog ? 'sí, al ' + fmtFecha_(reprog.ev.fecha) + ' ' + (reprog.ev.hora || '') + ' (' + reprog.como + ')' : 'no');
+               vista, saco, d.futuraAlDesaparecer ? 'sí' : 'NO', reprog && reprog.ev ? 'sí, al ' + fmtFecha_(reprog.ev.fecha) + ' ' + (reprog.ev.hora || '') + ' (' + reprog.como + ')'
+                                                                                : (reprog && reprog.dudas ? 'sin reprogramación clara' : 'no'));
     _logFilasAudCan_(C, filas);
     Logger.log('      AGENDA_DUPLICADOS: %s', dup);
     if (nota) Logger.log('      %s', nota);
     if (veredicto === 'NO ES CANCELACIÓN') return;
     _hallazgoAudCan_(C, { fuente: 'mail (desapareció)', dice: dice, veredicto: veredicto, filas: filas, reunion: _evTextoAudCan_(d),
-                          detalle: saco + (reprog ? '; reprogramada al ' + fmtFecha_(reprog.ev.fecha) : '') + '; AGENDA_DUPLICADOS: ' + dup + (nota ? '; ' + nota : '') });
+                          detalle: saco + (reprog && reprog.ev ? '; reprogramada al ' + fmtFecha_(reprog.ev.fecha) : '') + '; AGENDA_DUPLICADOS: ' + dup + (nota ? '; ' + nota : '') });
   });
   // Lo que falta en una respuesta pero sigue en el estado (no es desaparición: la respuesta sólo agrega o actualiza).
   const noSacan = _faltanEnRespuestasAudCan_(C);
@@ -344,24 +369,65 @@ function _s1DesaparecidasAudCan_(C) {
 function _hhAudCan_(d) { return d ? Utilities.formatDate(d, RDV_TZ, 'dd/MM HH:mm') : '—'; }
 
 /**
- * ¿Se movió? La misma figura (sin figura: el mismo tipo y lugar) en otra fecha a ±AUDITORIA_CANCEL_DIAS_REPROG días, en la
- * última versión: en la misma semana, sólo si es "nueva en la última versión"; en otra semana, mandada después.
+ * ¿Se movió? (revisión del 15/10: una figura como Macri tiene varias reuniones por semana, así que "la misma figura otro
+ * día" no alcanza). Una reunión de la última versión es la reprogramación de la desaparecida `d` si:
+ *   - es de la misma figura (sin figura: el mismo tipo y lugar), en una fecha POSTERIOR, a lo sumo
+ *     AUDITORIA_CANCEL_DIAS_REPROG días después;
+ *   - es NUEVA: no estaba en la primera versión de su semana + grupo, y apareció con el mail que sacó a `d` o después;
+ *   - tiene la misma hora o el mismo lugar (dirección); de varias, la que coincide en más cosas y, a igual, la más cercana.
+ * Devuelve `null` (ninguna de la figura después), `{ ev, como }` o `{ dudas }` ("sin reprogramación clara": por qué no).
  */
 function _reprogramacionAudCan_(C, d) {
   const misma = function (u) {
     if (d.figuraFila) return u.figuraFila === d.figuraFila;
     return !u.figuraFila && u.tipo === d.tipo && !!u.lugar && u.lugar === d.lugar;
   };
-  const c = C.r.unicas.filter(function (u) {
-    if (!u.fecha || !d.fecha || ymd_(u.fecha) === ymd_(d.fecha) || !misma(u)) return false;
-    if (Math.abs(diasEntre_(u.fecha, d.fecha)) > AUDITORIA_CANCEL_DIAS_REPROG) return false;
-    const mismaSemana = u.grupo === d.grupo && u.semana === d.semana;
-    if (mismaSemana) return u.cambios === 'nueva en la última versión';
-    return u.mailFecha >= d.mailFecha;
-  }).sort(function (a, b) { return Math.abs(diasEntre_(a.fecha, d.fecha)) - Math.abs(diasEntre_(b.fecha, d.fecha)); });
-  if (!c.length) return null;
-  const u = c[0];
-  return { ev: u, como: (u.grupo === d.grupo && u.semana === d.semana) ? 'misma semana, nueva en la última versión' : 'otra semana: ' + u.semana };
+  const posibles = C.r.unicas.filter(function (u) {
+    if (!u.fecha || !d.fecha || !misma(u) || ymd_(u.fecha) <= ymd_(d.fecha)) return false;
+    return diasEntre_(u.fecha, d.fecha) <= AUDITORIA_CANCEL_DIAS_REPROG;
+  });
+  if (!posibles.length) return null;
+  const dudas = [];
+  const c = [];
+  posibles.forEach(function (u) {
+    const ap = _primeraAparicionAudCan_(C, u);
+    const t = fmtFecha_(u.fecha) + ' ' + (u.hora || '');
+    if (!ap || ap.indice === 0) { dudas.push(t + ' ya estaba en la primera versión de su semana (no es nueva)'); return; }
+    if (d.mailQueLaSaco && ap.fecha < d.mailQueLaSaco) { dudas.push(t + ' apareció antes de que saliera la del ' + fmtFecha_(d.fecha)); return; }
+    const hora = !!d.hora && u.hora === d.hora;
+    const lugar = !!str(d.lugarTexto) && (normalizeText_(d.lugarTexto) === normalizeText_(u.lugarTexto) ||
+                                          /exacta|parecida/.test(compararDirecciones_(d.lugarTexto, u.lugarTexto)));
+    if (!hora && !lugar) { dudas.push(t + ' es nueva pero con otra hora y otro lugar'); return; }
+    c.push({ u: u, puntos: (hora ? 1 : 0) + (lugar ? 1 : 0), dist: diasEntre_(u.fecha, d.fecha), hora: hora, lugar: lugar });
+  });
+  if (!c.length) return { dudas: dudas.join('; ') };
+  c.sort(function (a, b) { return (b.puntos - a.puntos) || (a.dist - b.dist); });
+  if (c.length > 1 && c[1].puntos === c[0].puntos && c[1].dist === c[0].dist) {
+    return { dudas: c.length + ' reuniones nuevas igual de parecidas (' + c.map(function (x) { return fmtFecha_(x.u.fecha) + ' ' + x.u.hora; }).join(', ') + ')' };
+  }
+  const u = c[0].u;
+  return { ev: u, como: ((u.grupo === d.grupo && u.semana === d.semana) ? 'misma semana' : 'otra semana: ' + u.semana) + ', nueva, ' +
+                        [c[0].hora ? 'misma hora' : '', c[0].lugar ? 'mismo lugar' : ''].filter(Boolean).join(' y ') };
+}
+
+/**
+ * La primera versión de su semana + grupo en la que aparece una reunión de la última versión: `{ indice, fecha }` (índice
+ * 0 = la primera versión). Cada semana + grupo se parsea una sola vez (en memoria).
+ */
+function _primeraAparicionAudCan_(C, u) {
+  C._versiones = C._versiones || new Map();
+  const g = C.r.semanas.filter(function (x) { return x.grupo === u.grupo && x.semanaTexto === u.semana; })[0];
+  if (!g) return null;
+  const k = g.grupo + '|' + g.semanaTexto;
+  if (!C._versiones.has(k)) {
+    C._versiones.set(k, g.versiones.map(function (m) {
+      return new Set(_parsearCuerpoAgenda_(m.cuerpo, m.fecha, _rVacio_(), { grupo: g.grupo, semana: g.semanaTexto, desde: g.desde, hasta: g.hasta })
+        .map(function (x) { return x.claveBase; }));
+    }));
+  }
+  const sets = C._versiones.get(k);
+  for (let i = 0; i < sets.length; i++) if (sets[i].has(u.claveBase)) return { indice: i, fecha: g.versiones[i].fecha };
+  return null;
 }
 
 /** Por cada semana + grupo: las reuniones del estado que NO trae una respuesta posterior al último mail completo. */
@@ -396,9 +462,20 @@ function _s2MarcadasAudCan_(C) {
   Logger.log('--- 2a. MARCADAS CON PALABRAS en el mail (siguen en la última versión): %s de %s reuniones del período ---', conPalabra.length, vig.length);
   conPalabra.forEach(function (ev) {
     const t = normalizeText_([ev.eventoTexto, ev.horaTexto, ev.lugarTexto].join(' '));
-    const palabra = (AUDITORIA_CANCEL_PALABRAS.exec(t) || [''])[0];
-    const dice = AUDITORIA_CANCEL_PALABRAS_REPROG.test(t) ? 'reprogramada' : 'cancelada';
+    const palabras = t.match(new RegExp(AUDITORIA_CANCEL_PALABRAS.source, 'g')) || [];
+    const palabra = palabras.join(', ');
     const filas = _filasDeEventoAudCan_(C, ev);
+    // "se pasa" solo es una señal DÉBIL: puede ser un cambio de sala o de horario ("se pasa al salón 2"). Sin otra palabra, es
+    // un posible cambio y no entra al resumen de cancelaciones.
+    const soloSePasa = palabras.every(function (p) { return /se pasa/.test(p); });
+    if (soloSePasa) {
+      Logger.log('  [POSIBLE CAMBIO] %s | dice "%s" (señal DÉBIL: puede ser un cambio de sala u horario, no una cancelación) | Evento: %s | Hora: %s | Lugar: %s',
+                 _evTextoAudCan_(ev), palabra, str(ev.eventoTexto), str(ev.horaTexto), str(ev.lugarTexto));
+      _logFilasAudCan_(C, filas);
+      C.cambios.push({ tipo: 'posible cambio ("se pasa")', reunion: _evTextoAudCan_(ev), filas: filas.map(function (f) { return f.fila; }) });
+      return;
+    }
+    const dice = AUDITORIA_CANCEL_PALABRAS_REPROG.test(t.replace(/\bse pasa\b/g, ' ')) ? 'reprogramada' : 'cancelada';
     const v = _veredictoAudCan_(C, filas);
     Logger.log('  [%s] %s | dice "%s" | %s v%s/%s | Evento: %s | Hora: %s | Lugar: %s', v, _evTextoAudCan_(ev), palabra, ev.grupo, ev.version, ev.versiones,
                str(ev.eventoTexto), str(ev.horaTexto), str(ev.lugarTexto));
@@ -431,13 +508,28 @@ function _s2MarcadasAudCan_(C) {
         Logger.log('      tachado FUERA de una reunión: "%s"', t.texto);
         return;
       }
-      if (!porReunion.has(t.k)) porReunion.set(t.k, []);
-      porReunion.get(t.k).push(t.campo + ' "' + t.texto.replace(/^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*/i, '') + '"' + (lee ? ' (en el texto plano, sin marca)' : ' (NO está igual en el texto plano)'));
+      if (!porReunion.has(t.k)) porReunion.set(t.k, { campos: [], cancela: false });
+      const pr = porReunion.get(t.k);
+      // CANCELACIÓN sólo si está tachada la línea "Evento:" ENTERA o el encabezado del día entero (revisión del 15/10): tachar
+      // la hora o el lugar viejos y escribir los nuevos al lado ("Hora: 17:00 18:00") es un CAMBIO, no una cancelación.
+      if (t.entera && (t.campo === 'Evento' || t.campo === 'día')) pr.cancela = true;
+      pr.campos.push(t.campo + (t.entera ? ' (entera)' : ' (parcial)') + ' "' + t.texto.replace(/^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*/i, '') + '"' +
+                     (lee ? ' (en el texto plano, sin marca)' : ' (NO está igual en el texto plano)'));
+      if (t.campo === 'Hora' && !t.entera && res.evs[t.k] && _horaAgenda_(t.texto) && _horaAgenda_(t.texto) === res.evs[t.k].hora) {
+        pr.campos.push('OJO: la agenda lee la hora TACHADA (' + res.evs[t.k].hora + '): el texto plano trae las dos y el parser toma la primera');
+      }
     });
-    porReunion.forEach(function (campos, k) {
-      const ev = res.evs[k];
-      const filas = ev.fecha && C.enPeriodo(ev.fecha) ? _filasDeEventoAudCan_(C, ev) : [];
+    porReunion.forEach(function (pr, k) {
+      const ev = res.evs[k], campos = pr.campos;
       const enPer = ev.fecha && C.enPeriodo(ev.fecha);
+      const filas = enPer ? _filasDeEventoAudCan_(C, ev) : [];
+      if (!pr.cancela) {
+        Logger.log('    [CAMBIO TACHADO] %s | %s (sólo una parte: no es una cancelación, no va al resumen)', _evTextoAudCan_(ev), campos.join('; '));
+        if (enPer) _logFilasAudCan_(C, filas);
+        C.tachado.cambios.push({ mail: m.asunto, fecha: _hhAudCan_(m.fecha), reunion: _evTextoAudCan_(ev), campos: campos, vale: !!(em && em.vale) });
+        if (enPer && em && em.vale) C.cambios.push({ tipo: 'cambio tachado', reunion: _evTextoAudCan_(ev), filas: filas.map(function (f) { return f.fila; }) });
+        return;
+      }
       const v = enPer ? _veredictoAudCan_(C, filas) : 'FUERA DEL PERÍODO';
       Logger.log('    [%s] TACHADA: %s | %s', v, _evTextoAudCan_(ev), campos.join('; '));
       if (enPer) _logFilasAudCan_(C, filas);
@@ -450,8 +542,9 @@ function _s2MarcadasAudCan_(C) {
   });
   C.tachado.mails = mailsCon;
   C.tachado.seLoPierde = true;
-  Logger.log('  mails con algo tachado: %s | fragmentos: %s (que el texto plano trae SIN marca: %s) | reuniones tachadas: %s | tachado fuera de una reunión: %s',
-             mailsCon, total, enPlano, C.tachado.reuniones.length, C.tachado.fuera);
+  Logger.log('  mails con algo tachado: %s | fragmentos: %s (que el texto plano trae SIN marca: %s) | reuniones tachadas (Evento o día entero): %s | ' +
+             'cambios tachados (sólo hora / lugar / parte): %s | tachado fuera de una reunión: %s',
+             mailsCon, total, enPlano, C.tachado.reuniones.length, C.tachado.cambios.length, C.tachado.fuera);
   Logger.log('  => el tachado SE PIERDE: el parser no lo ve (lee getPlainBody). Las tachadas de una versión que vale quedan como vigentes en la agenda.');
   C.cuentas['2 marcadas con palabras'] = conPalabra.length;
   C.cuentas['2 mails con tachado'] = mailsCon;
@@ -470,55 +563,98 @@ function _estadoDeMailsAudCan_(C) {
 }
 
 /**
- * Lo tachado de un mail: el HTML a texto con marcas en lo tachado, cortado donde empieza la cita (en un "Re:"/"RV:"),
- * línea por línea con las MISMAS reglas que `_parsearCuerpoAgenda_` (encabezado del día, "Evento:", "Hora:", "Lugar:",
- * continuación). La k-ésima línea "Evento:" es la k-ésima reunión que devuelve el parser sobre ese mismo texto.
- * Devuelve `{ evs, tachados: [{ k, campo, texto }] }` (k = -1: fuera de una reunión).
+ * Lo tachado de un mail: el HTML a texto con marcas en lo tachado (en una respuesta o reenvío, sólo lo propio:
+ * `_propioDeHtmlAudCan_`), línea por línea con las MISMAS reglas que `_parsearCuerpoAgenda_` (encabezado del día, "Evento:",
+ * "Hora:", "Lugar:", continuación). La k-ésima línea "Evento:" es la k-ésima reunión que devuelve el parser sobre ese mismo
+ * texto. Devuelve `{ evs, tachados: [{ k, campo, texto, entera }] }` (k = -1: fuera de una reunión; `entera`: toda la línea
+ * está tachada, salvo la etiqueta).
  */
 function _tachadosDeMailAudCan_(m) {
-  const esResp = /^\s*((re|rv|aw)\s*:\s*)+/i.test(m.asunto || '');
-  let html = String(m.html || '');
-  if (esResp) {
-    const corte = html.search(/<div[^>]*class\s*=\s*["'][^"']*gmail_quote|<blockquote|id\s*=\s*["']divRplyFwdMsg/i);
-    if (corte >= 0) html = html.slice(0, corte);
-  }
-  const lineas = _htmlATextoMarcadoAudCan_(html).split('\n');
+  const I = AUDITORIA_CANCEL_INI, F = AUDITORIA_CANCEL_FIN, Q = AUDITORIA_CANCEL_CITA;
+  const reSeg = new RegExp(I + '([^' + F + ']*)' + F, 'g');
+  const reMarcas = new RegExp('[' + I + F + Q + ']', 'g');
+  const limpiaDe = function (l) { return String(l || '').replace(reMarcas, ''); };
+  let lineas = _htmlATextoMarcadoAudCan_(m.html).split('\n');
+  // el mismo criterio que la agenda para "respuesta" (RE_RESPUESTA_AGENDA_: re, rv, fwd, aw, wg): se lee sólo lo propio
+  if (RE_RESPUESTA_AGENDA_.test(m.asunto || '')) lineas = _propioDeHtmlAudCan_(lineas, limpiaDe, m.asunto);
   const limpias = [], tachados = [];
   let k = -1, campo = null, diaTachado = false;
-  for (let i = 0; i < lineas.length; i++) {
-    const marcada = lineas[i];
-    const limpia0 = marcada.replace(/[]/g, '');
+  lineas.forEach(function (marcada) {
+    const limpia0 = limpiaDe(marcada);
     const limpia = _limpiarLineaAgenda_(limpia0);
-    if (esResp && (RE_CITA_AGENDA_.some(function (re) { return re.test(limpia0); }) || RE_ESCRIBIO_AGENDA_.test(limpia0))) break;
     limpias.push(limpia0);
     const seg = [];
-    marcada.replace(/([^]*)/g, function (x, t) { if (str(t)) seg.push(str(t)); return x; });
+    marcada.replace(reSeg, function (x, t) { if (str(t)) seg.push(str(t)); return x; });
     const tachado = _limpiarLineaAgenda_(seg.join(' '));
-    if (/^\[image:/i.test(limpia)) continue;
-    if (!limpia) { campo = null; continue; }
+    // ¿la línea ENTERA está tachada? (lo que queda sin tachar, sin la etiqueta "Evento:" / "Hora:" / "Lugar:", no tiene letras ni números)
+    const resto = normalizeText_(_limpiarLineaAgenda_(limpiaDe(marcada.replace(reSeg, ' '))).replace(/^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*/i, ''));
+    const entera = !!tachado && !/[a-z0-9]/.test(resto);
+    if (/^\[image:/i.test(limpia)) return;
+    if (!limpia) { campo = null; return; }
     if (/^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{2,4}))?\s*[.:]?$/.test(normalizeText_(limpia))) {
-      diaTachado = !!tachado; campo = null;
-      if (tachado) tachados.push({ k: -2, campo: 'día', texto: tachado });   // se reparte entre las reuniones del día, abajo
-      continue;
+      diaTachado = entera; campo = null;
+      if (tachado && !entera) tachados.push({ k: -1, campo: 'día (parcial)', texto: tachado, entera: false });
+      return;
     }
     const et = /^\s*(evento|hora|lugar|direcci[oó]n)\s*:\s*(.*)$/i.exec(limpia);
     if (et) {
       const e = normalizeText_(et[1]);
-      if (e === 'evento') { k++; campo = 'Evento'; if (diaTachado) tachados.push({ k: k, campo: 'día', texto: '(el encabezado del día está tachado)' }); }
-      else if (k >= 0) campo = e === 'hora' ? 'Hora' : 'Lugar';
-      if (tachado) tachados.push({ k: k, campo: campo || e, texto: tachado });
-      continue;
+      if (e === 'evento') {
+        k++; campo = 'Evento';
+        if (diaTachado) tachados.push({ k: k, campo: 'día', texto: '(el encabezado del día está tachado entero)', entera: true });
+      } else if (k >= 0) campo = e === 'hora' ? 'Hora' : 'Lugar';
+      if (tachado) tachados.push({ k: k, campo: campo || e, texto: tachado, entera: entera });
+      return;
     }
-    if (tachado) tachados.push({ k: k, campo: campo || 'otra línea', texto: tachado });
-  }
+    // una continuación: no cuenta como "la línea Evento entera" (sólo la línea con la etiqueta decide)
+    if (tachado) tachados.push({ k: k, campo: (campo ? campo + ' (continuación)' : 'otra línea'), texto: tachado, entera: false });
+  });
   const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
   const evs = _parsearCuerpoAgenda_(limpias.join('\n'), m.fecha, _rVacio_(), { grupo: sem ? sem.grupo : '', semana: sem ? sem.texto : '',
     version: 0, versiones: 0, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '', desde: sem ? sem.desde : null, hasta: sem ? sem.hasta : null });
-  return { evs: evs, tachados: tachados.filter(function (t) { return t.k !== -2; }) };
+  return { evs: evs, tachados: tachados };
 }
 
 /**
- * El HTML de un mail a texto plano, con lo tachado entre  y : <s>, <strike>, <del> o cualquier elemento con
+ * Lo propio de una respuesta o un reenvío, sobre las líneas del HTML (como `_cuerpoPropioAgenda_` con el texto plano, más
+ * las citas de Outlook): en un reenvío ("Forwarded message" / "Mensaje reenviado", o un "RV:"/"Fwd:" de Outlook con su
+ * bloque "De: … Enviado: …"), lo reenviado sin su encabezado; y se corta en la primera cita: la marca de cita del HTML
+ * (gmail_quote, blockquote, divRplyFwdMsg, el borde superior de Outlook, <hr>), "-----Original Message-----" /
+ * "-----Mensaje original-----", una línea con ">", "El … escribió:" / "On … wrote:", o un bloque "De:/From: … Enviado:/Sent:".
+ */
+function _propioDeHtmlAudCan_(lineas, limpiaDe, asunto) {
+  const Q = AUDITORIA_CANCEL_CITA;
+  const cab = /^\s*(de|from|enviado|sent|date|fecha|para|to|cc|cco|asunto|subject)\s*:/i;
+  const l = function (i) { return limpiaDe(lineas[i]); };
+  const cabOutlook = function (i) {
+    if (!/^\s*(de|from)\s*:/i.test(l(i))) return false;
+    for (let j = i + 1; j <= i + 3 && j < lineas.length; j++) if (/^\s*(enviado|sent|date|fecha)\s*:/i.test(l(j))) return true;
+    return false;
+  };
+  const saltarCab = function (j) {
+    while (j < lineas.length && (cab.test(l(j)) || !l(j).trim())) j++;
+    return j;
+  };
+  let ini = 0;
+  const iR = lineas.findIndex(function (x, i) { return RE_REENVIO_AGENDA_.test(l(i)); });
+  if (iR >= 0) ini = saltarCab(iR + 1);
+  else if (/^\s*((fwd?|rv|wg|tr)\s*:)/i.test(asunto || '')) {
+    for (let i = 0; i < lineas.length; i++) if (cabOutlook(i)) { ini = saltarCab(i); break; }
+  }
+  for (let i = ini; i < lineas.length; i++) {
+    const t = l(i);
+    let cita = lineas[i].indexOf(Q) >= 0 || RE_CITA_AGENDA_.some(function (re) { return re.test(t); }) || /^\s*>/.test(t) || cabOutlook(i);
+    if (!cita && /^\s*(el|on)\s/i.test(t)) {
+      const junto = [t, l(i + 1), l(i + 2)];
+      cita = junto.some(function (x, k) { return RE_ESCRIBIO_AGENDA_.test(junto.slice(0, k + 1).join(' ')); });
+    }
+    if (cita) return lineas.slice(ini, i);
+  }
+  return lineas.slice(ini);
+}
+
+/**
+ * El HTML de un mail a texto plano, con lo tachado entre \uE000 y \uE001: <s>, <strike>, <del> o cualquier elemento con
  * "line-through" en su style. Los bloques (div, p, br, li, tr, h1-h6) cortan línea; las entidades se decodifican.
  */
 function _htmlATextoMarcadoAudCan_(html) {
@@ -533,11 +669,14 @@ function _htmlATextoMarcadoAudCan_(html) {
     if (m[4] != null) {
       const t = _entidadesAudCan_(m[4].replace(/\s+/g, ' '));
       if (!t) continue;
-      out += pila.some(function (x) { return x.tachado; }) ? '' + t + '' : t;
+      out += pila.some(function (x) { return x.tachado; }) ? '\uE000' + t + '\uE001' : t;
       continue;
     }
     const cierra = !!m[1], nombre = m[2].toLowerCase(), attrs = m[3] || '';
     if (bloque.test(nombre)) out += '\n';
+    // dónde empieza una cita (Gmail, Outlook): una línea con la marca; sólo se usa en respuestas y reenvíos (_propioDeHtmlAudCan_)
+    if (!cierra && (nombre === 'blockquote' || nombre === 'hr' || /class\s*=\s*["'][^"']*gmail_quote/i.test(attrs) || /divRplyFwdMsg/i.test(attrs) ||
+                    /border-top\s*:\s*solid\s*#(e1e1e1|b5c4df)/i.test(attrs))) out += '\n' + AUDITORIA_CANCEL_CITA + '\n';
     if (vacios[nombre] || /\/\s*$/.test(attrs)) continue;
     if (!cierra) {
       const tach = /^(s|strike|del)$/.test(nombre) || /style\s*=\s*["'][^"']*line-through/i.test(attrs);
@@ -546,7 +685,7 @@ function _htmlATextoMarcadoAudCan_(html) {
       for (let i = pila.length - 1; i >= 0; i--) if (pila[i].nombre === nombre) { pila.length = i; break; }
     }
   }
-  return out.replace(//g, '').split('\n').map(function (l) { return l.replace(/[ \t]+/g, ' ').trim(); }).join('\n');
+  return out.replace(/\uE001\uE000/g, '').split('\n').map(function (l) { return l.replace(/[ \t]+/g, ' ').trim(); }).join('\n');
 }
 
 function _entidadesAudCan_(t) {
@@ -681,26 +820,41 @@ function _s4DirectaAudCan_(C) {
   const last = sh.getLastRow(), cols = sh.getLastColumn();
   if (last < 3 || cols < 2) { Logger.log('--- 4. "%s": vacía ---', AUDITORIA_CANCEL_SOLAPA_DIRECTA); return; }
   const v = sh.getRange(1, 1, last, cols).getValues();
-  const enc = _encabezadoDirectaAudCan_(v);
+  // las celdas combinadas de las primeras filas (una LECTURA): el grupo vale sólo dentro de su rango combinado
+  let combinadas = null;
+  try {
+    combinadas = sh.getRange(1, 1, Math.min(7, last), cols).getMergedRanges().map(function (r) {
+      return { fila: r.getRow(), col: r.getColumn(), nf: r.getNumRows(), nc: r.getNumColumns() };
+    });
+  } catch (e) { combinadas = null; }
+  const enc = _encabezadoDirectaAudCan_(v, combinadas);
   if (!enc.ok) {
     Logger.log('--- 4. "%s": los encabezados NO coinciden (%s). Primeras filas: %s ---', AUDITORIA_CANCEL_SOLAPA_DIRECTA, enc.motivo,
                v.slice(0, 3).map(function (r) { return r.map(str).join(' | '); }).join(' // '));
     C.cuentas['4 Agenda Directa'] = 'encabezados distintos';
     return;
   }
-  Logger.log('--- 4. "%s": encabezado en las filas %s y %s | Info: %s | CANCELACIÓN: %s ---', AUDITORIA_CANCEL_SOLAPA_DIRECTA, enc.fila + 1, enc.fila + 2,
-             _letraCol_(enc.iInfo + 1), enc.cancel.map(function (c) { return _letraCol_(c.i + 1) + ' "' + c.sub + '"'; }).join(', '));
-  let dia = null, reuniones = 0, marcadas = 0;
+  Logger.log('--- 4. "%s": encabezado en las filas %s y %s | Info: %s | CANCELACIÓN: %s | el grupo, %s ---', AUDITORIA_CANCEL_SOLAPA_DIRECTA, enc.fila + 1, enc.fila + 2,
+             _letraCol_(enc.iInfo + 1), enc.cancel.map(function (c) { return _letraCol_(c.i + 1) + ' "' + c.sub + '"'; }).join(', '), enc.como);
+  let dia = null, reuniones = 0, marcadas = 0, sinDia = 0;
   for (let i = enc.fila + 2; i < v.length; i++) {
     const r = v[i];
     const d = _diaDeFilaAudCan_(r, enc.iInfo, C.hoy);
     if (d) { dia = d; continue; }
     const info = str(r[enc.iInfo]);
-    if (!info) continue;
+    const marcas = enc.cancel.filter(function (c) { return _marcadoAudCan_(r[c.i]); }).map(function (c) { return c.sub; });
+    if (!info) {
+      if (marcas.length) Logger.log('  [SIN INFO] renglón %s: CANCELACIÓN marcada (%s) pero la celda Info está vacía', i + 1, marcas.join(', '));
+      continue;
+    }
     reuniones++;
-    const marcas = enc.cancel.filter(function (c) { return _marcadoAudCan_(r[c.i]); }).map(function (c) { return c.sub + (r[c.i] === true ? '' : ' (' + str(r[c.i]) + ')'); });
     if (!marcas.length) continue;
-    if (!dia || !C.enPeriodo(dia)) continue;
+    if (!dia) {
+      sinDia++;
+      Logger.log('  [SIN DÍA RECONOCIDO] renglón %s | %s | CANCELACIÓN: %s (no hay un renglón de día arriba: no se cruza)', i + 1, info.replace(/\s+/g, ' '), marcas.join(', '));
+      continue;
+    }
+    if (!C.enPeriodo(dia)) continue;
     marcadas++;
     const ev = _infoAEventoAudCan_(info, dia, C.hoy);
     const filas = _filasDeEventoAudCan_(C, ev, dia);
@@ -711,25 +865,39 @@ function _s4DirectaAudCan_(C) {
     _hallazgoAudCan_(C, { fuente: 'Agenda Directa', dice: 'cancelada', veredicto: vv, filas: filas, reunion: _evTextoAudCan_(ev),
                           detalle: 'renglón ' + (i + 1) + ', CANCELACIÓN: ' + marcas.join(', ') });
   }
-  Logger.log('  reuniones en la solapa: %s | con CANCELACIÓN marcada en el período: %s', reuniones, marcadas);
+  Logger.log('  reuniones en la solapa: %s | con CANCELACIÓN marcada en el período: %s | marcadas sin día reconocido: %s', reuniones, marcadas, sinDia);
   C.cuentas['4 Agenda Directa con CANCELACIÓN'] = marcadas;
+  if (sinDia) C.cuentas['4 Agenda Directa sin día reconocido'] = sinDia;
 }
 
 /**
  * El encabezado de dos filas de "Agenda Directa": la fila con un grupo "CANCELACIÓN" (en las primeras 6) y la de abajo
- * con las sub-columnas. El grupo de una celda combinada sólo está en su primera columna: se arrastra a la derecha mientras
- * la fila de arriba esté vacía y la de abajo tenga una sub-columna. Info e Implementador: en cualquiera de las dos filas.
+ * con las sub-columnas. El grupo de una celda combinada vale SÓLO dentro de su rango combinado (`combinadas`, leídas de la
+ * hoja). Si no se pudieron leer, se arrastra a la derecha sólo mientras la sub-columna sea una conocida
+ * (AUDITORIA_CANCEL_SUBCOLUMNAS: Hecho, Ok Sol, Programado, IVR) y se corta en la primera que no lo es ("Comentarios").
+ * Info e Implementador: en cualquiera de las dos filas.
  */
-function _encabezadoDirectaAudCan_(v) {
+function _encabezadoDirectaAudCan_(v, combinadas) {
   for (let f = 0; f < Math.min(6, v.length - 1); f++) {
     const g = v[f].map(str), s = v[f + 1].map(str);
     if (!g.some(function (x) { return /^cancelacion/.test(normalizeText_(x)); })) continue;
-    const grupo = [];
-    let actual = '';
-    for (let j = 0; j < g.length; j++) {
-      if (g[j]) actual = g[j];
-      else if (!s[j]) actual = '';
-      grupo.push(actual);
+    const grupo = g.slice();
+    const delaFila = (combinadas || []).filter(function (m) { return m.fila === f + 1 && m.nc > 1; });
+    let como;
+    if (delaFila.length) {
+      como = 'por las celdas combinadas';
+      delaFila.forEach(function (m) {
+        for (let j = m.col; j < m.col - 1 + m.nc && j < g.length; j++) if (!g[j]) grupo[j] = g[m.col - 1];
+      });
+    } else {
+      como = combinadas ? 'sin celdas combinadas en esa fila: arrastrado sólo sobre las sub-columnas conocidas'
+                        : 'no se pudieron leer las celdas combinadas: arrastrado sólo sobre las sub-columnas conocidas';
+      let actual = '';
+      for (let j = 0; j < g.length; j++) {
+        if (g[j]) { actual = g[j]; continue; }
+        if (actual && AUDITORIA_CANCEL_SUBCOLUMNAS.indexOf(normalizeText_(s[j])) >= 0) grupo[j] = actual;
+        else actual = '';
+      }
     }
     const busca = function (re) {
       for (let j = 0; j < g.length; j++) if (re.test(normalizeText_(g[j])) || re.test(normalizeText_(s[j]))) return j;
@@ -740,29 +908,40 @@ function _encabezadoDirectaAudCan_(v) {
     for (let j = 0; j < g.length; j++) if (/^cancelacion/.test(normalizeText_(grupo[j])) && s[j]) cancel.push({ i: j, sub: s[j] });
     if (iInfo == null) return { ok: false, motivo: 'no hay columna "Info"' };
     if (!cancel.length) return { ok: false, motivo: 'el grupo CANCELACIÓN no tiene sub-columnas en la fila de abajo' };
-    return { ok: true, fila: f, iInfo: iInfo, iImpl: iImpl, cancel: cancel };
+    return { ok: true, fila: f, iInfo: iInfo, iImpl: iImpl, cancel: cancel, como: como };
   }
   return { ok: false, motivo: 'no hay un grupo "CANCELACIÓN" en las primeras 6 filas' };
 }
 
-/** ¿Es un renglón de día ("martes 13/10", o una fecha sola)? Devuelve la fecha o null. */
+const AUDITORIA_CANCEL_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/**
+ * ¿Es un renglón de día? Sólo mira la PRIMERA celda y la de Info (no cualquier celda): "martes 13/10", "martes 13 de
+ * octubre" (también "setiembre"), o una fecha sola. Devuelve la fecha o null.
+ */
 function _diaDeFilaAudCan_(r, iInfo, hoy) {
-  const llenas = r.filter(function (x) { return !esVacio_(x) && x !== false; });
-  for (let j = 0; j < r.length; j++) {
-    const t = normalizeText_(r[j]);
-    const m = /^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s*\/\s*(\d{1,2})/.exec(t);
+  const celdas = [r[0], r[iInfo]];
+  for (let j = 0; j < celdas.length; j++) {
+    const x = celdas[j];
+    if (x instanceof Date) {
+      const otras = r.filter(function (y, k) { return k !== 0 && k !== iInfo && !esVacio_(y) && y !== false; });
+      if (!otras.length) return toDate_(x);
+      continue;
+    }
+    const t = normalizeText_(x).replace(/setiembre/, 'septiembre');
+    let m = /^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/.exec(t);
     if (m) return _fechaDiaMes_(m[2] + '/' + m[3], hoy);
+    m = /^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s*,?\s*(\d{1,2})\s+de\s+([a-z]+)\b/.exec(t);
+    if (m && AUDITORIA_CANCEL_MESES.indexOf(m[3]) >= 0) return _fechaDiaMes_(m[2] + '/' + (AUDITORIA_CANCEL_MESES.indexOf(m[3]) + 1), hoy);
   }
-  if (llenas.length === 1 && llenas[0] instanceof Date) return toDate_(llenas[0]);
   return null;
 }
 
-/** ¿La casilla está marcada? true, o un texto que no sea "no"/"false"/"0". */
+/** ¿La casilla está marcada? Una casilla en true, o una marca explícita (TRUE, sí, x, ✓). Cualquier otro texto no. */
 function _marcadoAudCan_(x) {
   if (x === true) return true;
   if (x === false || x == null) return false;
-  const t = normalizeText_(x);
-  return !!t && !/^(false|falso|no|0|-)$/.test(t);
+  return AUDITORIA_CANCEL_MARCA.test(normalizeText_(x));
 }
 
 /** La celda Info ("Evento: …\nHora: …\nLugar: …"; sin "Evento:", la primera línea es el evento) → una reunión, con el parser de la agenda. */
@@ -809,7 +988,7 @@ function _resumenAudCan_(C) {
     if (!grupos.has(k)) grupos.set(k, []);
     grupos.get(k).push(h);
   });
-  const R = { yaRefleja: [], noRefleja: [], contradictorias: [], ambiguas: [], sinFila: [] };
+  const R = { yaRefleja: [], noRefleja: [], contradictorias: [], dudosas: [], ambiguas: [], sinFila: [], cambios: [] };
   grupos.forEach(function (hs, k) {
     const h0 = hs[0];
     const fuentes = hs.map(function (h) { return h.fuente + ' (' + h.dice + (h.detalle ? ': ' + h.detalle : '') + ')'; }).join(' + ');
@@ -819,6 +998,7 @@ function _resumenAudCan_(C) {
     const linea = base + ' | fuentes: ' + fuentes + (conjReal ? ' | ' + conjReal : '');
     if (vs.indexOf('CONTRADICTORIA') >= 0 || (conjReal && hs.some(function (h) { return h.fuente !== 'RDV CONJUNTO'; }))) R.contradictorias.push(linea);
     else if (vs.indexOf('NO REFLEJADA') >= 0 || vs.indexOf('OTRO ESTADO') >= 0) R.noRefleja.push(linea);
+    else if (vs.indexOf('DUDOSA') >= 0) R.dudosas.push(linea);
     else if (vs.indexOf('REFLEJADA') >= 0) R.yaRefleja.push(linea);
     else if (vs.indexOf('AMBIGUA') >= 0) R.ambiguas.push(linea);
     else R.sinFila.push(linea);
@@ -831,10 +1011,14 @@ function _resumenAudCan_(C) {
   bloque('la base YA LO REFLEJA (Suspendida / Reprogramada, o la reunión se movió y la base la tiene en la fecha nueva)', R.yaRefleja);
   bloque('la base NO LO REFLEJA (sigue "en agenda" o vacía, sin Asistentes)', R.noRefleja);
   bloque('CONTRADICTORIAS (una fuente dice que no se hizo y la base o RDV CONJUNTO dicen Realizada / tienen Asistentes)', R.contradictorias);
+  bloque('DUDOSAS (se movió de fecha, pero la fila de la fecha nueva no es clara: revisar a mano)', R.dudosas);
   bloque('AMBIGUAS (más de una fila posible en la base: no se elige)', R.ambiguas);
   bloque('SIN FILA en la base (nada que reflejar, o la reunión no está cargada)', R.sinFila);
+  C.cambios.forEach(function (x) { R.cambios.push(x.tipo + ' | ' + x.reunion + (x.filas.length ? ' | filas ' + x.filas.join(', ') : ' | sin fila')); });
+  bloque('aparte, POSIBLES CAMBIOS (no son cancelaciones: "se pasa" solo, o tachado sólo de la hora o el lugar)', R.cambios);
   Logger.log('  filas vencidas ("en agenda", sin Asistentes, hace más de %s días): %s', AUDITORIA_CANCEL_DIAS_VENCIDA, C.vencidas.length);
-  Logger.log('  tachado en el HTML: %s mails, %s reuniones (el parser lo PIERDE: lee getPlainBody)', C.tachado.mails, C.tachado.reuniones.length);
+  Logger.log('  tachado en el HTML: %s mails, %s reuniones tachadas enteras, %s cambios tachados (el parser lo PIERDE: lee getPlainBody)',
+             C.tachado.mails, C.tachado.reuniones.length, C.tachado.cambios.length);
   Logger.log('  cuentas: %s', Object.keys(C.cuentas).map(function (k) { return k + ' = ' + C.cuentas[k]; }).join(' | '));
   if (C.errores.length) {
     Logger.log('  SECCIONES QUE FALLARON: %s', C.errores.length);
