@@ -50,7 +50,8 @@ les queda para cargar a ustedes.
   'suspender'`): si una reunión sale del mail, el sistema la pone en "Suspendida"; si vuelve, la reactiva.** No pregunta
   y **nunca borra una fila**. Sólo si: la sacó un mail nuevo con la agenda completa (no un "Re:" ni un reenvío), ese mail
   no tiene un formato raro y no trae muchas menos reuniones que el anterior; la reunión todavía no había pasado; y la
-  fila está "en agenda" (si ustedes le pusieron otro STATUS —Realizada, Reprogramada…— no se toca). Si se pasa a otro día
+  fila está "en agenda" porque lo puso el sistema (si ustedes le pusieron otro STATUS —Realizada, Reprogramada…— no se toca;
+  si el "en agenda" lo pusieron ustedes, se les pregunta como hoy). Si se pasa a otro día
   de la misma semana, se mueve la fecha (no se suspende); si se pasa a otra semana, la vieja queda Suspendida y se crea la
   nueva. En el archivo "Agenda", "Cambios" dice *"suspendida: salió del mail del …"*; en AGENDA_DUPLICADOS queda una línea
   "cancelación" con el resultado. Si alguien ya había elegido *"Sigue"*, se respeta.

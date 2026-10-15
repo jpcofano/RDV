@@ -227,6 +227,36 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   recrea) y las 833 / 835 del 22/10 (ambiguas: cada una es la de su comuna). **El barrio del mail** (`AGENDA_BARRIO_DEL_MAIL`,
   APAGADO): si "Lugar (mail)" es un barrio de Comunas, se escribe como Barrio del sistema (con `agenda_barrio_escrito`) aunque la
   dirección no sirva (caso: la 824); si la dirección se geocodifica a otro barrio, no escribe nada.
+- **La agenda segura: una reunión, una fila** (15/10 noche, H1–H4; APAGADAS hasta los pasos 75 y 76;
+  `diagnostico/32_medir_agenda_segura.js`):
+  - **H1, crear sólo lo identificado** (`AGENDA_CREAR_SOLO_IDENTIFICADAS`). Una reunión sin figura y sin dirección real no
+    crea fila hasta que llega una de las dos o faltan `AGENDA_CREAR_SIN_DEFINIR_DIAS` (2) días. Mientras tanto queda
+    "pendiente de definir" en el archivo "Agenda" y en `AGENDA_PENDIENTES` (intermedia).
+  - **H2, conciliación por semana** (`AGENDA_CONCILIACION_SEMANAL`). Lo que quedó sin fila, o con 2+ filas, se empareja uno
+    a uno con las filas de la agenda de esa semana y grupo que quedaron sin reunión. Nunca empareja dos figuras ni dos tipos
+    distintos, y la fecha se mueve sólo si la FECHA es del sistema y la fila está "en agenda". Si cada una es la mejor de la
+    otra **y comparten la figura o el "Lugar (mail)"** (`AGENDA_CONCILIACION_PUNTAJE_MIN`), se actualiza; si no, se pregunta y
+    no se crea.
+  - **H3, el invariante** (`AGENDA_INVARIANTE_UNA_FILA`): clave fecha + figura, o fecha + tipo + "Lugar (mail)" para una
+    Seguridad sin figura. Si hay más filas que reuniones, esa semana no se crea nada más, se avisa y se lista. El paso 16
+    lo cuenta siempre.
+  - **H4, mails raros** (`AGENDA_VALIDAR_MAILS`). La validación se calcula siempre, pero sólo descarta con el interruptor
+    prendido. Un mail se descarta si tiene reuniones sin día o sin Hora/Lugar/tipo, líneas que el parser no entiende,
+    mucho menos o mucho más que la versión anterior, o la misma reunión dos veces. Si **todos** los mails de una semana son
+    raros, la semana se sigue mostrando en la copia, pero no crea ni suspende filas.
+- **J, la cancelación automática SÓLO SUSPENDE** (15/10 noche; `AGENDA_CANCELACION_AUTOMATICA = true`, con
+  `AGENDA_CANCELACION_MODO = 'suspender'`, que es el valor por defecto: la regla 7 que borra exige escribir `'regla7'` a
+  propósito; APAGADA hasta el paso 78).
+  - **Cuándo suspende:** una reunión que desaparece de un mail completo (que pasó H4 y la protección del 60%) y que todavía
+    no pasó **hoy**, con la fila en "en agenda" **puesto por el sistema** (`agenda_status_escrito`) y sin ser una
+    reprogramación de la misma semana. La fila pasa a "Suspendida" y **nunca se borra**, ni siquiera si alguien elige "Se
+    canceló". Un "en agenda" que puso el equipo se pregunta en AGENDA_DUPLICADOS, como hoy.
+  - **Cuándo vuelve:** si la reunión reaparece, vuelve a "en agenda".
+  - **Qué queda registrado:** REGISTRO_AGENDA_CAMBIOS, la columna "Cambios", AGENDA_DUPLICADOS (como resuelta), el aviso
+    `suspendidas` y el resumen semanal.
+  - **Lo que no toca:** un STATUS que puso el equipo, una reunión que ya pasó y un "Sigue" elegido. Si una salvaguarda
+    frena la suspensión, se avisa `cancelacion_no_aplicada`.
+  - Con el modo `'regla7'` (el de hoy), todo como antes.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
@@ -2907,6 +2937,9 @@ diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 
                    arriba si algo no está OK) y los AVISOS POR MAIL (resumen semanal + avisos inmediatos, uno por tema por día;
                    registrarAviso_). Manda con GmailApp (sin permiso nuevo). No escribe la base. APAGADOS
                    (AUDITORIA_SEMANAL_ACTIVA, AVISOS_MAIL_ACTIVO); pasos 80-83                                    ← 15/10
+diagnostico/32_medir_agenda_segura.js  la AGENDA SEGURA (H1-H4) y la cancelación que sólo suspende (J), SÓLO LECTURA:
+                   la agenda de hoy con las reglas prendidas (paso 75), la historia desde el 07/09 simulada (paso 76) y
+                   la cancelación automática contra lo que hizo el equipo (paso 78)                               ← 15/10
 diagnostico/34_colores_mail.js  las marcas de COLOR del mail (paso 90, SÓLO LECTURA): qué quieren decir el verde, el
                    amarillo y el rojo, las notas "Actualizo", "Hora: A CONFIRMAR" y "(NO PARTICIPA)"           ← 15/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito

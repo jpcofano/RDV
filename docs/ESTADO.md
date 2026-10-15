@@ -1951,6 +1951,53 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### H1–H4 y J (15/10, noche): la agenda segura y la cancelación que sólo suspende — escritas y APAGADAS
+
+Detalle de cada regla: CLAUDE.md, sección 0 (la tercera excepción). Para el equipo: docs/agenda-equipo.md y la GUÍA / LEER
+(las secciones nuevas aparecen sólo con su interruptor prendido). Todo apagado: con los interruptores en su valor de hoy, la
+agenda hace exactamente lo de antes.
+
+**Antes de prender, correr (sólo lectura):**
+- **paso 75**: la agenda de HOY con H1–H4. Muestra el invariante en la base y con el mail, las pendientes de definir, las
+  conciliadas, los mails raros y cada reunión que cambia. Los umbrales de "mail raro" no están medidos: este paso es el que
+  los calibra.
+- **paso 76**: la historia desde el 07/09, simulada con la regla de hoy y con H1–H4: cuántas filas se habrían creado de más.
+  Esperado según los tests, sin correr contra los datos reales:
+  - 829/830: 2 de más con la regla de hoy y 0 con H1–H4.
+  - 833/835: con H2, cada una es la de su comuna.
+  - **H1 sola no alcanza**: una fila que nació "A CONFIRMAR" se duplica cuando llega la dirección. Hace falta H2 o
+    `AGENDA_SEGURIDAD_POR_COMUNA`.
+- **paso 78**: la cancelación que sólo suspende contra lo que hizo el equipo. Hay que mirar si alguna da "NO COINCIDE: Realizada".
+
+**Para prender**:
+- H1: `AGENDA_CREAR_SOLO_IDENTIFICADAS`.
+- H2: `AGENDA_CONCILIACION_SEMANAL`.
+- H3: `AGENDA_INVARIANTE_UNA_FILA`.
+- H4: `AGENDA_VALIDAR_MAILS`.
+- J: `AGENDA_CANCELACION_AUTOMATICA = true`. El modo ya es `'suspender'` por defecto: la regla 7 que borra exige escribir `'regla7'`.
+
+Cada uno, con su clasp push.
+
+**Lo que corrigió el revisor (15/10, antes de prender nada):**
+- el modo por defecto pasó a `'suspender'`;
+- J no suspende una reunión que ya pasó hoy (quedaría trabada sin poder pasar a Realizada) ni un "en agenda" que puso el
+  equipo (se pregunta);
+- H2 empareja solo sólo con la misma figura o el mismo "Lugar (mail)", y mueve fechas sólo en filas "en agenda";
+- H4: una semana con todos sus mails raros ya no desaparece de la copia;
+- el aviso `cancelacion_no_aplicada`, sólo por mails de las últimas 24 h.
+
+**Quedan anotados (bajos, sin cambiar):**
+- H3 frena la creación de **toda** la semana, de todos los grupos, aunque la fila de más esté "Realizada": hoy la 829/830
+  frenaría la semana. Conviene borrar la que sobra antes de prender H3.
+- El paso 16 ahora cuenta "una reunión, una fila" siempre, aunque H3 esté apagado: va a marcar la 829/830 como problema.
+- Una "ambigua" que pasa por la conciliación: elegir "crear" no hace nada y la pregunta vuelve cada hora.
+
+**Dudas abiertas**:
+- La clave del invariante no lleva el grupo: la misma reunión en el mail de JM y en el de CM y Ministros contaría dos veces.
+- Dos Seguridad sin figura ni barrio el mismo día tienen el mismo id, así que "vincular" puede quedar ambiguo.
+- `invariante_agenda` y `cancelacion_no_aplicada` se registran en cada corrida mientras sigan: los avisos los juntan en uno
+  por tema por día.
+
 #### H5/H6 (15/10, noche): la auditoría semanal y los avisos por mail — escritos y APAGADOS
 
 `50_Avisos.js`. **No escriben la base.** Interruptores: `AUDITORIA_SEMANAL_ACTIVA = false`, `AVISOS_MAIL_ACTIVO = false`.

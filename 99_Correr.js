@@ -1330,6 +1330,27 @@ function paso90_coloresMail() {
   return coloresMail();
 }
 
+/** PASO 75 — EN SECO (15/10, H1-H4): la agenda de HOY como quedaría con las cuatro reglas prendidas. No escribe nada. */
+function paso75_agendaSegura_enSeco() {
+  _anunciar_('paso 75 — la agenda segura (EN SECO)', 'medirAgendaSegura()  [diagnostico/32_medir_agenda_segura.js]',
+             'NO escribe nada', 'el log: invariante en la base (paso 16) y con el mail, pendientes de definir, conciliadas, mails raros y cada reunión que cambia');
+  return medirAgendaSegura();
+}
+
+/** PASO 76 — SÓLO LECTURA (15/10, H1-H4): la historia desde el 07/09, simulada con la regla de hoy y con H1-H4. */
+function paso76_replayAgendaSegura() {
+  _anunciar_('paso 76 — la agenda desde el 07/09, simulada (SÓLO LECTURA)', 'replayAgendaSegura()  [diagnostico/32_medir_agenda_segura.js]',
+             'NO escribe nada', 'el log: filas creadas de más con cada regla, pendientes y cuándo se habrían creado');
+  return replayAgendaSegura();
+}
+
+/** PASO 78 — SÓLO LECTURA (15/10, J): la cancelación automática que sólo suspende, contra lo que hizo el equipo. */
+function paso78_cancelacionAutomatica() {
+  _anunciar_('paso 78 — cancelaciones: suspender vs regla 7 (SÓLO LECTURA)', 'medirCancelacionAutomatica()  [diagnostico/32_medir_agenda_segura.js]',
+             'NO escribe nada', 'el log: cada reunión que salió del mail, STATUS hoy, regla nueva / regla 7, coincide o no; las preguntas de AGENDA_DUPLICADOS y cómo se resuelven');
+  return medirCancelacionAutomatica();
+}
+
 /** PASO 80 (15/10, H6): la PRUEBA del mail de avisos. Con AVISOS_MAIL_ACTIVO = false no manda nada. No pide permiso nuevo. */
 function paso80_probarMailAvisos() {
   _anunciar_('paso 80 — prueba del mail de avisos', 'autorizarMailAvisos()  [50_Avisos.js]',

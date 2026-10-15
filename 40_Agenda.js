@@ -516,6 +516,12 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       P.filaDe.set(ev.clave, { fila: null, status: '', pendiente: true, seCrea: cuando });
       return;
     }
+    // 15/10 (H4, revisor): una semana en la que TODOS los mails tienen formato raro: se muestra en la copia, pero no crea filas
+    if (validarMails && ev.soloMailRaro) {
+      P.pendientes.push({ ev: ev, falta: 'un mail de su semana sin formato raro', seCrea: null });
+      P.filaDe.set(ev.clave, { fila: null, status: '', pendiente: true, seCrea: null });
+      return;
+    }
     // 15/10 (H4): la misma reunión dos veces en el mismo mail: no se crea ninguna (se avisa).
     if (validarMails && ev.repetidaEnMail) {
       if (!P.repetidasEnMail.some(function (o) { return _claveRepeticionAgenda_(o) === _claveRepeticionAgenda_(ev) && o.grupo === ev.grupo; })) P.repetidasEnMail.push(ev);
@@ -649,6 +655,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
         const mejor = Math.max.apply(null, pts);
         const tops = cands.filter(function (f, k) { return pts[k] === mejor; });
         if (tops.length !== 1) continue;
+        // 15/10 (revisor): solo, sólo con evidencia (la misma figura o el mismo "Lugar (mail)": puntaje >= 4); y la fecha se
+        // mueve sólo en una fila "en agenda". Si no, se pregunta (abajo).
+        if (mejor < AGENDA_CONCILIACION_PUNTAJE_MIN) continue;
+        if (ymd_(tops[0].fecha) !== ymd_(s.ev.fecha) && normStatus_(val(tops[0], 'STATUS REUNIÓN')) !== 'en agenda') continue;
         const f = tops[0];
         const rival = quedan.some(function (o) { return o !== s && compatible(o.ev, f) && puntaje(o.ev, f) >= mejor; });
         if (rival) continue;
@@ -704,8 +714,11 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const evalua = function (decision, f) { P.cancelacionesEvaluadas.push({ d: d, f: f || null, decision: decision }); };
     const noAplicada = function (motivo, f) { evalua('no: ' + motivo, f); if (suspenderSiempre) P.cancelNoAplicada.push({ d: d, f: f || null, motivo: motivo }); };
     if (!d.futuraAlDesaparecer) { P.noFuturas.push(d); evalua('no: ya había pasado cuando salió del mail'); return; }
+    // 15/10 (revisor): con "suspender", tampoco una que ya pasó HOY (salió del mail siendo futura, pero el STATUS puede
+    // seguir "en agenda" esperando los asistentes de RDV CONJUNTO: suspenderla trabaría el paso a "Realizada")
+    if (suspenderSiempre && d.fecha && ymd_(d.fecha) < ymd_(hoyP)) { evalua('no: ya había pasado (hoy es ' + fmtFecha_(hoyP) + ')'); return; }
     if (d.versionParcial) { P.saltadas60.push(d); noAplicada('protección del ' + Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100) + '% (el mail que la sacó trae muchas menos reuniones)'); return; }
-    if (suspenderSiempre && d.mailQueLaSacoRaro) { noAplicada('el mail que la sacó tiene formato raro (' + d.mailQueLaSacoRaro + ')'); return; }
+    if ((suspenderSiempre || validarMails) && d.mailQueLaSacoRaro) { noAplicada('el mail que la sacó tiene formato raro (' + d.mailQueLaSacoRaro + ')'); return; }
     const c = candidatas(d).filter(function (f) { return !usadas.has(f.fila); });
     if (c.length !== 1) {
       if (c.length > 1) { P.ambiguas.push({ ev: d, motivo: 'desaparecida con ' + c.length + ' filas', filas: c }); noAplicada(c.length + ' filas candidatas'); }
@@ -718,7 +731,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const salida = 'desapareció en la versión ' + (d.versionQueLaSaco || d.ultimaVersionVista + 1) + ' (' + fmtFecha_(d.mailQueLaSaco) + ')';
     // 15/10 (J, decisión del usuario): con el modo "suspender", la fila pasa a Suspendida — NUNCA se borra —, salvo que el
     // equipo haya elegido "Sigue" en AGENDA_DUPLICADOS. Las preguntas de cancelación pendientes se resuelven así.
-    if (suspenderSiempre) {
+    // 15/10 (revisor): sólo si el "en agenda" lo escribió el sistema (agenda_status_escrito); un "en agenda" del equipo se
+    // PREGUNTA en AGENDA_DUPLICADOS, como con la cancelación automática apagada
+    const statusDelSistema = normStatus_(val(f, 'agenda_status_escrito')) === 'en agenda';
+    if (suspenderSiempre && statusDelSistema) {
       const idC = 'cancelacion|' + idReunionAgenda_(d);
       const el = elecciones.get(idC);
       if (el && el.idFila === idFilaAgenda_(f) && el.eleccion === 'sigue') {
@@ -743,7 +759,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
     // 07/10: con AGENDA_CANCELACION_AUTOMATICA = false, la cancelación se PREGUNTA en AGENDA_DUPLICADOS y se aplica en
     // la corrida siguiente según lo elegido (la fila, por figura + fecha + barrio; la reunión, por su identidad).
-    if (!cancelAuto) {
+    if (!cancelAuto || suspenderSiempre) {
       const idC = 'cancelacion|' + idReunionAgenda_(d);
       const el = elecciones.get(idC);
       const vale = el && el.idFila === idFilaAgenda_(f);
@@ -761,7 +777,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       P.eleccionesAplicadas.push({ id: idC, eleccion: 'cancelar', fila: f.fila });
     }
     // 06/10, decisión del usuario: la fila que CREÓ la agenda y nadie tocó se BORRA (se guarda entera para deshacer).
-    const intocada = filaIntocadaAgenda_(f.valores, dest.hdr, d);
+    // con el modo "suspender" NUNCA se borra, tampoco cuando una persona eligió "Se canceló"
+    const intocada = suspenderSiempre ? { ok: false, motivo: 'modo "suspender": nunca se borra' } : filaIntocadaAgenda_(f.valores, dest.hdr, d);
     if (intocada.ok) {
       evalua('borrar', f);
       P.filaDe.set(d.clave, { fila: null, status: '', borrada: true });
@@ -2394,8 +2411,9 @@ function matrizPendientesAgenda_(P) {
     const ev = x.ev;
     out.push([fmtFecha_(ev.fecha) + ' ' + (ev.hora || '--:--') + ' | ' + (ev.tipo || '(sin tipo)') + ' | ' + (ev.lugar || '—'),
               ev.semana || '', ev.grupo || '', fmtFecha_(ev.fecha), ev.hora || '', ev.lugar || '', str(ev.eventoTexto).replace(/\s+/g, ' '),
-              x.falta, 'cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
-              '"), o el ' + fmtFecha_(x.seCrea) + ' (' + AGENDA_CREAR_SIN_DEFINIR_DIAS + ' días antes), lo que pase primero']);
+              x.falta, x.seCrea ? 'cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
+              '"), o el ' + fmtFecha_(x.seCrea) + ' (' + AGENDA_CREAR_SIN_DEFINIR_DIAS + ' días antes), lo que pase primero'
+                         : 'cuando llegue un mail de esa semana sin formato raro']);
   });
   return out;
 }
@@ -2425,7 +2443,7 @@ function _logAgendaSegura_(P) {
   (r.mailsRaros || []).forEach(function (x) {
     Logger.log('    MAIL CON FORMATO RARO%s | %s | %s | %s', x.usado ? '' : ' (NO SE USA)', fmtFecha_(x.fecha), x.asunto, x.motivos.join('; '));
   });
-  (r.semanasSinMailValido || []).forEach(function (t) { Logger.log('    SEMANA SIN NINGÚN MAIL VÁLIDO (no se usa nada de ella) | %s', t); });
+  (r.semanasSinMailValido || []).forEach(function (t) { Logger.log('    SEMANA SIN NINGÚN MAIL VÁLIDO (se muestra en la copia, pero no crea ni suspende filas) | %s', t); });
   if (m.suspenderSiempre) {
     Logger.log('  CANCELACIÓN AUTOMÁTICA (modo "suspender", nunca se borra): suspendidas %s | NO aplicadas (una salvaguarda falló) %s',
                (P.suspendidasAuto || []).length, (P.cancelNoAplicada || []).length);
@@ -2481,6 +2499,7 @@ function _avisosAgendaSegura_(P, r) {
       av('suspendidas', _textoReunionAgenda_(x.d) + ' | fila ' + x.f.fila + ' → Suspendida (salió del mail del ' + fmtFecha_(x.d.mailQueLaSaco) + ')');
     });
     (P.cancelNoAplicada || []).forEach(function (x) {
+      if (!reciente(x.d.mailQueLaSaco)) return;   // 15/10 (revisor): no repetir cada hora el mismo aviso
       av('cancelacion_no_aplicada', _textoReunionAgenda_(x.d) + (x.f ? ' | fila ' + x.f.fila : '') + ' salió del mail y NO se suspendió: ' + x.motivo);
     });
   }

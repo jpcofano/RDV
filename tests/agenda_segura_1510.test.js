@@ -140,7 +140,7 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'" }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -500,6 +500,23 @@ q = caso('sigue', [J1, J2], null, { cancelacionAutomatica: false });
 ok(q.status === 'en agenda' && dups(q.X).some(function (x) { return x[3] === 'cancelación' && /elegir/.test(x[2]); }), 'APAGADA: se pregunta (como hoy)');
 r = correr(q.X, false, [J1, J2]);
 ok(celda(q.X, q.k, 'STATUS REUNIÓN') === 'Suspendida', 'y la pregunta pendiente se resuelve con la regla en la corrida siguiente (prendida)');
+// 15/10 (revisor): salió del mail siendo futura, pero HOY ya pasó (espera los asistentes): no se suspende
+q = caso('pasada hoy', [J1, J2], null, { hoy: dia(18) });
+ok(q.status === 'en agenda' && q.rr.suspender === 0, 'salió del mail siendo futura, pero hoy (18/10) ya pasó: no se suspende (podría pasar a Realizada)');
+// 15/10 (revisor): un "en agenda" que NO escribió el sistema (agenda_status_escrito vacío) se PREGUNTA, no se suspende solo
+q = caso('en agenda del equipo', [J1, J2], function (X, k) { X.D.v[k][X.C('agenda_status_escrito')] = ''; });
+ok(q.status === 'en agenda' && q.rr.suspender === 0 && dups(q.X).some(function (x) { return x[3] === 'cancelación' && /elegir/.test(x[2]); }),
+   'un "en agenda" que puso el equipo: se pregunta en AGENDA_DUPLICADOS, no se suspende solo');
+// 15/10 (revisor): el modo por defecto de 00_Config.js es "suspender" (prender sólo la automática nunca borra)
+ok(/const AGENDA_CANCELACION_MODO = 'suspender';/.test(require('fs').readFileSync(require('path').join(__dirname, '..', '00_Config.js'), 'utf8')),
+   'AGENDA_CANCELACION_MODO = \'suspender\' por defecto en 00_Config.js');
+// 15/10 (revisor, H4): una semana con TODOS sus mails raros no desaparece de la copia, pero no crea filas
+E = montar(true, [], { AGENDA_VALIDAR_MAILS: 'true' });
+E.ctx.__l = [J2RARO];
+const soloRaro = E.run('(function () { var r = agendaDesdeListaDeMails_(__l, { validarMails: true }); return { n: r.unicas.length, marcadas: r.unicas.filter(function (e) { return e.soloMailRaro; }).length, sin: r.semanasSinMailValido.length }; })()');
+ok(soloRaro.n === 2 && soloRaro.marcadas === 2 && soloRaro.sin === 1, 'todos los mails de la semana raros: las 2 reuniones siguen (para la copia), marcadas (' + JSON.stringify(soloRaro) + ')');
+r = correr(E, false, [J2RARO]);
+ok(r.crear === 0 && fila(E, 'Clara Muzzio', 13) < 0, 'y no se crea ninguna fila con ellas (crear ' + r.crear + ')');
 
 // ============================== las mediciones (sólo lectura) ==============================
 

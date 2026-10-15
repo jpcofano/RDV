@@ -1577,6 +1577,8 @@ const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
  * semana, si la FECHA es del sistema). Si queda una fila compatible sin par, no se crea otra: se PREGUNTA en AGENDA_DUPLICADOS.
  */
 const AGENDA_CONCILIACION_SEMANAL = false;
+/** H2 (revisor, 15/10): el puntaje mínimo para emparejar solo (figura 8, "Lugar (mail)" 4, fecha 2, hora 1, dirección 1). Debajo, se pregunta. */
+const AGENDA_CONCILIACION_PUNTAJE_MIN = 4;
 /**
  * **H3. El invariante "una reunión, una fila"** (15/10). Con `true`, en cada corrida: si dos filas vivas (no Suspendida /
  * Reprogramada) son la misma reunión —misma fecha + misma figura, o, en una Seguridad sin figura, misma fecha + mismo tipo +
@@ -1614,7 +1616,9 @@ const AGENDA_MAIL_RARO_DIF = 3;
  * falla, no se suspende y se avisa (registrarAviso_('cancelacion_no_aplicada')); cada suspensión, registrarAviso_('suspendidas').
  * Para prenderlo: AGENDA_CANCELACION_AUTOMATICA = true y AGENDA_CANCELACION_MODO = 'suspender' (medir antes: paso 78).
  */
-const AGENDA_CANCELACION_MODO = 'regla7';
+// 15/10 (revisor): 'suspender' por defecto: prender sólo AGENDA_CANCELACION_AUTOMATICA nunca puede borrar filas. La regla 7 que
+// borra pide escribir 'regla7' a propósito. Mientras la automática esté apagada, esto no cambia nada.
+const AGENDA_CANCELACION_MODO = 'suspender';
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';

@@ -138,11 +138,18 @@ function agendaDesdeListaDeMails_(lista, meta) {
       }
     });
     if (validar && val.some(function (v) { return v.motivos.length; })) {
-      g.descartados = g.versiones.filter(function (m, i) { return val[i].motivos.length; });
-      g.versiones = g.versiones.filter(function (m, i) { return !val[i].motivos.length; });
-      if (!g.versiones.length) { r.semanasSinMailValido.push(g.grupo + ' | semana del ' + g.semanaTexto); return; }
-      px = parsear(g.versiones);
-      val = _validarVersionesAgenda_(g, g.versiones, px.ps, px.rvs, esRespuesta);
+      const buenas = g.versiones.filter(function (m, i) { return !val[i].motivos.length; });
+      if (!buenas.length) {
+        // 15/10 (revisor): TODOS los mails de la semana son raros: la semana NO desaparece de la copia (archivo "Agenda",
+        // AgendaCall, "Agenda (mail)"); sus reuniones se marcan y el plan no crea ni suspende con ellas.
+        r.semanasSinMailValido.push(g.grupo + ' | semana del ' + g.semanaTexto);
+        g.soloMailsRaros = true;
+      } else {
+        g.descartados = g.versiones.filter(function (m, i) { return val[i].motivos.length; });
+        g.versiones = buenas;
+        px = parsear(g.versiones);
+        val = _validarVersionesAgenda_(g, g.versiones, px.ps, px.rvs, esRespuesta);
+      }
     }
     px.rvs.forEach(function (rv) { _sumarContadoresAgenda_(r, rv); });
     const parseadas = px.ps;
@@ -163,6 +170,7 @@ function agendaDesdeListaDeMails_(lista, meta) {
     if (base >= 0) parseadas[base].forEach(function (ev) { estado.set(ev.clave, ev); });
     for (let i = base + 1; i < n; i++) parseadas[i].forEach(function (ev) { estado.set(ev.clave, ev); });
     const ultima = Array.from(estado.values());
+    if (g.soloMailsRaros) ultima.forEach(function (ev) { ev.soloMailRaro = true; });
     g.cantidades = parseadas.map(function (p) { return p.length; });
     g.respuestas = esResp.filter(Boolean).length;
     // Versión parcial: la base contra el mail completo anterior (las respuestas no cuentan).
