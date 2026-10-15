@@ -40,6 +40,7 @@ function corridaIniciar_(t0, enSeco, historial) {
   _corrida_ = { id: Utilities.formatDate(inicio, RDV_TZ, 'yyyyMMdd-HHmmss'), t0: inicio.getTime(),
                 modo: (enSeco ? 'EN SECO' : 'real') + (historial ? ' (historial)' : ''),
                 partes: {}, salteadas: [], errores: [], actual: '' };
+  let cortada = null;   // la corrida anterior que no terminó (para los avisos, 50_Avisos.js)
   try {
     const props = PropertiesService.getScriptProperties();
     const previa = props.getProperty(PROP_CORRIDA_EN_CURSO);
@@ -47,6 +48,7 @@ function corridaIniciar_(t0, enSeco, historial) {
       let p = null;
       try { p = JSON.parse(previa); } catch (e) { p = null; }
       if (p) {
+        cortada = p;
         Logger.log('>>> ### LA CORRIDA ANTERIOR (%s) NO TERMINÓ: se cortó en "%s" (lo más probable, el límite de 6 min). ' +
                    'Queda en %s como CORTADA. ###', p.id, p.actual || '?', RDV_HOJA_CORRIDAS);
         _escribirFilaCorrida_(p, 'CORTADA en "' + (p.actual || '?') + '" (límite de 6 min o caída)', null);
@@ -54,6 +56,9 @@ function corridaIniciar_(t0, enSeco, historial) {
     }
   } catch (err) { Logger.log('>>> REGISTRO_CORRIDAS: no se pudo revisar la corrida anterior: %s', err); }
   _guardarCorridaEnCurso_();
+  // 15/10 (H6): los avisos por mail (50_Avisos.js; apagados con AVISOS_MAIL_ACTIVO). Un mail que falla no corta la corrida.
+  try { if (typeof avisosAlIniciarCorrida_ === 'function') avisosAlIniciarCorrida_(cortada); }
+  catch (err) { Logger.log('>>> AVISOS: %s (la corrida sigue)', err); }
 }
 
 /** ¿Hay tiempo para empezar esta parte? Sin límite para la parte, o sin la guarda, siempre. */
@@ -103,6 +108,9 @@ function corridaCerrar_(err) {
              PARTES_CORRIDA_.filter(function (p) { return p in c.partes; })
                .map(function (p) { return p + ' ' + (c.partes[p] / 1000).toFixed(1) + ' s'; }).join(' · ') || '—',
              c.salteadas.length ? ' | salteadas por tiempo: ' + c.salteadas.join(', ') : '');
+  // 15/10 (H6): la racha de corridas malas / partes salteadas y los avisos de esta corrida (50_Avisos.js; apagados).
+  try { if (typeof avisosAlCerrarCorrida_ === 'function') avisosAlCerrarCorrida_(c, estado); }
+  catch (e) { Logger.log('>>> AVISOS: %s', e); }
   _corrida_ = null;
 }
 
@@ -199,5 +207,6 @@ function tiemposDeCorridas(n) {
                out[p].mediana == null ? '—' : out[p].mediana.toFixed(1), out[p].max == null ? '—' : out[p].max.toFixed(1),
                salt ? ' · salteada por tiempo ' + salt + ' veces' : '');
   });
+  out.estados = estados;   // 15/10: para el resumen del lunes (50_Avisos.js)
   return out;
 }

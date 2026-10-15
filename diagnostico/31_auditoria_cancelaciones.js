@@ -65,7 +65,8 @@ function auditoriaCancelaciones(opciones) {
   opciones = opciones || {};
   const t0 = Date.now();
   const hoy = opciones.hoy || hoyMediodia_();
-  const desde = toDate_(AUDITORIA_CANCEL_DESDE), hasta = toDate_(AUDITORIA_CANCEL_HASTA);
+  // 15/10: el período se puede pasar (el resumen semanal de 50_Avisos.js usa uno móvil); si no, el fijo de arriba (paso 68)
+  const desde = opciones.desde || toDate_(AUDITORIA_CANCEL_DESDE), hasta = opciones.hasta || toDate_(AUDITORIA_CANCEL_HASTA);
   const C = {
     hoy: hoy, desde: desde, hasta: hasta,
     desdeMails: new Date(desde.getFullYear(), desde.getMonth(), desde.getDate() - AUDITORIA_CANCEL_DIAS_MAILS_ANTES, 0, 0, 0),
