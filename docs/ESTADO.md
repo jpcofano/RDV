@@ -1951,6 +1951,33 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### H5/H6 (15/10, noche): la auditoría semanal y los avisos por mail — escritos y APAGADOS
+
+`50_Avisos.js`. **No escriben la base.** Interruptores: `AUDITORIA_SEMANAL_ACTIVA = false`, `AVISOS_MAIL_ACTIVO = false`.
+
+- **H5, la auditoría semanal** (`auditoriaSemanalAgenda`, activador semanal lunes 8:00, NO instalado): corre la
+  auditoría de la agenda (paso 66) y, si queda tiempo, la de cancelaciones (paso 68) con un **período móvil** (las últimas
+  6 semanas hasta el sábado de la semana que viene). Escribe `AUDITORIA_AGENDA` (intermedia; fila 1 roja si algo no está
+  OK, verde si está todo bien) **antes** de la de cancelaciones y otra vez al final, así lo central queda aunque la
+  ejecución se corte. Con el mail prendido, manda el resumen.
+- **H6, los avisos por mail** a la dirección de `AVISOS_MAIL_PARA` (00_Config.js): avisos inmediatos (dos corridas
+  seguidas cortadas o con error, una parte salteada por tiempo varias veces seguidas, un mail de agenda raro, una
+  cancelación frenada por una salvaguarda, las suspendidas del día), **como máximo uno por tema por día**. La cola vive en
+  una propiedad (si la ejecución muere, la manda la corrida siguiente). Si al cerrar la corrida ya pasaron
+  `AVISOS_ENVIO_MAX_MS` (320 s), no manda: guarda y la siguiente lo manda. La racha cuenta sólo las corridas reales de la
+  hora (no las en seco ni el historial).
+- **El permiso**: se manda con `GmailApp`, que el proyecto ya tiene autorizado (la agenda lee los mails). **No hay que
+  volver a autorizar nada.** (Con el otro servicio de mail de Apps Script habría que reautorizar: es un cambio de una línea
+  si algún día se prefiere.)
+- **Para prenderlo**: `paso81_auditoriaSemanal_enSeco` (ver cómo queda) → `AUDITORIA_SEMANAL_ACTIVA = true` y/o
+  `AVISOS_MAIL_ACTIVO = true` + clasp push → `paso80_probarMailAvisos` (un mail de prueba) →
+  `paso82_instalarAuditoriaSemanal` (y anotarlo en docs/triggers-legado.md). Para sacarlo: `paso83_borrarAuditoriaSemanal`.
+
+**El paso 90 (SÓLO LECTURA): las marcas de color del mail** (`diagnostico/34_colores_mail.js`): la paleta que usa quien
+manda la agenda (fondos resaltados, no tachado), qué pasó con cada color en la versión siguiente, la base y la lista de IDs,
+el caso Macri 11/08 Villa Riachuelo, las notas "Actualizo", "Hora: A CONFIRMAR" (hoy queda la hora vacía) y "(NO
+PARTICIPA)" (hoy se le asigna a la figura anterior). Es un informe: **no cambia nada** hasta que el usuario lo lea.
+
 #### El formato para leer (15/10, noche) — PRENDIDO
 
 Pedido del usuario (I): las solapas de reporte y de control, legibles. `51_FormatoLectura.js` (`formatoLectura_`), con

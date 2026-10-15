@@ -2903,6 +2903,12 @@ diagnostico/31_auditoria_cancelaciones.js  la AUDITORÍA DE CANCELACIONES (paso 
                    AGENDA_FIGURA_A_COMPLETAR): texto ajustado arriba a la izquierda, encabezado negrita gris congelado,
                    anchos según el contenido (la columna de la reunión, 350 px), ELEGIR / COMENTARIO resaltadas; en cada
                    reescritura (escribirHoja_, _escribirHojaAgenda_, AGENDA_DUPLICADOS). REVISAR_MATCH no (fichas) ← 15/10
+50_Avisos.js       H5/H6: la AUDITORÍA SEMANAL de la agenda (lunes 8:00: AUDITORIA_AGENDA en la intermedia, con una línea roja
+                   arriba si algo no está OK) y los AVISOS POR MAIL (resumen semanal + avisos inmediatos, uno por tema por día;
+                   registrarAviso_). Manda con GmailApp (sin permiso nuevo). No escribe la base. APAGADOS
+                   (AUDITORIA_SEMANAL_ACTIVA, AVISOS_MAIL_ACTIVO); pasos 80-83                                    ← 15/10
+diagnostico/34_colores_mail.js  las marcas de COLOR del mail (paso 90, SÓLO LECTURA): qué quieren decir el verde, el
+                   amarillo y el rojo, las notas "Actualizo", "Hora: A CONFIRMAR" y "(NO PARTICIPA)"           ← 15/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

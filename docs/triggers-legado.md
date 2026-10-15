@@ -69,6 +69,18 @@ Se instala con `paso24_instalarActivadorCadaHora()` y se borra con `paso24_borra
 (`99_Correr.js`; listo desde el 04/10). `upsertDiario` respeta `DRY_RUN`. Al instalarlo, pasar
 esta fila a "ACTIVO" con la fecha y el dueño.
 
+**Preparado, NO instalado (15/10):** la auditoría semanal de la agenda (H5, `50_Avisos.js`).
+
+| función | archivo | estado | tipo | frecuencia | dueño |
+|---|---|---|---|---|---|
+| `auditoriaSemanalAgenda` | `50_Avisos.js` | **NO INSTALADO** | tiempo | **semanal, lunes 8:00** (`AUDITORIA_SEMANAL_DIA` / `AUDITORIA_SEMANAL_HORA`) | |
+
+Escribe la solapa `AUDITORIA_AGENDA` (intermedia; línea roja arriba si algo no está OK) y, con
+`AVISOS_MAIL_ACTIVO = true`, manda el resumen semanal por mail (GmailApp: no pide permiso nuevo). **No escribe la
+base.** Antes de instalarlo: `paso81_auditoriaSemanal_enSeco()`; se instala con `paso82_instalarAuditoriaSemanal()`
+(se niega con `AUDITORIA_SEMANAL_ACTIVA = false` y no duplica) y se borra con `paso83_borrarAuditoriaSemanal()`. Al
+instalarlo, pasar esta fila a "ACTIVO" con la fecha y el dueño.
+
 > **El pipeline principal está frenado a propósito.** No es una falla: es un estado elegido
 > mientras dura la migración. Ver CLAUDE.md, "El pipeline está frenado". Consecuencia a tener
 > presente: **el hueco de sexo/edades no se llena solo hasta la Fase 6.**
