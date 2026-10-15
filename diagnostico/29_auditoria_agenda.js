@@ -567,20 +567,21 @@ function _copiaTablaAudAg_(C, sh, evs, desap) {
 /** "Agenda (mail)": un renglón por día ("lunes 12/10") y una celda "Evento: … / Hora: … / Lugar: …" por reunión. */
 function _copiaMailAudAg_(C, sh, evs, desap) {
   const out = { n: 0, faltan: [], sobran: [], distintas: [], desaparecidas: 0, fuera: 0 };
-  const last = sh.getLastRow();
-  const v = last >= 2 ? sh.getRange(2, 1, last - 1, 1).getValues() : [];
+  // 15/10: los renglones con el lector de 47_AgendaVistas.js, que entiende los dos formatos (el de siempre y el de "Agenda
+  // Directa") y el día aunque Sheets haya convertido "martes 13/10" en una FECHA (antes se leía sólo el texto de la columna A:
+  // con un Date, ningún renglón era un día y todas las reuniones caían en "otras semanas").
+  const lr = leerRenglonesVistaMail_(sh, C.hoy);
+  if (!lr.formato.formato) throw new Error('no se reconoce el formato de la solapa (ni el de siempre ni el de "' + AGENDA_SOLAPA_DIRECTA + '")');
   const norm = function (t) { return str(t).replace(/\s+/g, ' ').trim(); };
   const items = [];
-  let dia = null;
-  v.forEach(function (r, i) {
-    const t = str(r[0]);
-    const m = /^(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\s+(\d{1,2})\/(\d{1,2})/.exec(normalizeText_(t));
-    if (m) { dia = _fechaDiaMes_(m[2] + '/' + m[3], C.hoy); return; }
+  lr.renglones.forEach(function (r) {
+    if (r.tipo !== 'reunion') return;
+    const t = str(r.texto);
     if (!/^\s*evento\s*:/i.test(t)) return;
-    if (!dia || !C.enSemanas(dia)) { out.fuera++; return; }
+    if (!r.fecha || !C.enSemanas(r.fecha)) { out.fuera++; return; }
     const lineas = t.split(/\r?\n/);
     const hora = lineas.filter(function (l) { return /^\s*hora\s*:/i.test(l); }).map(function (l) { return _horaAgenda_(l); })[0] || '';
-    items.push({ fila: i + 2, fecha: dia, hora: hora, texto: norm(t), evento: norm(lineas[0]), usado: false });
+    items.push({ fila: r.fila, fecha: r.fecha, hora: hora, texto: norm(t), evento: norm(lineas[0]), usado: false });
   });
   const textoDe = function (ev) { return norm(celdaMailAgenda_({ ev: ev, estado: 'vigente' }).texto); };
   evs.forEach(function (ev) {

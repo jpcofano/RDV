@@ -14,7 +14,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayu
 let fallas = 0;
 function ok(cond, que) { console.log((cond ? '  ok   ' : '  FALLA ') + que); if (!cond) fallas++; }
 
-function crearEntorno(formsSinFila) {
+function crearEntorno(formsSinFila, formatoDirecta) {
   const E = { logs: [], planillas: {} };
   class Hoja {
     constructor(nombre) {
@@ -98,6 +98,8 @@ function crearEntorno(formsSinFila) {
     let src = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     // 13/10: la sección de FORMULARIOS_SIN_FILA entra a la GUÍA sólo con la solapa prendida
     if (formsSinFila && f === '00_Config.js') src = src.replace('const FORMULARIOS_SIN_FILA_ACTIVA = false;', 'const FORMULARIOS_SIN_FILA_ACTIVA = true;');
+    // 15/10: la LEER habla del formato de "Agenda Directa" sólo con AGENDA_MAIL_FORMATO_DIRECTA
+    if (formatoDirecta && f === '00_Config.js') src = src.replace('const AGENDA_MAIL_FORMATO_DIRECTA = false;', 'const AGENDA_MAIL_FORMATO_DIRECTA = true;');
     vm.runInContext(src, ctx, { filename: f });
   });
   E.ctx = ctx;
@@ -168,6 +170,20 @@ console.log('[3b] con FORMULARIOS_SIN_FILA prendida (13/10), la GUÍA suma su se
   ok(f2.indexOf('SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)') >= 0 &&
      f2.filter(function (t) { return /^ • /.test(t); }).length === 24 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
      'prendida: 7 secciones y 24 viñetas; apagada: ni una mención');
+}
+
+console.log('[3c] la LEER y el formato de "Agenda Directa" (15/10): sólo con AGENDA_MAIL_FORMATO_DIRECTA');
+{
+  const E3 = crearEntorno(false, true);
+  const on = E3.run('filasAyuda_(AYUDA_LEER_)').map(function (x) { return x.texto; }).join(' ¶ ');
+  const off = E.run('filasAyuda_(AYUDA_LEER_)').map(function (x) { return x.texto; }).join(' ¶ ');
+  const tiene = function (t, s) { return t.indexOf(s) >= 0; };
+  ok(tiene(on, 'con el formato de "Agenda Directa"') && tiene(on, '"Agenda Directa" es del equipo: el sistema no la escribe, no la mueve y no la protege') &&
+     tiene(on, 'COLUMNAS DEL EQUIPO ("Agenda (mail)", formato "Agenda Directa")') && tiene(on, 'Implementador (desplegable); CONVOCATORIA') &&
+     !tiene(on, 'por su lugar (B, C y D)') && !tiene(on, 'Responsable (desplegable)'),
+     'prendido: las dos solapas ("Agenda (mail)" con el formato de "Agenda Directa"; "Agenda Directa" es del equipo) y sus columnas; nada de B, C y D');
+  ok(!tiene(off, 'Agenda Directa') && tiene(off, 'por su lugar (B, C y D)') && tiene(off, 'Responsable (desplegable)'),
+     'apagado: la LEER de siempre, sin nombrar "Agenda Directa"');
 }
 
 console.log('[4] otra vez: se reescriben, sin duplicar');
