@@ -50,6 +50,8 @@ const AYUDA_GUIA_ = [
   // 15/10 (J): con la cancelación automática en modo "suspender" no se pregunta: ver filasAyuda_
   ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado como "cancelación" (aplicado).', null, 'cancelAuto'],
   ['item', 'Se aplica en la próxima hora.'],
+  // 15/10: sólo con AGENDA_ELECCIONES_SIEMPRE (ver filasAyuda_)
+  ['item', 'Lo elegido vale aunque después cambie la hora en el mail o el barrio de la fila: la línea no vuelve. Si la fila elegida ya no está, "Ya está cargada en otra fila" igual no crea nada y "Es la misma" vuelve a preguntar.', null, 'eleccionesSiempre'],
   // 13/10: sólo con FORMULARIOS_SIN_FILA_ACTIVA (si no, la GUÍA nombraría una solapa que no existe): ver _lineasAyuda_
   ['seccion', 'SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)', null, 'formsSinFila'],
   ['item', 'Los formularios de los últimos 30 días que no quedaron en ninguna fila, con el motivo y la fila más cercana.', null, 'formsSinFila'],
@@ -122,6 +124,7 @@ function filasAyuda_(def) {
     if (l[3] === 'cancelAuto' && !cancelAuto) return;
     if (l[3] === 'cancelPregunta' && cancelAuto) return;
     if (l[3] === 'pendientes' && !AGENDA_CREAR_SOLO_IDENTIFICADAS) return;
+    if (l[3] === 'eleccionesSiempre' && !AGENDA_ELECCIONES_SIEMPRE) return;   // 15/10: las decisiones de AGENDA_DUPLICADOS, siempre
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });
