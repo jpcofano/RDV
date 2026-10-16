@@ -1412,6 +1412,17 @@ function paso97_fusionarPares() {
 }
 
 /**
+ * PASO 99 — EN SECO (16/10): la FUSIÓN AUTOMÁTICA de "una reunión en dos filas" (AGENDA_FUSION_AUTOMATICA, APAGADA): qué pares
+ * juntaría el sistema solo (las reglas del paso 97) y cuáles irían a AGENDA_DUPLICADOS con ELEGIR ("Quedarse con la fila X" /
+ * "… Y" / "Son reuniones distintas"), y por qué. No escribe nada.
+ */
+function paso99_fusionAutomatica_enSeco() {
+  _anunciar_('paso 99 — fusión automática de "una reunión en dos filas" (EN SECO)', 'fusionAutomaticaAgenda_enSeco()  [54_FusionAgenda.js]',
+             'NO escribe nada', 'el log: cada par, si se juntaría solo o pediría decisión, y por qué');
+  return fusionAutomaticaAgenda_enSeco();
+}
+
+/**
  * PASOS 67 + 96 JUNTOS — SÓLO LECTURA (16/10; reemplaza al "Sin título.js" del editor, que decía "paso 96" pero llamaba al 97,
  * el REAL): los tiempos de las corridas (67) y la fusión de pares EN SECO (96, que sólo guarda la huella del plan). NO junta nada.
  */
