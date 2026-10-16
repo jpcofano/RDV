@@ -4951,7 +4951,9 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     const row = vals[i];
     if (row.every(function (v) { return esVacio_(v); })) continue;
     r.filas++;
-    if (row.some(function (v) { return normalizeText_(v) === 'no aplica'; })) { r.noAplica++; continue; }
+    // 16/10 (AGENDA_CANCELACION_CONJUNTO): `opciones.incluirNoAplica` cruza también las filas "No aplica" (una reunión
+    // cancelada puede tenerlo): sólo para saber a qué fila de la base va cada una; ese resultado no escribe nada.
+    if (row.some(function (v) { return normalizeText_(v) === 'no aplica'; })) { r.noAplica++; if (!(opciones && opciones.incluirNoAplica)) continue; }
     const nombre = str(row[iFig]), bar = iBar != null ? str(row[iBar]) : '', fec = toDate_(row[iFec]);
     const asis = num(row[iAsi]);
     if (!fec) { r.sinFecha++; continue; }
@@ -4960,12 +4962,12 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     // 07/10 (CONJUNTAS_AUTOMATICAS): con varias figuras (o ninguna por tokens), ¿es la de una fila conjunta de esa fecha?
     const fConj = !fp.figura && conjuntasAutomaticas_() ? _filaConjuntaDeConjunto_(nombre, fp, fec, bar, conjuntasPorFecha, comunas) : null;
     if (!fp.figura && !fConj) {
-      (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas });
+      (fp.candidatas.length ? r.variasFiguras : r.sinFigura).push({ nombre: nombre, fec: fec, cands: fp.candidatas, fila: i + 1 });
       continue;
     }
     if (fConj) r.conjuntas.push({ nombre: nombre, f: fConj });
     const lista = fConj ? [fConj] : porFigFecha.get(normalizeText_(fp.figura) + '|' + ymd_(fec)) || [];
-    if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis }); continue; }
+    if (!lista.length) { r.noEncuentran.push({ nombre: nombre, figura: fp.figura, bar: bar, fec: fec, asis: asis, fila: i + 1 }); continue; }
     let f;
     if (lista.length > 1 && usarDir && iDir != null && iDirD != null && str(row[iDir])) {
       const ex = lista.filter(function (x) { return compararDirecciones_(row[iDir], x.valores[iDirD]) === 'exacta'; });
@@ -4980,7 +4982,7 @@ function cruzarAsistentes_(dest, comunas, opciones) {
     else if (lista.length > 1) {
       const coinciden = lista.filter(function (x) { return _ubicConjuntoFila_(bar, x, comunas) === true; });
       if (coinciden.length !== 1) {
-        r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, nums: lista.map(function (x) { return x.fila; }),
+        r.ambiguas.push({ nombre: nombre, bar: bar, fec: fec, nums: lista.map(function (x) { return x.fila; }), filaConjunto: i + 1,
                           filas: lista.map(function (x) { return x.fila + ' (' + (x.barrio || 'sin barrio') + ')'; }) });
         continue;
       }

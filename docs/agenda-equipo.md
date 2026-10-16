@@ -71,6 +71,15 @@ les queda para cargar a ustedes.
   después asistentes o inscriptos, no se pisa nada: se avisa una vez (por mail y en AUDITORIA_AGENDA) para que ustedes
   decidan. Más adelante (apagado: `AGENDA_COLORES_AMARILLO_VERDE`): lo AMARILLO aparece en "Cambios" y en naranja en
   "Agenda (mail)"; lo VERDE, como "nueva".
+- **Próximamente (16/10, apagado: `AGENDA_CANCELACION_CONJUNTO`, junto con la cancelación automática): RDV CONJUNTO como
+  tercera fuente.** Si en RDV CONJUNTO una reunión tiene el Estado **"Cancelado"**, su fila de la planilla pasa a
+  "Suspendida" (la fila se busca como para los Asistentes: figura + fecha, y si la figura tiene dos filas ese día, la
+  dirección y el barrio; si no queda una sola, no se toca). Sólo si está "en agenda": si ustedes le pusieron otro STATUS
+  (Realizada…) o tiene asistentes cargados, no se toca y se avisa una vez. **Si RDV CONJUNTO tiene la misma figura el
+  mismo día una vez "Cancelado" y otra "Realizada"** (el caso Macri 15/10: Villa Santa Rita y Villa Devoto), la de la
+  planilla es la Realizada: no se suspende. "Cambios" dice *"suspendida: Cancelado en RDV CONJUNTO"*, y el sistema no la
+  reactiva solo aunque la reunión siga en el mail: si fue un error, la vuelven ustedes a "en agenda". **RDV CONJUNTO
+  nunca se modifica**: el sistema sólo la lee.
 - **Próximamente (15/10, apagado): una reunión sin figura y sin dirección** (una Seguridad en tu Barrio "A CONFIRMAR")
   **no crea fila hasta que llegue la figura o la dirección, o falten 2 días**. Mientras tanto aparece en el archivo
   "Agenda" como *"pendiente de definir"* (sin fila) y en la solapa AGENDA_PENDIENTES de la intermedia. Y una reunión que
