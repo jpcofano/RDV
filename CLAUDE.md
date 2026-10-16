@@ -2957,6 +2957,14 @@ diagnostico/35_cancelaciones_mail.js  paso 93, SÓLO LECTURA: desde el 15/07, qu
                    (desaparecida / rojo) y si coincide con el STATUS del equipo                                  ← 16/10
 diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una decisión (paso 94, SÓLO LECTURA): cada elección,
                    aplicada o por qué no (cambió la hora o el barrio, la fila ya no es candidata, una línea la pisó…)  ← 16/10
+49_Aceleraciones.js  las aceleraciones de la corrida de la hora (16/10): las vistas del archivo "Agenda", la "Agenda" del archivo
+                   RDV y Looker se reescriben sólo si cambió su huella (MD5 del contenido; red de seguridad cada 6 h);
+                   los IDs, cada 3 h (sin permiso nuevo), salvo una reunión recién elegible; tramos de la agenda en
+                   REGISTRO_CORRIDAS (paso 67)                                                                   ← 16/10
+53_CancelacionConjunto.js  RDV CONJUNTO "Cancelado" → Suspendida (paso 7d de la agenda; RDV CONJUNTO sólo se lee). APAGADO
+                   (AGENDA_CANCELACION_CONJUNTO); medición: paso 95 (diagnostico/36)                               ← 16/10
+54_FusionAgenda.js  juntar "una reunión en dos filas" (832/838, 834/839): paso 96 en seco (guarda la huella), 97 real (la
+                   exige; se queda la vieja, borra la nueva como "fusionada por el sistema"), 98 deshace por id     ← 16/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,
                    que escribe, ni el 80 / 82), cada uno aislado; el progreso en una propiedad: si no alcanza el tiempo
                    dice "FALTAN" y la siguiente sigue donde quedó; al final TERMINADO + resumen                    ← 16/10

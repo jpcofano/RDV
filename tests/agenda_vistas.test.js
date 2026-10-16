@@ -774,6 +774,9 @@ console.log('[21] 16/10 — las vistas SÓLO SI CAMBIARON (VISTAS_AGENDA_SOLO_SI
   ok(call.limpiezas === 0 && vista(E).limpiezas === 0, 'sin cambios: NO se reescriben (ni AgendaCall ni "Agenda (mail)")');
   ok(call.v[1][jU] instanceof Date && call.v[1][jU].getHours() === 11, 'AgendaCall: sólo se refresca "Última actualización" (una columna)');
   ok(enVista(E, 'c-2').resp === 'Cris', 'lo del equipo queda en la vista tal cual (no se pierde nada)');
+  // 16/10 (revisor): aunque la vista no se reescriba, lo del equipo queda RESPALDADO en AGENDA_EQUIPO en esa misma corrida
+  const eq = E.run('leerEquipoGuardado_()');
+  ok(eq['c-2'] && eq['c-2'].campos && eq['c-2'].campos['Responsable'] === 'Cris', 'y queda respaldado en AGENDA_EQUIPO en esa misma corrida (sin reescribir la vista)');
   ok(/"AgendaCall": sin cambios/.test(E.log()) && /"Agenda \(mail\)": sin cambios/.test(E.log()), 'el log lo dice ("sin cambios")');
   // cambia una reunión → se reescriben, y lo del equipo la sigue
   const sem2 = SEMANA.map(function (x) { return Object.assign({}, x); });

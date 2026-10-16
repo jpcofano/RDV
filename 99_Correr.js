@@ -1412,6 +1412,17 @@ function paso97_fusionarPares() {
 }
 
 /**
+ * REHACER LAS VISTAS (16/10): con las aceleraciones, las vistas del archivo "Agenda", la "Agenda" del archivo RDV y Looker se
+ * reescriben sólo si cambió su huella (o cada 6 h). Esto olvida las huellas: la próxima corrida de la hora las reescribe todas.
+ * Usarlo después de un cambio de formato o de colores, o si alguien rompió una solapa a mano. No escribe las planillas.
+ */
+function rehacer_vistasYLooker() {
+  _anunciar_('rehacer las vistas y Looker en la próxima corrida', 'olvidarHuellasVistas()  [49_Aceleraciones.js]',
+             'sólo borra las huellas guardadas (propiedades del script)', 'el log');
+  return olvidarHuellasVistas();
+}
+
+/**
  * PASO 98 — ESCRIBE (16/10): deshace la ÚLTIMA fusión del paso 97 (por su id de corrida, guardado al juntar), aunque después hayan
  * corrido otras de la hora. Vuelve las celdas copiadas de la vieja (si todavía tienen lo copiado) y restaura la fila borrada (al
  * final, con valores y fondos). `paso98_deshacerFusion_enSeco` muestra lo que haría.

@@ -205,6 +205,8 @@ function _avisosRacha_(c, estado, mala) {
   partes.forEach(function (p) {
     if ((c.salteadas || []).indexOf(p) >= 0) R.salteadas[p] = (R.salteadas[p] || 0) + 1;
     else if (c.partes && p in c.partes) R.salteadas[p] = 0;
+    // 16/10 (revisor): una parte que "no tocaba" (los IDs cada 3 h) corta la racha: no es una salteada por tiempo
+    else if (c.noTocaba && p in c.noTocaba) R.salteadas[p] = 0;
   });
   try { props.setProperty(AVISOS_PROP_RACHA, JSON.stringify(R)); } catch (e) { /* nada */ }
   const out = {};

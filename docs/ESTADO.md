@@ -1973,6 +1973,50 @@ CONFIRMAR", y la agenda **creó filas nuevas** en vez de actualizar las viejas (
   las encuentra. En la realidad tenían figura.
 - **El 829/830 y el de Quintana 17/09** siguen pasando sus tests.
 
+**Juntar los pares (punto 2; `54_FusionAgenda.js`):**
+- **paso 96 (en seco)**: muestra cada par lado a lado y dice cuándo se creó cada fila (el id de corrida yyyyMMdd-HHmmss: ¿antes o
+  después de que la etapa 1 llegara a Apps Script?) y por qué la regla de hoy las habría tomado o no. También qué se copiaría,
+  quedaría o rechazaría. Guarda la HUELLA del plan en una propiedad del script.
+- **paso 97 (real)**: exige esa huella y se niega si el plan cambió. Corre con el bloqueo de la corrida de la hora y relee las
+  filas antes de escribir y antes de borrar.
+  - **Se queda con la VIEJA** (832 y 834): tiene la historia (crear_id, elecciones, la copia del guardián), y la nueva está al
+    final, así que borrarla no corre ninguna fila.
+  - **Qué le pasa de la nueva:** en las columnas de la agenda, sólo en celdas vacías o que todavía tienen lo que escribió el
+    sistema; las columnas del mail, enteras; el resto (ID cuentas, RDV_UID, form_*, Inscriptos), sólo en celdas vacías, por la
+    regla general.
+  - **Rechaza el par** si las dos tienen datos distintos en la misma columna, si la nueva tiene un valor del equipo que se
+    perdería, o si la regla de hoy no las une (después la agenda volvería a crear la nueva).
+  - **Borra la nueva** guardándola entera, anotada como `fusionada_sistema`. No cuenta como "borrada por el equipo", así que la
+    reunión no queda bloqueada.
+- **paso 98**: deshace la última fusión por su id de corrida. El paso 38 sin id deshace la última corrida que escribió, que una
+  hora después ya no es la fusión.
+- **Arreglo de paso para la regla 7**: un borrado del sistema que se canceló ("borrar_cancelado") ya no se cuenta como borrado.
+  Si después el equipo borra esa fila, se reconoce como borrada por el equipo y la agenda no la recrea.
+
+**Tiempos (punto 5; `49_Aceleraciones.js`, todo PRENDIDO).**
+- **Las 2 CORTADAS y los 280 s de la agenda**: con los datos de antes no se puede saber. El estado de una CORTADA guarda la parte
+  donde murió, y ahora el **paso 67** las lista con lo que alcanzó a terminar. La agenda queda partida en tramos (gmail, html de
+  los colores, parse, plan, geocodificación, escritura, solapas, copia, registro), en columnas nuevas al final de
+  REGISTRO_CORRIDAS.
+- **Causas posibles, leyendo el código**:
+  - Gmail: lee unos 37 días de mails por corrida.
+  - Los colores: getBody de cada mail, con tope de 60 s.
+  - La geocodificación: hasta 450 llamadas, y los ERROR no se guardan en la cache.
+  - La copia: "Agenda cerrada" crece siempre.
+- **Aceleraciones**:
+  - las vistas del archivo "Agenda", la "Agenda" del archivo RDV y Looker se reescriben sólo si cambió su huella; si no, sólo se
+    actualiza "Última actualización". Red de seguridad: cada 6 h, o si la solapa falta o cambió de tamaño;
+  - los IDs, cada 3 h, salvo una reunión recién elegible. No se puede saber si la lista cambió sin leerla (lo lento), y la fecha
+    de modificación pediría un permiso nuevo (reautorizar).
+- **Para medir**: el paso 67 ahora y después de varias corridas.
+- **Lo que corrigió el revisor**:
+  - aunque "Agenda (mail)" no se reescriba, lo que carga el equipo se respalda cada hora en AGENDA_EQUIPO, si cambió;
+  - los IDs que "no tocaban" ya no suman en la racha de partes salteadas.
+- **Lo que queda sin cambiar** (bajo): para decidir si reescribir, se mira sólo el tamaño de cada solapa. Si alguien edita a
+  mano una celda o el formato de una vista sin cambiar su tamaño, se repara en la próxima reescritura, a más tardar en 6 h.
+  Looker: "FechaCarga" queda con la hora de la última escritura real (ningún código la lee). Para forzar todo:
+  `rehacer_vistasYLooker()` (99_Correr.js).
+
 **AGENDA_DUPLICADOS, la línea "cancelada en el mail" que figuraba PENDIENTE (punto 3).** La solapa ya la dibuja cerrada
 ("cancelada en el mail: no se crea", sin desplegable). Quien la contaba como pendiente era la **auditoría (paso 66)**: tomaba
 como pendiente toda línea con ELEGIR vacío, salvo "después de crear". Ahora espera decisión sólo una línea cuyo "resultado" pide

@@ -393,6 +393,18 @@ function leerEquipoGuardado_() {
  * de AGENDA_EQUIPO: las siete de siempre y, a la derecha, las demás (las que ya tenía, las del formato "Agenda Directa" con
  * AGENDA_MAIL_FORMATO_DIRECTA, y cualquier otra que traiga lo guardado). Si falla, TIRA (y la vista no se reescribe).
  */
+/** 16/10: ¿lo que hay en la vista (columnas del equipo) difiere de lo guardado en AGENDA_EQUIPO? */
+function _equipoDifiereDeGuardado_(enVista, guardado) {
+  return Object.keys(enVista || {}).some(function (k) {
+    const c = (enVista[k] && enVista[k].campos) || {}, g = ((guardado || {})[k] && guardado[k].campos) || {};
+    return Object.keys(c).some(function (n) {
+      const a = c[n], b = g[n];
+      if (!_hayValorEquipo_(a) && !_hayValorEquipo_(b)) return false;
+      return String(a instanceof Date ? a.getTime() : a) !== String(b instanceof Date ? b.getTime() : b);
+    });
+  });
+}
+
 function guardarEquipoAgenda_(guardado, enVista, info) {
   const todo = {};
   Object.keys(guardado).forEach(function (k) {
@@ -514,7 +526,16 @@ function escribirVistaMailAgenda_(ss, abierta, P, hoy) {
   if (typeof huellaContenido_ === 'function') {
     if (!AGENDA_MAIL_FORMATO_DIRECTA) {
       huellaMail = huellaContenido_({ k: 'vista-mail', filas: armarVistaMailAgenda_(abierta, hoy, claves, null) });
-      if (huellaSinCambios_(claveH, huellaMail, sh0, VISTAS_AGENDA_SOLO_SI_CAMBIA)) { _anotarSinCambios_(AGENDA_SOLAPA_VISTA_MAIL); return null; }
+      if (huellaSinCambios_(claveH, huellaMail, sh0, VISTAS_AGENDA_SOLO_SI_CAMBIA)) {
+        _anotarSinCambios_(AGENDA_SOLAPA_VISTA_MAIL);
+        // 16/10 (revisor): aunque la vista no se reescriba, lo que cargó el equipo se RESPALDA cada hora en AGENDA_EQUIPO (como
+        // antes de la aceleración), pero sólo si cambió algo: si alguien borra o daña la solapa, no se pierde más de una hora
+        try {
+          const enVista0 = leerEquipoVistaMailSeguro_(sh0), guardado0 = leerEquipoGuardado_();
+          if (_equipoDifiereDeGuardado_(enVista0, guardado0)) guardarEquipoAgenda_(guardado0, enVista0, info);
+        } catch (err) { Logger.log('>>> "%s": lo del equipo no se pudo respaldar en %s (%s); la vista no se tocó', AGENDA_SOLAPA_VISTA_MAIL, RDV_HOJA_AGENDA_EQUIPO, err); }
+        return null;
+      }
     }
     huellaOlvidar_(claveH);
   }
