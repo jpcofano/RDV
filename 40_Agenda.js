@@ -302,6 +302,14 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (ev.figuraFila) {
       c = filasDe(ev.figuraFila, ev.fecha);
       for (let i = 1; !c.length && i < ev.figuras.length; i++) c = filasDe(ev.figuras[i], ev.fecha);
+      // 16/10 (bug 832/838, regla del usuario): una SEGURIDAD que ahora nombra a una figura sigue siendo la fila de su comuna
+      // (grupo + fecha + "Lugar (mail)"), aunque la fila tenga otra figura (la que cargó RDV CONJUNTO) o ninguna
+      if (!c.length && seguridadPorComuna && ev.tipo === 'Seguridad en tu Barrio') {
+        c = (porFecha.get(ymd_(ev.fecha)) || []).filter(function (f) {
+          return mismaReunionSinFiguraAgenda_(ev, str(val(f, 'agenda_uid')), str(val(f, 'Lugar (mail)')), str(val(f, 'Evento (mail)')),
+                                              str(val(f, 'agenda_mail')), true);
+        });
+      }
     } else {
       const delDia = porFecha.get(ymd_(ev.fecha)) || [];
       const dir = normalizeText_(ev.lugarTexto);
@@ -1343,8 +1351,10 @@ function grupoDeAgendaMail_(agendaMail) {
  * mismo "Lugar (mail)", el mismo tipo en "Evento (mail)" y, si los dos se leen, un grupo de la reunión (el suyo o uno de
  * los otros grupos que la traen). La Figura de la fila no importa: la de una Seguridad la completa RDV CONJUNTO.
  */
-function mismaReunionSinFiguraAgenda_(ev, uid, lugarMail, eventoMail, agendaMail) {
-  if (!ev || ev.figuraFila || !uid || !ev.lugar || !lugarMail || !eventoMail) return false;
+function mismaReunionSinFiguraAgenda_(ev, uid, lugarMail, eventoMail, agendaMail, aunqueNombreFigura) {
+  // 16/10 (bug 832/838): `aunqueNombreFigura` — una SEGURIDAD se identifica siempre por grupo + fecha + "Lugar (mail)" (la
+  // comuna), aunque el mail ahora nombre a una figura (y aunque la fila ya tenga la que cargó RDV CONJUNTO)
+  if (!ev || (ev.figuraFila && !aunqueNombreFigura) || !uid || !ev.lugar || !lugarMail || !eventoMail) return false;
   if (normalizeText_(lugarMail) !== normalizeText_(ev.lugar)) return false;
   if (tipoAgendaDeTexto_(eventoMail) !== (ev.tipo || '')) return false;
   const g = grupoDeAgendaMail_(agendaMail);

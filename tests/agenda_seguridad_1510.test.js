@@ -461,6 +461,53 @@ const fs1 = E.run('(function () { const c = leerConjuntoPorFecha_(); return figu
                   'ubicacionDeFila_({ barrio: "", lugarMail: "Comuna 11" })); })()');
 ok(fs1.figura === 'Jorge Macri', 'figuraSeguridad_ (HOY): una Seguridad de la Comuna 11 en "Calle Inventada 77" → Jorge Macri (las dos filas son de él) — ' + JSON.stringify(fs1));
 
+// ============================== 16/10 (bug urgente): 832/838 y 834/839 ==============================
+
+console.log('[11] ETAPA 1: dos Seguridad del 22/10 "A CONFIRMAR" con la FIGURA ya cargada (RDV CONJUNTO); la dirección llega después');
+const ETAPA1 = { AGENDA_SEGURIDAD_POR_COMUNA: 'true', AGENDA_BARRIO_DEL_MAIL: 'true', AGENDA_CREAR_SOLO_IDENTIFICADAS: 'true',
+                 AGENDA_CONCILIACION_SEMANAL: 'true', AGENDA_INVARIANTE_UNA_FILA: 'true', AGENDA_VALIDAR_MAILS: 'true',
+                 AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'suspender'", AGENDA_COLORES_MAIL: 'true',
+                 AGENDA_ELECCIONES_SIEMPRE: 'true', CONJUNTO_REPETIDA_POR_UBICACION: 'true' };
+const SEG12b = function (lugar, quien) { return ['*Jueves 22/10*', 'Evento: Seguridad en tu Barrio' + (quien ? ' con ' + quien : '') + ', Comuna 12', 'Hora: 17:15h', 'Lugar: ' + lugar]; };
+const SEG14b = function (lugar, quien) { return ['*Jueves 22/10*', 'Evento: Seguridad en tu Barrio' + (quien ? ' con ' + quien : '') + ', Comuna 14', 'Hora: 17:15h', 'Lugar: ' + lugar]; };
+const deLaComuna = function (X, lugar) {
+  const out = [];
+  for (let i = 1; i < X.D.v.length; i++) {
+    const rr = X.D.v[i], f = rr[X.C('FECHA')];
+    if (rr[X.C('Lugar (mail)')] === lugar && f instanceof Date && f.getDate() === 22 && f.getMonth() === 9) out.push(i);
+  }
+  return out;
+};
+const caso832 = function (quien12, quien14, nombre, cfg) {
+  // las filas nacen "A CONFIRMAR" (como la 832 y la 834: creadas antes), y RDV CONJUNTO les completa la Figura
+  const X = montar(true, [], {});
+  const V1 = mail(15, 8, [SEG12b('A CONFIRMAR'), SEG14b('A CONFIRMAR')], ASUNTO_19);
+  correr(X, false, [V1]);
+  const a = deLaComuna(X, 'Comuna 12')[0], b = deLaComuna(X, 'Comuna 14')[0];
+  X.D.v[a][X.C('Figura')] = 'Gabino Tapia';
+  X.D.v[b][X.C('Figura')] = 'Laura Alonso';
+  // la v3 (16/10 11:41) trae la dirección de las dos; ahora con la ETAPA 1 prendida
+  const E1 = montar(true, [], cfg || ETAPA1);
+  E1.D.v = X.D.v; E1.D.bg = X.D.bg; E1.ssI.hojas = X.ssI.hojas; E1.ssD.hojas['AGENDA_DUPLICADOS'] = X.ssD.hojas['AGENDA_DUPLICADOS'];
+  const V3 = mail(16, 11, [SEG12b('Av. Inventada 4977, Club Social', quien12), SEG14b('Av. Ficticia 55, Sede Vecinal', quien14)], ASUNTO_19);
+  const rr = correr(E1, false, [V1, V3]);
+  const n12 = deLaComuna(E1, 'Comuna 12'), n14 = deLaComuna(E1, 'Comuna 14');
+  if (cfg) {
+    ok(rr.crear === 2 && n12.length === 2 && n14.length === 2, nombre + ': con la regla de ANTES (etapa 1 apagada) se crean las dos filas nuevas, como la 838 / 839 (crear ' + rr.crear + ')');
+    return E1;
+  }
+  ok(rr.crear === 0 && n12.length === 1 && n14.length === 1 && n12[0] === a && n14[0] === b,
+     nombre + ': NO se crean filas nuevas (crear ' + rr.crear + '; filas C12 ' + n12.length + ', C14 ' + n14.length + ')');
+  ok(celda(E1, a, 'Dirección') === 'Av. Inventada 4977, Club Social' && celda(E1, b, 'Dirección') === 'Av. Ficticia 55, Sede Vecinal' &&
+     celda(E1, a, 'Figura') === 'Gabino Tapia' && celda(E1, b, 'Figura') === 'Laura Alonso',
+     nombre + ': se ACTUALIZAN las viejas (la dirección nueva), y la Figura que cargó RDV CONJUNTO no se toca');
+  return E1;
+};
+caso832('', '', 'la v3 sin figura en el mail, ANTES', {});
+caso832('', '', 'la v3 sin figura en el mail');
+caso832('Gabino Tapia', 'Laura Alonso', 'la v3 nombra a las figuras (las mismas que cargó RDV CONJUNTO)');
+caso832('Ezequiel Sabor', '', 'la v3 nombra en la C12 a OTRA figura que la que cargó RDV CONJUNTO');
+
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
 
