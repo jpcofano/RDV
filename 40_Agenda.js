@@ -78,6 +78,9 @@ function correrAgenda(enSeco, opciones) {
 function correrAgendaEnBloqueo_(enSeco, opciones) {
   const t0 = Date.now();
   opciones = opciones || {};
+  // 16/10: los tramos de la agenda (49_Corridas.js, REGISTRO_CORRIDAS agenda_*_s): cada `tramo(k)` cierra el tramo k
+  if (typeof agendaTiemposIniciar_ === 'function') agendaTiemposIniciar_();
+  const tramo = typeof agendaTiempo_ === 'function' ? agendaTiempo_ : function () {};
   Logger.log('=== agenda (%s)%s — destino: %s ===', enSeco ? 'EN SECO, no escribe el destino' : 'ESCRITURA REAL',
              AGENDA_SOLO_SEMANA ? ' — SÓLO LA SEMANA DEL ' + AGENDA_SOLO_SEMANA : '', descripcionHojaDestino_());
   const sh = verificarHojaDestino_(ssDestino_());
@@ -89,6 +92,7 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     Logger.log('  AVISO: %s. En seco se calcula igual, como si estuvieran vacías.', msg);
   }
   const alcance = alcanceAgenda_();
+  tramo('base');
   // 15/10 (noche): los colores del mail (AGENDA_COLORES_MAIL, o `opciones.coloresMail`): el HTML y el color de cada reunión
   const coloresMail = opciones.coloresMail !== undefined ? !!opciones.coloresMail : AGENDA_COLORES_MAIL;
   let mails;
@@ -103,6 +107,8 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     _registrarAgenda_(null, enSeco, t0, msg);
     return { error: msg };
   }
+  if (mails.html && typeof agendaTiempoSumar_ === 'function') agendaTiempoSumar_('html', mails.html.ms || 0);
+  tramo('gmail', mails.html ? mails.html.ms || 0 : 0);
   Logger.log('  mails: %s (%s) | alcance: %s', mails.lista.length, mails.fuente, alcance.desc);
   _logMailsAgenda_(mails);
   if (!mails.lista.length) {
@@ -121,9 +127,11 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
                r.colores.versionesConHtml, r.colores.versionesSinHtml, r.colores.rojas, r.colores.notas, r.colores.ms,
                r.colores.errores.length ? ' | el color no se pudo leer en: ' + r.colores.errores.join(' / ') : '');
   }
+  tramo('parse');
   const plan = planAgenda_(dest, r, A, alcance, Object.assign({ enSeco: enSeco }, opciones));
   plan.hdrNombres = dest.hdr;
   logPlanAgenda_(plan, dest);
+  tramo('plan');
   if (!enSeco) {
     // REGISTRO_AGENDA es obligatorio: sin él no se puede deshacer. Si no se puede escribir, no se escribe el destino.
     const corrida = _idCorridaAgenda_();
@@ -141,6 +149,7 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
       catch (err) { Logger.log('>>> las derivadas NO se recalcularon: %s (la corrida sigue)', err); }
     }
   }
+  tramo('escritura');
   _escribirSolapasAgenda_(plan);
   // 15/10 (noche): los avisos de la agenda segura y de la cancelación automática (sólo en la corrida real)
   if (!enSeco) {
@@ -155,6 +164,7 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   } else if (plan.duplicados.length) {
     Logger.log('  %s: en seco no se escribe (tendría %s reuniones).', AGENDA_SOLAPA_DUPLICADOS, plan.duplicados.length);
   }
+  tramo('solapas');
   // 17. La copia en el archivo "Agenda": en seco sólo dice cuántas filas escribiría.
   const copia = armarCopiaAgenda_(plan, new Date());
   plan.resumen.copia = copia.length - 1;
@@ -174,12 +184,14 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     try { escribirCopiaAgenda_(copia, plan); }
     catch (err) { Logger.log('>>> la copia en el archivo "Agenda" NO se escribió: %s (el destino ya quedó escrito).', err); }
   }
+  tramo('copia');
   if (enSeco) plan.corrida = _registrarAgenda_(plan, enSeco, t0, '');
   else _completarRegistroAgenda_(plan, t0);
   // Que nada quede pendiente para el flush implícito del final de la ejecución (07/10: la ejecución terminó en Error
   // ahí, con REGISTRO_AGENDA sin escribir). Si falla, se dice y la corrida termina igual.
   try { SpreadsheetApp.flush(); } catch (err) { Logger.log('>>> el flush final falló: %s (lo anterior ya se había escrito con su flush)', err); }
-  Logger.log('agenda: %s ms', Date.now() - t0);
+  tramo('registro');
+  Logger.log('agenda: %s ms%s', Date.now() - t0, typeof agendaTiemposTexto_ === 'function' ? ' — ' + agendaTiemposTexto_() : '');
   return plan.resumen;
 }
 
@@ -2228,6 +2240,10 @@ function partirCopiaAgenda_(matriz, hoy) {
 
 /** Una solapa de la copia: reescrita entera, con formato y protegida con advertencia. */
 function _escribirSolapaCopiaAgenda_(ss, nombre, matriz, dondeLog) {
+  // 16/10 (VISTAS_AGENDA_SOLO_SI_CAMBIA, 49_Aceleraciones.js): sin cambios desde la última escritura, sólo "Última actualización"
+  const claveH = (dondeLog ? 'RDV' : 'AGENDA') + '|' + nombre;
+  const hz = typeof copiaAgendaSinCambios_ === 'function' ? copiaAgendaSinCambios_(ss.getSheetByName(nombre), claveH, matriz) : null;
+  if (hz && hz.saltear) return;
   const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre, ss.getSheets().length);   // 15/10: al final (no corre ninguna otra)
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA) pr.remove();
@@ -2262,6 +2278,7 @@ function _escribirSolapaCopiaAgenda_(ss, nombre, matriz, dondeLog) {
   try { sh.autoResizeColumns(1, m); } catch (e) { /* no importa */ }
   sh.protect().setDescription(DESC_PROTECCION_COPIA_AGENDA).setWarningOnly(true);
   SpreadsheetApp.flush();
+  if (hz) huellaGuardar_(claveH, hz.huella, sh);
   Logger.log('  copia en el %s: %s filas escritas, solapa "%s", protegida con advertencia.',
              dondeLog || 'archivo "Agenda" (' + AGENDA_COPIA_SS.slice(0, 8) + '…)', n - 1, nombre);
 }

@@ -384,7 +384,8 @@ function crearEntorno(opts) {
   const config = Object.assign({ DIAS_ACTIVOS: 'null', DERIVADAS_POR_SCRIPT: 'false',
                                  REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false' },
                                opts.config || {});
-  ARCHIVOS.forEach(function (f) {
+  // 16/10: `opts.extra`: más archivos (49_Aceleraciones.js, en la guarda de tiempo)
+  ARCHIVOS.concat(opts.extra || []).forEach(function (f) {
     let s;
     try { s = fuente(f); } catch (e) { return; }   // el código viejo no tiene todos los archivos
     if (f === '00_Config.js') {
@@ -511,6 +512,30 @@ function escenarioGuardaTiempo() {
   E8.ctx.verificarHojaDestino_ = function () { const x = v8.apply(this, arguments); E8.reloj += 215000; return x; };
   E8.ejecutar('upsertDestino');
   ok(typeof campo(m8, 'cruce_s') === 'number', 'GUARDA_TIEMPO_ACTIVA = false: el cruce corre igual (sólo se registra)');
+
+  // --- 16/10 (IDS_SOLO_CADA_HORAS, 49_Aceleraciones.js): los IDs cada 3 horas; la hora siguiente "no tocaba" (no es "salteada") ---
+  const E9 = crearEntorno({ config: { IDS_EN_LA_HORA: 'true' }, extra: ['49_Aceleraciones.js'] });
+  const m9 = montar(E9, 60, true);
+  let ids9 = 0;
+  E9.ctx.idsEnLaHora_ = function () { ids9++; return { resumen: 'x' }; };
+  E9.ejecutar('upsertDestino');
+  ok(ids9 === 1 && typeof campo(m9, 'ids_s') === 'number' && !!E9.props[E9.cfg('PROP_IDS_ULTIMA')],
+     'la primera corrida: los IDs corren y queda anotada la hora (PROP_IDS_ULTIMA)');
+  E9.reloj += 3600000;
+  E9.ejecutar('upsertDestino');
+  ok(ids9 === 1 && campo(m9, 'ids_s') === 'no tocaba' && /^ids: cada 3 h/.test(campo(m9, 'no_tocaba')) && campo(m9, 'estado') === 'ok' &&
+     campo(m9, 'salteadas_por_tiempo') === '', 'una hora después: NO corren; REGISTRO_CORRIDAS dice "no tocaba" (y la corrida queda "ok", no "salteada")');
+  const regUp9 = m9.ssI.hojas['REGISTRO_UPSERT'];
+  ok(/salteado: no tocaba: cada 3 h/.test(regUp9.v[regUp9.v.length - 1].join('|')), '   REGISTRO_UPSERT lo dice en la columna ids');
+  E9.reloj += 2 * 3600000 - 5 * 60000;   // 2 h 55 min más: 3 horas con el margen del activador
+  E9.ejecutar('upsertDestino');
+  ok(ids9 === 2 && typeof campo(m9, 'ids_s') === 'number', 'tres horas (menos el margen del activador) después de la última: corren');
+  const E10 = crearEntorno({ config: { IDS_EN_LA_HORA: 'true', IDS_SOLO_CADA_HORAS: 'false' }, extra: ['49_Aceleraciones.js'] });
+  montar(E10, 60, true);
+  let ids10 = 0;
+  E10.ctx.idsEnLaHora_ = function () { ids10++; return { resumen: 'x' }; };
+  E10.ejecutar('upsertDestino'); E10.reloj += 3600000; E10.ejecutar('upsertDestino');
+  ok(ids10 === 2, 'con IDS_SOLO_CADA_HORAS = false: en cada corrida, como antes');
 }
 
 // ============================== los datos sintéticos ==============================

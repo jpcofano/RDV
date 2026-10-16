@@ -136,8 +136,16 @@ function entorno(baseFilas, opciones) {
   const o = opciones || {};
   // 15/10: `o.directa` prende AGENDA_MAIL_FORMATO_DIRECTA; `o.solapas`: las solapas del archivo "Agenda" (y su orden)
   const E = crearEntornoIds({ bloqueBase: [HDR].concat(baseFilas || []), maxColsBase: HDR.length,
-    extra: ['40_Agenda.js', '47_AgendaVistas.js', '47_AgendaDirecta.js'],
-    reemplazos: o.directa ? { '00_Config.js': [['const AGENDA_MAIL_FORMATO_DIRECTA = false;', 'const AGENDA_MAIL_FORMATO_DIRECTA = true;']] } : {} });
+    // 16/10: `o.aceleraciones` carga 49_Aceleraciones.js (las huellas); `o.sinHuellas` apaga VISTAS_AGENDA_SOLO_SI_CAMBIA
+    extra: ['40_Agenda.js', '47_AgendaVistas.js', '47_AgendaDirecta.js'].concat(o.aceleraciones ? ['49_Aceleraciones.js'] : []),
+    reemplazos: { '00_Config.js': [].concat(o.directa ? [['const AGENDA_MAIL_FORMATO_DIRECTA = false;', 'const AGENDA_MAIL_FORMATO_DIRECTA = true;']] : [])
+                                      .concat(o.sinHuellas ? [['const VISTAS_AGENDA_SOLO_SI_CAMBIA = true;', 'const VISTAS_AGENDA_SOLO_SI_CAMBIA = false;']] : []) } });
+  if (o.aceleraciones) {   // propiedades que duran entre llamadas (las del mock son de una sola llamada)
+    E.props = {};
+    E.ctx.PropertiesService = { getScriptProperties: function () { return {
+      getProperty: function (k) { return k in E.props ? E.props[k] : null; }, setProperty: function (k, v) { E.props[k] = String(v); },
+      deleteProperty: function (k) { delete E.props[k]; }, getProperties: function () { return Object.assign({}, E.props); } }; } };
+  }
   const ss = archivoAgenda(o.solapas || ['Agenda cerrada', 'LEER', 'Agenda']);          // en otro orden: el sistema las ordena
   E.archivos[E.cfg('AGENDA_COPIA_SS')] = { ss: ss, hojas: {} };
   const SA = E.ctx.SpreadsheetApp;
@@ -738,6 +746,90 @@ console.log('[20] BAJA 5: "Info" no es la A en "Agenda Directa": el día va en l
   E.logs.length = 0;
   E.run('copiarAgendaDirectaEnSeco()');
   ok(/COPIARÍA renglón 4 \(06\/10\/2026 .*→ c-1 .*Implementador = Lu/.test(E.log()), 'y la copia única también lee el día de la A en "Agenda Directa"');
+}
+
+console.log('[21] 16/10 — las vistas SÓLO SI CAMBIARON (VISTAS_AGENDA_SOLO_SI_CAMBIA, 49_Aceleraciones.js)');
+{
+  const E = entorno(BASE(), { aceleraciones: true });
+  const ss = 'SpreadsheetApp.openById(AGENDA_COPIA_SS)';
+  const F = E.ctx.Date;
+  const conHora = function (m, h) {   // la "Última actualización" de la corrida (la hora cambia en cada corrida)
+    const j = m[0].indexOf('Última actualización');
+    for (let i = 1; i < m.length; i++) m[i][j] = new F(2026, 9, 8, h, 0, 0);
+    return m;
+  };
+  const contar = function (h) { h.limpiezas = 0; const c = h.clear; h.clear = function () { h.limpiezas++; return c.apply(h, arguments); }; };
+  E.ctx.__ab = conHora(abierta(E, SEMANA), 10);
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const call = E.agenda.getSheetByName('AgendaCall');
+  contar(call); contar(vista(E));
+  ok(!!E.props['HUELLA_VISTA_AGENDA|AgendaCall'] && !!E.props['HUELLA_VISTA_AGENDA|Agenda (mail)'],
+     'la primera vez se escriben las dos y queda su huella (propiedad HUELLA_VISTA_…)');
+  // el equipo carga lo suyo; la corrida siguiente trae lo mismo (sólo cambia la hora de la corrida)
+  const t = enVista(E, 'c-2'); vista(E).v[t.fila - 1][1] = 'Cris';
+  E.logs.length = 0;
+  E.ctx.__ab = conHora(abierta(E, SEMANA), 11);
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const jU = E.cfg('AGENDA_CALL_COLUMNAS').indexOf('Última actualización');
+  ok(call.limpiezas === 0 && vista(E).limpiezas === 0, 'sin cambios: NO se reescriben (ni AgendaCall ni "Agenda (mail)")');
+  ok(call.v[1][jU] instanceof Date && call.v[1][jU].getHours() === 11, 'AgendaCall: sólo se refresca "Última actualización" (una columna)');
+  ok(enVista(E, 'c-2').resp === 'Cris', 'lo del equipo queda en la vista tal cual (no se pierde nada)');
+  ok(/"AgendaCall": sin cambios/.test(E.log()) && /"Agenda \(mail\)": sin cambios/.test(E.log()), 'el log lo dice ("sin cambios")');
+  // cambia una reunión → se reescriben, y lo del equipo la sigue
+  const sem2 = SEMANA.map(function (x) { return Object.assign({}, x); });
+  sem2[1].hora = '20:00'; sem2[1].cambios = 'hora 17:00 → 20:00';
+  E.ctx.__ab = conHora(abierta(E, sem2), 12);
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(call.limpiezas === 1 && vista(E).limpiezas === 1, 'una reunión cambió de hora: se reescriben las dos');
+  ok(enVista(E, 'c-2').resp === 'Cris' && /Hora: 20:00h/.test(enVista(E, 'c-2').texto), 'y lo del equipo la sigue (guardado antes de reescribir, como siempre)');
+  // el mismo día sin cambios: no; 7 horas después (la red de seguridad, cada 6 h): sí
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(call.limpiezas === 1, 'de nuevo sin cambios: no se reescribe');
+  const ahora0 = E.ctx._ahoraHuella_;
+  E.ctx._ahoraHuella_ = function () { return ahora0() + 7 * 3600000; };
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(call.limpiezas === 2 && vista(E).limpiezas === 2, 'pasaron más de HUELLAS_REESCRIBIR_CADA_HORAS (6 h): se reescriben igual');
+  E.ctx._ahoraHuella_ = ahora0;
+  E.props['HUELLA_VISTA_AGENDA|AgendaCall'] = E.props['HUELLA_VISTA_AGENDA|AgendaCall'].replace(/"t":\d+/, '"t":' + ahora0());
+  // alguien borró una fila de AgendaCall: no tiene las filas que dejó la última escritura → se reescribe
+  call.v.pop();
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(call.limpiezas === 3 && call.v.length === 5, 'AgendaCall con una fila menos (la tocaron): se reescribe entera');
+  // una escritura que falla a la mitad no deja huella: la corrida siguiente, con lo mismo, reescribe
+  const sem3 = sem2.map(function (x) { return Object.assign({}, x); }); sem3[0].hora = '18:15';
+  E.ctx.__ab = conHora(abierta(E, sem3), 13);
+  const gr = call.getRange;
+  call.getRange = function (r, c, nr) { if (nr > 1 && r === 1) throw new Error('Sheets no responde'); return gr.apply(call, arguments); };
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  call.getRange = gr;
+  ok(!E.props['HUELLA_VISTA_AGENDA|AgendaCall'], 'falló a la mitad: la huella se borró ANTES de escribir');
+  const antes = call.limpiezas;
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(call.limpiezas === antes + 1 && call.v.length === 5, 'y la corrida siguiente (mismo contenido) la reescribe');
+  // la "Agenda" del archivo RDV y "Agenda" / "Agenda cerrada" del archivo "Agenda": la misma regla (_escribirSolapaCopiaAgenda_)
+  E.run('escribirAgendaEnRdv_(__ab)');
+  const rdvA = E.rdv.getSheetByName('Agenda'); contar(rdvA);
+  E.ctx.__ab2 = conHora(abierta(E, sem3), 14);
+  E.run('escribirAgendaEnRdv_(__ab2)');
+  const jA = E.cfg('AGENDA_COPIA_COLUMNAS').indexOf('Última actualización');
+  ok(rdvA.limpiezas === 0 && rdvA.v[1][jA].getHours() === 14, 'la "Agenda" del archivo RDV: sin cambios no se reescribe (sólo "Última actualización")');
+  E.ctx.__ab2 = conHora(abierta(E, SEMANA), 14);
+  E.run('escribirAgendaEnRdv_(__ab2)');
+  ok(rdvA.limpiezas === 1, 'y con un cambio, sí');
+}
+{
+  const E = entorno(BASE(), { aceleraciones: true, sinHuellas: true });
+  const ss = 'SpreadsheetApp.openById(AGENDA_COPIA_SS)';
+  E.ctx.__ab = abierta(E, SEMANA);
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  const call = E.agenda.getSheetByName('AgendaCall'); let n = 0; const c = call.clear; call.clear = function () { n++; return c.apply(call, arguments); };
+  E.run('escribirVistasAgenda_(' + ss + ', __ab, {})');
+  ok(n === 1, 'con VISTAS_AGENDA_SOLO_SI_CAMBIA = false: se reescribe siempre, como antes');
+}
+{
+  const E = entorno(BASE(), { aceleraciones: true, directa: true, solapas: ['LEER', 'Agenda', 'AgendaCall', 'Agenda (mail)', 'Agenda cerrada', 'Agenda Directa'] });
+  ok(E.run('(function () { var s = String(escribirVistaMailAgenda_); return /if \\(!AGENDA_MAIL_FORMATO_DIRECTA\\)/.test(s); })()'),
+     'con el formato "Agenda Directa", "Agenda (mail)" se reescribe siempre (el diseño sale de otra solapa)');
 }
 
 console.log('\n' + chequeos + ' chequeos.');

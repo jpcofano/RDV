@@ -1813,12 +1813,22 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   // 15/10: después del cruce (prioridad 3): no dependen de él (leen la base de nuevo). Si fallan, la corrida sigue.
   let resIds = null;
   if (IDS_EN_LA_HORA && !historial) {
-    if (!corridaHayTiempo_('ids')) {
+    // 16/10 (IDS_SOLO_CADA_HORAS, 49_Aceleraciones.js): cada IDS_CADA_HORAS horas, salvo reuniones que recién pasaron sin ID
+    // (con la base que ya leyó el cruce). Por horario: saber si cambió la lista sin leerla pediría un permiso nuevo (Drive).
+    const tocaIds = typeof idsTocaEnEstaCorrida_ === 'function' ? idsTocaEnEstaCorrida_(plan ? plan.dest : null) : null;
+    if (tocaIds && !tocaIds.toca) {
+      resIds = { salteado: 'no tocaba: ' + tocaIds.porque };
+      corridaNoTocaba_('ids', tocaIds.porque);
+    } else if (!corridaHayTiempo_('ids')) {
       resIds = { salteado: 'guarda de tiempo' };
       corridaSaltear_('ids', 'los IDs de los encuentros');
     } else {
       const tI = _ahoraMs_(); corridaEmpieza_('ids');
-      try { resIds = idsEnLaHora_(enSeco); }
+      if (tocaIds) Logger.log('  IDs: corren en esta corrida (%s).', tocaIds.porque);
+      try {
+        resIds = idsEnLaHora_(enSeco);
+        if (tocaIds && !enSeco && resIds && !resIds.error) idsAnotarCorrida_(tocaIds);
+      }
       catch (err) {
         Logger.log('>>> Los IDs de los encuentros fallaron: %s (la corrida sigue igual).', err);
         resIds = { error: String(err && err.message || err) };

@@ -444,6 +444,10 @@ function escribirVistasAgenda_(ss, abierta, P) {
 
 /** "AgendaCall": reescrita entera, con los formatos de "Agenda", un color por fila y protegida con advertencia. */
 function escribirVistaCallAgenda_(ss, m) {
+  // 16/10 (VISTAS_AGENDA_SOLO_SI_CAMBIA, 49_Aceleraciones.js): sin cambios (valores, links y colores), sólo "Última actualización"
+  const claveH = 'AGENDA|' + AGENDA_SOLAPA_CALL;
+  const hz = typeof copiaAgendaSinCambios_ === 'function' ? copiaAgendaSinCambios_(ss.getSheetByName(AGENDA_SOLAPA_CALL), claveH, m) : null;
+  if (hz && hz.saltear) return;
   const sh = ss.getSheetByName(AGENDA_SOLAPA_CALL) || insertarSolapaAgendaAlFinal_(ss, AGENDA_SOLAPA_CALL);
   sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function (pr) {
     if (pr.getDescription() === DESC_PROTECCION_COPIA_AGENDA) pr.remove();
@@ -472,6 +476,7 @@ function escribirVistaCallAgenda_(ss, m) {
   }
   try { sh.autoResizeColumns(1, c); } catch (e) { /* no importa */ }
   sh.protect().setDescription(DESC_PROTECCION_COPIA_AGENDA).setWarningOnly(true);
+  if (hz) { SpreadsheetApp.flush(); huellaGuardar_(claveH, hz.huella, sh); }
   Logger.log('  "%s": %s filas.', AGENDA_SOLAPA_CALL, n - 1);
 }
 
@@ -500,6 +505,19 @@ function escribirVistaMailAgenda_(ss, abierta, P, hoy) {
   (abierta.items || []).forEach(function (it, i) {
     info[claves[i]] = { reunion: str(it.ev.eventoTexto).replace(/\s+/g, ' ') + (it.ev.hora ? ' — ' + it.ev.hora : ''), fecha: it.ev.fecha || '' };
   });
+  // 16/10 (VISTAS_AGENDA_SOLO_SI_CAMBIA, 49_Aceleraciones.js): la huella de las reuniones SIN lo del equipo (días, celdas, colores,
+  // claves). Si es la de la última escritura, no se reescribe: lo del equipo queda en la solapa tal cual (la reescritura lo
+  // pondría igual: la vista manda) y se guarda en AGENDA_EQUIPO en la próxima reescritura, antes de reescribir. Con el formato
+  // "Agenda Directa", se reescribe siempre (el diseño sale de otra solapa).
+  const claveH = 'AGENDA|' + AGENDA_SOLAPA_VISTA_MAIL;
+  let huellaMail = null;
+  if (typeof huellaContenido_ === 'function') {
+    if (!AGENDA_MAIL_FORMATO_DIRECTA) {
+      huellaMail = huellaContenido_({ k: 'vista-mail', filas: armarVistaMailAgenda_(abierta, hoy, claves, null) });
+      if (huellaSinCambios_(claveH, huellaMail, sh0, VISTAS_AGENDA_SOLO_SI_CAMBIA)) { _anotarSinCambios_(AGENDA_SOLAPA_VISTA_MAIL); return null; }
+    }
+    huellaOlvidar_(claveH);
+  }
   // 1. guardar (si falla, tira: la vista no se reescribe)
   const enVista = leerEquipoVistaMailSeguro_(sh0);
   const guardados = guardarEquipoAgenda_(leerEquipoGuardado_(), enVista, info);
@@ -581,6 +599,7 @@ function escribirVistaMailAgenda_(ss, abierta, P, hoy) {
   const libres = [sh.getRange(2, AGENDA_MAIL_COL_RESPONSABLE, Math.max(n, 1), 3), sh.getRange(1, AGENDA_MAIL_COL_RESPONSABLE, 1, 3),
                   sh.getRange(2, AGENDA_MAIL_COL_OPCIONES, AGENDA_MAIL_OPCIONES_FILAS, 1)];
   sh.protect().setDescription(DESC_PROTECCION_VISTA_MAIL).setWarningOnly(true).setUnprotectedRanges(libres);
+  if (huellaMail) { SpreadsheetApp.flush(); huellaGuardar_(claveH, huellaMail, sh); }
   Logger.log('  "%s": %s renglones (%s reuniones); lo del equipo, guardado en %s.', AGENDA_SOLAPA_VISTA_MAIL, n,
              filas.filter(function (f) { return f.tipo === 'reunion'; }).length, RDV_HOJA_AGENDA_EQUIPO);
   return filas;
