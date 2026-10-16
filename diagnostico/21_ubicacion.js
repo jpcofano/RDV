@@ -256,8 +256,10 @@ function medirUbicacionAgenda(opciones) {
     duplicados: [pA, pB].map(function (P) {
       const m = new Map();
       P.duplicados.forEach(function (x) {
+        // 16/10: "una reunión en dos filas" (tipo 'dos_filas') es un PAR, sin candidatas
+        if (x.tipo === 'dos_filas') { m.set('dos_filas|' + x.par.clave, { v: 'filas ' + x.par.a.fila + ' y ' + x.par.b.fila + ' (' + x.par.diferencia + ')', x: x }); return; }
         const k = x.tipo + '|' + (x.id || (x.fAgenda ? 'fila ' + x.fAgenda.fila : ''));
-        m.set(k, { v: x.candidatas.map(function (c) { return c.f.fila + ' (' + c.diferencia + ')'; }).sort().join(', '), x: x });
+        m.set(k, { v: (x.candidatas || []).map(function (c) { return c.f.fila + ' (' + c.diferencia + ')'; }).sort().join(', '), x: x });
       });
       return m;
     }),

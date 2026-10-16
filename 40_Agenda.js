@@ -100,13 +100,13 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   // que ya tiene esta corrida. Si escribió la base, se relee (las filas de abajo de una borrada subieron una).
   if (typeof fusionAntesDelPlanAgenda_ === 'function' && !A.faltan.length) {
     try {
-      const fusionPrevia = fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco);
+      const fusionPrevia = fusionAntesDelPlanAgenda_(sh, dest, A, Object.assign({ alcance: alcance }, opciones), enSeco);
       // las mismas elecciones para el plan (no se leen dos veces: la fusión no cambia AGENDA_DUPLICADOS ni ELECCIONES_AGENDA)
       opciones = Object.assign({}, opciones, { fusionPrevia: fusionPrevia }, !opciones.elecciones && fusionPrevia.elecciones ? { elecciones: fusionPrevia.elecciones } : {});
-      if (fusionPrevia.releer) Object.assign(dest, leerDestino_());
+      if (fusionPrevia.releer) _releerDestinoTrasFusionAgenda_(dest);
     } catch (err) {
       Logger.log('>>> "una reunión en dos filas" (fusión antes del plan) falló: %s (la agenda sigue; se relee la base por las dudas)', err);
-      if (!enSeco) Object.assign(dest, leerDestino_());
+      if (!enSeco) _releerDestinoTrasFusionAgenda_(dest);
     }
   }
   tramo('base');
@@ -212,6 +212,18 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   return plan.resumen;
 }
 
+/**
+ * 16/10: la base de nuevo, DESDE LA HOJA, después de que la fusión borró o escribió filas (las de abajo de una borrada subieron una).
+ * Tiene que ser siempre una lectura real, nunca una copia guardada: si aparece un cache de la lectura de la base (p. ej. un
+ * `leerDestinoCompartido_` o un global memoizado), hay que invalidarlo acá. El gancho: `invalidarDestinoCompartido_()`, si existe.
+ * Reemplaza el contenido de `dest` (el mismo objeto, para quien ya lo tiene).
+ */
+function _releerDestinoTrasFusionAgenda_(dest) {
+  if (typeof invalidarDestinoCompartido_ === 'function') invalidarDestinoCompartido_();
+  Object.keys(dest).forEach(function (k) { delete dest[k]; });
+  return Object.assign(dest, leerDestino_());
+}
+
 /** En seco (paso 37): lo que crearía, vincularía, actualizaría, movería y suspendería. */
 function correrAgendaEnSeco() { return correrAgenda(true); }
 
@@ -289,7 +301,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   P.suspendidasAuto = []; P.cancelNoAplicada = []; P.cancelacionesEvaluadas = []; P.noReactivadasRojo = [];
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo que juntó la fusión antes del plan (40_Agenda.js correrAgendaEnBloqueo_) y si es en seco
   P.enSeco = !!opciones.enSeco; P.fusionPrevia = opciones.fusionPrevia || null;
-  P.dosFilas = []; P.dosFilasDecididas = [];
+  P.dosFilas = []; P.dosFilasDecididas = []; P.eleccionesAMano = [];
 
   // Índices del destino
   const porFigFecha = new Map(), porFecha = new Map(), usadas = new Set();
@@ -2723,6 +2735,7 @@ function leerEleccionesAgenda_(opcionesLectura) {
 function clasificarEleccionAgenda_(eleccion) {
   const e = normalizeText_(eleccion);
   if (/^quedarse con la fila/.test(e)) return 'quedarse';
+  if (/^aplicada: juntada/.test(e)) return 'consumida';   // 16/10 (revisor): la marca de una decisión de un par ya aplicada (una vez)
   if (/reuniones distintas/.test(e)) return 'distintas';
   return /cargada|otra fila/.test(e) ? 'ya_cargada' : /vincular|es la misma/.test(e) ? 'vincular' : (/crear|distintas/.test(e) ? 'crear' :
          (/cancel/.test(e) ? 'cancelar' : (/^sigue/.test(e) ? 'sigue' : (/no s/.test(e) ? 'no_se' : ''))));
@@ -2831,6 +2844,11 @@ function _filasRegistroEleccionesAgenda_(P, corrida) {
       una('eleccion_sin_fila', '', x.eleccion, 'elección ' + textoEl(x.el, x.eleccion) + ': ' + (x.motivo || 'la fila elegida no se encuentra') +
           (x.eleccion === 'ya_cargada' ? ' → no se crea ni se pregunta' : ' → no se crea; se vuelve a preguntar'), x.id);
     });
+    // 16/10 (revisor): "Quedarse con la fila X" que todavía no se aplicó (la otra es del equipo: borrarla a mano; o no se pudo juntar)
+    (P.eleccionesAMano || []).forEach(function (x) {
+      una('eleccion_a_mano', x.y.fila, x.eleccion, 'elección ' + textoEl(x.el, x.eleccion) + ': ' + (x.delEquipo ? 'la fila ' + x.y.fila +
+          ' es del equipo: no se borra, borrarla a mano' : 'la fila ' + x.y.fila + ' todavía no se juntó' + (x.motivo ? ' (' + x.motivo + ')' : '')), x.id);
+    });
     (P.eleccionesCerradas || []).forEach(function (x) {
       una('eleccion_cerrada', '', x.el.eleccion, 'elección ' + textoEl(x.el, x.el.eleccion) + ' cerrada: ' + x.motivo, x.clave);
     });
@@ -2855,6 +2873,38 @@ function _guardarEleccionesAgenda_(P) {
     SpreadsheetApp.flush();
   });
   return nuevas.length;
+}
+
+/**
+ * **Una decisión "Quedarse con la fila X" se aplica UNA vez** (16/10, revisor). Después de juntar el par, se agrega a
+ * ELECCIONES_AGENDA una línea "aplicada: juntada …" con el mismo id_reunion (código 'consumida'), que vale más que la decisión
+ * (es la más nueva) y que deshacer (paso 38) no toca: si un deshacer devuelve la fila borrada, el par vuelve a AGENDA_DUPLICADOS con
+ * ELEGIR vacío (el equipo puede elegir de nuevo, o cambiar de idea) y la corrida siguiente NO lo vuelve a juntar. En el Map de las
+ * elecciones de esta corrida la decisión queda reemplazada (así `_guardarEleccionesAgenda_` no la guarda después de la marca).
+ * `decididas`: las de `fusionAntesDelPlanAgenda_` ({ clave, vieja, corrida, idFilaElegida }). Devuelve cuántas marcó.
+ */
+function consumirEleccionesParAgenda_(elecciones, decididas) {
+  const filas = decididas.map(function (x) {
+    return [new Date(), idEleccionParAgenda_(x.clave), x.idFilaElegida || '', 'aplicada: juntada en la fila ' + x.vieja.fila + ' (corrida ' + x.corrida +
+            '); si el par vuelve a aparecer, elegir de nuevo', '', '', ''];
+  });
+  if (!filas.length) return 0;
+  filas.forEach(function (r) {
+    if (elecciones && elecciones.set) elecciones.set(r[1], { eleccion: 'consumida', idFila: r[2], comentario: '', nueva: false, texto: r[3], origen: 'consumida' });
+  });
+  try {
+    _conReintentosAgenda_(RDV_HOJA_ELECCIONES_AGENDA, function () {
+      const ss = registrosAgenda_();
+      let sh = ss.getSheetByName(RDV_HOJA_ELECCIONES_AGENDA);
+      if (!sh) { sh = ss.insertSheet(RDV_HOJA_ELECCIONES_AGENDA); sh.appendRow(ENC_ELECCIONES_AGENDA_); }
+      sh.getRange(sh.getLastRow() + 1, 1, filas.length, ENC_ELECCIONES_AGENDA_.length).setValues(filas);
+      SpreadsheetApp.flush();
+    });
+  } catch (err) {
+    Logger.log('>>> %s: la marca "aplicada" de %s decisiones NO se guardó (%s): si se deshace la fusión, la decisión guardada podría volver a aplicarse',
+               RDV_HOJA_ELECCIONES_AGENDA, filas.length, err);
+  }
+  return filas.length;
 }
 
 const ENC_DUPLICADOS_AGENDA_ = ['ELEGIR', 'COMENTARIO', 'resultado', 'tipo', 'reunión del mail', 'fila candidata', 'figura (fila)',
@@ -2900,7 +2950,9 @@ function escribirDuplicadosAgenda_(P) {
                    : 'La misma reunión está en dos filas: en esa semana la agenda no crea nada más hasta que se decida. ') +
         '"Quedarse con la fila N": el sistema completa la fila N con lo de la otra (sólo lo vacío; lo que ustedes cargaron en la N no se ' +
         'toca) y borra la otra, si la creó la agenda (queda guardada y se puede deshacer); si la otra la cargaron ustedes, no la borra: queda ' +
-        'en AGENDA_PENDIENTES para borrarla a mano. "Son reuniones distintas": no se vuelve a preguntar. ' +
+        'en AGENDA_PENDIENTES para borrarla a mano. Lo distinto de la otra fila se descarta sólo si lo escribió el sistema: si tiene datos ' +
+        'cargados por ustedes distintos de la N (un STATUS, asistentes, inscriptos, un ID…), no se borra y queda en AGENDA_PENDIENTES para ' +
+        'resolver a mano. "Son reuniones distintas": no se vuelve a preguntar. ' +
         (puede ? 'Sugerencia: quedarse con la fila ' + ev.vieja.fila + ' (' + ev.regla + ')' +
                  (AGENDA_FUSION_AUTOMATICA ? '.' : '; con la fusión automática prendida, el sistema la juntaría solo.')
                : (ev && ev.motivos.length ? 'El sistema no las junta solo: ' + ev.motivos.join('; ') + '.' : ''));
@@ -3284,7 +3336,9 @@ function _dosFilasAgenda_(P, dest, A, despues, elecciones, ignorados, fusionPrev
     const x = par.porId[d.quedarse];
     if (!x) return;
     const y = x === par.a ? par.b : par.a;
-    P.eleccionesUsadas.push({ id: id, el: el, eleccion: 'quedarse', f: x });
+    // 16/10 (revisor): no se aplicó nada (la otra es del equipo, o no se pudo juntar): otro tipo en el registro, no "eleccion_aplicada"
+    (P.eleccionesAMano = P.eleccionesAMano || []).push({ id: id, el: el, eleccion: 'quedarse', x: x, y: y, motivo: fallo[clave] || '',
+                                                          delEquipo: !/^c-/.test(uidDe(y)) });
     P.dosFilasDecididas.push({ clave: clave, tipo: /^c-/.test(uidDe(y)) ? 'sin_aplicar' : 'sobra', x: x, y: y, motivo: fallo[clave] || '' });
   });
   // las decisiones que la fusión de esta corrida YA aplicó (el par ya no está): se anotan como aplicadas
@@ -3379,7 +3433,10 @@ function infoAgenda_(P) {
     } else {
       out.push({ tipo: 'decisión del equipo sin aplicar', reunion: reunion, semana: '', grupo: '', fecha: x.fecha || '', hora: '', lugar: '', fila: y.fila,
                  que: 'el equipo eligió quedarse con la fila ' + x.fila + '; la ' + y.fila + ' todavía no se juntó' + (d.motivo ? ': ' + d.motivo : ''),
-                 sigue: 'el sistema lo vuelve a intentar cada hora; si no puede, borrar la fila ' + y.fila + ' a mano',
+                 // 16/10 (revisor): con datos del equipo en la otra fila, el sistema no la borra: lo resuelve el equipo
+                 sigue: /datos del equipo/.test(d.motivo || '') ? 'el sistema no la borra: borrar la fila ' + y.fila + ' a mano, o corregir sus datos para que ' +
+                        'coincidan con la ' + x.fila + ' (entonces se junta sola en la corrida siguiente)'
+                        : 'el sistema lo vuelve a intentar cada hora; si no puede, borrar la fila ' + y.fila + ' a mano',
                  id: 'sin_aplicar|' + d.clave, avisar: !!d.motivo });
     }
   });
@@ -3462,8 +3519,11 @@ function _avisarInfoAgenda_(P, av) {
   items.forEach(function (it) {
     const k = _hashCortoAgenda_(it.id);
     if (vistas[k]) return;
+    // 16/10 (revisor): se marca como avisada SÓLO si el aviso quedó de verdad para mandar (con el mail apagado, registrarAviso_
+    // devuelve false: al prenderlo, lo que esté pendiente se avisa)
+    const ok = av('agenda_info', it.tipo.toUpperCase() + ' | ' + it.reunion + (it.fila !== '' && it.fila != null ? ' | fila ' + it.fila : '') + ' | ' + it.que + ' → ' + it.sigue);
+    if (ok !== true) return;
     vistas[k] = hoy;
-    av('agenda_info', it.tipo.toUpperCase() + ' | ' + it.reunion + (it.fila !== '' && it.fila != null ? ' | fila ' + it.fila : '') + ' | ' + it.que + ' → ' + it.sigue);
     n++;
   });
   if (n && props) {
@@ -3571,7 +3631,8 @@ function _avisosAgendaSegura_(P, r) {
   if (typeof registrarAviso_ !== 'function' || !P || !P.modos) return 0;
   let n = 0;
   const av = function (tema, texto) {
-    try { registrarAviso_(tema, texto); n++; } catch (err) { Logger.log('>>> el aviso "%s" no se registró: %s', tema, err); }
+    // 16/10 (revisor): devuelve lo que devolvió registrarAviso_ (true = quedó para mandar; false = mail apagado o falló)
+    try { const ok = registrarAviso_(tema, texto); n++; return ok; } catch (err) { Logger.log('>>> el aviso "%s" no se registró: %s', tema, err); return false; }
   };
   const reciente = function (d) { return d && (Date.now() - d.getTime()) <= 86400000; };
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo informativo NUEVO de AGENDA_PENDIENTES —una semana frenada por "una reunión en dos

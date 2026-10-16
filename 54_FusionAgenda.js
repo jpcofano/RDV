@@ -278,7 +278,9 @@ function planFusionAgenda_(dest, A, hist, opciones) {
   const pedidos = _pedidosFusion_(opciones.filas);
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones): un par que el equipo ya decidió ("Son reuniones distintas", o "Quedarse con la fila
   // X") no es "una reunión en dos filas" para la fusión: `opciones.ignorados` (de `ignoradosDeEleccionesAgenda_`)
-  const grupos = reunionesRepetidasAgenda_(dest.filas, A, null, opciones.ignorados ? { ignorados: opciones.ignorados } : undefined);
+  // 16/10 (revisor): con `opciones.alcance` (la fusión automática), sólo las filas del alcance de la agenda
+  const filasPlan = opciones.alcance ? dest.filas.filter(function (f) { return f.fecha && _enAlcance_(opciones.alcance, f.fecha); }) : dest.filas;
+  const grupos = reunionesRepetidasAgenda_(filasPlan, A, null, opciones.ignorados ? { ignorados: opciones.ignorados } : undefined);
   const pares = [], rechazados = [], encontrados = [];
   grupos.forEach(function (g) {
     if (g.filas.length !== 2) {
@@ -371,19 +373,12 @@ function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
   try { elecciones = opciones.elecciones || leerEleccionesAgenda_(); }
   catch (err) { Logger.log('  (fusión) las elecciones no se pudieron leer: %s', err); elecciones = new Map(); }
   res.elecciones = elecciones;   // el plan de la agenda usa las mismas (no las vuelve a leer)
+  // las decisiones del equipo YA aplicadas no vuelven (16/10, revisor: `decisionesParesAgenda_` no devuelve las "consumidas")
   const decisiones = decisionesParesAgenda_(elecciones);
-  let hayQuedarse = false;
-  decisiones.forEach(function (d) { if (d.eleccion === 'quedarse') hayQuedarse = true; });
-  if (!hayQuedarse && !auto) return res;
-  const hist = opciones.historialFusion || _creacionesFusionAgenda_();
-  if (hist.error) {
-    res.error = 'REGISTRO_AGENDA_CAMBIOS no se pudo leer (' + hist.error + '): sin el registro no se puede deshacer, no se junta nada';
-    Logger.log('>>> (fusión) %s', res.error);
-    return res;
-  }
   const uidDe = function (f) { return A.agenda_uid == null ? '' : str(f.valores[A.agenda_uid]); };
-  const usadas = new Set(), lista = [];
-  // 1. las decisiones del equipo
+  // 16/10 (revisor): primero, qué decisiones "Quedarse con la fila X" siguen pendientes de verdad (el par está y la otra es de la
+  // agenda); el registro de la agenda se lee sólo si hay alguna, o con la fusión automática
+  const pendientes = [];
   decisiones.forEach(function (d, clave) {
     if (d.eleccion !== 'quedarse') return;
     const par = filasDelParAgenda_(dest.filas, A, clave);
@@ -392,20 +387,36 @@ function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
     if (!x) { res.fallidas.push({ clave: clave, motivo: 'la fila elegida no se encuentra (' + d.idFila + ')' }); return; }
     const y = x === par.a ? par.b : par.a;
     if (!/^c-/.test(uidDe(y))) return;                       // la que sobra es del EQUIPO: no se borra (el plan: "borrar a mano")
+    pendientes.push({ d: d, clave: clave, x: x, y: y });
+  });
+  if (!pendientes.length && !auto) return res;
+  const hist = opciones.historialFusion || _creacionesFusionAgenda_();
+  if (hist.error) {
+    res.error = 'REGISTRO_AGENDA_CAMBIOS no se pudo leer (' + hist.error + '): sin el registro no se puede deshacer, no se junta nada';
+    Logger.log('>>> (fusión) %s', res.error);
+    return res;
+  }
+  const usadas = new Set(), lista = [];
+  // 1. las decisiones del equipo (con los fondos de la que se borraría: un dato suyo que choca y NO escribió el sistema frena el borrado)
+  pendientes.forEach(function (q) {
+    const x = q.x, y = q.y, clave = q.clave;
     if (usadas.has(x.fila) || usadas.has(y.fila)) {
       res.fallidas.push({ clave: clave, motivo: 'otra decisión de esta corrida usa una de las dos filas: se junta en la próxima' });
       return;
     }
-    const p = _evaluarParFusion_(dest.hdr, A, x, y, true);
-    p.claveDosFilas = clave; p.porEquipo = true; p.eleccion = d.el;
+    let fondos = null;
+    try { fondos = sh ? sh.getRange(y.fila, 1, 1, dest.hdr.length).getBackgrounds()[0] : null; } catch (err) { fondos = null; }
+    const p = _evaluarParFusion_(dest.hdr, A, x, y, true, fondos);
+    p.claveDosFilas = clave; p.porEquipo = true; p.eleccion = q.d.el; p.idFilaElegida = q.d.idFila;
     p.idReunionNueva = (hist.porUid && hist.porUid.get(uidDe(y)) || {}).id || '';
     if (p.motivos.length) { res.fallidas.push({ clave: clave, motivo: p.motivos.join('; ') }); return; }
     usadas.add(x.fila); usadas.add(y.fila);
     lista.push(p);
   });
-  // 2. la fusión automática (las reglas del paso 97), en los pares que el equipo no decidió
+  // 2. la fusión automática (las reglas del paso 97), en los pares que el equipo no decidió y SÓLO en las filas del alcance de la
+  // agenda (16/10, revisor: no filas viejas que quedaron "en agenda")
   if (auto) {
-    const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones) });
+    const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones), alcance: opciones.alcance || alcanceAgenda_() });
     plan.pares.forEach(function (p) {
       const clave = claveParAgenda_(idParFilaAgenda_(p.vieja, A), idParFilaAgenda_(p.nueva, A));
       if (decisiones.has(clave) || usadas.has(p.vieja.fila) || usadas.has(p.nueva.fila)) return;
@@ -425,7 +436,7 @@ function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
     };
     return { clave: p.claveDosFilas, vieja: ficha(p.vieja), nueva: ficha(p.nueva), porEquipo: !!p.porEquipo, automatica: !!p.automatica,
              copiar: p.copiar.map(function (c) { return c.nombre; }), conservar: p.conservar.map(function (c) { return c.nombre + ': ' + c.motivo; }),
-             avisos: p.avisos || [], regla: p.regla || '' };
+             avisos: p.avisos || [], regla: p.regla || '', idFilaElegida: p.idFilaElegida || '' };
   };
   // una fila del EQUIPO que se queda no tiene agenda_uid: el registro la nombra por su número de fila, y si una fila que se borra en
   // esta corrida está más arriba, ese número deja de ser el suyo (deshacer apuntaría a otra fila). En ese caso no se le copia nada:
@@ -460,6 +471,9 @@ function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
   if (r.corrida) {
     try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_CORRIDA, r.corrida); } catch (e) { Logger.log('  (el id de la fusión no se pudo guardar: %s)', e); }
   }
+  // 16/10 (revisor): una decisión del equipo se aplica UNA vez. Queda "consumida" en ELECCIONES_AGENDA (que deshacer no toca): si un
+  // deshacer devuelve la fila, el par vuelve a AGENDA_DUPLICADOS con ELEGIR vacío y no se junta solo otra vez
+  if (res.decididas.length) consumirEleccionesParAgenda_(elecciones, res.decididas);
   return res;
 }
 
@@ -480,8 +494,12 @@ function fusionAutomaticaAgenda_enSeco(opciones) {
   let elecciones;
   try { elecciones = opciones.elecciones || leerEleccionesAgenda_(); } catch (err) { elecciones = new Map(); }
   const hist = opciones.historialFusion || _creacionesFusionAgenda_();
-  const res = fusionAntesDelPlanAgenda_(null, dest, A, Object.assign({}, opciones, { fusionAutomatica: true, elecciones: elecciones, historialFusion: hist }), true);
-  const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones) });
+  // la hoja, sólo para LEER los fondos (si un dato de la fila que se borraría lo escribió el sistema); en seco no se escribe nada
+  const sh = verificarHojaDestino_(ssDestino_());
+  const alcance = alcanceAgenda_();
+  const res = fusionAntesDelPlanAgenda_(sh, dest, A, Object.assign({}, opciones, { fusionAutomatica: true, elecciones: elecciones, historialFusion: hist,
+                                                                                   alcance: alcance }), true);
+  const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones), alcance: alcance });
   _logPlanFusion_(plan, dest, A);
   const solas = res.planeadas.filter(function (x) { return x.automatica; });
   const decididas = res.planeadas.filter(function (x) { return x.porEquipo; });
@@ -537,17 +555,22 @@ function _fechaAgendaMailFusion_(s) {
  * equipo), se copia sólo a sus celdas VACÍAS de las columnas visibles de la agenda, sin trazas ni columnas del mail: la corrida
  * siguiente la vincula con la reunión por el camino de siempre. Un STATUS se copia sólo si es una transición de la agenda.
  */
-function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
-  const p = { vieja: fv, nueva: fn, copiar: [], conservar: [], saltar: [], motivos: [], avisos: [], decidido: !!decidido };
+function _evaluarParFusion_(hdr, A, fv, fn, decidido, fondosNueva) {
+  const p = { vieja: fv, nueva: fn, copiar: [], conservar: [], saltar: [], motivos: [], avisos: [], decidido: !!decidido, datosEquipo: [] };
   const vO = function (k) { return k == null ? '' : fv.valores[k]; }, vN = function (k) { return k == null ? '' : fn.valores[k]; };
   const cmp = valorAgendaComparable_;
   const txt = _txtFusion_;
   const conservar = function (n, por) { p.conservar.push({ nombre: n, motivo: por }); };
-  // lo que rechaza el par en la fusión automática; con la decisión del equipo, se queda lo de la vieja y se anota
-  const rechazo = function (m, n) {
+  // 16/10 (revisor): con la decisión del equipo, un dato de la nueva que choca con la vieja se descarta SÓLO si lo escribió el
+  // sistema (su fondo es COLOR_SISTEMA; sin los fondos, no se sabe: cuenta como del equipo). Si es del equipo, la nueva NO se borra.
+  const delSistemaEnNueva = function (k) { return !!(fondosNueva && k != null && esColorSistema_(fondosNueva[k])); };
+  // lo que rechaza el par en la fusión automática; con la decisión del equipo, se queda lo de la vieja y se anota, salvo un dato del
+  // equipo en la nueva (`equipo`): ése frena el borrado (p.datosEquipo → motivo, al final)
+  const rechazo = function (m, n, equipo) {
     if (!decidido) { p.motivos.push(m); return; }
+    if (n && equipo) { p.datosEquipo.push(n); return; }
     p.avisos.push('(lo decidió el equipo) ' + m);
-    if (n) conservar(n, 'se queda el de la fila ' + fv.fila + ' (la eligió el equipo): ' + m);
+    if (n) conservar(n, 'se queda el de la fila ' + fv.fila + ' (la eligió el equipo; el de la ' + fn.fila + ' lo había escrito el sistema): ' + m);
   };
   p.uidVieja = str(vO(A.agenda_uid)); p.uidNueva = str(vN(A.agenda_uid));
   const sinUidV = !p.uidVieja;
@@ -598,7 +621,14 @@ function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
       // visibles, sin trazas ni lo del mail (la vinculación de la corrida siguiente lo completa)
       if (sinUidV) {
         if (mailCols.indexOf(nn) >= 0 || nn === normalizeHeader_('Origen fila')) continue;
-        if (esVacio_(b) || !esVacio_(a)) { if (!esVacio_(b) && cmp(a, n) !== cmp(b, n)) conservar(n, 'se queda el de la fila del equipo ("' + txt(a, n) + '")'); continue; }
+        if (esVacio_(b) || !esVacio_(a)) {
+          if (!esVacio_(b) && cmp(a, n) !== cmp(b, n)) {
+            const kt0 = celdaTraza ? A[trazas[celdaTraza]] : null;
+            const sistema = delSistemaEnNueva(k) || (kt0 != null && !esVacio_(vN(kt0)) && cmp(b, n) === cmp(vN(kt0), trazas[celdaTraza]));
+            rechazo('"' + n + '": la fila del equipo dice "' + txt(a, n) + '" y la otra "' + txt(b, n) + '"', n, !sistema);
+          }
+          continue;
+        }
         if (nn === nnSt && !transicionOk(a, b)) { conservar(n, 'STATUS "' + txt(b, n) + '" no se copia: no es una transición de la agenda'); continue; }
         copiar(k, b, a, 'agenda');
         continue;
@@ -613,7 +643,7 @@ function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
         // 16/10 (revisor): la NUEVA también puede tener un valor del equipo (no es lo que escribió el sistema): si es distinto del de
         // la vieja, se perdería al borrarla → se rechaza el par (decidir a mano)
         const nuevaDelEquipo = !esVacio_(cN) && !(!esVacio_(xN) && cmp(cN, n) === cmp(xN, n));
-        if (nuevaDelEquipo && !igualC) { rechazo('"' + n + '": la nueva tiene "' + txt(cN, n) + '" cargado por el equipo (no es lo que escribió el sistema) y la vieja "' + txt(cO, n) + '": decidir a mano', n); continue; }
+        if (nuevaDelEquipo && !igualC) { rechazo('"' + n + '": la nueva tiene "' + txt(cN, n) + '" cargado por el equipo (no es lo que escribió el sistema) y la vieja "' + txt(cO, n) + '": decidir a mano', n, true); continue; }
         if (!delSistema) { conservar(n, 'la vieja tiene "' + txt(cO, n) + '", que no es lo que escribió el sistema ("' + txt(xO, n) + '"): es del equipo, no se toca'); continue; }
         if (!esVacio_(cO) && !masReciente) { conservar(n, 'la vieja tiene el mail más nuevo: se queda "' + txt(cO, n) + '"'); continue; }
         if (esVacio_(cN) && !esVacio_(cO)) { conservar(n, 'la nueva no tiene: no se borra "' + txt(cO, n) + '"'); continue; }
@@ -632,12 +662,13 @@ function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
       if (nn === normalizeHeader_('Figura')) {
         if (esVacio_(b) || cmp(a, n) === cmp(b, n)) continue;
         if (esVacio_(a)) copiar(k, b, a, 'agenda');
-        else rechazo('Figura distinta ("' + txt(a, n) + '" / "' + txt(b, n) + '"): decidir a mano', n);
+        else rechazo('Figura distinta ("' + txt(a, n) + '" / "' + txt(b, n) + '"): decidir a mano', n, !delSistemaEnNueva(k));
         continue;
       }
       // EVENTO, "Origen fila" y cualquier otra de la agenda: sólo en una celda vacía de la vieja
       if (esVacio_(b) || cmp(a, n) === cmp(b, n)) continue;
       if (esVacio_(a)) copiar(k, b, a, 'agenda');
+      else if (decidido && !delSistemaEnNueva(k)) p.datosEquipo.push(n);   // 16/10 (revisor): un dato del equipo en la que se borraría
       else conservar(n, 'se queda el de la vieja ("' + txt(a, n) + '"; la nueva dice "' + txt(b, n) + '")');
       continue;
     }
@@ -648,7 +679,11 @@ function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
     const vaciaO = esVacio_(a) || (ins && num(a) === 0);
     if (vaciaO) { if (!(ins && num(b) === 0)) copiar(k, b, a, 'general', ins ? { ceroEsVacio: true } : null); continue; }
     if (cmp(a, n) === cmp(b, n)) continue;
-    rechazo('"' + n + '": la vieja dice "' + txt(a, n) + '" y la nueva "' + txt(b, n) + '" (un dato distinto en las dos: decidir a mano)', n);
+    rechazo('"' + n + '": la vieja dice "' + txt(a, n) + '" y la nueva "' + txt(b, n) + '" (un dato distinto en las dos: decidir a mano)', n, !delSistemaEnNueva(k));
+  }
+  // 16/10 (revisor): por decisión del equipo, la nueva NO se borra si tiene datos del equipo distintos de la que se queda
+  if (decidido && p.datosEquipo.length) {
+    p.motivos.push('la fila ' + fn.fila + ' tiene datos del equipo distintos de la fila ' + fv.fila + ' (' + p.datosEquipo.join(', ') + '): borrarla a mano o corregirlos');
   }
   return p;
 }
@@ -792,33 +827,20 @@ function deshacerGeneralesFusion_(sh, cambios) {
 }
 
 /**
- * Restaurar AL FINAL una fila que borró una fusión ("borrar_fusion"): sus valores (las columnas de la agenda por su excepción,
- * el resto por la regla general, las derivadas se recalculan) y después sus fondos (`restaurarFondosFilaAgenda_`).
- * `c`: la línea del registro (antes = la fila en JSON, fondoAntes = los fondos en JSON, uid). Devuelve true si escribió.
+ * Restaurar AL FINAL una fila que borró una fusión ("borrar_fusion" / "borrar_fusion_equipo"), EXACTA (16/10, revisor): todos sus
+ * valores —también un STATUS que no es "en agenda"— y sus fondos originales, en una fila vacía (`restaurarFilaBorradaAgenda_`,
+ * 05_Escritura.js; las derivadas se recalculan). `c`: la línea del registro (antes = la fila en JSON, fondoAntes = los fondos en
+ * JSON, uid). Devuelve true si escribió.
  */
 function restaurarFilaFusion_(sh, hdr, c, fila) {
   let valores = [], fondos = [];
   try { valores = JSON.parse(c.antes || '[]'); } catch (e) { valores = []; }
   try { fondos = JSON.parse(c.fondoAntes || '[]'); } catch (e) { fondos = []; }
-  const deAgenda = COLUMNAS_QUE_ESCRIBE_AGENDA.map(normalizeHeader_);
-  const escA = [], escG = [];
-  valores.forEach(function (v, k) {
-    if (k >= hdr.length || !str(hdr[k]) || esVacio_(v) || esColumnaDerivada_(hdr[k])) return;
-    const val = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? toDate_(v) : v;
-    if (deAgenda.indexOf(normalizeHeader_(hdr[k])) >= 0) {
-      if (normalizeHeader_(hdr[k]) === normalizeHeader_('STATUS REUNIÓN') && normStatus_(v) !== 'en agenda') {
-        Logger.log('    la fila restaurada tenía STATUS "%s": no se restaura (no es una transición de la agenda)', v);
-        return;
-      }
-      escA.push({ fila: fila, col: k + 1, valor: val, esperado: '' });
-    } else if (!esColumnaManual_(hdr[k])) escG.push({ fila: fila, col: k + 1, valor: val });
+  if (!valores.length) return false;
+  const vals = hdr.map(function (h, k) {
+    const v = k < valores.length ? valores[k] : '';
+    if (!str(h) || esVacio_(v)) return '';
+    return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? toDate_(v) : v;
   });
-  if (!escA.length) return false;
-  escribirAgendaLote_(sh, hdr, escA);
-  if (escG.length) setSiDelSistemaLote_(sh, hdr, escG);
-  if (fondos.length) {
-    try { restaurarFondosFilaAgenda_(sh, hdr, fila, c.uid, fondos); }
-    catch (err) { Logger.log('    los fondos de la fila restaurada no se pusieron: %s (los valores ya están)', err); }
-  }
-  return true;
+  return restaurarFilaBorradaAgenda_(sh, hdr, fila, c.uid, vals, fondos) > 0;
 }

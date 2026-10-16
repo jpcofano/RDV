@@ -410,7 +410,8 @@ const regE = cambios(E).filter(function (x) { return x[1] === 'fusionada_equipo'
 ok(regE.length === 1 && /decisión del equipo/.test(regE[0][5]) && cambios(E).some(function (x) { return x[1] === 'borrar_fusion_equipo' && x[8] === uidN12 && /57/.test(x[5]); }),
    'el registro: "borrar_fusion_equipo" (la fila entera, con su Inscriptos 57) + "fusionada_equipo"');
 const elec = (hoja(E, 'ELECCIONES_AGENDA') || { v: [] }).v.filter(function (x) { return /^dos_filas\|/.test(x[1]); });
-ok(elec.length === 1 && elec[0][2] === 'uid:' + uidA && /^Quedarse con la fila/.test(elec[0][3]), 'ELECCIONES_AGENDA: la decisión, por la IDENTIDAD de la fila (uid:' + uidA + '), no por el número');
+ok(elec.length === 1 && elec[0][2] === 'uid:' + uidA && /^aplicada: juntada en la fila/.test(elec[0][3]),
+   'ELECCIONES_AGENDA: la decisión queda CONSUMIDA ("aplicada: juntada…"), por la IDENTIDAD de la fila (uid:' + uidA + '), no por el número — ' + JSON.stringify(elec.map(function (x) { return x[3]; })));
 ok(E.run('leerHistorialAgenda_().creadas.has(' + JSON.stringify(uidN12) + ')'), 'la borrada por decisión del equipo cuenta como BORRADA POR EL EQUIPO (no se recrea)');
 ok(pend(E, 'juntada por decisión del equipo').length === 1 && !parDe(E, S.a + 1), 'AGENDA_PENDIENTES: "juntada por decisión del equipo"; AGENDA_DUPLICADOS ya no tiene el par C12');
 avanzar(60);
@@ -421,18 +422,44 @@ const d4 = E.run('deshacerAgenda(false, ' + JSON.stringify(idE) + ')');
 const nueva12 = deLaComuna(E, 'Comuna 12').filter(function (i) { return i !== S.a; })[0];
 ok(d4 && d4.restauradas === 1 && nueva12 && celda(E, nueva12, 'agenda_uid') === uidN12 && celda(E, nueva12, 'Inscriptos') === 57,
    'deshacer (paso 38 con la corrida): la borrada vuelve, con su Inscriptos 57 — ' + JSON.stringify(d4));
+// 16/10 (revisor): el deshacer TIENE QUE QUEDAR — la corrida siguiente no vuelve a juntar el par (la decisión ya se aplicó una vez)
+nFilas = S.X.D.v.length;
+avanzar(60);
+r = correr(E, false, [V1, V3]);
+ok(S.X.D.v.length === nFilas && deLaComuna(E, 'Comuna 12').length === 2 && !cambios(E).some(function (x) { return x[1] === 'fusionada_equipo' && x[0] !== idE; }),
+   'DESPUÉS DEL DESHACER, la corrida siguiente NO vuelve a juntar (la decisión estaba consumida) — filas ' + (S.X.D.v.length - nFilas));
+const l4 = parDe(E, S.a + 1);
+ok(l4 && l4[0] === '' && /elegir/.test(l4[2]), 'el par vuelve a AGENDA_DUPLICADOS con ELEGIR vacío (el equipo puede elegir de nuevo, o cambiar)');
+avanzar(60);
+r = correr(E, false, [V1, V3]);
+ok(deLaComuna(E, 'Comuna 12').length === 2 && parDe(E, S.a + 1), '  y sigue así en la otra corrida');
+elegir(E, parDe(E, S.a + 1), 'Son reuniones distintas');
+avanzar(60);
+r = correr(E, false, [V1, V3]);
+ok(deLaComuna(E, 'Comuna 12').length === 2 && !parDe(E, S.a + 1) && pend(E, 'semana frenada: una reunión en dos filas').every(function (x) { return !/Comuna 12|Gabino/.test(x[1]); }),
+   'el equipo cambió de idea ("Son reuniones distintas"): las dos filas quedan, el par no se pregunta más');
 
-// "Quedarse con la fila Y" (la NUEVA): se borra la vieja
+// "Quedarse con la fila Y" (la NUEVA): la vieja tiene datos del EQUIPO distintos (Inscriptos 40, sin el color del sistema) → no se borra
 S = escenario(true);
 E = sobre(S.X, conf());
 correr(E, false, [V1, V3]);
 elegir(E, parDe(E, S.a + 1), 'Quedarse con la fila ' + (S.n12 + 1));
-const uidNueva = celda(E, S.n12, 'agenda_uid');
+nFilas = S.X.D.v.length;
 avanzar(60);
 r = correr(E, false, [V1, V3]);
-const quedan12 = deLaComuna(E, 'Comuna 12');
-ok(quedan12.length === 1 && celda(E, quedan12[0], 'agenda_uid') === uidNueva && celda(E, quedan12[0], 'Inscriptos') === 57 && r.crear === 0,
-   '"Quedarse con la fila Y" (la nueva): queda la nueva con su 57, la vieja se borra, no se crea nada');
+const sa = pend(E, 'decisión del equipo sin aplicar');
+ok(S.X.D.v.length === nFilas && deLaComuna(E, 'Comuna 12').length === 2 && celda(E, S.a, 'Inscriptos') === 40 &&
+   sa.length === 1 && /datos del equipo distintos/.test(sa[0][8]) && /Inscriptos/.test(sa[0][8]) && /borrar la fila \d+ a mano, o corregir/.test(sa[0][9]) && !parDe(E, S.a + 1),
+   '"Quedarse con la fila Y" con datos del EQUIPO en la otra (Inscriptos 40): NO se borra; AGENDA_PENDIENTES "decisión del equipo sin aplicar" — ' + JSON.stringify(sa[0] && sa[0].slice(8, 10)));
+ok(cambios(E).some(function (x) { return x[1] === 'eleccion_a_mano'; }) && !cambios(E).some(function (x) { return x[1] === 'eleccion_aplicada' && /^dos_filas/.test(x[6]); }),
+   '  el registro: "eleccion_a_mano" (no "eleccion_aplicada": no se aplicó nada)');
+// y si el dato distinto lo escribió el sistema (fondo COLOR_SISTEMA), sí se junta
+S.X.D.bg[S.a][S.X.C('Inscriptos')] = SIS;
+avanzar(60);
+r = correr(E, false, [V1, V3]);
+const q12 = deLaComuna(E, 'Comuna 12');
+ok(q12.length === 1 && celda(E, q12[0], 'Inscriptos') === 57 && pend(E, 'juntada por decisión del equipo').length === 1,
+   'el mismo par con el 40 escrito por el SISTEMA (color del sistema): se junta (se queda la nueva con su 57)');
 
 // ============================== [5] "Son reuniones distintas" ==============================
 
@@ -507,6 +534,20 @@ const d6 = T.E.run('deshacerAgenda(false, ' + JSON.stringify(cambios(T.E).filter
 ok(d6 && d6.restauradas === 1 && T.X.D.v[ie2][T.X.C('Observaciones')] === 'cargada por el equipo' &&
    T.X.D.v[T.X.D.v.length - 1][T.X.C('agenda_uid')] === uidMz, 'deshacer: la de la agenda vuelve (al final, con su agenda_uid); la del equipo, intacta');
 
+// ============================== [6b] el mail APAGADO: no se marca nada como avisado ==============================
+
+console.log('[6b] con AVISOS_MAIL_ACTIVO = false (como hoy): lo informativo NO queda marcado como avisado; al prender el mail, se avisa');
+S = escenario(true);
+E = sobre(S.X, Object.assign({}, ETAPA1));
+correr(E, false, [V1, V3]);
+ok(E.run('AVISOS_MAIL_ACTIVO') === false && !(E.props || {}).AGENDA_INFO_AVISADOS && pend(E, 'semana frenada: una reunión en dos filas').length === 2,
+   'mail apagado: AGENDA_PENDIENTES tiene las 2 semanas frenadas, y la propiedad de "ya avisado" queda VACÍA');
+const E6b = sobre(S.X, conf());
+E6b.props = E.props || {};
+avanzar(60);
+correr(E6b, false, [V1, V3]);
+ok(infoAvisos(E6b).length === 2 && /SEMANA FRENADA/.test(infoAvisos(E6b)[0][1]), 'al prender el mail: las dos se avisan (no quedaron "avisadas" con el mail apagado)');
+
 // ============================== [7] c) los pares viejos 832/838 y 834/839, ya juntados por el paso 97 ==============================
 
 console.log('[7] c) después del paso 97: las 4 líneas viejas de AGENDA_DUPLICADOS desaparecen y no se recrea nada');
@@ -527,6 +568,31 @@ ok(r.crear === 0 && r.borradasEquipo === 0 && r.invariante === 0, 'la corrida de
 ok(dups(E).length === 0, 'AGENDA_DUPLICADOS se reescribió entera: las 4 líneas viejas ya no están (y no hay ninguna nueva)');
 ok(pend(E, 'semana frenada: una reunión en dos filas').length === 0 && deLaComuna(E, 'Comuna 12').length === 1 && deLaComuna(E, 'Comuna 14').length === 1,
    'AGENDA_PENDIENTES sin semana frenada; una fila por comuna');
+
+// ============================== [8] deshacer restaura EXACTO (cualquier STATUS, los fondos del equipo) ==============================
+
+console.log('[8] restaurarFilaFusion_: la fila borrada vuelve EXACTA (STATUS "Realizada" del equipo, Asistentes, y sus fondos; sin pintar COLOR_SISTEMA)');
+S = escenario(false);
+E = sobre(S.X, conf());
+{
+  const fila = S.X.D.v[S.n12].slice();
+  fila[E.C('STATUS REUNIÓN')] = 'Realizada'; fila[E.C('Asistentes')] = 31;
+  const fondos = fila.map(function () { return null; });
+  fondos[E.C('STATUS REUNIÓN')] = '#FFFF00'; fondos[E.C('Asistentes')] = '#FFFF00'; fondos[E.C('Inscriptos')] = SIS;
+  E.ctx.__c = { antes: JSON.stringify(fila.map(function (v) { return E.run('_celdaRegistro_')(v); })), fondoAntes: JSON.stringify(fondos), uid: fila[E.C('agenda_uid')] };
+  const dondeVa = S.X.D.v.length + 1;
+  // la fila original se saca de la base (como si la hubiera borrado una fusión)
+  S.X.D.v.splice(S.n12, 1); S.X.D.bg.splice(S.n12, 1);
+  const okR = E.run('restaurarFilaFusion_(verificarHojaDestino_(ssDestino_()), leerDestino_().hdr, __c, ' + (dondeVa - 1) + ')');
+  const i = dondeVa - 2;
+  ok(okR && S.X.D.v[i][E.C('STATUS REUNIÓN')] === 'Realizada' && S.X.D.v[i][E.C('Asistentes')] === 31 && S.X.D.v[i][E.C('agenda_uid')] === fila[E.C('agenda_uid')],
+     'los valores, también STATUS "Realizada" y los Asistentes');
+  ok(S.X.D.bg[i][E.C('STATUS REUNIÓN')] === '#FFFF00' && S.X.D.bg[i][E.C('Asistentes')] === '#FFFF00' && S.X.D.bg[i][E.C('Inscriptos')] === SIS,
+     'y los fondos originales (el amarillo del equipo, no COLOR_SISTEMA)');
+  let tiro = false;
+  try { E.run('restaurarFilaFusion_(verificarHojaDestino_(ssDestino_()), leerDestino_().hdr, __c, ' + (i + 1) + ')'); } catch (e) { tiro = /no está vacía/.test(String(e)); }
+  ok(tiro && S.X.D.v[i][E.C('Asistentes')] === 31, 'sobre una fila con datos, no escribe nada (tira)');
+}
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);
