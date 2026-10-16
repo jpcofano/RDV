@@ -364,6 +364,14 @@ function _s2ReunionesAudAg_(C) {
       }
     }
     _cancelaElMailAudAg_(C, ev, res);
+    // 16/10 (punto 4 del usuario, caso 824): si TODAS las diferencias son decisiones del equipo —una celda que el equipo cambió
+    // sobre lo que había escrito la agenda ("tocada por el equipo"), o un STATUS que no es "en agenda" ni "Suspendida" (Realizada,
+    // Reprogramada…: el sistema no lo pone contra un mail que la cancela)— la fila no está "no OK": está DECIDIDA POR EL EQUIPO
+    if (res.resultado === 'DISTINTO' && res.fila && res.difs.length && !res.otras.length && res.difs.every(_decididoPorEquipoAudAg_)) {
+      res.resultado = 'DECIDIDO POR EL EQUIPO';
+      res.notas.push('decidido por el equipo: ' + res.difs.map(function (d) { return d.campo + ' "' + _fmtAudAg_(d.base, d.campo) + '"'; }).join(', ') +
+                     ' (el mail dice ' + res.difs.map(function (d) { return '"' + _fmtAudAg_(d.mail, d.campo) + '"'; }).join(', ') + ')');
+    }
     C.cuentas[res.resultado] = (C.cuentas[res.resultado] || 0) + 1;
     C.reuniones.push({ resultado: res.resultado, fila: res.fila, fecha: fmtFecha_(ev.fecha), hora: ev.hora, figura: ev.figuraFila, tipo: ev.tipo,
                        difs: res.difs.map(function (d) { return d.campo; }), otras: res.otras.map(function (o) { return o.fila; }) });
@@ -375,15 +383,15 @@ function _s2ReunionesAudAg_(C) {
     });
     res.otras.forEach(function (o) { Logger.log('      OTRA FILA para la misma reunión: %s (%s)', _filaTextoAudAg_(C, o.f), o.por); });
     res.notas.forEach(function (n) { Logger.log('      %s', n); });
-    if (res.resultado !== 'OK') {
+    if (res.resultado !== 'OK' && res.resultado !== 'DECIDIDO POR EL EQUIPO') {
       _noOkAudAg_(C, '2', res.resultado + ' | ' + _evTextoAudAg_(ev) + (res.fila ? ' | fila ' + res.fila : '') +
                   (res.difs.length ? ' | ' + res.difs.map(function (d) { return d.campo + ' (mail "' + _fmtAudAg_(d.mail, d.campo) + '" / base "' + _fmtAudAg_(d.base, d.campo) + '"; ' + d.corto + ')'; }).join('; ') : '') +
                   (res.otras.length ? ' | otras filas: ' + res.otras.map(function (o) { return o.fila; }).join(', ') : '') +
                   (res.notas.length && !res.difs.length ? ' | ' + res.notas.join('; ') : ''));
     }
   });
-  Logger.log('  reuniones: OK %s | DISTINTO %s | FALTA EN LA BASE %s | DUPLICADA %s', C.cuentas.OK, C.cuentas.DISTINTO,
-             C.cuentas['FALTA EN LA BASE'], C.cuentas.DUPLICADA);
+  Logger.log('  reuniones: OK %s | DECIDIDO POR EL EQUIPO %s | DISTINTO %s | FALTA EN LA BASE %s | DUPLICADA %s', C.cuentas.OK,
+             C.cuentas['DECIDIDO POR EL EQUIPO'] || 0, C.cuentas.DISTINTO, C.cuentas['FALTA EN LA BASE'], C.cuentas.DUPLICADA);
 }
 
 /**
@@ -417,6 +425,16 @@ function _cancelaElMailAudAg_(C, ev, res) {
                          'el mail la cancela y la base dice "' + st + '"' + (_hayDatoAgenda_(asis) ? ' con ' + str(asis) + ' asistentes' : '') + ' (no se toca: a mirar)',
                   corto: normStatus_(st) === 'en agenda' ? 'el mail la cancela' : 'el mail la cancela, la base no' });
   if (res.resultado === 'OK') res.resultado = 'DISTINTO';
+}
+
+/** 16/10 (punto 4): ¿esta diferencia es una decisión del equipo? (ver arriba, en la comparación de cada reunión) */
+function _decididoPorEquipoAudAg_(d) {
+  if (d.corto === 'tocada por el equipo') return true;
+  if (d.campo === 'STATUS REUNIÓN') {
+    const s = normStatus_(d.base);
+    return !!s && s !== 'en agenda' && s !== 'suspendida';
+  }
+  return false;
 }
 
 /** Lo que dice el mail de cada campo (como lo escribe la agenda). */
@@ -774,6 +792,12 @@ function _pendientesDuplicadosAudAg_(C) {
     const g = function (n) { return i(n) < 0 ? '' : str(r[i(n)]); };
     if (/despues de crear/.test(normalizeText_(g('tipo')))) { info++; return; }
     if (!g('tipo') && !g('reunión del mail')) return;
+    // 16/10 (punto 3 del usuario): una línea CERRADA (cancelada en el mail: no se crea; cancelación aplicada; una reunión en dos
+    // filas, informativa) no espera nada: sólo una cuyo "resultado" pide elegir ("…: elegir", "pendiente (No sé)")
+    if (i('resultado') >= 0) {
+      const res = normalizeText_(g('resultado'));
+      if (!/elegir|^pendiente/.test(res)) { info++; return; }
+    }
     const el = g('ELEGIR');
     if (el && !/^no s/.test(normalizeText_(el))) return;
     pend++;
@@ -782,7 +806,7 @@ function _pendientesDuplicadosAudAg_(C) {
     Logger.log('    PENDIENTE | %s', t);
     _noOkAudAg_(C, '5', 'AGENDA_DUPLICADOS pendiente: ' + t);
   });
-  Logger.log('  %s: pendientes %s | informativas ("después de crear") %s', AGENDA_SOLAPA_DUPLICADOS, pend, info);
+  Logger.log('  %s: pendientes %s | cerradas o informativas %s', AGENDA_SOLAPA_DUPLICADOS, pend, info);
   C.cuentas['DUPLICADOS PENDIENTES'] = pend;
 }
 

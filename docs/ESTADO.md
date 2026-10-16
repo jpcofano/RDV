@@ -1951,6 +1951,41 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### Bug urgente de la etapa 1 (16/10, paso 66 de las 16:13): 832→838 y 834→839
+
+El mail del 16/10 11:41 (CM y Ministros, semana 19/10, v3) trajo la dirección de dos Seguridad del 22/10 17:15 que estaban "A
+CONFIRMAR", y la agenda **creó filas nuevas** en vez de actualizar las viejas (que ya tenían la Figura de RDV CONJUNTO).
+
+- **El arreglo** (dc8f2d7, `AGENDA_SEGURIDAD_POR_COMUNA`): una Seguridad se identifica **siempre** por grupo + fecha + "Lugar
+  (mail)" (la comuna). Vale tenga o no figura el mail (la de RDV CONJUNTO, otra o ninguna) y cambie o no la dirección; con eso se
+  actualiza, nunca se crea otra.
+- **Lo que reproduce el test** (`tests/agenda_seguridad_1510.test.js` [11]):
+  - con la regla de antes (etapa 1 apagada) se crean las dos filas, como la 838 y la 839;
+  - con la etapa 1 se actualizan la 832 y la 834. Pasaba también antes del arreglo, si el mail no nombra figura o nombra la
+    misma;
+  - fallaba sólo si el mail nombraba a OTRA figura que la cargada por RDV CONJUNTO. Eso es lo que corrigió dc8f2d7.
+
+  O sea: o la corrida que las creó fue anterior a que la etapa 1 llegara a Apps Script, o el mail las nombra distinto, o son de
+  otro grupo. Lo dice el paso 96 (fusión en seco): para cada par muestra cuándo se creó la fila nueva (el id de corrida) y por
+  qué la regla de hoy la habría tomado o no.
+- **Por qué el paso 76 (el replay desde el 07/09) no lo vio:** la simulación no completa la Figura de las Seguridad desde RDV
+  CONJUNTO (el paso 8 de la agenda). En la simulación esas filas quedan sin figura, y con la figura vacía también la regla vieja
+  las encuentra. En la realidad tenían figura.
+- **El 829/830 y el de Quintana 17/09** siguen pasando sus tests.
+
+**AGENDA_DUPLICADOS, la línea "cancelada en el mail" que figuraba PENDIENTE (punto 3).** La solapa ya la dibuja cerrada
+("cancelada en el mail: no se crea", sin desplegable). Quien la contaba como pendiente era la **auditoría (paso 66)**: tomaba
+como pendiente toda línea con ELEGIR vacío, salvo "después de crear". Ahora espera decisión sólo una línea cuyo "resultado" pide
+elegir ("…: elegir", "pendiente (No sé)"). Las cerradas e informativas (canceladas en el mail, cancelación aplicada, "una reunión
+en dos filas") no cuentan.
+
+**Paso 66, lo decidido por el equipo (punto 4, caso 824).** Si todas las diferencias de una fila son decisiones del equipo, el
+resultado es **"DECIDIDO POR EL EQUIPO"** y no "no OK". Cuentan como decisión del equipo:
+- una celda que el equipo cambió sobre lo que había escrito la agenda ("tocada por el equipo");
+- un STATUS que no es "en agenda" ni "Suspendida", como el Realizada de la 824 contra el mail que la cancela.
+
+Se cuenta aparte, en el log y en el resumen de AUDITORIA_AGENDA.
+
 #### ETAPA 1 PRENDIDA (16/10)
 
 Decisión del usuario después de `revisarTodo()` (13 pasos OK). Prendidos en 00_Config.js (marcados "PRENDIDO (etapa 1…)"):

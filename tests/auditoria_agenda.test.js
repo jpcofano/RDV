@@ -222,10 +222,13 @@ function montar() {
   const enc = vm.runInContext('ENC_DUPLICADOS_AGENDA_', E.ctx).slice();
   const dup = function (o) { return enc.map(function (h) { return o[h] == null ? '' : o[h]; }); };
   E.poner(DEST, cfg('AGENDA_SOLAPA_DUPLICADOS'), [enc,
-    dup({ tipo: 'antes de crear', 'reunión del mail': '21/10/2026 10:00 | Carla Muestra | Comuna 7', 'fila candidata': 'fila 99', 'diferencia': 'fecha (1 día)', id_reunion: 'x1' }),
-    dup({ ELEGIR: 'No sé', tipo: 'cancelación', 'reunión del mail': '23/10/2026 | Bruno Ensayo', 'fila candidata': 'fila 98', id_reunion: 'cancelacion|x2' }),
-    dup({ ELEGIR: 'Son distintas: crear', tipo: 'antes de crear', 'reunión del mail': '24/10/2026 | Ana Prueba', id_reunion: 'x3' }),
-    dup({ resultado: 'informativo', tipo: 'después de crear', 'reunión del mail': 'fila 9 (de la agenda)' })]);
+    dup({ resultado: 'no se creó: elegir', tipo: 'antes de crear', 'reunión del mail': '21/10/2026 10:00 | Carla Muestra | Comuna 7', 'fila candidata': 'fila 99', 'diferencia': 'fecha (1 día)', id_reunion: 'x1' }),
+    dup({ ELEGIR: 'No sé', resultado: 'pendiente (No sé)', tipo: 'cancelación', 'reunión del mail': '23/10/2026 | Bruno Ensayo', 'fila candidata': 'fila 98', id_reunion: 'cancelacion|x2' }),
+    dup({ ELEGIR: 'Son distintas: crear', resultado: 'no se creó: elegir', tipo: 'antes de crear', 'reunión del mail': '24/10/2026 | Ana Prueba', id_reunion: 'x3' }),
+    dup({ resultado: 'informativo', tipo: 'después de crear', 'reunión del mail': 'fila 9 (de la agenda)' }),
+    // 16/10 (punto 3): las CERRADAS no esperan nada, aunque ELEGIR esté vacío
+    dup({ resultado: 'cancelada en el mail: no se crea (rojo en la v2 del 25/09)', tipo: 'cancelada en el mail', 'reunión del mail': '01/10/2026 15:00 | Jorge Macri | Belgrano', id_reunion: 'x4' }),
+    dup({ resultado: 'informativo: en esa semana no se crea nada más', tipo: 'una reunión en dos filas', 'reunión del mail': '22/10/2026 | Seguridad | Comuna 12' })]);
   // la intermedia: lo que dejó la última corrida de la agenda
   E.poner(INT, cfg('AGENDA_SOLAPA_FIGURA'), [['fila', 'fecha', 'barrio', 'evento', 'por qué falta la figura', 'filas de RDV CONJUNTO'],
     [11, '22/10/2026', 'Almagro', EV_SEG, 'RDV CONJUNTO todavía no tiene la fila', ''],
@@ -299,7 +302,9 @@ ok(/JM \| SIN MAIL todavía/.test(L) && /CM y Ministros \| SIN MAIL todavía/.te
 console.log('[3] cada reunión contra la base');
 ok(reunion(r, 'Ana Prueba', 13).resultado === 'OK' && reunion(r, 'Ana Prueba', 13).fila === 7, 'Ana 13/10: OK (fila 7)');
 const bru = reunion(r, 'Bruno Ensayo', 14);
-ok(bru.resultado === 'DISTINTO' && bru.difs.join() === 'HORA', 'Bruno 14/10: DISTINTO sólo en HORA (' + JSON.stringify(bru) + ')');
+// 16/10 (punto 4): la HORA la cambió el equipo (la agenda había escrito otra): es una decisión del equipo, no "no OK"
+ok(bru.resultado === 'DECIDIDO POR EL EQUIPO' && bru.difs.join() === 'HORA', 'Bruno 14/10: sólo la HORA, tocada por el equipo → DECIDIDO POR EL EQUIPO (' + JSON.stringify(bru) + ')');
+ok(!r.noOk.some(function (t) { return /Bruno Ensayo/.test(t) && /^2 /.test(t) || /DECIDIDO/.test(t); }), 'y no figura entre los "no OK"');
 ok(/HORA: mail "19:00" \/ base "20:00" — TOCADA POR EL EQUIPO: la agenda había escrito "19:00" y ya no la toca/.test(L),
    'y dice que la celda la tocó el equipo (agenda_hora_escrita)');
 ok(reunion(r, 'Carla Muestra', 16).resultado === 'FALTA EN LA BASE' && /la agenda la crearía en la próxima corrida/.test(L), 'Carla 16/10: FALTA EN LA BASE');
@@ -307,7 +312,7 @@ const die = reunion(r, 'Diego Ficticio', 20);
 ok(die.resultado === 'DUPLICADA' && die.fila === 9 && die.otras.indexOf(10) >= 0, 'Diego 20/10: DUPLICADA (la 9 de la agenda y la 10 del equipo)');
 ok(seg(r, 22).resultado === 'DUPLICADA' && /AMBIGUA para la agenda/.test(L), 'Seguridad 22/10: DUPLICADA (ambigua: dos filas)');
 ok(seg(r, 19).resultado === 'OK' && seg(r, 19).fila === 13, 'Seguridad 19/10: OK (la figura la cargó el equipo; no se compara)');
-ok(r.cuentas.OK === 2 && r.cuentas.DISTINTO === 1 && r.cuentas['FALTA EN LA BASE'] === 1 && r.cuentas.DUPLICADA === 2,
+ok(r.cuentas.OK === 2 && r.cuentas['DECIDIDO POR EL EQUIPO'] === 1 && !r.cuentas.DISTINTO && r.cuentas['FALTA EN LA BASE'] === 1 && r.cuentas.DUPLICADA === 2,
    'cuentas: ' + JSON.stringify(r.cuentas));
 
 console.log('[4] al revés: filas de la base que no están en el mail');
@@ -331,7 +336,7 @@ ok(r.cuentas['CREADAS CON PROBLEMAS'] === 3, 'tres con algo para revisar (' + r.
 ok(r.noOk.some(function (t) { return /Seguridad SIN FIGURA.*"Origen fila" VACÍO.*fila 12/.test(t); }), 'la 12: Seguridad sin figura y "Origen fila" vacío');
 ok(r.noOk.some(function (t) { return /posible DUPLICADA con fila 10.*fila 9 /.test(t); }), 'la 9: posible duplicada con la 10');
 ok(r.cuentas['DUPLICADOS PENDIENTES'] === 2 && /PENDIENTE \| línea 2 \| antes de crear/.test(L) && /PENDIENTE \| línea 3 \| cancelación.*ELEGIR: No sé/.test(L),
-   'AGENDA_DUPLICADOS: 2 pendientes (sin elegir y "No sé"); la elegida y la informativa no');
+   'AGENDA_DUPLICADOS: 2 pendientes (sin elegir y "No sé"); la elegida, la informativa y las CERRADAS (cancelada en el mail, una reunión en dos filas) no');
 
 console.log('[7] las ambiguas: por qué y qué las distinguiría');
 ok(r.cuentas.AMBIGUAS === 1, 'una ambigua');

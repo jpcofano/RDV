@@ -430,7 +430,8 @@ function filasAuditoriaAgenda_(R) {
   if (res) {
     const c = res.cuentas || {};
     const k = function (x) { return c[x] == null ? '(no se calculó)' : c[x]; };
-    m.push(['resumen', 'reuniones del mail (dos semanas): OK ' + k('OK') + ' | DISTINTO ' + k('DISTINTO') + ' | FALTA EN LA BASE ' +
+    m.push(['resumen', 'reuniones del mail (dos semanas): OK ' + k('OK') + ' | decidido por el equipo ' + (c['DECIDIDO POR EL EQUIPO'] || 0) +
+            ' | DISTINTO ' + k('DISTINTO') + ' | FALTA EN LA BASE ' +
             k('FALTA EN LA BASE') + ' | DUPLICADA ' + k('DUPLICADA')]);
     m.push(['resumen', 'filas de la base sin reunión en el mail: ' + k('FILA SIN MAIL') + ' | ambiguas: ' + k('AMBIGUAS') +
             ' | creadas (14 días) con algo para revisar: ' + k('CREADAS CON PROBLEMAS') + ' | AGENDA_DUPLICADOS pendientes: ' +
