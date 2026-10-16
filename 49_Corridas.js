@@ -148,6 +148,12 @@ function _escribirFilaCorrida_(c, estado, totalMs) {
     let sh = ss.getSheetByName(RDV_HOJA_CORRIDAS);
     const enc = encabezadoCorridas_();
     if (!sh) { sh = ss.insertSheet(RDV_HOJA_CORRIDAS); sh.appendRow(enc); }
+    else if (sh.getLastRow() === 0 || String(sh.getRange(1, 1, 1, 1).getValues()[0][0]) !== enc[0]) {
+      // 16/10: la solapa existía sin el encabezado (vacía, o creada por otro camino): las corridas se anotaban sin él y el paso 67
+      // leía "estados: undefined". Se pone el encabezado en la fila 1 (es la intermedia, no la base).
+      if (sh.getLastRow() > 0) sh.insertRowBefore(1);
+      sh.getRange(1, 1, 1, enc.length).setValues([enc]);
+    }
     const fila = [new Date(c.t0), c.id, c.modo, estado, totalMs == null ? '' : Math.round(totalMs / 100) / 10]
       .concat(PARTES_CORRIDA_.map(function (p) {
         if (p in c.partes) return Math.round(c.partes[p] / 100) / 10;
@@ -188,10 +194,19 @@ function tiemposDeCorridas(n) {
   const sh = ssIntermedia_().getSheetByName(RDV_HOJA_CORRIDAS);
   if (!sh || sh.getLastRow() < 2) { Logger.log('Todavía no hay corridas en %s.', RDV_HOJA_CORRIDAS); return null; }
   const datos = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
-  const enc = datos[0].map(String), filas = datos.slice(1).slice(-n);
+  // 16/10: el encabezado puede no estar en la fila 1 (la solapa existía sin él): se lo busca; si no está, el orden fijo de las
+  // columnas (_escribirFilaCorrida_ escribe siempre en ese orden). Una fila que repite el encabezado no es una corrida.
+  const esEnc = function (r) { return r.map(String).indexOf('estado') >= 0 && r.map(String).indexOf('inicio') >= 0; };
+  const iEnc = datos.findIndex(esEnc);
+  const enc = iEnc >= 0 ? datos[iEnc].map(String) : encabezadoCorridas_();
+  if (iEnc < 0) Logger.log('  (%s no tiene encabezado: se leen las columnas por su orden fijo)', RDV_HOJA_CORRIDAS);
+  const filas = datos.slice(iEnc >= 0 ? iEnc + 1 : 0).filter(function (r) { return !esEnc(r) && r.some(function (v) { return v !== '' && v != null; }); }).slice(-n);
   const col = function (k) { return enc.indexOf(k); };
   const estados = {};
-  filas.forEach(function (r) { const e = String(r[col('estado')]).split(':')[0].split(' en ')[0]; estados[e] = (estados[e] || 0) + 1; });
+  filas.forEach(function (r) {
+    const e = (String(r[col('estado')] == null ? '' : r[col('estado')]).split(':')[0].split(' en ')[0].trim()) || '(sin estado)';
+    estados[e] = (estados[e] || 0) + 1;
+  });
   Logger.log('=== paso 67 — cuánto tarda cada parte (las últimas %s corridas de %s) ===', filas.length, RDV_HOJA_CORRIDAS);
   Logger.log('  estados: %s', Object.keys(estados).map(function (k) { return k + ' ' + estados[k]; }).join(' | '));
   const med = function (xs) { const s = xs.slice().sort(function (a, b) { return a - b; }); const m = Math.floor(s.length / 2);

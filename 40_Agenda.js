@@ -690,6 +690,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const previa = !!el || !!(elecciones.idsEnSolapa && elecciones.idsEnSolapa.has(idR));
     P.canceladasMail.push({ ev: ev, id: idR, motivo: motivo, eleccion: el || null, candidatas: casi, previa: previa });
     P.filaDe.set(ev.clave, { fila: null, status: '', canceladaMail: true, motivo: motivo });
+    // 16/10 (arreglo 3 del usuario): no se crea, pero se AVISA: en AGENDA_PENDIENTES (entra al resumen del lunes) y en el aviso
+    // diario de las suspendidas (_avisosAgendaSegura_)
+    P.pendientes.push({ ev: ev, falta: 'cancelada en el mail: no se crea' + (motivo ? ' (' + motivo + ')' : ''), seCrea: null, cancelada: true });
     if (casi.length || previa) P.duplicados.push({ tipo: 'cancelada_mail', ev: ev, id: idR, motivo: motivo, eleccion: el || null, candidatas: casi });
   }
 
@@ -1813,7 +1816,7 @@ function _escribirSolapasAgenda_(P) {
     });
     _escribirHojaAgenda_(AGENDA_SOLAPA_FIGURA, fig);
     // 15/10 (H1): las reuniones "pendiente de definir" (sólo con AGENDA_CREAR_SOLO_IDENTIFICADAS; escribirHoja_ le da el formato)
-    if (P.modos && P.modos.soloIdentificadas) escribirHoja_(AGENDA_SOLAPA_PENDIENTES, matrizPendientesAgenda_(P));
+    if (P.modos && (P.modos.soloIdentificadas || (P.canceladasMail || []).length)) escribirHoja_(AGENDA_SOLAPA_PENDIENTES, matrizPendientesAgenda_(P));
     _agregarCacheGeocode_(P.geocodeNuevas || []);
   } catch (err) {
     Logger.log('[agenda] no se pudieron escribir las solapas informativas: %s (la corrida igual terminó)', err);
@@ -2896,7 +2899,8 @@ function matrizPendientesAgenda_(P) {
     const ev = x.ev;
     out.push([fmtFecha_(ev.fecha) + ' ' + (ev.hora || '--:--') + ' | ' + (ev.tipo || '(sin tipo)') + ' | ' + (ev.lugar || '—'),
               ev.semana || '', ev.grupo || '', fmtFecha_(ev.fecha), ev.hora || '', ev.lugar || '', str(ev.eventoTexto).replace(/\s+/g, ' '),
-              x.falta, x.seCrea ? 'cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
+              x.falta, x.cancelada ? 'no se crea: el mail la cancela (si un mail posterior la trae sin el rojo, se crea)' :
+              x.seCrea ? 'cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
               '"), o el ' + fmtFecha_(x.seCrea) + ' (' + AGENDA_CREAR_SIN_DEFINIR_DIAS + ' días antes), lo que pase primero'
                          : 'cuando llegue un mail de esa semana sin formato raro']);
   });
@@ -2913,6 +2917,11 @@ function _logAgendaSegura_(P) {
              (P.pendientes || []).length, (P.conciliadas || []).length, (P.invariante || []).length, (P.bloqueadasInvariante || []).length,
              (r.repetidasEnMail || []).length, (r.mailsRaros || []).length, m.validarMails ? ' (no se usan)' : ' (informativo: AGENDA_VALIDAR_MAILS apagado)');
   (P.pendientes || []).forEach(function (x) {
+    if (x.cancelada) {
+      Logger.log('    CANCELADA EN EL MAIL, NO SE CREA | %s %s | %s | %s | %s', fmtFecha_(x.ev.fecha), x.ev.hora, x.ev.tipo || (x.ev.figuras || []).join(' + '),
+                 x.ev.lugar, x.falta);
+      return;
+    }
     Logger.log('    PENDIENTE DE DEFINIR | %s %s | %s | %s | "%s" | se crea con la figura o la dirección, o el %s', fmtFecha_(x.ev.fecha), x.ev.hora,
                x.ev.tipo, x.ev.lugar, str(x.ev.lugarTexto), fmtFecha_(x.seCrea));
   });
@@ -2988,6 +2997,14 @@ function _avisosAgendaSegura_(P, r) {
     (P.repetidasEnMail || []).forEach(function (ev) {
       if (!reciente(ev.mailFecha)) return;
       av('mail_raro', 'la misma reunión dos veces en el mail "' + ev.asunto + '": ' + _textoReunionAgenda_(ev) + '. No se creó ninguna fila.');
+    });
+  }
+  // 16/10 (arreglo 3): una reunión en ROJO sin fila no se crea, pero se avisa (en el aviso diario de las suspendidas)
+  if (P.modos.cerrarCanceladasMail) {
+    (P.canceladasMail || []).forEach(function (x) {
+      if (!reciente(x.ev.mailFecha)) return;
+      av('suspendidas', _textoReunionAgenda_(x.ev) + ' | sin fila en la base: NO SE CREA (cancelada en el mail' + (x.motivo ? ': ' + x.motivo : '') + ')' +
+         (typeof notasTextoAgenda_ === 'function' ? notasTextoAgenda_(x.ev) : ''));
     });
   }
   if (P.modos.suspenderSiempre) {

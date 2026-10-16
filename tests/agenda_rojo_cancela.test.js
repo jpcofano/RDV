@@ -319,6 +319,22 @@ const p1 = planJ(E, [V1, V2]), p2 = planJ(E, sinHtml([V1, V2]));
 ok(p1 === p2, 'plan: el mismo con y sin HTML (apagado)');
 ok(celda(E, filaDe(E, 'Ezequiel Sabor', 15), 'STATUS REUNIÓN') === 'en agenda', 'y la de Sabor sigue "en agenda" (apagado no la cancela)');
 
+// ============================== 0b. (16/10, arreglo 3) una reunión en ROJO SIN fila: no se crea, pero AVISA ==============================
+
+console.log('[0b] una reunión que ya llega en ROJO entero y nunca tuvo fila: no se crea, pero se avisa');
+{
+  const X = montar(true, [], SIS_ON);
+  const R1 = mail(14, 18, [MUZZIO, SABOR, TAPIA('10:00h')], ASUNTO_12, [null, TODO_ROJO, null]);   // dentro de las 24 h del "hoy" del test (15/10 12:00)
+  X.avisos = [];
+  correr(X, false, [R1], ON);
+  ok(filaDe(X, 'Ezequiel Sabor', 15) < 0 && filaDe(X, 'Gabino Tapia', 17) > 0, 'la de Sabor (en rojo) no se crea; la de Tapia sí');
+  const pend = X.ssI.hojas['AGENDA_PENDIENTES'];
+  ok(pend && pend.v.some(function (x) { return /Sabor|Comuna 5/.test(x.join(' ')) && /cancelada en el mail: no se crea \(rojo en la v1 del 14\/10\)/.test(x.join(' | ')); }),
+     'AGENDA_PENDIENTES: "cancelada en el mail: no se crea (rojo en la v1 del 14/10)" — ' + JSON.stringify(pend && pend.v.slice(1)));
+  ok(X.avisos.some(function (a) { return a[0] === 'suspendidas' && /Sabor/.test(a[1]) && /NO SE CREA \(cancelada en el mail: rojo en la v1 del 14\/10\)/.test(a[1]); }),
+     'y el aviso diario (con las suspendidas): "sin fila en la base: NO SE CREA" — ' + JSON.stringify(X.avisos));
+}
+
 // ============================== 1. ROJO ENTERO en la última versión → Suspendida ==============================
 
 console.log('[1] ROJO ENTERO en la última versión válida → Suspendida (el caso 825, con la nota)');

@@ -1980,6 +1980,15 @@ Siguen APAGADOS: `AGENDA_COLORES_AMARILLO_VERDE`, `AGENDA_MAIL_FORMATO_DIRECTA`,
 
 Los tests de escenarios "APAGADO" parten ahora de todo apagado explícitamente: ya no dependen de lo que esté prendido en 00_Config.js.
 
+**Arreglos del 16/10 (con la etapa 1 prendida):**
+- **REGISTRO_CORRIDAS** ("estados: undefined 8" en el paso 67 y en el resumen). El lector no encontraba la columna "estado": la
+  solapa no tenía el encabezado en la fila 1, porque el escritor sólo lo ponía al crearla. Lo más probable es que ya existiera
+  vacía. Ahora el escritor pone el encabezado si falta, y el lector lo busca o usa el orden fijo de las columnas.
+  `tests/corridas_registro.test.js`.
+- **Una reunión en ROJO sin fila**: no se crea, pero avisa. Aparece en AGENDA_PENDIENTES ("cancelada en el mail: no se crea",
+  que entra al resumen del lunes) y en el aviso diario de las suspendidas, con el mismo filtro de 24 h que los otros avisos.
+  `tests/agenda_rojo_cancela.test.js` [0b].
+
 **Después de prender:**
 - correr el paso 48 para que la GUÍA y la LEER muestren las reglas nuevas;
 - mirar REGISTRO_CORRIDAS (paso 67): los colores suman hasta 60 s a la parte de la agenda.
