@@ -1379,6 +1379,54 @@ function paso93_cancelacionesMail() {
 }
 
 /**
+ * Los pares a juntar (16/10, bug 832/838): [fila vieja, fila nueva, la identidad que tienen que tener]. Si el equipo insertó o
+ * borró filas arriba, los números cambian: el paso 96 lo dice y el 97 se niega.
+ */
+const FUSION_PARES_1610 = [[832, 838, { figura: 'Gabino Tapia', fecha: '2026-10-22', lugar: 'Comuna 12' }],
+                           [834, 839, { figura: 'Ruth Landerreche', fecha: '2026-10-22', lugar: 'Comuna 14' }]];
+
+/**
+ * PASO 96 — EN SECO (16/10): juntar cada par (la misma reunión en dos filas: 832/838 y 834/839). Muestra las dos filas lado a
+ * lado, cuándo se creó cada una (la corrida, yyyyMMdd-HHmmss: ¿antes o después de la etapa 1?), por qué la regla de hoy las
+ * habría tomado o no, y qué celdas se copiarían de la nueva a la vieja, cuáles se quedan y cuáles se rechazan. No escribe nada.
+ */
+function paso96_fusionarPares_enSeco() {
+  _anunciar_('paso 96 — juntar los pares 832/838 y 834/839 (EN SECO)', 'fusionarParesAgenda_enSeco({ filas: FUSION_PARES_1610 })  [54_FusionAgenda.js]',
+             'NO escribe nada en las planillas (sólo guarda la HUELLA del plan en una propiedad del script: el paso 97 la exige)',
+             'el log: cada par lado a lado, cuándo se creó cada fila, qué se copiaría / quedaría / rechazaría, y la HUELLA para el paso 97');
+  return fusionarParesAgenda_enSeco({ filas: FUSION_PARES_1610 });
+}
+
+/**
+ * PASO 97 — ESCRIBE (16/10): junta los pares de verdad. Se queda con la fila VIEJA (832 y 834), le pasa lo de la nueva (sólo en
+ * celdas vacías o que todavía tienen lo que escribió el sistema; nunca pisa lo del equipo), borra la nueva (838 y 839) guardándola
+ * entera y anotada como "fusionada por el sistema" (no como "borrada por el equipo"). Con el bloqueo de la corrida de la hora; se
+ * niega si el plan no es el mismo que mostró el paso 96 (la huella). Se deshace con el paso 98.
+ * Correrlo sólo después de ver el paso 96.
+ */
+function paso97_fusionarPares() {
+  _anunciar_('paso 97 — juntar los pares 832/838 y 834/839 (ESCRIBE)', 'fusionarParesAgenda({ filas: FUSION_PARES_1610 })  [54_FusionAgenda.js]',
+             'SÍ: la fila vieja de cada par (sólo celdas vacías o del sistema), BORRA la nueva (guardada entera en REGISTRO_AGENDA_CAMBIOS), y el registro',
+             'el log: qué copió, qué borró, el id de corrida para deshacer (paso 38)');
+  return fusionarParesAgenda({ filas: FUSION_PARES_1610 });
+}
+
+/**
+ * PASO 98 — ESCRIBE (16/10): deshace la ÚLTIMA fusión del paso 97 (por su id de corrida, guardado al juntar), aunque después hayan
+ * corrido otras de la hora. Vuelve las celdas copiadas de la vieja (si todavía tienen lo copiado) y restaura la fila borrada (al
+ * final, con valores y fondos). `paso98_deshacerFusion_enSeco` muestra lo que haría.
+ */
+function paso98_deshacerFusion_enSeco() {
+  _anunciar_('paso 98 — deshacer la fusión (EN SECO)', 'deshacerUltimaFusionAgenda(true)  [54_FusionAgenda.js]', 'NO escribe nada', 'el log');
+  return deshacerUltimaFusionAgenda(true);
+}
+function paso98_deshacerFusion() {
+  _anunciar_('paso 98 — deshacer la fusión (ESCRIBE)', 'deshacerUltimaFusionAgenda(false)  [54_FusionAgenda.js]',
+             'SÍ: vuelve atrás lo que copió el paso 97 y restaura las filas que borró', 'el log');
+  return deshacerUltimaFusionAgenda(false);
+}
+
+/**
  * PASO 95 — SÓLO LECTURA (16/10): RDV CONJUNTO como tercera fuente de cancelación ("Cancelado" → Suspendida), medida desde el 15/07:
  * cada fila "Cancelado" de RDV CONJUNTO, la fila de la base que le toca (o por qué ninguna), el STATUS del equipo (COINCIDE / NO
  * COINCIDE / SE SUSPENDERÍA) y los pares "Cancelado" + no cancelado de la misma figura y día (caso Macri 15/10). No escribe nada

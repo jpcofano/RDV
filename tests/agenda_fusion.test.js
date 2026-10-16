@@ -129,7 +129,7 @@ function crearEntorno(config) {
                         setAllowInvalid: function () { return b; }, build: function () { return b.lista; } }; return b; } },
     Session: { getEffectiveUser: function () { return { getEmail: function () { return 'yo@test'; } }; } },
     LockService: { getScriptLock: function () { return { tryLock: function () { return E.lockLibre; }, releaseLock: function () {} }; } },
-    PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
+    PropertiesService: { getScriptProperties: function () { E.props = E.props || {}; return { getProperty: function (k) { return E.props[k] == null ? null : E.props[k]; }, setProperty: function (k, v) { E.props[k] = String(v); }, deleteProperty: function (k) { delete E.props[k]; } }; } }
   };
   vm.createContext(ctx);
   // la etapa 1 quedó PRENDIDA en 00_Config.js; cada escenario parte de todo APAGADO y prende lo suyo por `config`
@@ -366,11 +366,16 @@ S = escenario(false);
 E = sobre(S.X, ETAPA1);
 const fotoAntes = JSON.parse(foto(S.X.D));
 E.ctx.__f = FILAS(S);
+// 16/10 (revisor): sin el paso 96 antes, el 97 se niega (exige la huella de lo que se vio)
+const r5no = E.run('fusionarParesAgenda({ filas: __f })');
+ok(r5no.error && /primero hay que correr el paso 96/.test(r5no.error) && JSON.stringify(JSON.parse(foto(S.X.D))) === JSON.stringify(fotoAntes), 'el 97 sin el 96: se NIEGA y no escribe nada');
+E.run('fusionarParesAgenda_enSeco({ filas: __f })');
 const r5 = E.run('fusionarParesAgenda({ filas: __f })');
-ok(!r5.error && r5.borradas === 2, 'juntadas');
+ok(!r5.error && r5.borradas === 2, 'juntadas (con la huella que guardó el 96)');
 const dsec = E.run('deshacerAgenda(true, ' + JSON.stringify(r5.corrida) + ')');
 ok(dsec.restaurarianFusion === 2 && dsec.generales > 0 && dsec.celdas > 0, 'en seco: restauraría 2 filas, vaciaría las de la regla general y volvería las de la agenda — ' + JSON.stringify(dsec));
-const d5 = E.run('deshacerAgenda(false, ' + JSON.stringify(r5.corrida) + ')');
+// 16/10 (revisor): el paso 98 deshace la ÚLTIMA fusión por su id (el 97 lo guardó), aunque después hayan corrido otras
+const d5 = E.run('deshacerUltimaFusionAgenda(false)');
 ok(d5 && d5.restauradas === 2 && d5.saltadas === 0, 'deshecho: 2 filas restauradas, nada saltado — ' + JSON.stringify(d5));
 const norm = function (v) { return v instanceof Date ? (v.getFullYear() < 1900 ? 'hora' : v.getFullYear() + '-' + (v.getMonth() + 1) + '-' + v.getDate()) : (v == null ? '' : String(v)); };
 const igualFila = function (x, y) {
@@ -409,6 +414,7 @@ ok(s6.rechazados.length === 1 && s6.pares.length === 1 && /Inscriptos/.test(s6.r
 const r6 = E.run('fusionarParesAgenda({ filas: __f })');
 ok(r6.error && /se rechaza/.test(r6.error) && foto(S.X.D) === antes, 'en real: no escribe NADA (tampoco el otro par) — ' + r6.error);
 E.ctx.__f = [FILAS(S)[1]];
+E.run('fusionarParesAgenda_enSeco({ filas: __f })');   // el 96 con el par que se va a juntar (el 97 exige su huella)
 const r6b = E.run('fusionarParesAgenda({ filas: __f })');
 ok(!r6b.error && r6b.borradas === 1 && deLaComuna(E, 'Comuna 12').length === 2, 'pidiendo sólo el par bueno (C14): se junta ése y el C12 queda como estaba');
 

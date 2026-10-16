@@ -49,6 +49,24 @@
  * (los tests).
  */
 
+/** 16/10 (revisor): la huella del último paso 96 (el 97 la exige) y el id de corrida del último paso 97 (el 98 lo deshace). */
+const FUSION_PROP_HUELLA = 'FUSION_AGENDA_HUELLA_96';
+const FUSION_PROP_CORRIDA = 'FUSION_AGENDA_CORRIDA_97';
+
+/**
+ * Paso 98: deshace la ÚLTIMA fusión (la corrida que guardó el paso 97), aunque después hayan corrido otras de la hora: el paso 38
+ * sin id deshace la última corrida que escribió, que una hora después ya no es la fusión.
+ */
+function deshacerUltimaFusionAgenda(enSeco) {
+  let id = '';
+  try { id = PropertiesService.getScriptProperties().getProperty(FUSION_PROP_CORRIDA) || ''; } catch (e) { id = ''; }
+  if (!id) { Logger.log('>>> no hay ninguna fusión guardada (el paso 97 no corrió, o ya se deshizo): no se hace nada.'); return { error: 'sin fusión guardada' }; }
+  Logger.log('=== deshacer la fusión de la corrida %s (%s) ===', id, enSeco ? 'EN SECO' : 'REAL');
+  const r = deshacerAgenda(!!enSeco, id);
+  if (!enSeco) { try { PropertiesService.getScriptProperties().deleteProperty(FUSION_PROP_CORRIDA); } catch (e) { /* el log lo dice */ } }
+  return r;
+}
+
 /** Paso 96 (SÓLO LECTURA): los pares que se juntarían, y cómo. No escribe nada. */
 function fusionarParesAgenda_enSeco(opciones) {
   return _fusionarParesAgenda_(true, opciones || {});
@@ -84,7 +102,13 @@ function _fusionarParesAgenda_(enSeco, opciones) {
   _logPlanFusion_(plan, dest, A);
   const out = { huella: plan.huella, pares: plan.pares.map(_resumenParFusion_), rechazados: plan.rechazados.map(_resumenParFusion_),
                 faltantes: plan.faltantes.map(function (p) { return [p.vieja, p.nueva]; }) };
-  if (enSeco) return fin(out);
+  if (enSeco) {
+    // 16/10 (revisor): la huella de lo que se mostró, para que el paso 97 se niegue si el plan cambió (una propiedad del script: no
+    // es la base)
+    try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_HUELLA, plan.huella); } catch (e) { Logger.log('  (la huella no se pudo guardar: %s)', e); }
+    Logger.log('  HUELLA del plan: %s (el paso 97 la exige igual)', plan.huella);
+    return fin(out);
+  }
 
   // --- REAL (paso 97) ---
   const no = function (msg) { Logger.log('>>> NO SE ESCRIBE NADA: %s', msg); out.error = msg; return fin(out); };
@@ -93,7 +117,10 @@ function _fusionarParesAgenda_(enSeco, opciones) {
   const pedidos = plan.pares.filter(function (p) { return p.pedido; }).concat(plan.rechazados.filter(function (p) { return p.pedido; }));
   const malos = pedidos.filter(function (p) { return p.motivos.length; });
   if (malos.length) return no('un par pedido se rechaza: ' + malos.map(function (p) { return p.vieja.fila + '/' + p.nueva.fila + ' (' + p.motivos.join('; ') + ')'; }).join(' | '));
-  if (opciones.huella && opciones.huella !== plan.huella) return no('la huella del plan es ' + plan.huella + ' y el paso 96 dio ' + opciones.huella + ': algo cambió, volver a correr el paso 96');
+  // 16/10 (revisor): el plan tiene que ser el mismo que mostró el paso 96 (su huella, guardada en una propiedad del script)
+  const huella96 = opciones.huella || (function () { try { return PropertiesService.getScriptProperties().getProperty(FUSION_PROP_HUELLA) || ''; } catch (e) { return ''; } })();
+  if (!huella96) return no('primero hay que correr el paso 96 (en seco): el 97 exige que el plan sea el mismo que se vio');
+  if (huella96 !== plan.huella) return no('la huella del plan es ' + plan.huella + ' y el paso 96 dio ' + huella96 + ': algo cambió, volver a correr el paso 96');
   const aplicar = plan.pares.filter(function (p) { return p.pedido; });
   if (!aplicar.length) return no('no hay pares para juntar');
 
@@ -196,6 +223,8 @@ function _fusionarParesAgenda_(enSeco, opciones) {
   Logger.log('    AGENDA_DUPLICADOS: las líneas "una reunión en dos filas" se van solas en la próxima corrida de la agenda (la solapa se ' +
              'reescribe entera y el H3 ya no ve el par).');
   out.corrida = corrida;
+  // 16/10 (revisor): el id de esta corrida, para deshacer EXACTAMENTE la fusión (paso 98), aunque después hayan corrido otras
+  try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_CORRIDA, corrida); } catch (e) { Logger.log('  (el id no se pudo guardar: %s)', e); }
   out.celdas = wA.hechas.length + wG.length;
   out.borradas = borradas;
   out.noBorradas = aplicar.filter(function (p) { return p.cancelada; }).map(function (p) { return { fila: p.nueva.fila, motivo: p.cancelada }; });
@@ -237,6 +266,8 @@ function planFusionAgenda_(dest, A, hist, opciones) {
     p.clave = g.clave; p.texto = g.texto; p.regla = regla; p.creadaVieja = crea(vieja); p.creadaNueva = crea(nueva);
     p.idReunionNueva = p.creadaNueva ? p.creadaNueva.id : '';
     p.porQue = _porQueReglaFusion_(A, vieja, nueva);
+    // 16/10 (revisor): si la regla de hoy TAMPOCO une las dos filas, juntarlas no sirve (la corrida siguiente crearía otra vez la nueva)
+    if (/TAMPOCO las une/.test(p.porQue)) p.motivos.push('la regla de hoy no las une: después de juntarlas, la agenda volvería a crear la nueva (revisar a mano)');
     // los pedidos (opciones.filas): el mismo par, en el mismo orden, y la identidad esperada
     if (pedidos.length) {
       const ped = pedidos.filter(function (x) {
@@ -346,6 +377,10 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
         const igualC = cmp(cO, n) === cmp(cN, n), igualT = cmp(xO, nt) === cmp(xN, nt);
         if (igualC && igualT) continue;
         const delSistema = esVacio_(cO) || (!esVacio_(xO) && cmp(cO, n) === cmp(xO, n));
+        // 16/10 (revisor): la NUEVA también puede tener un valor del equipo (no es lo que escribió el sistema): si es distinto del de
+        // la vieja, se perdería al borrarla → se rechaza el par (decidir a mano)
+        const nuevaDelEquipo = !esVacio_(cN) && !(!esVacio_(xN) && cmp(cN, n) === cmp(xN, n));
+        if (nuevaDelEquipo && !igualC) { p.motivos.push('"' + n + '": la nueva tiene "' + txt(cN, n) + '" cargado por el equipo (no es lo que escribió el sistema) y la vieja "' + txt(cO, n) + '": decidir a mano'); continue; }
         if (!delSistema) { conservar(n, 'la vieja tiene "' + txt(cO, n) + '", que no es lo que escribió el sistema ("' + txt(xO, n) + '"): es del equipo, no se toca'); continue; }
         if (!esVacio_(cO) && !masReciente) { conservar(n, 'la vieja tiene el mail más nuevo: se queda "' + txt(cO, n) + '"'); continue; }
         if (esVacio_(cN) && !esVacio_(cO)) { conservar(n, 'la nueva no tiene: no se borra "' + txt(cO, n) + '"'); continue; }

@@ -2532,7 +2532,7 @@ function leerHistorialAgenda_() {
         const m = /^DESHACER (.+)$/.exec(str(r[0])); if (m) deshechas[m[1]] = true;
       });
     }
-    const borradasSistema = new Set();
+    const borradasSistema = [], cancelados = new Set();
     cam.getRange(2, 1, cam.getLastRow() - 1, Math.max(9, cam.getLastColumn())).getValues().forEach(function (r) {
       const corrida = str(r[0]), tipo = str(r[1]), uid = str(r[8]);
       if (deshechas[corrida]) return;
@@ -2541,13 +2541,16 @@ function leerHistorialAgenda_() {
       if (/^eleccion_|^cancelada_mail$/.test(tipo)) { h.eleccionesRegistradas.add(tipo + '|' + str(r[6]) + '|' + str(r[4])); return; }
       if (!uid) return;
       if (tipo === 'crear_id') h.creadas.set(uid, str(r[6]));
-      else if (esBorradaPorSistemaAgenda_(tipo)) borradasSistema.add(uid);   // 16/10: también la fusión (54_FusionAgenda.js)
+      else if (esBorradaPorSistemaAgenda_(tipo)) borradasSistema.push(corrida + '|' + uid);   // 16/10: también la fusión (54_FusionAgenda.js)
+      else if (tipo === 'borrar_cancelado') cancelados.add(corrida + '|' + uid);
       else if (tipo === 'olvidar_borrada') h.olvidadas.add(uid);
       else if (tipo === 'borrada_por_equipo') h.notadas.add(uid);
       else if (tipo === 'suspendida_rojo') h.suspendidasRojo.add(uid);
       else if (tipo === 'suspendida_conjunto') { h.suspendidasConjunto.add(uid); h.suspendidasConjuntoFecha.set(uid, str(r[4])); }   // 16/10
     });
-    borradasSistema.forEach(function (uid) { h.creadas.delete(uid); });
+    // 16/10 (revisor): un borrado que se CANCELÓ en la misma corrida ("borrar_cancelado": la fila quedó) no es un borrado del
+    // sistema: si después la borra el equipo, se reconoce como "borrada por el equipo" (y la agenda no la recrea)
+    borradasSistema.forEach(function (k) { if (!cancelados.has(k)) h.creadas.delete(k.slice(k.indexOf('|') + 1)); });
   } catch (err) {
     h.error = String(err);
     Logger.log('[agenda] el historial de la agenda no se pudo leer: %s', err);
