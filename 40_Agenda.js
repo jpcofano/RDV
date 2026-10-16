@@ -2029,22 +2029,38 @@ function _deshacerAgenda_(enSeco, corrida) {
     }
     (replica ? aSacar : noSeSacan).push({ fila: fi, motivo: motivo });
   });
-  const otros = cambios.filter(function (c) { return c.col && c.tipo !== 'crear'; })
+  // 16/10 (54_FusionAgenda.js): una fusión copió celdas de la REGLA GENERAL en la vieja ("fusionar_general": se vacían, no
+  // son columnas de la agenda) y borró la nueva entera ("borrar_fusion": se restaura con todo, también lo que no es de la agenda)
+  const otros = cambios.filter(function (c) { return c.col && c.tipo !== 'crear' && c.tipo !== 'fusionar_general'; })
+    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
+  const generales = cambios.filter(function (c) { return c.col && c.tipo === 'fusionar_general'; })
     .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
   const restaurar = cambios.filter(function (c) { return c.tipo === 'borrar' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
+  const restaurarFusion = cambios.filter(function (c) { return c.tipo === 'borrar_fusion' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
   Logger.log('  filas creadas: %s → se sacan %s | NO se sacan (alguien cargó algo) %s', Object.keys(creadas).length,
              aSacar.length, noSeSacan.length);
   noSeSacan.forEach(function (x) { Logger.log('    fila %s: %s', x.fila, x.motivo); });
   Logger.log('  celdas a volver a lo que había (vinculadas, actualizadas, movidas, suspendidas, reactivadas, figuras): %s', otros.length);
   Logger.log('  filas BORRADAS por la agenda que se restauran (al final): %s', restaurar.length);
+  if (generales.length || restaurarFusion.length) {
+    Logger.log('  FUSIÓN: celdas de la regla general a vaciar en la fila que quedó %s | filas FUSIONADAS que se restauran (al final, con sus fondos) %s',
+               generales.length, restaurarFusion.length);
+  }
   if (enSeco) {
     Logger.log('>>> EN SECO: no se deshizo nada.');
-    return { corrida: id, sacarian: aSacar.length, noSeSacan: noSeSacan.length, celdas: otros.length, restaurarian: restaurar.length };
+    return { corrida: id, sacarian: aSacar.length, noSeSacan: noSeSacan.length, celdas: otros.length, restaurarian: restaurar.length,
+             generales: generales.length, restaurarianFusion: restaurarFusion.length };
   }
 
   // 1. las celdas; 2. las filas creadas; 3. las borradas, de vuelta al final.
   const d = deshacerAgendaLote_(sh, hdr, otros);
   d.saltadas.forEach(function (c) { Logger.log('    no se deshace (alguien la cambió): fila %s, %s', c.fila, hdr[c.col - 1]); });
+  if (generales.length) {
+    const g = deshacerGeneralesFusion_(sh, generales);
+    g.saltadas.forEach(function (c) { Logger.log('    no se vacía (alguien la cambió): fila %s, %s', c.fila, hdr[c.col - 1]); });
+    d.hechas = d.hechas.concat(g.hechas);
+    d.saltadas = d.saltadas.concat(g.saltadas);
+  }
   const ultimaConDatos = function () {
     let u = sh.getLastRow();
     const vals = u > 0 ? sh.getRange(1, 1, u, nCols).getValues() : [];
@@ -2063,6 +2079,9 @@ function _deshacerAgenda_(enSeco, corrida) {
       esc.push({ fila: fila, col: k + 1, valor: valor(v, hdr[k]), esperado: '' });
     });
     if (esc.length) { escribirAgendaLote_(sh, hdr, esc); restauradas++; }
+  });
+  restaurarFusion.forEach(function (c) {
+    if (restaurarFilaFusion_(sh, hdr, c, ultimaConDatos() + 1)) restauradas++;
   });
   if (restauradas && DERIVADAS_POR_SCRIPT) {
     try { recalcDerivadas_(RDV_HOJA_DESTINO, true); } catch (err) { Logger.log('    las derivadas no se recalcularon: %s', err); }
@@ -2522,7 +2541,7 @@ function leerHistorialAgenda_() {
       if (/^eleccion_|^cancelada_mail$/.test(tipo)) { h.eleccionesRegistradas.add(tipo + '|' + str(r[6]) + '|' + str(r[4])); return; }
       if (!uid) return;
       if (tipo === 'crear_id') h.creadas.set(uid, str(r[6]));
-      else if (tipo === 'borrar') borradasSistema.add(uid);
+      else if (esBorradaPorSistemaAgenda_(tipo)) borradasSistema.add(uid);   // 16/10: también la fusión (54_FusionAgenda.js)
       else if (tipo === 'olvidar_borrada') h.olvidadas.add(uid);
       else if (tipo === 'borrada_por_equipo') h.notadas.add(uid);
       else if (tipo === 'suspendida_rojo') h.suspendidasRojo.add(uid);
@@ -2534,6 +2553,15 @@ function leerHistorialAgenda_() {
     Logger.log('[agenda] el historial de la agenda no se pudo leer: %s', err);
   }
   return h;
+}
+
+/**
+ * ¿La línea de REGISTRO_AGENDA_CAMBIOS dice que la fila la borró el SISTEMA? La regla 7 ("borrar") y, desde el 16/10, la fusión
+ * de un par "una reunión en dos filas" ("borrar_fusion" / "fusionada_sistema", 54_FusionAgenda.js). Una fila así no es
+ * "borrada por el equipo": la reunión no queda bloqueada.
+ */
+function esBorradaPorSistemaAgenda_(tipo) {
+  return tipo === 'borrar' || tipo === 'borrar_fusion' || tipo === 'fusionada_sistema';
 }
 
 /** Las notas del historial de una corrida real: "borrada_por_equipo" la primera vez, "olvidar_borrada" si salió del mail. */
