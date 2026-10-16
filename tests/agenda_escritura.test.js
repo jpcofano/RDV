@@ -640,8 +640,9 @@ copiaFila[E.C('HORA')] = '18:30'; copiaFila[E.C('STATUS REUNIÓN')] = 'en agenda
 E.D.v.push(copiaFila); E.D.bg.push(copiaFila.map(function () { return null; }));
 r = correr(E, false, [V1]);
 ok(r.duplicadosDespues === 1 && r.crear === 0 && r.ambiguas === 0, 'la fila que cargó el equipo encima de la de la agenda: 1 duplicado posterior, ninguna ambigua');
-ok(E.D.v.length === nFil + 1 && E.ssD.hojas['AGENDA_DUPLICADOS'].v.some(function (x) { return x[3] === 'después de crear'; }),
-   'no se borró nada; en AGENDA_DUPLICADOS como "después de crear"');
+// 16/10: ya no es informativa: es "una reunión en dos filas" y pide decidir (Quedarse con la fila X / Y / Son reuniones distintas)
+ok(E.D.v.length === nFil + 1 && E.ssD.hojas['AGENDA_DUPLICADOS'].v.some(function (x) { return x[3] === 'una reunión en dos filas' && /elegir/.test(x[2]) && /después de crear|de la agenda/.test(x[4] + x[13]); }),
+   'no se borró nada; en AGENDA_DUPLICADOS como "una reunión en dos filas", para elegir');
 
 console.log('[20] una fila creada por la agenda y BORRADA por el equipo no se recrea; si sale del mail y vuelve, sí');
 E = montar();

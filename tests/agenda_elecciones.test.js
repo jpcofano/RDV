@@ -534,9 +534,11 @@ marcar(E, '/^jorge macri\\|20261001/');
 const val0 = E.ssD.hojas['AGENDA_DUPLICADOS'].validaciones || 0;
 r = correr(E, false, [V1]);
 l = lineas01(E);
-ok(r.crear === 0 && r.duplicadosAntes === 0 && r.canceladasMail === 1 && l.length === 1 && l[0][0] === '' &&
-   l[0][2] === 'cancelada en el mail: no se crea (rojo en la v2 del 25/09)' && l[0][3] === 'cancelada en el mail',
-   'con la marca: la línea queda CERRADA, sin ELEGIR — "' + (l[0] && l[0][2]) + '"');
+// 16/10 (AGENDA_DUPLICADOS sólo decisiones): la cancelada en el mail es informativa: sale de AGENDA_DUPLICADOS y va a AGENDA_PENDIENTES
+const pend01 = function (X) { const h = X.ssI.hojas['AGENDA_PENDIENTES']; return h ? h.v.filter(function (x) { return x[0] === 'cancelada en el mail: no se crea' && /01\/10\/2026/.test(x[1]) && /Macri/.test(x[1]); }) : []; };
+ok(r.crear === 0 && r.duplicadosAntes === 0 && r.canceladasMail === 1 && l.length === 0 && pend01(E).length === 1 &&
+   /rojo en la v2 del 25\/09/.test(pend01(E)[0][8]),
+   'con la marca: la línea SALE de AGENDA_DUPLICADOS (no hay nada que elegir) y queda en AGENDA_PENDIENTES — ' + JSON.stringify(pend01(E)[0] || l[0]));
 ok((E.ssD.hojas['AGENDA_DUPLICADOS'].validaciones || 0) === val0, 'sin desplegable (no se agregó ninguna validación)');
 r = correr(E, false, [V1]);
 ok(cambiosTipo(E, 'cancelada_mail').length === 1, 'REGISTRO_AGENDA_CAMBIOS "cancelada_mail": una sola vez');

@@ -13,6 +13,14 @@
  *   fusionarParesAgenda(opciones)         (paso 97, ESCRIBE la base) con el bloqueo de la corrida de la hora; sólo los pares de
  *                                         `opciones.filas` (obligatorio); recalcula, relee las filas justo antes de escribir y
  *                                         se niega si algo cambió. Deshacer: paso 38, `deshacerAgenda(false, '<corrida>')`.
+ *   fusionAntesDelPlanAgenda_(…)          (16/10; la corrida de la hora, ANTES del plan de la agenda, con su bloqueo) aplica lo que
+ *                                         eligió el equipo en AGENDA_DUPLICADOS ("Quedarse con la fila X": la otra, si es de la
+ *                                         agenda, se junta y se borra como BORRADA POR EL EQUIPO; una fila del equipo NUNCA se
+ *                                         borra) y, con AGENDA_FUSION_AUTOMATICA, junta SOLOS los pares que aceptan estas reglas.
+ *   fusionAutomaticaAgenda_enSeco()       (16/10; paso 99, SÓLO LECTURA) qué juntaría sola la fusión automática, qué iría a
+ *                                         ELEGIR (y por qué) y qué decisiones del equipo se aplicarían.
+ *   _aplicarFusionesAgenda_(…)            lo común de las tres: lectura fresca, el registro antes de escribir, la copia, la
+ *                                         verificación y el borrado auditado.
  *
  * --- Qué fila se queda ---
  * La VIEJA: la que la agenda creó primero (la corrida de su línea "crear_id" en REGISTRO_AGENDA_CAMBIOS; si falta o es la misma
@@ -124,8 +132,37 @@ function _fusionarParesAgenda_(enSeco, opciones) {
   const aplicar = plan.pares.filter(function (p) { return p.pedido; });
   if (!aplicar.length) return no('no hay pares para juntar');
 
+  const r = _aplicarFusionesAgenda_(sh, dest.hdr, A, aplicar, {});
+  if (r.error && !r.corrida) return no(r.error);
+  Logger.log('    AGENDA_DUPLICADOS: las líneas "una reunión en dos filas" se van solas en la próxima corrida de la agenda (la solapa se ' +
+             'reescribe entera y el H3 ya no ve el par).');
+  out.corrida = r.corrida;
+  // 16/10 (revisor): el id de esta corrida, para deshacer EXACTAMENTE la fusión (paso 98), aunque después hayan corrido otras
+  try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_CORRIDA, r.corrida); } catch (e) { Logger.log('  (el id no se pudo guardar: %s)', e); }
+  out.celdas = r.celdas;
+  out.borradas = r.borradas;
+  out.noBorradas = r.noBorradas;
+  return fin(out);
+}
+
+/**
+ * **Juntar pares** (16/10; lo común del paso 97, de la fusión AUTOMÁTICA de la corrida de la hora y de la DECISIÓN del equipo en
+ * AGENDA_DUPLICADOS). `aplicar`: los pares ya evaluados (`_evaluarParFusion_`, sin motivos; a lo sumo un par por fila). Cada par
+ * puede traer `porEquipo` (lo eligió el equipo: la fila borrada queda como "borrar_fusion_equipo" / "fusionada_equipo", o sea
+ * BORRADA POR EL EQUIPO —la agenda no la recrea mientras la reunión siga en el mail— en vez de "borrada por el sistema") y
+ * `automatica` (sólo el texto de la nota). Pasos: (1) lectura fresca de las dos filas, iguales a lo que leyó el plan; (2) el
+ * registro, OBLIGATORIO, antes de escribir (las celdas que se copian, la fila que se borra entera con sus fondos, la nota);
+ * (3) las celdas de la que queda (la agenda por su excepción, el resto por la regla general: sólo celda vacía); (4) ¿quedó con
+ * todo lo copiado?; (5) los borrados, de abajo hacia arriba, verificando otra vez. NO toma el bloqueo (lo tiene quien llama).
+ * Devuelve { corrida, celdas, borradas, noBorradas: [{ fila, motivo }], error }: `error` sin `corrida` = no se escribió nada.
+ */
+function _aplicarFusionesAgenda_(sh, hdr, A, aplicar, opc) {
+  opc = opc || {};
+  const t0 = Date.now();
+  const nCols = hdr.length;
+  const out = { corrida: '', celdas: 0, borradas: 0, noBorradas: [], error: '' };
+  if (!aplicar.length) { out.error = 'no hay pares para juntar'; return out; }
   // 1. justo antes de escribir: las filas de nuevo (lectura fresca), iguales a lo que leyó el plan
-  const hdr = dest.hdr, nCols = hdr.length;
   const fresca = {};
   let cambio = '';
   aplicar.forEach(function (p) {
@@ -137,9 +174,9 @@ function _fusionarParesAgenda_(enSeco, opciones) {
       if (dif && !cambio) cambio = 'la fila ' + f.fila + ' cambió mientras se calculaba ("' + dif + '")';
     });
   });
-  if (cambio) return no(cambio);
+  if (cambio) { out.error = cambio; return out; }
 
-  // 2. el registro (obligatorio): las celdas que se copian, la fila que se borra entera y la nota "fusionada_sistema"
+  // 2. el registro (obligatorio): las celdas que se copian, la fila que se borra entera y la nota
   const corrida = _idCorridaAgenda_();
   const cambios = [];
   aplicar.forEach(function (p) {
@@ -148,15 +185,18 @@ function _fusionarParesAgenda_(enSeco, opciones) {
       cambios.push([corrida, c.via === 'agenda' ? 'fusionar' : 'fusionar_general', p.vieja.fila, c.col, hdr[c.col - 1], _celdaRegistro_(c.esperado),
                     _celdaRegistro_(c.valor), fresca[p.vieja.fila].bg[c.col - 1] || '', uidV]);
     });
-    cambios.push([corrida, 'borrar_fusion', p.nueva.fila, '', '', JSON.stringify(fresca[p.nueva.fila].v.map(_celdaRegistro_)), '',
+    cambios.push([corrida, p.porEquipo ? 'borrar_fusion_equipo' : 'borrar_fusion', p.nueva.fila, '', '', JSON.stringify(fresca[p.nueva.fila].v.map(_celdaRegistro_)), '',
                   JSON.stringify(fresca[p.nueva.fila].bg), uidN]);
-    cambios.push([corrida, 'fusionada_sistema', p.nueva.fila, '', 'fila ' + p.vieja.fila,
-                  'fusionada por el sistema con la fila ' + p.vieja.fila + ' (agenda_uid ' + uidV + ')', p.idReunionNueva || p.clave, '', uidN]);
+    cambios.push([corrida, p.porEquipo ? 'fusionada_equipo' : 'fusionada_sistema', p.nueva.fila, '', 'fila ' + p.vieja.fila,
+                  (p.porEquipo ? 'juntada por decisión del equipo (AGENDA_DUPLICADOS: "' + ((p.eleccion && p.eleccion.texto) || 'Quedarse con la fila ' + p.vieja.fila) +
+                                 '") con la fila ' : (p.automatica ? 'fusionada por el sistema (automática, AGENDA_FUSION_AUTOMATICA) con la fila ' : 'fusionada por el sistema con la fila ')) +
+                  p.vieja.fila + ' (agenda_uid ' + (uidV || '—, fila del equipo') + ')', p.idReunionNueva || p.clave || '', '', uidN]);
   });
   const nCeldas = aplicar.reduce(function (a, p) { return a + p.copiar.length; }, 0);
   const Pf = { resumen: {} };
   try { _registrarCorridaAntesDeEscribir_(corrida, Pf, cambios, nCeldas, aplicar.length); }
-  catch (err) { return no('no se pudo escribir REGISTRO_AGENDA (' + err + ')'); }
+  catch (err) { out.error = 'no se pudo escribir REGISTRO_AGENDA (' + err + ')'; return out; }
+  out.corrida = corrida;
 
   // 3. las celdas de la vieja: la agenda por su excepción, el resto por la regla general (sólo celda vacía)
   const escA = [], escG = [];
@@ -214,21 +254,16 @@ function _fusionarParesAgenda_(enSeco, opciones) {
   Pf.escrito = { hechas: wA.hechas.concat(wG), porColumna: porColumna, saltadas: wA.saltadas, borradas: borradas };
   _completarRegistroAgenda_(Pf, t0);
   Logger.log('>>> corrida %s: celdas copiadas %s (agenda %s, regla general %s; saltadas porque ya no tenían lo esperado: %s) | filas ' +
-             'BORRADAS (fusionadas por el sistema) %s | no borradas %s. Deshacer: paso 38, deshacerAgenda(false, \'%s\')', corrida,
+             'BORRADAS (juntadas) %s | no borradas %s. Deshacer: paso 38, deshacerAgenda(false, \'%s\')', corrida,
              wA.hechas.length + wG.length, wA.hechas.length, wG.length, wA.saltadas.length, borradas,
              aplicar.filter(function (p) { return p.cancelada; }).length, corrida);
   aplicar.forEach(function (p) {
     Logger.log('    fila %s ← fila %s: %s', p.vieja.fila, p.nueva.fila, p.borrada ? 'JUNTADAS (la ' + p.nueva.fila + ' ya no está; las de abajo subieron una)' : 'NO: ' + p.cancelada);
   });
-  Logger.log('    AGENDA_DUPLICADOS: las líneas "una reunión en dos filas" se van solas en la próxima corrida de la agenda (la solapa se ' +
-             'reescribe entera y el H3 ya no ve el par).');
-  out.corrida = corrida;
-  // 16/10 (revisor): el id de esta corrida, para deshacer EXACTAMENTE la fusión (paso 98), aunque después hayan corrido otras
-  try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_CORRIDA, corrida); } catch (e) { Logger.log('  (el id no se pudo guardar: %s)', e); }
   out.celdas = wA.hechas.length + wG.length;
   out.borradas = borradas;
   out.noBorradas = aplicar.filter(function (p) { return p.cancelada; }).map(function (p) { return { fila: p.nueva.fila, motivo: p.cancelada }; });
-  return fin(out);
+  return out;
 }
 
 // ===================== El plan (en memoria) =====================
@@ -241,9 +276,10 @@ function _fusionarParesAgenda_(enSeco, opciones) {
 function planFusionAgenda_(dest, A, hist, opciones) {
   opciones = opciones || {};
   const pedidos = _pedidosFusion_(opciones.filas);
-  const grupos = reunionesRepetidasAgenda_(dest.filas, A, null);
+  // 16/10 (AGENDA_DUPLICADOS sólo decisiones): un par que el equipo ya decidió ("Son reuniones distintas", o "Quedarse con la fila
+  // X") no es "una reunión en dos filas" para la fusión: `opciones.ignorados` (de `ignoradosDeEleccionesAgenda_`)
+  const grupos = reunionesRepetidasAgenda_(dest.filas, A, null, opciones.ignorados ? { ignorados: opciones.ignorados } : undefined);
   const pares = [], rechazados = [], encontrados = [];
-  const crea = function (f) { return hist && hist.porUid ? hist.porUid.get(str(f.valores[A.agenda_uid])) || null : null; };
   grupos.forEach(function (g) {
     if (g.filas.length !== 2) {
       rechazados.push({ clave: g.clave, texto: g.texto, vieja: g.filas[0], nueva: g.filas[1], filas: g.filas, copiar: [], conservar: [], saltar: [],
@@ -251,23 +287,9 @@ function planFusionAgenda_(dest, A, hist, opciones) {
                         pedido: false });
       return;
     }
-    const a = g.filas[0], b = g.filas[1];
-    const ca = crea(a), cb = crea(b);
-    let vieja, nueva, regla;
-    if (ca && cb && ca.corrida !== cb.corrida) {
-      vieja = ca.corrida < cb.corrida ? a : b; nueva = vieja === a ? b : a;
-      regla = 'la creó primero la agenda (corrida ' + crea(vieja).corrida + ' antes que ' + crea(nueva).corrida + ')';
-    } else {
-      vieja = a.fila < b.fila ? a : b; nueva = vieja === a ? b : a;
-      regla = 'el número de fila menor (' + (ca && cb ? 'las dos se crearon en la misma corrida' :
-              'sin la línea "crear_id" de la fila ' + (!ca ? a.fila : b.fila) + ' en REGISTRO_AGENDA_CAMBIOS') + ')';
-    }
-    const p = _evaluarParFusion_(dest.hdr, A, vieja, nueva);
-    p.clave = g.clave; p.texto = g.texto; p.regla = regla; p.creadaVieja = crea(vieja); p.creadaNueva = crea(nueva);
-    p.idReunionNueva = p.creadaNueva ? p.creadaNueva.id : '';
-    p.porQue = _porQueReglaFusion_(A, vieja, nueva);
-    // 16/10 (revisor): si la regla de hoy TAMPOCO une las dos filas, juntarlas no sirve (la corrida siguiente crearía otra vez la nueva)
-    if (/TAMPOCO las une/.test(p.porQue)) p.motivos.push('la regla de hoy no las une: después de juntarlas, la agenda volvería a crear la nueva (revisar a mano)');
+    const p = evaluarParAutomaticoFusion_(dest.hdr, A, g.filas[0], g.filas[1], hist);
+    const vieja = p.vieja, nueva = p.nueva, regla = p.regla;
+    p.clave = g.clave; p.texto = g.texto;
     // los pedidos (opciones.filas): el mismo par, en el mismo orden, y la identidad esperada
     if (pedidos.length) {
       const ped = pedidos.filter(function (x) {
@@ -295,6 +317,186 @@ function planFusionAgenda_(dest, A, hist, opciones) {
             (p.copiar || []).map(function (c) { return c.col + '=' + valorAgendaComparable_(c.valor, dest.hdr[c.col - 1]); }).join(',')].join('|');
   }).join('#'));
   return { pares: pares, rechazados: rechazados, pedidos: pedidos, faltantes: faltantes, huella: huella, grupos: grupos.length };
+}
+
+/**
+ * **Un par, con las reglas del paso 97** (16/10; lo usan `planFusionAgenda_`, la fusión automática y las líneas de AGENDA_DUPLICADOS
+ * para decir si el par se podría juntar solo). Qué fila se queda (la VIEJA: la que creó primero la agenda, por la corrida de su
+ * "crear_id"; si no se sabe, el número de fila menor), qué se copia y por qué se rechaza (`motivos`). `hist`: { porUid: Map
+ * agenda_uid → { corrida, id } } (`_creacionesFusionAgenda_`, o el historial de la agenda). No escribe nada.
+ */
+function evaluarParAutomaticoFusion_(hdr, A, a, b, hist) {
+  const crea = function (f) { return hist && hist.porUid && A.agenda_uid != null ? hist.porUid.get(str(f.valores[A.agenda_uid])) || null : null; };
+  const ca = crea(a), cb = crea(b);
+  let vieja, nueva, regla;
+  if (ca && cb && ca.corrida !== cb.corrida) {
+    vieja = ca.corrida < cb.corrida ? a : b; nueva = vieja === a ? b : a;
+    regla = 'la creó primero la agenda (corrida ' + crea(vieja).corrida + ' antes que ' + crea(nueva).corrida + ')';
+  } else {
+    vieja = a.fila < b.fila ? a : b; nueva = vieja === a ? b : a;
+    regla = 'el número de fila menor (' + (ca && cb ? 'las dos se crearon en la misma corrida' :
+            'sin la línea "crear_id" de la fila ' + (!ca ? a.fila : b.fila) + ' en REGISTRO_AGENDA_CAMBIOS') + ')';
+  }
+  const p = _evaluarParFusion_(hdr, A, vieja, nueva);
+  p.regla = regla; p.creadaVieja = crea(vieja); p.creadaNueva = crea(nueva);
+  p.idReunionNueva = p.creadaNueva ? p.creadaNueva.id : '';
+  p.porQue = _porQueReglaFusion_(A, vieja, nueva);
+  // 16/10 (revisor): si la regla de hoy TAMPOCO une las dos filas, juntarlas no sirve (la corrida siguiente crearía otra vez la nueva)
+  if (/TAMPOCO las une/.test(p.porQue)) p.motivos.push('la regla de hoy no las une: después de juntarlas, la agenda volvería a crear la nueva (revisar a mano)');
+  return p;
+}
+
+/**
+ * **Antes del plan de la agenda (corrida de la hora, con el bloqueo YA tomado): "una reunión en dos filas"** (16/10, decisión
+ * del usuario: AGENDA_DUPLICADOS sólo para lo que el equipo tiene que decidir).
+ *   1. Lo que ELIGIÓ el equipo en AGENDA_DUPLICADOS ("Quedarse con la fila X", guardado en ELECCIONES_AGENDA): si la otra fila (Y)
+ *      la creó la agenda ("c-…"), Y se junta en X con la maquinaria de la fusión (`_evaluarParFusion_` con `decidido`: X se queda;
+ *      sólo se copia a celdas vacías o del sistema de X; lo del equipo de Y que choca NO se copia, queda en el registro con la fila
+ *      borrada y deshacer lo vuelve) y se borra por el camino auditado, como BORRADA POR EL EQUIPO ("borrar_fusion_equipo": la
+ *      agenda no la recrea). Si Y es una fila del EQUIPO, el sistema NO la borra ni copia nada: el plan la lista en AGENDA_PENDIENTES
+ *      ("borrar la fila Y a mano").
+ *   2. Con AGENDA_FUSION_AUTOMATICA (u `opciones.fusionAutomatica`): los pares del H3 que aceptan las reglas del paso 97
+ *      (`planFusionAgenda_`), sin decisión del equipo, se juntan solos ("borrar_fusion" / "fusionada_sistema", como el paso 97).
+ * Todo en UNA corrida de REGISTRO_AGENDA (deshacer: paso 38 con su id, o el paso 98: queda en FUSION_PROP_CORRIDA). En seco (o sin
+ * nada que juntar) no escribe nada y devuelve lo que haría. Devuelve { decididas, automaticas, fallidas, planeadas, corrida, releer,
+ * error, rechazadasAuto }; `releer`: se escribió la base (quien llama la vuelve a leer).
+ */
+function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
+  opciones = opciones || {};
+  const auto = opciones.fusionAutomatica !== undefined ? !!opciones.fusionAutomatica : AGENDA_FUSION_AUTOMATICA;
+  const res = { enSeco: !!enSeco, automatica: auto, decididas: [], automaticas: [], fallidas: [], planeadas: [], rechazadasAuto: [],
+                releer: false, corrida: '', error: '' };
+  if (!A || (A.faltan && A.faltan.length)) return res;
+  let elecciones;
+  try { elecciones = opciones.elecciones || leerEleccionesAgenda_(); }
+  catch (err) { Logger.log('  (fusión) las elecciones no se pudieron leer: %s', err); elecciones = new Map(); }
+  res.elecciones = elecciones;   // el plan de la agenda usa las mismas (no las vuelve a leer)
+  const decisiones = decisionesParesAgenda_(elecciones);
+  let hayQuedarse = false;
+  decisiones.forEach(function (d) { if (d.eleccion === 'quedarse') hayQuedarse = true; });
+  if (!hayQuedarse && !auto) return res;
+  const hist = opciones.historialFusion || _creacionesFusionAgenda_();
+  if (hist.error) {
+    res.error = 'REGISTRO_AGENDA_CAMBIOS no se pudo leer (' + hist.error + '): sin el registro no se puede deshacer, no se junta nada';
+    Logger.log('>>> (fusión) %s', res.error);
+    return res;
+  }
+  const uidDe = function (f) { return A.agenda_uid == null ? '' : str(f.valores[A.agenda_uid]); };
+  const usadas = new Set(), lista = [];
+  // 1. las decisiones del equipo
+  decisiones.forEach(function (d, clave) {
+    if (d.eleccion !== 'quedarse') return;
+    const par = filasDelParAgenda_(dest.filas, A, clave);
+    if (!par) return;                                       // el par ya no está (se juntó, o se borró una): el plan cierra la elección
+    const x = par.porId[d.idFila] || null;
+    if (!x) { res.fallidas.push({ clave: clave, motivo: 'la fila elegida no se encuentra (' + d.idFila + ')' }); return; }
+    const y = x === par.a ? par.b : par.a;
+    if (!/^c-/.test(uidDe(y))) return;                       // la que sobra es del EQUIPO: no se borra (el plan: "borrar a mano")
+    if (usadas.has(x.fila) || usadas.has(y.fila)) {
+      res.fallidas.push({ clave: clave, motivo: 'otra decisión de esta corrida usa una de las dos filas: se junta en la próxima' });
+      return;
+    }
+    const p = _evaluarParFusion_(dest.hdr, A, x, y, true);
+    p.claveDosFilas = clave; p.porEquipo = true; p.eleccion = d.el;
+    p.idReunionNueva = (hist.porUid && hist.porUid.get(uidDe(y)) || {}).id || '';
+    if (p.motivos.length) { res.fallidas.push({ clave: clave, motivo: p.motivos.join('; ') }); return; }
+    usadas.add(x.fila); usadas.add(y.fila);
+    lista.push(p);
+  });
+  // 2. la fusión automática (las reglas del paso 97), en los pares que el equipo no decidió
+  if (auto) {
+    const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones) });
+    plan.pares.forEach(function (p) {
+      const clave = claveParAgenda_(idParFilaAgenda_(p.vieja, A), idParFilaAgenda_(p.nueva, A));
+      if (decisiones.has(clave) || usadas.has(p.vieja.fila) || usadas.has(p.nueva.fila)) return;
+      p.claveDosFilas = clave; p.automatica = true;
+      usadas.add(p.vieja.fila); usadas.add(p.nueva.fila);
+      lista.push(p);
+    });
+    res.rechazadasAuto = plan.rechazados.map(function (p) {
+      return { clave: p.vieja && p.nueva ? claveParAgenda_(idParFilaAgenda_(p.vieja, A), idParFilaAgenda_(p.nueva, A)) : p.clave,
+               filas: (p.filas || [p.vieja, p.nueva]).filter(Boolean).map(function (f) { return f.fila; }), motivos: p.motivos };
+    });
+  }
+  const resumen = function (p) {
+    const ficha = function (f) {
+      return { fila: f.fila, figura: f.figura || '', fecha: f.fecha || null, hora: valorAgendaComparable_(f.valores[A.HORA], 'HORA'),
+               lugar: str(f.valores[A['Lugar (mail)']]) || f.barrio || '', uid: uidDe(f) };
+    };
+    return { clave: p.claveDosFilas, vieja: ficha(p.vieja), nueva: ficha(p.nueva), porEquipo: !!p.porEquipo, automatica: !!p.automatica,
+             copiar: p.copiar.map(function (c) { return c.nombre; }), conservar: p.conservar.map(function (c) { return c.nombre + ': ' + c.motivo; }),
+             avisos: p.avisos || [], regla: p.regla || '' };
+  };
+  // una fila del EQUIPO que se queda no tiene agenda_uid: el registro la nombra por su número de fila, y si una fila que se borra en
+  // esta corrida está más arriba, ese número deja de ser el suyo (deshacer apuntaría a otra fila). En ese caso no se le copia nada:
+  // la corrida siguiente la vincula con la reunión y la completa por el camino de siempre (lo de la borrada queda en el registro)
+  lista.forEach(function (p) {
+    if (p.uidVieja || !p.copiar.length) return;
+    if (!lista.some(function (q) { return q.nueva.fila < p.vieja.fila; })) return;
+    p.avisos.push('la fila ' + p.vieja.fila + ' es del equipo y una fila de más arriba se borra: no se le copia nada (la vincula la corrida siguiente)');
+    p.copiar = [];
+  });
+  res.planeadas = lista.map(resumen);
+  if (lista.length || res.fallidas.length) {
+    Logger.log('  "UNA REUNIÓN EN DOS FILAS" antes del plan (%s): por decisión del equipo %s | automáticas (AGENDA_FUSION_AUTOMATICA %s) %s | ' +
+               'no se pudieron %s', enSeco ? 'EN SECO: no se junta nada' : 'se juntan', lista.filter(function (p) { return p.porEquipo; }).length,
+               auto ? 'prendida' : 'apagada', lista.filter(function (p) { return p.automatica; }).length, res.fallidas.length);
+    res.planeadas.forEach(function (x) {
+      Logger.log('    %s | se queda la fila %s (%s %s), se borra la %s | copia: %s', x.porEquipo ? 'DECISIÓN DEL EQUIPO' : 'AUTOMÁTICA', x.vieja.fila,
+                 x.vieja.figura || '(sin figura)', x.vieja.fecha ? fmtFecha_(x.vieja.fecha) : '', x.nueva.fila, x.copiar.join(', ') || 'nada');
+    });
+    res.fallidas.forEach(function (x) { Logger.log('    NO SE JUNTA | %s | %s', x.clave, x.motivo); });
+  }
+  if (enSeco || !lista.length) return res;
+  const r = _aplicarFusionesAgenda_(sh, dest.hdr, A, lista, {});
+  res.corrida = r.corrida; res.error = r.error || '';
+  res.releer = !!r.corrida;
+  lista.forEach(function (p) {
+    const x = resumen(p);
+    x.corrida = r.corrida;
+    if (p.borrada) (p.porEquipo ? res.decididas : res.automaticas).push(x);
+    else res.fallidas.push({ clave: p.claveDosFilas, motivo: p.cancelada || r.error || 'no se juntó', par: x });
+  });
+  if (r.corrida) {
+    try { PropertiesService.getScriptProperties().setProperty(FUSION_PROP_CORRIDA, r.corrida); } catch (e) { Logger.log('  (el id de la fusión no se pudo guardar: %s)', e); }
+  }
+  return res;
+}
+
+/**
+ * **La fusión automática, EN SECO** (16/10, SÓLO LECTURA; wrapper `paso99_fusionAutomatica_enSeco`): qué pares "una reunión en dos
+ * filas" juntaría sola la corrida de la hora con AGENDA_FUSION_AUTOMATICA prendido (las reglas del paso 97), cuáles irían a
+ * AGENDA_DUPLICADOS para que el equipo elija (y por qué), y qué decisiones del equipo se aplicarían. No escribe nada (ni la base, ni
+ * los registros, ni la huella del paso 96).
+ */
+function fusionAutomaticaAgenda_enSeco(opciones) {
+  opciones = opciones || {};
+  const t0 = Date.now();
+  Logger.log('=== la fusión automática de "una reunión en dos filas" (EN SECO, no escribe nada) — %s — AGENDA_FUSION_AUTOMATICA = %s ===',
+             descripcionHojaDestino_(), AGENDA_FUSION_AUTOMATICA);
+  const dest = leerDestino_();
+  const A = indicesAgenda_(dest.hdr);
+  if (A.faltan.length) { Logger.log('>>> faltan columnas de la agenda: %s. No se hace nada.', A.faltan.join(', ')); return { error: 'faltan columnas de la agenda' }; }
+  let elecciones;
+  try { elecciones = opciones.elecciones || leerEleccionesAgenda_(); } catch (err) { elecciones = new Map(); }
+  const hist = opciones.historialFusion || _creacionesFusionAgenda_();
+  const res = fusionAntesDelPlanAgenda_(null, dest, A, Object.assign({}, opciones, { fusionAutomatica: true, elecciones: elecciones, historialFusion: hist }), true);
+  const plan = planFusionAgenda_(dest, A, hist, { ignorados: ignoradosDeEleccionesAgenda_(elecciones) });
+  _logPlanFusion_(plan, dest, A);
+  const solas = res.planeadas.filter(function (x) { return x.automatica; });
+  const decididas = res.planeadas.filter(function (x) { return x.porEquipo; });
+  const elegir = res.rechazadasAuto;
+  Logger.log('--- RESUMEN ---');
+  Logger.log('  se juntarían SOLAS (con AGENDA_FUSION_AUTOMATICA = true): %s', solas.length);
+  solas.forEach(function (x) { Logger.log('    filas %s + %s → se queda la %s (%s)', x.vieja.fila, x.nueva.fila, x.vieja.fila, x.regla); });
+  Logger.log('  irían a AGENDA_DUPLICADOS para ELEGIR (las reglas no las juntan): %s', elegir.length);
+  elegir.forEach(function (x) { Logger.log('    filas %s: %s', x.filas.join(' + '), x.motivos.join(' | ')); });
+  Logger.log('  decisiones del equipo que se aplicarían ("Quedarse con la fila X"): %s | que no se pueden aplicar: %s', decididas.length, res.fallidas.length);
+  decididas.forEach(function (x) { Logger.log('    se queda la fila %s, se borra la %s (borrada por el equipo: no se recrea)', x.vieja.fila, x.nueva.fila); });
+  res.fallidas.forEach(function (x) { Logger.log('    NO SE PUEDE | %s | %s', x.clave, x.motivo); });
+  Logger.log('  (una fila del equipo y una de la agenda parecidas —"después de crear"— van siempre a ELEGIR: el paso 97 sólo junta dos filas de la agenda)');
+  Logger.log('fusión automática en seco: %s ms', Date.now() - t0);
+  return { solas: solas, elegir: elegir, decididas: decididas, fallidas: res.fallidas, error: res.error || '' };
 }
 
 /** `opciones.filas` normalizado: [{ vieja, nueva, esp }]. */
@@ -326,23 +528,39 @@ function _fechaAgendaMailFusion_(s) {
 /**
  * Qué se copia de `fn` (la nueva) a `fv` (la vieja), qué se queda y por qué un par se rechaza. Las reglas, en el encabezado del
  * archivo. `copiar`: [{ col (1-based), nombre, valor, esperado, via: 'agenda' | 'general', ceroEsVacio }].
+ *
+ * 16/10, `decidido` (el equipo eligió en AGENDA_DUPLICADOS "Quedarse con la fila fv"): lo que en la fusión automática RECHAZA el
+ * par —una FECHA, un "Lugar (mail)", un tipo o un STATUS distintos; un dato distinto en las dos filas; un valor del equipo en la
+ * nueva— NO lo rechaza: se queda lo de `fv` (`conservar`) y queda anotado (`avisos`). Lo de la nueva que no se copia no se pierde:
+ * la fila se borra guardada entera en REGISTRO_AGENDA_CAMBIOS y deshacer la restaura. La nueva tiene que ser de la agenda ("c-…"):
+ * una fila del equipo no se borra nunca (eso lo resuelve quien llama, sin llamar acá). Si `fv` no tiene agenda_uid (una fila del
+ * equipo), se copia sólo a sus celdas VACÍAS de las columnas visibles de la agenda, sin trazas ni columnas del mail: la corrida
+ * siguiente la vincula con la reunión por el camino de siempre. Un STATUS se copia sólo si es una transición de la agenda.
  */
-function _evaluarParFusion_(hdr, A, fv, fn) {
-  const p = { vieja: fv, nueva: fn, copiar: [], conservar: [], saltar: [], motivos: [], avisos: [] };
+function _evaluarParFusion_(hdr, A, fv, fn, decidido) {
+  const p = { vieja: fv, nueva: fn, copiar: [], conservar: [], saltar: [], motivos: [], avisos: [], decidido: !!decidido };
   const vO = function (k) { return k == null ? '' : fv.valores[k]; }, vN = function (k) { return k == null ? '' : fn.valores[k]; };
   const cmp = valorAgendaComparable_;
   const txt = _txtFusion_;
+  const conservar = function (n, por) { p.conservar.push({ nombre: n, motivo: por }); };
+  // lo que rechaza el par en la fusión automática; con la decisión del equipo, se queda lo de la vieja y se anota
+  const rechazo = function (m, n) {
+    if (!decidido) { p.motivos.push(m); return; }
+    p.avisos.push('(lo decidió el equipo) ' + m);
+    if (n) conservar(n, 'se queda el de la fila ' + fv.fila + ' (la eligió el equipo): ' + m);
+  };
   p.uidVieja = str(vO(A.agenda_uid)); p.uidNueva = str(vN(A.agenda_uid));
-  if (!p.uidVieja || !p.uidNueva) p.motivos.push('las dos filas tienen que ser de la agenda (agenda_uid)');
+  const sinUidV = !p.uidVieja;
+  if (!p.uidNueva || (!p.uidVieja && !decidido)) p.motivos.push('las dos filas tienen que ser de la agenda (agenda_uid)');
   else if (!/^c-/.test(p.uidNueva)) p.motivos.push('la nueva (fila ' + fn.fila + ') no la creó la agenda (agenda_uid ' + p.uidNueva + '): no se borra por el camino de la agenda');
-  if (!fv.fecha || !fn.fecha || ymd_(fv.fecha) !== ymd_(fn.fecha)) p.motivos.push('FECHA distinta');
+  if (!fv.fecha || !fn.fecha || ymd_(fv.fecha) !== ymd_(fn.fecha)) rechazo('FECHA distinta');
   const lO = str(vO(A['Lugar (mail)'])), lN = str(vN(A['Lugar (mail)']));
-  if (!lO || normalizeText_(lO) !== normalizeText_(lN)) p.motivos.push('"Lugar (mail)" distinto o vacío ("' + lO + '" / "' + lN + '")');
+  if (!lO || normalizeText_(lO) !== normalizeText_(lN)) rechazo('"Lugar (mail)" distinto o vacío ("' + lO + '" / "' + lN + '")');
   const tO = tipoAgendaDeTexto_(vO(A['Evento (mail)'])), tN = tipoAgendaDeTexto_(vN(A['Evento (mail)']));
-  if (tO !== tN) p.motivos.push('el tipo de "Evento (mail)" es distinto ("' + tO + '" / "' + tN + '")');
+  if (tO !== tN) rechazo('el tipo de "Evento (mail)" es distinto ("' + tO + '" / "' + tN + '")');
   [fv, fn].forEach(function (f) {
     const st = normStatus_(f.valores[A['STATUS REUNIÓN']]);
-    if (st && st !== 'en agenda') p.motivos.push('la fila ' + f.fila + ' tiene STATUS "' + str(f.valores[A['STATUS REUNIÓN']]) + '": ya no está en agenda, decidir a mano');
+    if (st && st !== 'en agenda') rechazo('la fila ' + f.fila + ' tiene STATUS "' + str(f.valores[A['STATUS REUNIÓN']]) + '": ya no está en agenda, decidir a mano');
   });
   const dO = _fechaAgendaMailFusion_(vO(A.agenda_mail)), dN = _fechaAgendaMailFusion_(vN(A.agenda_mail));
   const masReciente = dN ? (!dO || dN.getTime() >= dO.getTime()) : !dO;
@@ -356,8 +574,10 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
   const copiar = function (k, valor, esperado, via, extra) {
     p.copiar.push(Object.assign({ col: k + 1, nombre: hdr[k], valor: valor, esperado: esperado, via: via }, extra || {}));
   };
-  const conservar = function (n, por) { p.conservar.push({ nombre: n, motivo: por }); };
-  const nnIns = normalizeHeader_('Inscriptos');
+  const nnIns = normalizeHeader_('Inscriptos'), nnSt = normalizeHeader_('STATUS REUNIÓN');
+  const transicionOk = function (desde, hacia) {
+    return AGENDA_TRANSICIONES_STATUS.some(function (t) { return normStatus_(t.desde) === normStatus_(desde) && normStatus_(t.hacia) === normStatus_(hacia); });
+  };
   for (let k = 0; k < hdr.length; k++) {
     const n = str(hdr[k]);
     if (!n) continue;
@@ -366,10 +586,23 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
     if (nombreTraza[nn]) continue;                               // la traza va con su celda
     if (esColumnaDerivada_(n)) { if (!esVacio_(b) && cmp(a, n) !== cmp(b, n)) p.saltar.push({ nombre: n, motivo: 'derivada: se recalcula' }); continue; }
     if (deAgenda.indexOf(nn) >= 0) {
-      if (nn === 'agenda_uid') { conservar(n, 'el de la vieja (' + p.uidVieja + '); el de la nueva (' + p.uidNueva + ') queda en el registro'); continue; }
+      if (nn === 'agenda_uid') {
+        conservar(n, sinUidV ? 'la fila ' + fv.fila + ' es del equipo: la corrida siguiente la vincula con la reunión (el agenda_uid ' + p.uidNueva + ' queda en el registro)'
+                             : 'el de la vieja (' + p.uidVieja + '); el de la nueva (' + p.uidNueva + ') queda en el registro');
+        continue;
+      }
       if (nn === normalizeHeader_('Tocado por el equipo')) { if (cmp(a, n) !== cmp(b, n)) p.saltar.push({ nombre: n, motivo: 'lo recalcula la próxima corrida' }); continue; }
       if (nn === normalizeHeader_('Lugar (mail)')) continue;     // es la identidad del par (igual en las dos)
       const celdaTraza = Object.keys(trazas).filter(function (c) { return A[c] === k; })[0];
+      // 16/10: la vieja es una fila del EQUIPO (sin agenda_uid; sólo por decisión del equipo): sólo sus celdas vacías de las columnas
+      // visibles, sin trazas ni lo del mail (la vinculación de la corrida siguiente lo completa)
+      if (sinUidV) {
+        if (mailCols.indexOf(nn) >= 0 || nn === normalizeHeader_('Origen fila')) continue;
+        if (esVacio_(b) || !esVacio_(a)) { if (!esVacio_(b) && cmp(a, n) !== cmp(b, n)) conservar(n, 'se queda el de la fila del equipo ("' + txt(a, n) + '")'); continue; }
+        if (nn === nnSt && !transicionOk(a, b)) { conservar(n, 'STATUS "' + txt(b, n) + '" no se copia: no es una transición de la agenda'); continue; }
+        copiar(k, b, a, 'agenda');
+        continue;
+      }
       if (celdaTraza) {
         const kt = A[trazas[celdaTraza]];
         const nt = trazas[celdaTraza];
@@ -380,10 +613,11 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
         // 16/10 (revisor): la NUEVA también puede tener un valor del equipo (no es lo que escribió el sistema): si es distinto del de
         // la vieja, se perdería al borrarla → se rechaza el par (decidir a mano)
         const nuevaDelEquipo = !esVacio_(cN) && !(!esVacio_(xN) && cmp(cN, n) === cmp(xN, n));
-        if (nuevaDelEquipo && !igualC) { p.motivos.push('"' + n + '": la nueva tiene "' + txt(cN, n) + '" cargado por el equipo (no es lo que escribió el sistema) y la vieja "' + txt(cO, n) + '": decidir a mano'); continue; }
+        if (nuevaDelEquipo && !igualC) { rechazo('"' + n + '": la nueva tiene "' + txt(cN, n) + '" cargado por el equipo (no es lo que escribió el sistema) y la vieja "' + txt(cO, n) + '": decidir a mano', n); continue; }
         if (!delSistema) { conservar(n, 'la vieja tiene "' + txt(cO, n) + '", que no es lo que escribió el sistema ("' + txt(xO, n) + '"): es del equipo, no se toca'); continue; }
         if (!esVacio_(cO) && !masReciente) { conservar(n, 'la vieja tiene el mail más nuevo: se queda "' + txt(cO, n) + '"'); continue; }
         if (esVacio_(cN) && !esVacio_(cO)) { conservar(n, 'la nueva no tiene: no se borra "' + txt(cO, n) + '"'); continue; }
+        if (nn === nnSt && !igualC && !transicionOk(cO, cN)) { conservar(n, 'STATUS "' + txt(cO, n) + '" → "' + txt(cN, n) + '" no es una transición de la agenda: se queda'); continue; }
         if (!igualC) copiar(k, cN, cO, 'agenda');
         if (kt != null && !igualT) copiar(kt, xN, xO, 'agenda');
         continue;
@@ -398,7 +632,7 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
       if (nn === normalizeHeader_('Figura')) {
         if (esVacio_(b) || cmp(a, n) === cmp(b, n)) continue;
         if (esVacio_(a)) copiar(k, b, a, 'agenda');
-        else p.motivos.push('Figura distinta ("' + txt(a, n) + '" / "' + txt(b, n) + '"): decidir a mano');
+        else rechazo('Figura distinta ("' + txt(a, n) + '" / "' + txt(b, n) + '"): decidir a mano', n);
         continue;
       }
       // EVENTO, "Origen fila" y cualquier otra de la agenda: sólo en una celda vacía de la vieja
@@ -414,7 +648,7 @@ function _evaluarParFusion_(hdr, A, fv, fn) {
     const vaciaO = esVacio_(a) || (ins && num(a) === 0);
     if (vaciaO) { if (!(ins && num(b) === 0)) copiar(k, b, a, 'general', ins ? { ceroEsVacio: true } : null); continue; }
     if (cmp(a, n) === cmp(b, n)) continue;
-    p.motivos.push('"' + n + '": la vieja dice "' + txt(a, n) + '" y la nueva "' + txt(b, n) + '" (un dato distinto en las dos: decidir a mano)');
+    rechazo('"' + n + '": la vieja dice "' + txt(a, n) + '" y la nueva "' + txt(b, n) + '" (un dato distinto en las dos: decidir a mano)', n);
   }
   return p;
 }

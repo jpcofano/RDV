@@ -362,7 +362,7 @@ ok(E.mails.length === 1 && /^\[RDV\] resumen semanal 19\/10: \d+ cosas para revi
 const B = E.mails[0].body;
 ok(/1\. AUDITORÍA DE LA AGENDA/.test(B) && /DISTINTO \| Mengano/.test(B) && /sección que falló: 7\./.test(B), '1: la auditoría');
 ok(/no reflejadas: 1/.test(B) && /fila 812/.test(B), '2: las cancelaciones no reflejadas');
-ok(/3\. REUNIONES POR DEFINIR \(AGENDA_PENDIENTES, intermedia\)\n {3}1\n {3}- Seguridad C4 \| 23\/10\/2026 \| la figura/.test(B), '3: AGENDA_PENDIENTES');
+ok(/3\. LO QUE HAY QUE SABER DE LA AGENDA[^\n]*\(AGENDA_PENDIENTES, intermedia\)\n {3}1\n {3}- Seguridad C4 \| 23\/10\/2026 \| la figura/.test(B), '3: AGENDA_PENDIENTES (la solapa de antes, sin "tipo": como siempre)');
 ok(/4\. REUNIONES AMBIGUAS.*: 1\n {3}- \[6\] AMBIGUA/.test(B), '4: las ambiguas');
 ok(/5\. AGENDA_DUPLICADOS PENDIENTES.*: 1\n {3}- \[5\] AGENDA_DUPLICADOS pendiente/.test(B), '5: AGENDA_DUPLICADOS');
 ok(/6\. REUNIONES QUE LA AGENDA SUSPENDIÓ EN LA SEMANA\n {3}1\n {3}- 16\/10\/2026 11:00 \| Fulana/.test(B) && !/hace dos semanas/.test(B), '6: las suspendidas de la semana (no las viejas)');
@@ -395,6 +395,37 @@ E = montarSemanal({ AUDITORIA_SEMANAL_ACTIVA: 'true' });
 E.hojas = {};
 r = E.run('auditoriaSemanal_(true)');
 ok(/la solapa no existe todavía/.test(r.mail.cuerpo) && /ninguna anotada/.test(r.mail.cuerpo) && /sin datos/.test(r.mail.cuerpo), 'sin AGENDA_PENDIENTES, AVISOS_SUSPENDIDAS ni REGISTRO_CORRIDAS: lo dice');
+
+// ============================== [9b] 16/10: AGENDA_PENDIENTES con "tipo" y el aviso diario 'agenda_info' ==============================
+console.log('[9b] 16/10: AGENDA_PENDIENTES con "tipo" (agrupado en el resumen) y el aviso diario agenda_info (un mail por día)');
+E = montarSemanal({ AUDITORIA_SEMANAL_ACTIVA: 'true' });
+{
+  const CD = E.ctx.Date;
+  E.poner('AGENDA_PENDIENTES', [['tipo', 'reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar', 'fila', 'qué pasa', 'qué sigue', 'desde', 'id'],
+    ['pendiente de definir', '22/10 17:15 | Seguridad | Comuna 4', 'Semana del 19/10', 'CM y Ministros', '22/10/2026', '17:15', 'Comuna 4', '', 'le falta: figura y dirección', 'se crea…', new CD(2026, 9, 16, 9), 'pendiente|x'],
+    ['semana frenada: una reunión en dos filas', '22/10/2026 | Tapia | filas 832, 838', 'semana del 19/10/2026', '', '22/10/2026', '', '', '832, 838', 'no se crea nada', 'elegir', new CD(2026, 9, 16, 9), 'semana_frenada|y'],
+    ['juntada sola (fusión automática)', '22/10/2026 17:15 | Tapia | Comuna 12', '', '', '22/10/2026', '17:15', 'Comuna 12', '832', 'la 838 se borró', 'nada', new CD(2026, 9, 16, 9), 'juntada_sola|z']]);
+}
+r = E.run('auditoriaSemanal_(true)');
+const B3 = r.mail.cuerpo.split('\n4. ')[0].split('3. ')[1] || '';
+ok(/^LO QUE HAY QUE SABER DE LA AGENDA/.test(B3) && /\n {3}3\n/.test(B3) && /\n {3}pendiente de definir: 1\n {6}- 22\/10 17:15 \| Seguridad \| Comuna 4/.test(B3) &&
+   /\n {3}semana frenada: una reunión en dos filas: 1\n/.test(B3) && /\n {3}juntada sola \(fusión automática\): 1\n/.test(B3) && !/pendiente\|x/.test(B3),
+   '3: agrupado por tipo, sin "id" ni "desde" — ' + JSON.stringify(B3));
+ok(!/pendiente de definir \|/.test(B3), '  y el tipo va en el título del grupo, no en cada línea');
+E = crearEntorno(ON);
+E.a(10);
+E.run('corridaIniciar_(new Date(), false, false)');
+E.run('registrarAviso_("agenda_info", "SEMANA FRENADA: UNA REUNIÓN EN DOS FILAS | 22/10/2026 | Tapia | filas 832, 838 | … → elegir en AGENDA_DUPLICADOS")');
+E.run('registrarAviso_("agenda_info", "JUNTADA SOLA (FUSIÓN AUTOMÁTICA) | 22/10/2026 17:15 | Tapia | fila 832 | … → nada")');
+E.run('corridaCerrar_(null)');
+ok(E.mails.length === 0 && E.hoja('AVISOS_AGENDA_INFO') && E.hoja('AVISOS_AGENDA_INFO').v.length === 3, 'agenda_info: NO va de a uno; se anota en AVISOS_AGENDA_INFO (intermedia)');
+E.a(20);
+E.run('corridaIniciar_(new Date(), false, false); corridaCerrar_(null)');
+ok(E.mails.length === 1 && /lo nuevo de la agenda que el equipo tiene que saber \(2\)$/.test(E.mails[0].subject) && /SEMANA FRENADA/.test(E.mails[0].body) &&
+   /JUNTADA SOLA/.test(E.mails[0].body) && /AGENDA_PENDIENTES/.test(E.mails[0].body), 'a las 20: UN mail con las dos — ' + (E.mails[0] && E.mails[0].subject));
+E.a(21);
+E.run('corridaIniciar_(new Date(), false, false); corridaCerrar_(null)');
+ok(E.mails.length === 1 && E.hoja('AVISOS_AGENDA_INFO').v.slice(1).every(function (x) { return /20:00/.test(x[2]); }), 'marcadas como mandadas; un solo mail por día');
 
 // ============================== [10] el activador semanal y el permiso ==============================
 console.log('[10] el activador semanal (a mano) y autorizarMailAvisos');

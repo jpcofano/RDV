@@ -200,6 +200,14 @@ const REVISAR_TODO_INTENTOS = 2;
  */
 const AVISOS_HOJA_SUSPENDIDAS = 'AVISOS_SUSPENDIDAS';
 const AVISOS_SUSPENDIDAS_HORA = 20;
+/**
+ * 16/10: lo NUEVO que el equipo tiene que saber de la agenda (tema 'agenda_info': una semana frenada por una reunión en dos filas,
+ * una reunión juntada sola o por decisión del equipo, una fila que sobra y hay que borrar a mano, una pendiente de definir), igual
+ * que las suspendidas: se anota en AVISOS_AGENDA_INFO (intermedia) y sale en UN mail por día desde las AVISOS_AGENDA_INFO_HORA. Cada
+ * cosa, una sola vez (la agenda lo controla: AGENDA_PROP_INFO_AVISADOS). Todo, también, en AGENDA_PENDIENTES y en el resumen del lunes.
+ */
+const AVISOS_HOJA_AGENDA_INFO = 'AVISOS_AGENDA_INFO';
+const AVISOS_AGENDA_INFO_HORA = 20;
 
 /*
  * --- La escritura en lote (02/10) ---
@@ -1555,7 +1563,8 @@ const ORIGEN_AMBOS = 'equipo + agenda';
 /**
  * **AGENDA_DUPLICADOS** (07/10, en el ARCHIVO del destino, como REVISAR_MATCH): lo que la agenda no crea porque hay una
  * fila parecida del equipo (la misma figura a ±AGENDA_DUP_DIAS días, o la misma fecha y comuna con otra figura o sin
- * figura), con ELEGIR adelante; y los duplicados que aparecen después de crear (informativos). Las elecciones se
+ * figura), con ELEGIR adelante; y (16/10) "una reunión en dos filas" —H3 y los duplicados que aparecen después de crear—, UNA
+ * línea por par para decidir (AGENDA_OPCION_QUEDARSE / AGENDA_OPCION_DISTINTAS, abajo). Sólo lo que se decide. Las elecciones se
  * guardan en ELECCIONES_AGENDA (archivo de registros o intermedia) y se aplican en la corrida siguiente.
  */
 const AGENDA_SOLAPA_DUPLICADOS = 'AGENDA_DUPLICADOS';
@@ -1652,9 +1661,42 @@ const AGENDA_CERRAR_CANCELADAS_MAIL = true;
  * **H3. El invariante "una reunión, una fila"** (15/10). Con `true`, en cada corrida: si dos filas vivas (no Suspendida /
  * Reprogramada) son la misma reunión —misma fecha + misma figura, o, en una Seguridad sin figura, misma fecha + mismo tipo +
  * mismo "Lugar (mail)"— y el mail no trae tantas reuniones con esa clave, en ESA SEMANA no se crea nada más, se lista en
- * AGENDA_DUPLICADOS y se avisa (registrarAviso_('invariante_agenda')). El paso 16 lo cuenta siempre (tiene que dar 0).
+ * AGENDA_DUPLICADOS (16/10: una línea por par, para ELEGIR) y se avisa (16/10: en AGENDA_PENDIENTES y el aviso diario 'agenda_info', una
+ * vez; antes registrarAviso_('invariante_agenda') en cada corrida). El paso 16 lo cuenta siempre (tiene que dar 0; lo que el equipo ya
+ * decidió, aparte).
  */
 const AGENDA_INVARIANTE_UNA_FILA = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
+/**
+ * **AGENDA_DUPLICADOS = SÓLO lo que el equipo tiene que DECIDIR** (16/10, decisión del usuario). "Una reunión en dos filas" (H3, y
+ * una fila del equipo parecida a una de la agenda, "después de crear") es UNA línea por par, con ELEGIR: "Quedarse con la fila X" /
+ * "Quedarse con la fila Y" / "Son reuniones distintas" (X e Y: los números de fila al escribir la solapa; la elección se identifica
+ * por el agenda_uid —o figura + fecha + barrio, en una fila del equipo— de cada fila, en las columnas ocultas, nunca por el número).
+ * Se aplica en la corrida siguiente (40_Agenda.js, antes del plan; 54_FusionAgenda.js `fusionAntesDelPlanAgenda_`):
+ *   - "Quedarse con la fila X": si la otra (Y) la creó la agenda, se junta en X con la maquinaria de la fusión (sólo celdas vacías o
+ *     del sistema de X; lo del equipo de Y que choca queda en el registro con la fila borrada) y se borra por el camino auditado,
+ *     como BORRADA POR EL EQUIPO (la agenda no la recrea). Si Y es una fila del equipo, NO se borra ni se copia nada: AGENDA_PENDIENTES
+ *     dice "borrar la fila Y a mano", y "una reunión, una fila" ya no la cuenta;
+ *   - "Son reuniones distintas": el par no vuelve a preguntarse, no frena la semana ni avisa (el paso 16 lo cuenta aparte).
+ * Lo informativo (semana frenada, cancelación aplicada, cancelada en el mail, pendiente de definir, juntada sola…) va a
+ * AGENDA_PENDIENTES (intermedia, con su `tipo`), al resumen del lunes y al aviso diario 'agenda_info' (una vez por cosa).
+ */
+const AGENDA_OPCION_QUEDARSE = 'Quedarse con la fila ';
+const AGENDA_OPCION_DISTINTAS = 'Son reuniones distintas';
+/**
+ * **La fusión AUTOMÁTICA de "una reunión en dos filas"** (16/10). Con `true`, en la corrida de la hora (antes del plan de la agenda,
+ * con su bloqueo), los pares que aceptan las reglas del paso 97 (`planFusionAgenda_`: dos filas de la agenda, misma fecha, mismo
+ * "Lugar (mail)" y tipo, las dos "en agenda", sin datos distintos ni valores del equipo en la que se borra, y la regla de hoy las une)
+ * se juntan SOLOS: se queda la vieja, la nueva se borra guardada entera ("fusionada_sistema"). Registro y deshacer como el paso 97
+ * (paso 38 con el id de la corrida, o el paso 98); en AGENDA_PENDIENTES ("juntada sola") y en el aviso diario. Lo que las reglas
+ * rechazan va a AGENDA_DUPLICADOS para elegir. APAGADO hasta ver la medición en seco: `fusionAutomaticaAgenda_enSeco()`
+ * (54_FusionAgenda.js, wrapper paso99_fusionAutomatica_enSeco).
+ */
+const AGENDA_FUSION_AUTOMATICA = false;
+/** AGENDA_PENDIENTES: cuántos días se sigue listando un HECHO (una cancelación aplicada, una reunión juntada); los estados, mientras pasen. */
+const AGENDA_PENDIENTES_DIAS_EVENTOS = 7;
+/** Lo de AGENDA_PENDIENTES ya avisado por mail ('agenda_info'): un hash por cosa → la fecha; se olvida a los AGENDA_INFO_AVISADOS_DIAS días. */
+const AGENDA_PROP_INFO_AVISADOS = 'AGENDA_INFO_AVISADOS';
+const AGENDA_INFO_AVISADOS_DIAS = 30;
 /**
  * **H4. Validar los mails** (15/10). Con `true`: (a) un mail con la misma reunión DOS veces (la misma clave: figura + fecha +
  * hora, o tipo + fecha + lugar + hora) no crea esa reunión y avisa; (b) un mail con FORMATO RARO no se usa en la corrida (la

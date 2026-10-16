@@ -141,8 +141,8 @@ const iSec = filas.indexOf('QUÉ HACE EL SISTEMA (solo, cada hora)');
 ok(iSec > 0 && filas[iSec - 1] === '' && fmt(g, iSec + 1).peso === 'bold' && fmt(g, iSec + 1).tamano === 12 && fmt(g, iSec + 1).fondo === '#D9E1F2',
    'título de sección: negrita 12, gris claro, con una fila en blanco antes');
 const secciones = filas.filter(function (t, i) { return fmt(g, i + 1).fondo === '#D9E1F2'; });
-ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 21,
-   '6 secciones y 21 viñetas (09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo; FORMULARIOS_SIN_FILA apagada: no está) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
+ok(secciones.length === 6 && filas.filter(function (t) { return /^ • /.test(t); }).length === 23,
+   '6 secciones y 23 viñetas (09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo; 16/10: AGENDA_DUPLICADOS sólo decide, y una reunión en dos filas; FORMULARIOS_SIN_FILA apagada: no está) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
 const colores = E.run('_coloresAyuda_()');
 const conColor = function (inicio) { const i = filas.findIndex(function (t) { return t.indexOf(' • ' + inicio) === 0; }); return fmt(g, i + 1).fondo; };
 ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde && conColor('Rojo') === colores.rojo &&
@@ -172,8 +172,8 @@ console.log('[3b] con FORMULARIOS_SIN_FILA prendida (13/10), la GUÍA suma su se
   const f2 = E2.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
   const f1 = E.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
   ok(f2.indexOf('SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)') >= 0 &&
-     f2.filter(function (t) { return /^ • /.test(t); }).length === 24 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
-     'prendida: 7 secciones y 24 viñetas; apagada: ni una mención');
+     f2.filter(function (t) { return /^ • /.test(t); }).length === 26 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
+     'prendida: 7 secciones y 26 viñetas; apagada: ni una mención');
 }
 
 console.log('[3c] la LEER y el formato de "Agenda Directa" (15/10): sólo con AGENDA_MAIL_FORMATO_DIRECTA');

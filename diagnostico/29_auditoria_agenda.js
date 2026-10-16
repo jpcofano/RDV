@@ -350,10 +350,10 @@ function _s2ReunionesAudAg_(C) {
         _compararFilaAudAg_(C, ev, f, res);
         // ¿más de una fila para esta reunión?
         res.otras = _otrasFilasAudAg_(C, ev, f, asignadas);
-        C.plan.duplicados.filter(function (y) { return y.tipo === 'despues' && y.fAgenda && y.fAgenda.fila === f.fila; }).forEach(function (y) {
-          y.candidatas.forEach(function (c) {
-            if (!res.otras.some(function (o) { return o.fila === c.f.fila; })) res.otras.push({ fila: c.f.fila, f: c.f, por: 'AGENDA_DUPLICADOS (después de crear): ' + c.diferencia });
-          });
+        // 16/10: los pares "una reunión en dos filas" de "después de crear" (P.dosFilas; antes, los duplicados "despues")
+        (C.plan.dosFilas || []).filter(function (p) { return p.origen === 'despues' && (p.a.fila === f.fila || p.b.fila === f.fila); }).forEach(function (p) {
+          const c = p.a.fila === f.fila ? p.b : p.a;
+          if (!res.otras.some(function (o) { return o.fila === c.fila; })) res.otras.push({ fila: c.fila, f: c, por: 'AGENDA_DUPLICADOS (una reunión en dos filas, después de crear): ' + p.diferencia });
         });
         res.otras.forEach(function (o) {
           C.otrasDe[o.fila] = 'DUPLICADA de la reunión ' + fmtFecha_(ev.fecha) + ' ' + (ev.hora || '') + ' ' + (ev.figuraFila || ev.tipo) +
