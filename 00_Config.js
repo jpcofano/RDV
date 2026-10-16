@@ -94,6 +94,41 @@ const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
 const PROP_CORRIDA_EN_CURSO = 'CORRIDA_EN_CURSO';
 
 /*
+ * --- Las ACELERACIONES de la corrida de la hora (16/10, decisión del usuario; 49_Aceleraciones.js) ---
+ * Medidas con el paso 67 (las últimas 27 corridas: total mediana 197 s, máximo 287 s; agenda mediana 69,5 s, máximo 279,6 s).
+ *
+ * VISTAS_AGENDA_SOLO_SI_CAMBIA  "Agenda", "Agenda cerrada", "AgendaCall", "Agenda (mail)" (archivo "Agenda") y la "Agenda" del
+ *   archivo RDV: se arma el contenido en memoria (como siempre), se le saca la HUELLA (MD5) y, si es la misma que la de la
+ *   última escritura, NO se reescribe la solapa (sólo se refresca la columna "Última actualización", una escritura). "Agenda
+ *   (mail)": la huella es la de las reuniones, sin las columnas del equipo (que quedan en la solapa tal cual las cargó el
+ *   equipo: no se pierde nada; se guardan en AGENDA_EQUIPO en la próxima reescritura, antes de reescribir, como siempre); con
+ *   el formato "Agenda Directa" (AGENDA_MAIL_FORMATO_DIRECTA) se reescribe siempre.
+ * LOOKER_SOLO_SI_CAMBIA  Datos_Unpivot y Aux_Maximos, igual (la huella sin la columna FechaCarga: sin cambios, FechaCarga queda
+ *   con la de la última escritura).
+ * Red de seguridad de las dos: se reescribe igual si la última escritura fue hace HUELLAS_REESCRIBIR_CADA_HORAS horas o más, si
+ *   la solapa no existe o no tiene las filas y columnas que dejó la última escritura, o si cambia HUELLAS_VERSION (subirla cuando
+ *   un cambio del código cambie el FORMATO de una solapa sin cambiar sus valores; o correr olvidarHuellasVistas()). Una
+ *   escritura que falla a la mitad no deja huella (se borra antes de escribir): la próxima corrida reescribe.
+ * IDS_SOLO_CADA_HORAS  los IDs de los encuentros (45_IdsCuentas.js) corren cada IDS_CADA_HORAS horas, SALVO que la base tenga
+ *   una reunión activa que ya pasó, sin "ID cuentas", que no estaba en esa situación en la última corrida de los IDs (pasó su
+ *   fecha, o la creó la agenda): ahí corren en esta corrida. Es por HORARIO y no por "la lista cambió" a propósito: saber si
+ *   cambió la lista sin leerla pediría Drive (getLastUpdated), un permiso NUEVO (habría que volver a autorizar el proyecto); y
+ *   leerla es justamente lo lento (13 a 120 s).
+ */
+const VISTAS_AGENDA_SOLO_SI_CAMBIA = true;
+const LOOKER_SOLO_SI_CAMBIA = true;
+const HUELLAS_REESCRIBIR_CADA_HORAS = 6;
+const HUELLAS_VERSION = '1';
+/** La huella de cada solapa (propiedad del script): PROP_HUELLA_PREFIJO + la solapa. */
+const PROP_HUELLA_PREFIJO = 'HUELLA_VISTA_';
+const IDS_SOLO_CADA_HORAS = true;
+const IDS_CADA_HORAS = 3;
+/** El activador de cada hora se corre unos minutos: "3 horas" se cumple con este margen (si no, serían 4). */
+const IDS_CADA_HORAS_MARGEN_MS = 10 * 60 * 1000;
+/** La última corrida de los IDs (propiedad): la hora y las reuniones que ya habían pasado sin ID. */
+const PROP_IDS_ULTIMA = 'IDS_ULTIMA_CORRIDA';
+
+/*
  * --- El formato para leer (15/10; 51_FormatoLectura.js) ---
  * Las solapas de reporte y de control que el sistema reescribe: texto ajustado, arriba a la izquierda, encabezado en negrita
  * gris y congelado, anchos según el contenido (la columna que describe la reunión, ~350 px), ELEGIR / COMENTARIO resaltadas.

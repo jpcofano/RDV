@@ -199,8 +199,9 @@ ok(r7b && r7b.conteo.escribeId === 7 && r7b.conteo.fuera === 1, '(y dice lo que 
 const up = fs.readFileSync(path.join(__dirname, '..', '20_UpsertDestino.js'), 'utf8');
 const iAg = up.indexOf('correrAgendaEnBloqueo_(enSeco)'), iIds = up.indexOf('resIds = idsEnLaHora_(enSeco)'), iPlan = up.indexOf('plan = calcularPlan_(enSeco, null');
 ok(iAg > 0 && iPlan > iAg && iIds > iPlan, 'en la corrida: después de la agenda y, desde el 15/10, DESPUÉS del cruce (prioridad 3)');
-ok(/if \(IDS_EN_LA_HORA && !historial\) \{\s*if \(!corridaHayTiempo_\('ids'\)\) \{[\s\S]{0,200}\} else \{[\s\S]{0,120}try \{ resIds = idsEnLaHora_\(enSeco\); \}\s*catch/.test(up),
-   'sólo con IDS_EN_LA_HORA, no en el paso 22, con la guarda de tiempo y con try/catch');
+// 16/10: antes de la guarda de tiempo, IDS_SOLO_CADA_HORAS (49_Aceleraciones.js): "no tocaba" no es "salteada por tiempo"
+ok(/if \(IDS_EN_LA_HORA && !historial\) \{[\s\S]{0,400}idsTocaEnEstaCorrida_[\s\S]{0,300}\} else if \(!corridaHayTiempo_\('ids'\)\) \{[\s\S]{0,200}\} else \{[\s\S]{0,250}try \{\s*resIds = idsEnLaHora_\(enSeco\);[\s\S]{0,150}\}\s*catch/.test(up),
+   'sólo con IDS_EN_LA_HORA, no en el paso 22, cada IDS_CADA_HORAS horas, con la guarda de tiempo y con try/catch');
 ok(E7.cfg('IDS_EN_LA_HORA') === true, 'IDS_EN_LA_HORA = true desde el 09/10 (pasos 55 a 57 OK)');
 
 // ---------------------------- [8] el huso horario de la lista ----------------------------

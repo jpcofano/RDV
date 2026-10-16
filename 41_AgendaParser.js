@@ -1065,6 +1065,7 @@ function _consultaGeocode_(dir) {
  * de la Ciudad. Nunca tira: los errores vuelven como estado 'ERROR'.
  */
 function _geocodificar_(consulta, conLimites) {
+  const tGeo = Date.now();
   const g = { consulta: consulta, estado: '', lat: '', lng: '', tipo: '', parcial: false, barrioGoogle: '', formateada: '', detalle: '',
               fecha: Utilities.formatDate(new Date(), RDV_TZ, 'yyyy-MM-dd HH:mm') };
   try {
@@ -1087,6 +1088,8 @@ function _geocodificar_(consulta, conLimites) {
   } catch (e) {
     g.estado = 'ERROR'; g.detalle = String(e && e.message || e);
   }
+  // 16/10: lo que tarda Maps, en los tramos de la agenda (REGISTRO_CORRIDAS agenda_geo_s / agenda_geo_n)
+  if (typeof agendaTiempoSumar_ === 'function') agendaTiempoSumar_('geo', Date.now() - tGeo, 1);
   return g;
 }
 

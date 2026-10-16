@@ -381,13 +381,26 @@ function escribirSolapasLooker_(enSeco) {
   return out;
 }
 
-/** Borra el contenido (no el formato) y escribe encabezado + filas en un bloque. Devuelve las filas escritas. */
+/**
+ * Borra el contenido (no el formato) y escribe encabezado + filas en un bloque. Devuelve las filas escritas.
+ * 16/10 (LOOKER_SOLO_SI_CAMBIA, 49_Aceleraciones.js): si la huella del contenido (sin FechaCarga, que es la hora de la corrida)
+ * es la de la última escritura, no se reescribe (FechaCarga queda con la de esa escritura; red de seguridad: cada
+ * HUELLAS_REESCRIBIR_CADA_HORAS horas, o si la solapa cambió de tamaño).
+ */
 function _escribirSolapaLooker_(ss, nombre, encabezado, filas, formatear) {
+  const claveH = 'LOOKER|' + nombre;
+  let huella = null;
+  if (typeof huellaContenido_ === 'function') {
+    huella = huellaContenido_({ k: 'looker', v: matrizSinColumnas_([encabezado].concat(filas), ['FechaCarga']) });
+    if (huellaSinCambios_(claveH, huella, ss.getSheetByName(nombre), LOOKER_SOLO_SI_CAMBIA)) { _anotarSinCambios_(nombre); return filas.length; }
+    huellaOlvidar_(claveH);
+  }
   const sh = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
   sh.clearContents();
   const todo = [encabezado].concat(filas);
   sh.getRange(1, 1, todo.length, encabezado.length).setValues(todo);
   if (formatear && filas.length) formatear(sh, encabezado, todo.length);
+  if (huella) { SpreadsheetApp.flush(); huellaGuardar_(claveH, huella, sh); }
   return filas.length;
 }
 
