@@ -1412,6 +1412,18 @@ function paso97_fusionarPares() {
 }
 
 /**
+ * PASOS 67 + 96 JUNTOS — SÓLO LECTURA (16/10; reemplaza al "Sin título.js" del editor, que decía "paso 96" pero llamaba al 97,
+ * el REAL): los tiempos de las corridas (67) y la fusión de pares EN SECO (96, que sólo guarda la huella del plan). NO junta nada.
+ */
+function pasos67y96_soloLectura() {
+  Logger.log('########## paso 67 — tiempos de las corridas (SÓLO LECTURA) ##########');
+  try { paso67_tiemposCorridas(); } catch (e) { Logger.log('*** el paso 67 falló: %s', e && e.stack ? e.stack : e); }
+  Logger.log('########## paso 96 — juntar pares, EN SECO (no escribe; el real es el 97, que NO se corre acá) ##########');
+  try { paso96_fusionarPares_enSeco(); } catch (e) { Logger.log('*** el paso 96 falló: %s', e && e.stack ? e.stack : e); }
+  Logger.log('########## TERMINADO: pasos 67 y 96 (sólo lectura) ##########');
+}
+
+/**
  * REHACER LAS VISTAS (16/10): con las aceleraciones, las vistas del archivo "Agenda", la "Agenda" del archivo RDV y Looker se
  * reescriben sólo si cambió su huella (o cada 6 h). Esto olvida las huellas: la próxima corrida de la hora las reescribe todas.
  * Usarlo después de un cambio de formato o de colores, o si alguien rompió una solapa a mano. No escribe las planillas.
