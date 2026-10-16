@@ -300,8 +300,10 @@ ok(fila(E, 'Jorge Macri', 15) > 0 && fila(E, 'Clara Muzzio', 14) > 0, 'las reuni
 let lc = lineaCopia(E, /Comuna 11/);
 ok(lc.length === 1 && lc[0].estado === 'pendiente de definir' && lc[0].fila === '', 'el archivo "Agenda" la muestra: "pendiente de definir", sin "Fila del destino" — ' + JSON.stringify(lc));
 let pz = pendientes(E);
-ok(pz && pz.length === 2 && /Comuna 11/.test(pz[1][0]) && pz[1][7] === 'figura y dirección' && /13\/10\/2026/.test(pz[1][8]),
-   'AGENDA_PENDIENTES (intermedia): una línea, la reunión primero, qué le falta y "el 13/10/2026" — ' + JSON.stringify(pz && pz[1]));
+// 16/10: AGENDA_PENDIENTES con "tipo" adelante (tipo | reunión | semana | grupo | fecha | hora | lugar | fila | qué pasa | qué sigue | desde | id)
+ok(pz && pz.length === 2 && pz[0][0] === 'tipo' && pz[1][0] === 'pendiente de definir' && /Comuna 11/.test(pz[1][1]) && /figura y dirección/.test(pz[1][8]) &&
+   /13\/10\/2026/.test(pz[1][9]) && /^pendiente\|/.test(pz[1][11]),
+   'AGENDA_PENDIENTES (intermedia): una línea "pendiente de definir", la reunión, qué le falta y "el 13/10/2026" — ' + JSON.stringify(pz && pz[1]));
 r = correr(E, false, [M1, M2], { hoy: dia(14) });
 const c11 = sinFig(E, 'Comuna 11', 15);
 ok(c11.length === 1 && celda(E, c11[0], 'Dirección') === 'Pasaje Ficticio 1234, Club de Barrio' && r.crear === 1 && r.pendientes === 0,
@@ -388,9 +390,17 @@ ok(r.crear === 1, 'APAGADO: se crea Tapia 16/10 (crear ' + r.crear + ')');
 r = correr(E, false, [M1, M2, M5], { invariante: true });
 ok(r.invariante === 1 && r.bloqueadasInvariante === 1 && r.crear === 0 && filasCon(E, 'Gabino Tapia', 16).length === 0,
    'con el invariante: una reunión en dos filas → en esa semana no se crea nada más (Tapia no se crea)');
+// 16/10 (AGENDA_DUPLICADOS sólo decisiones): UNA línea por par, con ELEGIR "Quedarse con la fila X / Y" y "Son reuniones distintas"
 const linInv = dups(E).filter(function (x) { return x[3] === 'una reunión en dos filas'; });
-ok(linInv.length === 2, 'AGENDA_DUPLICADOS: las dos filas, "una reunión en dos filas" (' + linInv.length + ')');
-ok((E.avisos || []).some(function (a) { return a[0] === 'invariante_agenda' && /Comuna 11/.test(a[1]); }), 'y el aviso invariante_agenda');
+ok(linInv.length === 1 && /elegir/.test(linInv[0][2]) && /^dos_filas\|/.test(linInv[0][14]) && /^\d+=uid:c-.* # \d+=uid:c-/.test(linInv[0][15]),
+   'AGENDA_DUPLICADOS: UNA línea por el par, "una reunión en dos filas", que pide elegir (' + linInv.length + ')');
+ok(JSON.stringify(E.ssD.hojas['AGENDA_DUPLICADOS'].opciones) === JSON.stringify(['Quedarse con la fila ' + linInv[0][5].match(/\d+/g)[0], 'Quedarse con la fila ' + linInv[0][5].match(/\d+/g)[1], 'Son reuniones distintas']),
+   '  ELEGIR: exactamente "Quedarse con la fila X", "Quedarse con la fila Y", "Son reuniones distintas" — ' + JSON.stringify(E.ssD.hojas['AGENDA_DUPLICADOS'].opciones));
+ok(!dups(E).some(function (x) { return /informativo/.test(x[2]); }), '  y nada informativo en AGENDA_DUPLICADOS');
+ok(pendientes(E).some(function (x) { return x[0] === 'semana frenada: una reunión en dos filas' && /no crea ninguna reunión nueva/.test(x[8]) && /Tapia/.test(x[8]); }),
+   'AGENDA_PENDIENTES: "semana frenada: una reunión en dos filas", con la reunión que espera (Tapia)');
+ok((E.avisos || []).some(function (a) { return a[0] === 'agenda_info' && /SEMANA FRENADA/.test(a[1]) && /Comuna 11/.test(a[1]); }) &&
+   !(E.avisos || []).some(function (a) { return a[0] === 'invariante_agenda'; }), 'y el aviso diario agenda_info (ya no invariante_agenda)');
 r = correr(E, true, [M1, M2, N1], { invariante: true });
 ok(r.crear === 2, 'otra semana (la del 19/10) sí crea (crear ' + r.crear + ')');
 const p16 = E.run('_filasAgenda_diag8(leerDestino_()).invariante.length');
@@ -455,9 +465,14 @@ ok(iT > 0 && fila(E, 'Gabino Tapia', 17) === iT && celda(E, iT, 'STATUS REUNIÓN
    r.borrar === 0 && r.suspender === 1, 'la fila que creó la agenda y nadie tocó: Suspendida, NO borrada (borrar ' + r.borrar + ')');
 ok(E.avisos.filter(function (a) { return a[0] === 'suspendidas'; }).length === 1, 'un aviso "suspendidas"');
 ok(lineaCopia(E, /Gabino Tapia/).some(function (x) { return x.cambios === 'suspendida: salió del mail del 15/10/2026'; }), '"Cambios" en el archivo "Agenda": "suspendida: salió del mail del 15/10/2026"');
-ok(dups(E).some(function (x) { return x[3] === 'cancelación' && /^aplicado: Suspendida/.test(x[2]); }), 'AGENDA_DUPLICADOS: la línea "cancelación" con el resultado (aplicado)');
+// 16/10: la cancelación aplicada es informativa: no va a AGENDA_DUPLICADOS sino a AGENDA_PENDIENTES (y al aviso "suspendidas")
+ok(!dups(E).some(function (x) { return x[3] === 'cancelación'; }) &&
+   pendientes(E).some(function (x) { return x[0] === 'cancelación aplicada (Suspendida)' && /pasó a Suspendida/.test(x[8]) && /^suspendida\|/.test(x[11]); }),
+   'AGENDA_PENDIENTES (no AGENDA_DUPLICADOS): "cancelación aplicada (Suspendida)"');
 r = correr(E, false, [J1, J2]);
 ok(r.suspender === 0 && lineaCopia(E, /Gabino Tapia/).some(function (x) { return /^suspendida: salió/.test(x.cambios); }), 'la corrida siguiente no hace nada más (y "Cambios" lo sigue diciendo)');
+ok(pendientes(E).filter(function (x) { return x[0] === 'cancelación aplicada (Suspendida)'; }).length === 1,
+   '  y AGENDA_PENDIENTES la sigue listando (es un hecho: AGENDA_PENDIENTES_DIAS_EVENTOS días), una sola vez');
 const J3 = mail(15, 11, [MUZZIO, MACRI('A CONFIRMAR'), TAPIA17], ASUNTO_12);
 r = correr(E, false, [J1, J2, J3]);
 ok(celda(E, iT, 'STATUS REUNIÓN') === 'en agenda' && r.reactivar === 1, 'vuelve al mail (v3 completa): se REACTIVA → "en agenda"');

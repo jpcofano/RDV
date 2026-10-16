@@ -45,10 +45,15 @@ const AYUDA_GUIA_ = [
   ['item', 'Leer "¿por qué?" y elegir en ELEGIR: Opción 1, 2, 3, Ninguno o No sé.'],
   ['item', 'Se aplica en la próxima hora; el resultado aparece en "resultado".'],
   ['seccion', 'SOLAPA AGENDA_DUPLICADOS (dudas de la agenda)'],
+  // 16/10: AGENDA_DUPLICADOS es SÓLO lo que hay que decidir; lo informativo, en AGENDA_PENDIENTES (base intermedia) y en el mail diario
+  ['item', 'Sólo tiene lo que hay que DECIDIR. Lo que es para saber (semana frenada, reunión juntada, cancelación aplicada, reunión por definir) está en la solapa AGENDA_PENDIENTES de la base intermedia.'],
   ['item', 'Reunión parecida a una fila existente: "Es la misma: vincular" · "Son distintas: crear" · "Ya está cargada en otra fila: no crear" · "No sé".'],
+  ['item', 'Una reunión en dos filas: "Quedarse con la fila X" (el sistema completa la X sólo con lo vacío y borra la otra si la creó la agenda; si la otra la cargaron ustedes, no la borra: hay que borrarla a mano) · "Quedarse con la fila Y" · "Son reuniones distintas" (no se vuelve a preguntar).'],
+  // 16/10: sólo con AGENDA_FUSION_AUTOMATICA (ver filasAyuda_)
+  ['item', 'Si las dos filas las creó la agenda y no tienen datos distintos, el sistema las junta solo (se queda la más vieja); queda anotado en AGENDA_PENDIENTES y se puede deshacer.', null, 'fusionAuto'],
   ['item', 'Reunión que salió del mail: "Se canceló: suspender/borrar" · "Sigue" · "No sé".', null, 'cancelPregunta'],
   // 15/10 (J): con la cancelación automática en modo "suspender" no se pregunta: ver filasAyuda_
-  ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado como "cancelación" (aplicado).', null, 'cancelAuto'],
+  ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado en AGENDA_PENDIENTES ("cancelación aplicada"), no acá: no hay nada que elegir.', null, 'cancelAuto'],
   // 15/10 (noche): con los colores del mail (AGENDA_COLORES_MAIL) y la cancelación automática: ver filasAyuda_
   ['item', 'El mail manda: una reunión en ROJO en el mail (Evento, Hora y Lugar) también pasa a Suspendida, aunque siga escrita, si el mail es anterior a la reunión. Sólo si está "en agenda": si el equipo ya le puso otro estado (Realizada…), no se toca y se avisa.', null, 'rojo'],
   // 16/10: sólo con AGENDA_CANCELACION_CONJUNTO (y la cancelación automática): ver filasAyuda_
@@ -132,6 +137,7 @@ function filasAyuda_(def) {
     if (l[3] === 'cancelPregunta' && cancelAuto) return;
     if (l[3] === 'pendientes' && !AGENDA_CREAR_SOLO_IDENTIFICADAS) return;
     if (l[3] === 'eleccionesSiempre' && !AGENDA_ELECCIONES_SIEMPRE) return;   // 15/10: las decisiones de AGENDA_DUPLICADOS, siempre
+    if (l[3] === 'fusionAuto' && !AGENDA_FUSION_AUTOMATICA) return;           // 16/10: la fusión automática de "una reunión en dos filas"
     // 15/10 (noche): los colores del mail (el ROJO cancela sólo con la cancelación automática; AMARILLO / VERDE, aparte)
     if (l[3] === 'rojo' && !(cancelAuto && AGENDA_COLORES_MAIL)) return;
     if (l[3] === 'amarilloVerde' && !(AGENDA_COLORES_MAIL && AGENDA_COLORES_AMARILLO_VERDE)) return;

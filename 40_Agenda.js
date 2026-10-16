@@ -44,7 +44,10 @@
  * Antes de CREAR, además de figura + fecha exacta: si hay una fila del equipo (sin agenda_uid) de la misma figura a
  * ±AGENDA_DUP_DIAS días, o de la misma fecha y comuna con otra figura o sin figura, NO se crea: va a AGENDA_DUPLICADOS
  * (archivo del destino, con ELEGIR); la elección se aplica en la corrida siguiente. Los duplicados que aparecen DESPUÉS
- * de crear se listan ahí también (el sistema no borra ni fusiona nada solo). Una fila que creó la agenda y el equipo
+ * de crear, y "una reunión en dos filas" (H3), van ahí también, desde el 16/10 como UNA línea por par que pide decidir
+ * ("Quedarse con la fila X" / "… Y" / "Son reuniones distintas"; se aplica antes del plan, 54_FusionAgenda.js
+ * `fusionAntesDelPlanAgenda_`: una fila del equipo nunca se borra). AGENDA_DUPLICADOS es SÓLO lo que se decide: lo
+ * informativo va a AGENDA_PENDIENTES (intermedia, `infoAgenda_`). Una fila que creó la agenda y el equipo
  * BORRÓ no se vuelve a crear mientras la reunión siga en el mail ("borrada por el equipo"); si la reunión sale del mail
  * y vuelve, es nueva. "Origen fila" y "Tocado por el equipo" dicen quién creó la fila y qué cambió el equipo; las
  * columnas "(mail)" guardan lo que la forma del equipo no guarda.
@@ -92,6 +95,20 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     Logger.log('  AVISO: %s. En seco se calcula igual, como si estuvieran vacías.', msg);
   }
   const alcance = alcanceAgenda_();
+  // 16/10 (AGENDA_DUPLICADOS sólo decisiones; 54_FusionAgenda.js): "una reunión en dos filas" ANTES del plan — lo que eligió el
+  // equipo ("Quedarse con la fila X") y, con AGENDA_FUSION_AUTOMATICA, lo que juntan solas las reglas del paso 97. Con el bloqueo
+  // que ya tiene esta corrida. Si escribió la base, se relee (las filas de abajo de una borrada subieron una).
+  if (typeof fusionAntesDelPlanAgenda_ === 'function' && !A.faltan.length) {
+    try {
+      const fusionPrevia = fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco);
+      // las mismas elecciones para el plan (no se leen dos veces: la fusión no cambia AGENDA_DUPLICADOS ni ELECCIONES_AGENDA)
+      opciones = Object.assign({}, opciones, { fusionPrevia: fusionPrevia }, !opciones.elecciones && fusionPrevia.elecciones ? { elecciones: fusionPrevia.elecciones } : {});
+      if (fusionPrevia.releer) Object.assign(dest, leerDestino_());
+    } catch (err) {
+      Logger.log('>>> "una reunión en dos filas" (fusión antes del plan) falló: %s (la agenda sigue; se relee la base por las dudas)', err);
+      if (!enSeco) Object.assign(dest, leerDestino_());
+    }
+  }
   tramo('base');
   // 15/10 (noche): los colores del mail (AGENDA_COLORES_MAIL, o `opciones.coloresMail`): el HTML y el color de cada reunión
   const coloresMail = opciones.coloresMail !== undefined ? !!opciones.coloresMail : AGENDA_COLORES_MAIL;
@@ -270,6 +287,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   if (coloresMail) { P.modos.coloresMail = true; P.modos.amarilloVerde = amarilloVerde; }
   P.pendientes = []; P.conciliadas = []; P.invariante = []; P.bloqueadasInvariante = []; P.repetidasEnMail = [];
   P.suspendidasAuto = []; P.cancelNoAplicada = []; P.cancelacionesEvaluadas = []; P.noReactivadasRojo = [];
+  // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo que juntó la fusión antes del plan (40_Agenda.js correrAgendaEnBloqueo_) y si es en seco
+  P.enSeco = !!opciones.enSeco; P.fusionPrevia = opciones.fusionPrevia || null;
+  P.dosFilas = []; P.dosFilasDecididas = [];
 
   // Índices del destino
   const porFigFecha = new Map(), porFecha = new Map(), usadas = new Set();
@@ -456,15 +476,15 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   // 15/10 (H3): el invariante "una reunión, una fila" en las filas del alcance. Una semana con la misma reunión en dos filas
   // vivas (más filas que reuniones con esa clave en el mail) no crea nada más hasta que el equipo lo resuelva.
   const semanasBloqueadas = new Set();
+  // 16/10: lo que el equipo ya decidió de un par de filas ("Son reuniones distintas", "Quedarse con la fila X") no rompe el invariante
+  const paresIgnorados = ignoradosDeEleccionesAgenda_(elecciones);
   if (invariante) {
     const cuenta = {};
     r.unicas.forEach(function (ev) { const k = claveInvarianteEvento_(ev); if (k) cuenta[k] = (cuenta[k] || 0) + 1; });
     P.invariante = reunionesRepetidasAgenda_(dest.filas.filter(function (f) { return f.fecha && _enAlcance_(alcance, f.fecha); }), A,
-                                             function (k) { return cuenta[k] || 0; });
-    P.invariante.forEach(function (x) {
-      semanasBloqueadas.add(lunesYmdAgenda_(x.fecha));
-      P.duplicados.push({ tipo: 'invariante', x: x, candidatas: x.filas.map(function (f) { return { f: f, diferencia: 'la misma reunión: ' + x.texto }; }) });
-    });
+                                             function (k) { return cuenta[k] || 0; }, { ignorados: paresIgnorados });
+    // 16/10: cada par va a AGENDA_DUPLICADOS para ELEGIR (_dosFilasAgenda_, más abajo); la semana frenada, a AGENDA_PENDIENTES
+    P.invariante.forEach(function (x) { semanasBloqueadas.add(lunesYmdAgenda_(x.fecha)); });
   }
   const planeadas = {}, diferidas = {}, sueltas = [];
   // Presentes: las claves de TODAS las últimas versiones (también las repetidas en otro grupo y la clave de su mail).
@@ -1119,6 +1139,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   }
 
   // --- 8 (prompt 07). Duplicados DESPUÉS de crear: una fila del equipo igual o casi igual a una creada por la agenda ---
+  // 16/10: ya no son informativos: cada par (la de la agenda + la del equipo) es "una reunión en dos filas" y pide una decisión
+  // (_dosFilasAgenda_, abajo), salvo que el equipo ya la haya tomado
+  const despuesPares = [];
   dest.filas.forEach(function (fa) {
     if (!/^c-/.test(str(val(fa, 'agenda_uid'))) || !fa.fecha) return;
     const evFila = { figuras: fa.figura ? [fa.figura] : [], fecha: fa.fecha, hora: valorAgendaComparable_(val(fa, 'HORA'), 'HORA'),
@@ -1129,8 +1152,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     // barrio o la del mail; el eje del mail), contra las filas del equipo.
     if (usarUbicacion3_()) evFila.ubic = ubicacionDeFila_(Object.assign({}, fa, { lugarMail: lugarMail }));
     const casi = casiDuplicados(evFila, true).filter(function (x) { return x.f.fila !== fa.fila; });
-    if (casi.length) P.duplicados.push({ tipo: 'despues', fAgenda: fa, candidatas: casi });
+    if (casi.length) despuesPares.push({ fAgenda: fa, candidatas: casi });
   });
+  // 16/10: "una reunión en dos filas" — los pares del H3 y de "después de crear" que el equipo tiene que decidir (AGENDA_DUPLICADOS)
+  _dosFilasAgenda_(P, dest, A, despuesPares, elecciones, paresIgnorados, P.fusionPrevia);
 
   // --- A (prompt 07). "Tocado por el equipo" (en las filas de la agenda) y "Origen fila" = equipo (en las demás) ---
   dest.filas.forEach(function (f) {
@@ -1258,7 +1283,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                 reprogramadasNoMovibles: P.reprogramadasNoMovibles.length, viejasSinFila: P.viejasSinFila.length,
                 figuraACompletar: P.figuraACompletar.length, duplicadasEnCorrida: P.duplicadasEnCorrida.length, barrio: P.barrio,
                 duplicadosAntes: P.duplicados.filter(function (x) { return x.tipo === 'antes'; }).length,
-                duplicadosDespues: P.duplicados.filter(function (x) { return x.tipo === 'despues'; }).length,
+                duplicadosDespues: P.dosFilas.filter(function (x) { return x.origen === 'despues'; }).length,
+                dosFilas: P.dosFilas.length, dosFilasDecididas: P.dosFilasDecididas.length,
+                juntadasAntes: P.fusionPrevia ? (P.fusionPrevia.decididas || []).length + (P.fusionPrevia.automaticas || []).length : 0,
                 cancelaciones: P.duplicados.filter(function (x) { return x.tipo === 'cancelacion'; }).length,
                 cancelacionSigue: P.cancelacionSigue.length,
                 borradasEquipo: P.borradasEquipo.length, origenEquipo: P.origenEquipo || 0, tocado: n('tocado'),
@@ -1857,9 +1884,10 @@ function logPlanAgenda_(P, dest) {
   }
   Logger.log('  Seguridad sin figura: se completa %s | a completar por el equipo %s | reuniones viejas del mail sin fila ' +
              '(no se crean) %s', s.figura, s.figuraACompletar, s.viejasSinFila);
-  Logger.log('  AGENDA_DUPLICADOS: antes de crear (NO se crean, se pregunta) %s | después de crear (informativos) %s | ' +
-             'elecciones aplicadas %s | BORRADAS POR EL EQUIPO (no se recrean) %s | "Origen fila" = equipo en %s filas | ' +
-             '"Tocado por el equipo" recalculado en %s', s.duplicadosAntes, s.duplicadosDespues, s.eleccionesAplicadas,
+  Logger.log('  AGENDA_DUPLICADOS (sólo lo que se decide): antes de crear (NO se crean, se pregunta) %s | una reunión en dos filas (se pregunta) %s ' +
+             '(de "después de crear" %s) | ya decididas por el equipo %s | juntadas antes del plan %s | elecciones aplicadas %s | BORRADAS POR EL ' +
+             'EQUIPO (no se recrean) %s | "Origen fila" = equipo en %s filas | "Tocado por el equipo" recalculado en %s', s.duplicadosAntes,
+             s.dosFilas || 0, s.duplicadosDespues, s.dosFilasDecididas || 0, s.juntadasAntes || 0, s.eleccionesAplicadas,
              s.borradasEquipo, s.origenEquipo, s.tocado);
   if (P.historial && P.historial.error) {
     Logger.log('  >>> el historial de la agenda NO se pudo leer (%s): en la corrida real no se crea nada (%s reuniones).',
@@ -1874,10 +1902,16 @@ function logPlanAgenda_(P, dest) {
     } else if (x.tipo === 'cancelacion') {
       Logger.log('    ¿SE CANCELÓ? (se pregunta) | %s %s | %s | %s → fila %s | %s', fmtFecha_(x.ev.fecha), x.ev.hora,
                  x.ev.figuraFila || x.ev.tipo, x.ev.lugar, x.candidatas[0].f.fila, x.candidatas[0].diferencia);
-    } else {
-      Logger.log('    DUPLICADO POSTERIOR | fila %s de la agenda (%s %s) ~ %s', x.fAgenda.fila, x.fAgenda.figura || '(sin figura)',
-                 fmtFecha_(x.fAgenda.fecha), x.candidatas.map(function (c) { return 'fila ' + c.f.fila + ' (' + c.diferencia + ')'; }).join('; '));
+    } else if (x.tipo === 'dos_filas') {
+      // 16/10: "una reunión en dos filas" (H3 o "después de crear"): se pregunta en AGENDA_DUPLICADOS
+      Logger.log('    UNA REUNIÓN EN DOS FILAS (se pregunta: quedarse con una, o son distintas) | filas %s y %s | %s | %s%s', x.par.a.fila, x.par.b.fila,
+                 x.par.origen === 'despues' ? 'después de crear' : 'H3', x.par.texto,
+                 x.par.eval ? (x.par.eval.motivos.length ? ' | no se junta sola: ' + x.par.eval.motivos.join('; ') : ' | las reglas del paso 97 la juntarían (se queda la ' + x.par.eval.vieja.fila + ')') : '');
     }
+  });
+  (P.dosFilasDecididas || []).forEach(function (d) {
+    Logger.log('    YA DECIDIDO POR EL EQUIPO | %s | %s', d.clave, d.tipo === 'distintas' ? 'son reuniones distintas (no se cuenta en "una reunión, una fila")'
+               : (d.tipo === 'sobra' ? 'quedarse con la fila ' + d.x.fila + '; la ' + d.y.fila + ' es del equipo: borrarla a mano' : 'quedarse con la fila ' + d.x.fila + '; la ' + d.y.fila + ' todavía no se juntó' + (d.motivo ? ' (' + d.motivo + ')' : '')));
   });
   if (!AGENDA_CANCELACION_AUTOMATICA) {
     Logger.log('  CANCELACIONES (AGENDA_CANCELACION_AUTOMATICA = false): se preguntan %s | "Sigue" (no se tocan) %s',
@@ -1918,8 +1952,10 @@ function _escribirSolapasAgenda_(P) {
       fig.push([P.ajustarFila ? P.ajustarFila(x.f.fila) : x.f.fila, fmtFecha_(x.f.fecha), x.f.barrio, x.f.evento, x.motivo, (x.filas || []).join(', ')]);
     });
     _escribirHojaAgenda_(AGENDA_SOLAPA_FIGURA, fig);
-    // 15/10 (H1): las reuniones "pendiente de definir" (sólo con AGENDA_CREAR_SOLO_IDENTIFICADAS; escribirHoja_ le da el formato)
-    if (P.modos && (P.modos.soloIdentificadas || (P.canceladasMail || []).length)) escribirHoja_(AGENDA_SOLAPA_PENDIENTES, matrizPendientesAgenda_(P));
+    // 15/10 (H1) y 16/10: AGENDA_PENDIENTES, lo que el equipo tiene que SABER (pendientes de definir, canceladas en el mail, semanas
+    // frenadas, cancelaciones aplicadas, reuniones juntadas, filas que sobran); escribirHoja_ le da el formato
+    try { _escribirPendientesAgenda_(P); }
+    catch (err) { Logger.log('[agenda] %s no se pudo escribir: %s (la corrida igual terminó)', AGENDA_SOLAPA_PENDIENTES, err); }
     _agregarCacheGeocode_(P.geocodeNuevas || []);
   } catch (err) {
     Logger.log('[agenda] no se pudieron escribir las solapas informativas: %s (la corrida igual terminó)', err);
@@ -2048,7 +2084,10 @@ function _deshacerAgenda_(enSeco, corrida) {
   const generales = cambios.filter(function (c) { return c.col && c.tipo === 'fusionar_general'; })
     .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
   const restaurar = cambios.filter(function (c) { return c.tipo === 'borrar' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
-  const restaurarFusion = cambios.filter(function (c) { return c.tipo === 'borrar_fusion' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
+  // 16/10: también la que borró una decisión del equipo ("borrar_fusion_equipo", AGENDA_DUPLICADOS "Quedarse con la fila X")
+  const restaurarFusion = cambios.filter(function (c) {
+    return (c.tipo === 'borrar_fusion' || c.tipo === 'borrar_fusion_equipo') && !cancelados[c.uid] && !filaDeUid[c.uid];
+  });
   Logger.log('  filas creadas: %s → se sacan %s | NO se sacan (alguien cargó algo) %s', Object.keys(creadas).length,
              aSacar.length, noSeSacan.length);
   noSeSacan.forEach(function (x) { Logger.log('    fila %s: %s', x.fila, x.motivo); });
@@ -2538,7 +2577,8 @@ function leerHistorialAgenda_() {
   // 15/10 (noche): `suspendidasRojo`: los agenda_uid que el sistema suspendió por el ROJO del mail (líneas "suspendida_rojo");
   // `eleccionesRegistradas`: las elecciones ya anotadas en el registro (AGENDA_ELECCIONES_SIEMPRE: una sola vez)
   const h = { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), yaCargadas: new Set(), eleccionesRegistradas: new Set(),
-              suspendidasRojo: new Set(), suspendidasConjunto: new Set(), suspendidasConjuntoFecha: new Map(), error: '' };
+              suspendidasRojo: new Set(), suspendidasConjunto: new Set(), suspendidasConjuntoFecha: new Map(),
+              creacionPorUid: new Map(), error: '' };   // 16/10: agenda_uid → { corrida, id } de su "crear_id" (qué fila es la vieja de un par)
   try {
     const ss = registrosAgenda_();
     const cam = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS), reg = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
@@ -2557,7 +2597,11 @@ function leerHistorialAgenda_() {
       // 15/10 (AGENDA_ELECCIONES_SIEMPRE, AGENDA_CERRAR_CANCELADAS_MAIL): lo anotado una sola vez (tipo | id_reunion | elección)
       if (/^eleccion_|^cancelada_mail$/.test(tipo)) { h.eleccionesRegistradas.add(tipo + '|' + str(r[6]) + '|' + str(r[4])); return; }
       if (!uid) return;
-      if (tipo === 'crear_id') h.creadas.set(uid, str(r[6]));
+      if (tipo === 'crear_id') {
+        h.creadas.set(uid, str(r[6]));
+        const ya = h.creacionPorUid.get(uid);
+        if (!ya || corrida < ya.corrida) h.creacionPorUid.set(uid, { corrida: corrida, id: str(r[6]) });
+      }
       else if (esBorradaPorSistemaAgenda_(tipo)) borradasSistema.push(corrida + '|' + uid);   // 16/10: también la fusión (54_FusionAgenda.js)
       else if (tipo === 'borrar_cancelado') cancelados.add(corrida + '|' + uid);
       else if (tipo === 'olvidar_borrada') h.olvidadas.add(uid);
@@ -2578,7 +2622,9 @@ function leerHistorialAgenda_() {
 /**
  * ¿La línea de REGISTRO_AGENDA_CAMBIOS dice que la fila la borró el SISTEMA? La regla 7 ("borrar") y, desde el 16/10, la fusión
  * de un par "una reunión en dos filas" ("borrar_fusion" / "fusionada_sistema", 54_FusionAgenda.js). Una fila así no es
- * "borrada por el equipo": la reunión no queda bloqueada.
+ * "borrada por el equipo": la reunión no queda bloqueada. (16/10: la que se borró porque el EQUIPO eligió "Quedarse con la fila X"
+ * en AGENDA_DUPLICADOS —"borrar_fusion_equipo" / "fusionada_equipo"— NO es del sistema: cuenta como borrada por el equipo y la
+ * agenda no la recrea mientras la reunión siga en el mail.)
  */
 function esBorradaPorSistemaAgenda_(tipo) {
   return tipo === 'borrar' || tipo === 'borrar_fusion' || tipo === 'fusionada_sistema';
@@ -2639,7 +2685,10 @@ function leerEleccionesAgenda_(opcionesLectura) {
       const hdr = v[0].map(normalizeHeader_);
       const i = function (n) { return hdr.indexOf(normalizeHeader_(n)); };
       v.slice(1).forEach(function (r, k) {
-        const id = str(r[i('id_reunion')]), idFila = str(r[i('id_fila')]), texto = str(r[i('ELEGIR')]);
+        const id = str(r[i('id_reunion')]), texto = str(r[i('ELEGIR')]);
+        // 16/10: en la línea de un par ("una reunión en dos filas"), "Quedarse con la fila N" se traduce a la IDENTIDAD de esa fila
+        // con el mapa de la columna oculta (el número sólo vale para esa línea); "Son reuniones distintas", sin fila
+        const idFila = esIdEleccionParAgenda_(id) ? idFilaDeOpcionParAgenda_(texto, str(r[i('id_fila')])) : str(r[i('id_fila')]);
         const origen = AGENDA_SOLAPA_DUPLICADOS + ' fila ' + (k + 2);
         if (id) m.idsEnSolapa.add(id);
         if (esVacio_(r[i('ELEGIR')])) return;
@@ -2669,9 +2718,12 @@ function leerEleccionesAgenda_(opcionesLectura) {
   return m;
 }
 
-/** El texto de ELEGIR, en su código: 'ya_cargada' | 'vincular' | 'crear' | 'cancelar' | 'sigue' | 'no_se' ('' si no se reconoce). */
+/** El texto de ELEGIR, en su código: 'ya_cargada' | 'vincular' | 'crear' | 'cancelar' | 'sigue' | 'no_se' ('' si no se reconoce).
+ *  16/10, un par "una reunión en dos filas": 'quedarse' ("Quedarse con la fila N") | 'distintas' ("Son reuniones distintas"). */
 function clasificarEleccionAgenda_(eleccion) {
   const e = normalizeText_(eleccion);
+  if (/^quedarse con la fila/.test(e)) return 'quedarse';
+  if (/reuniones distintas/.test(e)) return 'distintas';
   return /cargada|otra fila/.test(e) ? 'ya_cargada' : /vincular|es la misma/.test(e) ? 'vincular' : (/crear|distintas/.test(e) ? 'crear' :
          (/cancel/.test(e) ? 'cancelar' : (/^sigue/.test(e) ? 'sigue' : (/no s/.test(e) ? 'no_se' : ''))));
 }
@@ -2736,6 +2788,7 @@ function filaDeEleccionAgenda_(filas, idFila) {
 
 /** Por qué el plan no miró una elección (15/10): su reunión salió del mail, del alcance, o la pregunta ya no corresponde. */
 function motivoEleccionNoUsadaAgenda_(clave, r, alcance) {
+  if (esIdEleccionParAgenda_(clave)) return 'el par ya no está en la base (se juntó, se borró una de las dos filas o dejó de ser "una reunión en dos filas")';
   const esCanc = /^cancelacion\|/.test(clave);
   const id = String(clave).replace(/^cancelacion\|/, '');
   const todas = r.unicas.concat(r.desaparecidas);
@@ -2808,9 +2861,12 @@ const ENC_DUPLICADOS_AGENDA_ = ['ELEGIR', 'COMENTARIO', 'resultado', 'tipo', 're
   'fecha (fila)', 'hora (fila)', 'barrio (fila)', 'STATUS (fila)', 'Origen fila', 'diferencia', 'qué hacer', 'id_reunion', 'id_fila'];
 
 /**
- * **AGENDA_DUPLICADOS** en el archivo del destino (corrida real): una línea por fila candidata. "Antes de crear": ELEGIR
- * (desplegable) y COMENTARIO adelante, en amarillo, únicas celdas editables; "después de crear": informativa (la resuelve
- * el equipo a mano, borrando la fila que sobra). La identidad va en columnas ocultas (id_reunion, id_fila).
+ * **AGENDA_DUPLICADOS** en el archivo del destino (corrida real): SÓLO lo que el equipo tiene que decidir (16/10). "Antes de
+ * crear", "cancelación" y "la fila elegida ya no está": una línea por fila candidata; "una reunión en dos filas" (H3 y
+ * "después de crear"): una línea por PAR, con ELEGIR "Quedarse con la fila X" / "… Y" / "Son reuniones distintas". ELEGIR
+ * (desplegable) y COMENTARIO adelante, en amarillo, únicas celdas editables. La identidad va en columnas ocultas (id_reunion,
+ * id_fila; en un par, "X=identidad # Y=identidad"). Lo informativo (la cancelada en el mail, la cancelación aplicada, la semana
+ * frenada) no se dibuja: va a AGENDA_PENDIENTES (`infoAgenda_`).
  */
 function escribirDuplicadosAgenda_(P) {
   const ss = ssDestino_();
@@ -2830,17 +2886,37 @@ function escribirDuplicadosAgenda_(P) {
             f.barrio || '', str(v('STATUS REUNIÓN')), str(v('Origen fila')) || ORIGEN_EQUIPO, c.diferencia];
   };
   P.duplicados.forEach(function (x) {
-    // 15/10 (AGENDA_CERRAR_CANCELADAS_MAIL): la reunión cancelada en el mail, cerrada (sin ELEGIR); y (AGENDA_ELECCIONES_SIEMPRE)
-    // "Es la misma: vincular" con la fila elegida que ya no está: no se crea, se vuelve a preguntar diciéndolo
-    if (x.tipo === 'cancelada_mail' || x.tipo === 'eleccion_sin_fila') {
+    // 16/10 (decisión del usuario): AGENDA_DUPLICADOS es SÓLO lo que el equipo tiene que decidir. Lo informativo —la cancelada en el
+    // mail, la cancelación aplicada— va a AGENDA_PENDIENTES (intermedia), al resumen del lunes y al aviso diario.
+    if (x.tipo === 'cancelada_mail' || x.tipo === 'cancelacion_aplicada' || x.tipo === 'invariante' || x.tipo === 'despues') return;
+    // 16/10: "una reunión en dos filas" (H3 o "después de crear"): UNA línea por par, con ELEGIR "Quedarse con la fila X" / "… Y" /
+    // "Son reuniones distintas"; la identidad de cada fila (agenda_uid, o figura + fecha + barrio), en las columnas ocultas
+    if (x.tipo === 'dos_filas') {
+      const par = x.par, a = par.a, b = par.b, ev = par.eval;
+      const v = function (f, n) { return P.A[n] == null ? '' : f.valores[P.A[n]]; };
+      const dos = function (fn) { const s1 = fn(a), s2 = fn(b); return s1 === s2 ? s1 : s1 + ' / ' + s2; };
+      const puede = ev && !ev.motivos.length;
+      const que = (par.origen === 'despues' ? 'Una fila de la agenda y una del equipo parecen la misma reunión. '
+                   : 'La misma reunión está en dos filas: en esa semana la agenda no crea nada más hasta que se decida. ') +
+        '"Quedarse con la fila N": el sistema completa la fila N con lo de la otra (sólo lo vacío; lo que ustedes cargaron en la N no se ' +
+        'toca) y borra la otra, si la creó la agenda (queda guardada y se puede deshacer); si la otra la cargaron ustedes, no la borra: queda ' +
+        'en AGENDA_PENDIENTES para borrarla a mano. "Son reuniones distintas": no se vuelve a preguntar. ' +
+        (puede ? 'Sugerencia: quedarse con la fila ' + ev.vieja.fila + ' (' + ev.regla + ')' +
+                 (AGENDA_FUSION_AUTOMATICA ? '.' : '; con la fusión automática prendida, el sistema la juntaría solo.')
+               : (ev && ev.motivos.length ? 'El sistema no las junta solo: ' + ev.motivos.join('; ') + '.' : ''));
+      filas.push(['', '', 'no se juntó sola: elegir' + (par.fallo ? ' (no se pudo juntar: ' + par.fallo + ')' : ''), 'una reunión en dos filas', par.texto,
+                  'filas ' + a.fila + ' y ' + b.fila, dos(function (f) { return f.figura || '(sin figura)'; }), dos(function (f) { return f.fecha ? fmtFecha_(f.fecha) : ''; }),
+                  dos(function (f) { return valorAgendaComparable_(v(f, 'HORA'), 'HORA'); }), dos(function (f) { return f.barrio || ''; }),
+                  dos(function (f) { return str(v(f, 'STATUS REUNIÓN')); }), dos(function (f) { return str(v(f, 'Origen fila')) || ORIGEN_EQUIPO; }),
+                  par.diferencia, que, par.id, mapaOpcionesParAgenda_(par, P.A)]);
+      editables.push({ fila: filas.length, opciones: opcionesParAgenda_(par) });
+      return;
+    }
+    // 15/10 (AGENDA_ELECCIONES_SIEMPRE): "Es la misma: vincular" con la fila elegida que ya no está: no se crea, se vuelve a
+    // preguntar diciéndolo
+    if (x.tipo === 'eleccion_sin_fila') {
       (x.candidatas.length ? x.candidatas : [null]).forEach(function (c) {
         const datosFila = c ? dato(c) : ['', '', '', '', '', '', '', ''];
-        if (x.tipo === 'cancelada_mail') {
-          filas.push(['', x.eleccion ? x.eleccion.comentario : '', 'cancelada en el mail: no se crea' + (x.motivo ? ' (' + x.motivo + ')' : ''),
-                      'cancelada en el mail', reunionTexto(x.ev)].concat(datosFila, ['El mail marca la reunión como cancelada: el sistema no la crea ' +
-                      'ni pregunta (no hay nada que elegir). Si vuelve al mail sin la marca, se trata como siempre.', x.id, c ? idFilaAgenda_(c.f) : '']));
-          return;
-        }
         filas.push(['', x.eleccion ? x.eleccion.comentario : '', 'la fila elegida (' + (x.eleccion && x.eleccion.idFila || '—') + ') ya no está: ' +
                     (x.motivo || '') + '. No se creó: elegir de nuevo', 'antes de crear', reunionTexto(x.ev)].concat(datosFila,
                     ['Se había elegido "' + (x.eleccion ? x.eleccion.texto : '') + '" y esa fila ya no se encuentra. "Son distintas": la crea. ' +
@@ -2850,19 +2926,6 @@ function escribirDuplicadosAgenda_(P) {
       return;
     }
     x.candidatas.forEach(function (c) {
-      // 15/10 (H3): la misma reunión en dos filas (informativo: lo resuelve el equipo borrando la que sobra)
-      if (x.tipo === 'invariante') {
-        filas.push(['', '', 'informativo: en esa semana no se crea nada más', 'una reunión en dos filas', x.x.texto]
-                   .concat(dato(c), ['Es la misma reunión en ' + x.x.filas.length + ' filas: borrar la que sobra (la de la agenda no se recrea).', '', idFilaAgenda_(c.f)]));
-        return;
-      }
-      // 15/10 (J): la cancelación que se aplicó sola (modo "suspender"): el resultado, sin nada que elegir
-      if (x.tipo === 'cancelacion_aplicada') {
-        filas.push(['', '', 'aplicado: Suspendida (salió del mail del ' + fmtFecha_(x.ev.mailQueLaSaco) + ')', 'cancelación',
-                    reunionTexto(x.ev) + ' | la sacó: ' + (x.ev.asuntoQueLaSaco || '') + ' (' + fmtFecha_(x.ev.mailQueLaSaco) + ')']
-                   .concat(dato(c), ['La reunión salió del mail: el sistema la puso en Suspendida (nunca borra). Si vuelve al mail, la reactiva.', '', idFilaAgenda_(c.f)]));
-        return;
-      }
       if (x.tipo === 'cancelacion') {
         const el = x.eleccion;
         filas.push([el ? el.texto : '', el ? el.comentario : '', el && el.eleccion === 'no_se' ? 'pendiente (No sé)' : 'no se tocó: elegir',
@@ -2879,11 +2942,6 @@ function escribirDuplicadosAgenda_(P) {
                     '"Es la misma": la agenda usa esa fila. "Ya está cargada en otra fila": no crea ni toca nada. "Son distintas": la crea.',
                     x.id, idFilaAgenda_(c.f)]));
         editables.push({ fila: filas.length, opciones: AGENDA_OPCIONES_DUPLICADO });
-      } else {
-        const fa = x.fAgenda;
-        filas.push(['', '', 'informativo', 'después de crear', 'fila ' + fa.fila + ' (de la agenda): ' + (fa.figura || '(sin figura)') + ' ' +
-                    fmtFecha_(fa.fecha) + ' ' + (fa.barrio || '')].concat(dato(c), ['La agenda no borra ni fusiona: si es la misma reunión, ' +
-                    'borren la fila que sobra (la de la agenda no se recrea).', '', idFilaAgenda_(c.f)]));
       }
     });
   });
@@ -3010,9 +3068,15 @@ function claveInvarianteEvento_(ev) {
  * que las reuniones que trae el mail con esa clave (`cuentaEnMail(clave)`, mínimo 1: Macri puede tener dos reuniones el mismo
  * día). Sin el mail (`cuentaEnMail` null, el paso 16), se permite un grupo cuyas filas tienen todas una HORA distinta.
  * Devuelve [{ clave, fecha, filas: [f…], texto }].
+ *
+ * 16/10 (AGENDA_DUPLICADOS sólo decisiones), `opciones.ignorados` (`ignoradosDeEleccionesAgenda_`): lo que el EQUIPO ya decidió
+ * de un par de filas no rompe el invariante — "Son reuniones distintas": una fila declarada distinta de TODAS las otras del grupo
+ * sale del grupo; "Quedarse con la fila X": la otra (la que sobra) sale del grupo. Lo que salió por eso va en `.ignoradas` del
+ * resultado ([{ clave, filas, por: 'distintas' | 'sobra', texto }]): no frena la semana ni avisa; el paso 16 lo cuenta aparte.
  */
-function reunionesRepetidasAgenda_(filas, A, cuentaEnMail) {
+function reunionesRepetidasAgenda_(filas, A, cuentaEnMail, opciones) {
   const v = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
+  const ign = opciones && opciones.ignorados && opciones.ignorados.size ? opciones.ignorados : null;
   const grupos = new Map();
   filas.forEach(function (f) {
     const st = normStatus_(v(f, 'STATUS REUNIÓN'));
@@ -3023,8 +3087,40 @@ function reunionesRepetidasAgenda_(filas, A, cuentaEnMail) {
     grupos.get(k).push(f);
   });
   const out = [];
-  grupos.forEach(function (lista, k) {
-    if (lista.length < 2 || !lista.some(function (f) { return !esVacio_(v(f, 'agenda_uid')); })) return;
+  out.ignoradas = [];
+  const quienDe = function (k, lista) {
+    const p = k.split('|');
+    return p[0] === 'seg' ? (lista[0].figura ? lista[0].figura + ' / ' : '') + (str(v(lista[0], 'Evento (mail)')).split(',')[0] || 'sin figura') + ' ' + str(v(lista[0], 'Lugar (mail)'))
+                          : lista[0].figura;
+  };
+  grupos.forEach(function (todas, k) {
+    if (todas.length < 2 || !todas.some(function (f) { return !esVacio_(v(f, 'agenda_uid')); })) return;
+    let lista = todas;
+    if (ign) {
+      const ids = todas.map(function (f) { return idParFilaAgenda_(f, A); });
+      const fuera = {};
+      for (let i = 0; i < todas.length; i++) {
+        for (let j = i + 1; j < todas.length; j++) {
+          const d = ign.get(claveParAgenda_(ids[i], ids[j]));
+          if (d && d.tipo === 'sobra') {
+            if (d.quedarse === ids[i]) fuera[j] = 'sobra';
+            else if (d.quedarse === ids[j]) fuera[i] = 'sobra';
+          }
+        }
+      }
+      const quedan = function () { return todas.map(function (f, i) { return i; }).filter(function (i) { return !fuera[i]; }); };
+      quedan().forEach(function (i) {
+        const otras = quedan().filter(function (j) { return j !== i; });
+        if (otras.length && otras.every(function (j) { const d = ign.get(claveParAgenda_(ids[i], ids[j])); return d && d.tipo === 'distintas'; })) fuera[i] = 'distintas';
+      });
+      if (Object.keys(fuera).length) {
+        out.ignoradas.push({ clave: k, filas: todas, fuera: todas.filter(function (f, i) { return fuera[i]; }),
+                             por: Object.keys(fuera).some(function (i) { return fuera[i] === 'sobra'; }) ? 'sobra' : 'distintas',
+                             texto: fmtFecha_(todas[0].fecha) + ' | ' + quienDe(k, todas) + ' | filas ' + todas.map(function (f) { return f.fila; }).join(', ') });
+        lista = todas.filter(function (f, i) { return !fuera[i]; });
+        if (lista.length < 2) return;
+      }
+    }
     let permitidas;
     if (cuentaEnMail) permitidas = Math.max(1, cuentaEnMail(k) || 0);
     else {
@@ -3033,29 +3129,362 @@ function reunionesRepetidasAgenda_(filas, A, cuentaEnMail) {
       permitidas = distintas ? lista.length : 1;
     }
     if (lista.length <= permitidas) return;
-    const p = k.split('|');
-    const quien = p[0] === 'seg' ? (lista[0].figura ? lista[0].figura + ' / ' : '') + (str(v(lista[0], 'Evento (mail)')).split(',')[0] || 'sin figura') + ' ' + str(v(lista[0], 'Lugar (mail)'))
-                                 : lista[0].figura;
     out.push({ clave: k, fecha: lista[0].fecha, filas: lista,
-               texto: fmtFecha_(lista[0].fecha) + ' | ' + quien + ' | filas ' + lista.map(function (f) { return f.fila; }).join(', ') +
+               texto: fmtFecha_(lista[0].fecha) + ' | ' + quienDe(k, lista) + ' | filas ' + lista.map(function (f) { return f.fila; }).join(', ') +
                       (cuentaEnMail ? ' (el mail trae ' + (cuentaEnMail(k) || 0) + ')' : '') });
   });
-  return out.sort(function (a, b) { return a.fecha - b.fecha; });
+  out.sort(function (a, b) { return a.fecha - b.fecha; });
+  return out;
 }
 
-/** AGENDA_PENDIENTES (H1): una línea por reunión "pendiente de definir", la reunión primero. */
-function matrizPendientesAgenda_(P) {
-  const out = [['reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar del mail', 'evento', 'qué le falta', 'cuándo se crea la fila']];
-  (P.pendientes || []).forEach(function (x) {
-    const ev = x.ev;
-    out.push([fmtFecha_(ev.fecha) + ' ' + (ev.hora || '--:--') + ' | ' + (ev.tipo || '(sin tipo)') + ' | ' + (ev.lugar || '—'),
-              ev.semana || '', ev.grupo || '', fmtFecha_(ev.fecha), ev.hora || '', ev.lugar || '', str(ev.eventoTexto).replace(/\s+/g, ' '),
-              x.falta, x.cancelada ? 'no se crea: el mail la cancela (si un mail posterior la trae sin el rojo, se crea)' :
-              x.seCrea ? 'cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
-              '"), o el ' + fmtFecha_(x.seCrea) + ' (' + AGENDA_CREAR_SIN_DEFINIR_DIAS + ' días antes), lo que pase primero'
-                         : 'cuando llegue un mail de esa semana sin formato raro']);
+// ===================== 16/10: "una reunión en dos filas" — un PAR de filas, la decisión del equipo (AGENDA_DUPLICADOS) =====================
+
+/** La identidad de una fila para un par (nunca el número de fila): su agenda_uid ("uid:…"), o, sin agenda_uid, figura + fecha + barrio ("fila:…"). */
+function idParFilaAgenda_(f, A) {
+  const u = A.agenda_uid == null ? '' : str(f.valores[A.agenda_uid]);
+  return u ? 'uid:' + u : 'fila:' + idFilaAgenda_(f);
+}
+
+/** La clave de un par: las dos identidades, ordenadas (la misma sea cual sea el orden de las filas). */
+function claveParAgenda_(idA, idB) {
+  return [String(idA), String(idB)].sort().join(' # ');
+}
+
+/** El id_reunion de la línea de AGENDA_DUPLICADOS (y de ELECCIONES_AGENDA) de un par: "dos_filas|" + la clave. */
+function idEleccionParAgenda_(clave) { return 'dos_filas|' + clave; }
+function esIdEleccionParAgenda_(id) { return /^dos_filas\|/.test(String(id == null ? '' : id)); }
+
+/** Una fila por su identidad de par: "uid:" = la ÚNICA con ese agenda_uid; "fila:" = la única SIN agenda_uid con ese id_fila (o la
+ *  hallada por `filaDeEleccionAgenda_` entre las del equipo, si el barrio cambió dentro de la comuna). null si no hay una sola. */
+function _filaPorIdParAgenda_(filas, A, id) {
+  const s = String(id == null ? '' : id);
+  if (/^uid:/.test(s)) {
+    const u = s.slice(4);
+    const xs = filas.filter(function (f) { return A.agenda_uid != null && str(f.valores[A.agenda_uid]) === u; });
+    return xs.length === 1 ? xs[0] : null;
+  }
+  if (!/^fila:/.test(s)) return null;
+  const delEquipo = filas.filter(function (f) { return A.agenda_uid == null || esVacio_(f.valores[A.agenda_uid]); });
+  const x = filaDeEleccionAgenda_(delEquipo, s.slice(5));
+  return x.f || null;
+}
+
+/** Las dos filas de un par (por su clave), si están las dos y son distintas: { a, b, porId: { id: fila } }; si no, null. */
+function filasDelParAgenda_(filas, A, clave) {
+  const ids = String(clave == null ? '' : clave).split(' # ');
+  if (ids.length !== 2) return null;
+  const fa = _filaPorIdParAgenda_(filas, A, ids[0]), fb = _filaPorIdParAgenda_(filas, A, ids[1]);
+  if (!fa || !fb || fa === fb) return null;
+  const porId = {};
+  porId[ids[0]] = fa; porId[ids[1]] = fb;
+  return { a: fa, b: fb, porId: porId };
+}
+
+/** Lo que el equipo DECIDIÓ de cada par (ELECCIONES_AGENDA / AGENDA_DUPLICADOS): Map clave → { eleccion: 'quedarse' | 'distintas', idFila, el }. */
+function decisionesParesAgenda_(elecciones) {
+  const out = new Map();
+  if (!elecciones || !elecciones.forEach) return out;
+  elecciones.forEach(function (el, id) {
+    if (!esIdEleccionParAgenda_(id) || !el) return;
+    if (el.eleccion === 'quedarse' && el.idFila) out.set(String(id).slice('dos_filas|'.length), { eleccion: 'quedarse', idFila: el.idFila, el: el });
+    else if (el.eleccion === 'distintas') out.set(String(id).slice('dos_filas|'.length), { eleccion: 'distintas', idFila: '', el: el });
   });
   return out;
+}
+
+/** Los pares que el invariante H3 no cuenta (`reunionesRepetidasAgenda_`, `opciones.ignorados`): Map clave → { tipo: 'distintas' } |
+ *  { tipo: 'sobra', quedarse: idFila de la que se queda }. */
+function ignoradosDeEleccionesAgenda_(elecciones) {
+  const out = new Map();
+  decisionesParesAgenda_(elecciones).forEach(function (d, clave) {
+    out.set(clave, d.eleccion === 'distintas' ? { tipo: 'distintas' } : { tipo: 'sobra', quedarse: d.idFila });
+  });
+  return out;
+}
+
+/** Las opciones de ELEGIR de un par: exactamente "Quedarse con la fila X", "Quedarse con la fila Y", "Son reuniones distintas". */
+function opcionesParAgenda_(par) {
+  return [AGENDA_OPCION_QUEDARSE + par.a.fila, AGENDA_OPCION_QUEDARSE + par.b.fila, AGENDA_OPCION_DISTINTAS];
+}
+
+/** La columna oculta id_fila de la línea de un par: "X=identidad # Y=identidad" (el número de fila sólo traduce la opción de ESA línea). */
+function mapaOpcionesParAgenda_(par, A) {
+  return par.a.fila + '=' + idParFilaAgenda_(par.a, A) + ' # ' + par.b.fila + '=' + idParFilaAgenda_(par.b, A);
+}
+
+/** "Quedarse con la fila 838" + el mapa de la línea → la identidad de esa fila; '' si es otra cosa (o no se reconoce). */
+function idFilaDeOpcionParAgenda_(texto, mapa) {
+  const m = /quedarse con la fila\s*(\d+)/.exec(normalizeText_(texto));
+  if (!m) return '';
+  let out = '';
+  String(mapa == null ? '' : mapa).split(' # ').forEach(function (p) {
+    const k = p.indexOf('=');
+    if (k > 0 && p.slice(0, k).trim() === m[1]) out = p.slice(k + 1).trim();
+  });
+  return out;
+}
+
+/**
+ * **Los pares "una reunión en dos filas" que el equipo tiene que DECIDIR** (16/10; lo llama `planAgenda_`): los grupos del invariante
+ * H3 (de a dos) y las filas parecidas de "después de crear" (una de la agenda y una del equipo), sin los que el equipo ya decidió.
+ * Cada par: { clave, id, a, b (a la de número de fila menor), origen, texto, diferencia, eval (las reglas del paso 97, para decir
+ * si se podría juntar solo), fallo (por qué la fusión de esta corrida no lo juntó) }. Además (`P.dosFilasDecididas`): los pares ya
+ * decididos que siguen en la base ("distintas"; "sobra" = la otra es del equipo, borrarla a mano; "sin_aplicar" = la otra es de
+ * la agenda y todavía no se juntó), y las elecciones de esos pares quedan como consultadas (no se cierran).
+ */
+function _dosFilasAgenda_(P, dest, A, despues, elecciones, ignorados, fusionPrevia) {
+  const pares = [], vistos = new Set();
+  const uidDe = function (f) { return A.agenda_uid == null ? '' : str(f.valores[A.agenda_uid]); };
+  const fallo = {};
+  ((fusionPrevia && fusionPrevia.fallidas) || []).forEach(function (x) { if (x.clave) fallo[x.clave] = x.motivo; });
+  const hist = { porUid: (P.historial && P.historial.creacionPorUid) || new Map() };
+  const agregar = function (f1, f2, origen, texto, diferencia) {
+    if (!f1 || !f2 || f1.fila === f2.fila) return;
+    const clave = claveParAgenda_(idParFilaAgenda_(f1, A), idParFilaAgenda_(f2, A));
+    if (vistos.has(clave) || ignorados.has(clave)) return;
+    vistos.add(clave);
+    const a = f1.fila < f2.fila ? f1 : f2, b = a === f1 ? f2 : f1;
+    let ev = null;
+    if (typeof evaluarParAutomaticoFusion_ === 'function') {
+      try { ev = evaluarParAutomaticoFusion_(dest.hdr, A, a, b, hist); } catch (err) { ev = null; }
+    }
+    pares.push({ clave: clave, id: idEleccionParAgenda_(clave), a: a, b: b, origen: origen, texto: texto, diferencia: diferencia,
+                 eval: ev, fallo: fallo[clave] || '' });
+  };
+  (P.invariante || []).forEach(function (x) {
+    for (let i = 0; i < x.filas.length; i++) {
+      for (let j = i + 1; j < x.filas.length; j++) agregar(x.filas[i], x.filas[j], 'invariante', x.texto, 'la misma reunión: ' + x.texto);
+    }
+  });
+  (despues || []).forEach(function (d) {
+    const fa = d.fAgenda;
+    d.candidatas.forEach(function (c) {
+      agregar(fa, c.f, 'despues', 'fila ' + fa.fila + ' (de la agenda): ' + (fa.figura || '(sin figura)') + ' ' + (fa.fecha ? fmtFecha_(fa.fecha) : '') + ' ' +
+              (fa.barrio || '') + ' ~ fila ' + c.f.fila + ' (del equipo)', c.diferencia);
+    });
+  });
+  P.dosFilas = pares;
+  pares.forEach(function (par) {
+    P.duplicados.push({ tipo: 'dos_filas', par: par });
+    if (P.eleccionesConsultadas) P.eleccionesConsultadas.set(par.id, par.id);
+  });
+  // lo ya decidido que sigue en la base
+  P.dosFilasDecididas = [];
+  ignorados.forEach(function (d, clave) {
+    const par = filasDelParAgenda_(dest.filas, A, clave);
+    if (!par) return;                                    // el par ya no está: la elección se cierra (eleccion_cerrada)
+    const id = idEleccionParAgenda_(clave);
+    const el = elecciones && elecciones.get ? elecciones.get(id) : null;
+    if (P.eleccionesConsultadas) P.eleccionesConsultadas.set(id, id);
+    if (d.tipo === 'distintas') {
+      P.eleccionesUsadas.push({ id: id, el: el, eleccion: 'distintas' });
+      P.dosFilasDecididas.push({ clave: clave, tipo: 'distintas', a: par.a, b: par.b });
+      return;
+    }
+    const x = par.porId[d.quedarse];
+    if (!x) return;
+    const y = x === par.a ? par.b : par.a;
+    P.eleccionesUsadas.push({ id: id, el: el, eleccion: 'quedarse', f: x });
+    P.dosFilasDecididas.push({ clave: clave, tipo: /^c-/.test(uidDe(y)) ? 'sin_aplicar' : 'sobra', x: x, y: y, motivo: fallo[clave] || '' });
+  });
+  // las decisiones que la fusión de esta corrida YA aplicó (el par ya no está): se anotan como aplicadas
+  ((fusionPrevia && fusionPrevia.decididas) || []).forEach(function (x) {
+    const id = idEleccionParAgenda_(x.clave);
+    if (P.eleccionesConsultadas) P.eleccionesConsultadas.set(id, id);
+    P.eleccionesUsadas.push({ id: id, el: elecciones && elecciones.get ? elecciones.get(id) : null, eleccion: 'quedarse', fila: x.vieja.fila,
+                              como: 'juntada: la fila ' + x.nueva.fila + ' se borró (corrida ' + x.corrida + ')' });
+  });
+}
+
+// ===================== 16/10: AGENDA_PENDIENTES — lo que el equipo tiene que SABER (no decidir) =====================
+
+/** Los tipos de AGENDA_PENDIENTES que son un HECHO de una corrida (se listan AGENDA_PENDIENTES_DIAS_EVENTOS días); los demás son un estado (se recalculan). */
+const TIPOS_EVENTO_PENDIENTES_AGENDA_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo'];
+const ENC_PENDIENTES_AGENDA_ = ['tipo', 'reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar', 'fila', 'qué pasa', 'qué sigue', 'desde', 'id'];
+
+/**
+ * Lo que el equipo tiene que SABER de la agenda en esta corrida (no decidir: eso va a AGENDA_DUPLICADOS). Una entrada por cosa:
+ * { tipo, reunion, semana, grupo, fecha, hora, lugar, fila, que, sigue, id (estable entre corridas), evento, avisar }. `avisar`: va
+ * al aviso diario 'agenda_info' (una vez por id); las que ya avisa otro tema ('suspendidas', 'mail_raro') no. En seco no hay
+ * hechos (no se escribió nada).
+ */
+function infoAgenda_(P) {
+  const out = [];
+  const real = !P.enSeco;
+  const textoEv = function (ev) { return _textoReunionAgenda_(ev); };
+  (P.pendientes || []).forEach(function (x) {
+    const ev = x.ev, idR = idReunionAgenda_(ev);
+    const base = { reunion: textoEv(ev) + (ev.lugarTexto ? ' | ' + str(ev.lugarTexto).replace(/\s+/g, ' ') : ''), semana: ev.semana || '', grupo: ev.grupo || '',
+                   fecha: ev.fecha || '', hora: ev.hora || '', lugar: ev.lugar || '', fila: '' };
+    if (x.cancelada) {
+      out.push(Object.assign(base, { tipo: 'cancelada en el mail: no se crea', que: x.falta, id: 'cancelada_mail|' + idR, avisar: false,
+                                     sigue: 'nada: no se crea (si un mail posterior la trae sin el rojo, se crea)' }));
+    } else if (x.seCrea) {
+      out.push(Object.assign(base, { tipo: 'pendiente de definir', que: 'le falta: ' + x.falta + ' (no se crea la fila todavía)', id: 'pendiente|' + idR, avisar: true,
+                                     sigue: 'se crea cuando llegue la figura o una dirección (hoy: "' + (str(ev.lugarTexto).replace(/\s+/g, ' ') || 'sin Lugar') +
+                                            '"), o el ' + fmtFecha_(x.seCrea) + ' (' + AGENDA_CREAR_SIN_DEFINIR_DIAS + ' días antes), lo que pase primero' }));
+    } else {
+      out.push(Object.assign(base, { tipo: 'pendiente: mail con formato raro', que: 'le falta: ' + x.falta, id: 'mail_raro|' + idR, avisar: false,
+                                     sigue: 'se crea cuando llegue un mail de esa semana sin formato raro' }));
+    }
+  });
+  const bloqueadasPorSemana = {};
+  (P.bloqueadasInvariante || []).forEach(function (ev) {
+    if (!ev.fecha) return;
+    const k = lunesYmdAgenda_(ev.fecha);
+    (bloqueadasPorSemana[k] = bloqueadasPorSemana[k] || []).push(ev);
+  });
+  (P.invariante || []).forEach(function (x) {
+    const lun = lunesYmdAgenda_(x.fecha), bl = bloqueadasPorSemana[lun] || [];
+    const lunD = new Date(+lun.slice(0, 4), +lun.slice(4, 6) - 1, +lun.slice(6, 8), 12);
+    out.push({ tipo: 'semana frenada: una reunión en dos filas', reunion: x.texto, semana: 'semana del ' + fmtFecha_(lunD), grupo: '',
+               fecha: x.fecha, hora: '', lugar: '', fila: x.filas.map(function (f) { return f.fila; }).join(', '),
+               que: 'la misma reunión está en ' + x.filas.length + ' filas: en esa semana la agenda no crea ninguna reunión nueva' +
+                    (bl.length ? ' (esperan ' + bl.length + ': ' + bl.slice(0, 5).map(textoEv).join(' / ') + (bl.length > 5 ? ' …' : '') + ')' : ''),
+               sigue: 'elegir en AGENDA_DUPLICADOS (archivo de la base): "Quedarse con la fila …" o "Son reuniones distintas"',
+               id: 'semana_frenada|' + x.clave, avisar: true });
+  });
+  if (real) {
+    const hechas = new Set();
+    ((P.escrito && P.escrito.hechas) || []).forEach(function (e) { hechas.add(P.acciones[e.accion]); });
+    (P.suspendidasAuto || []).forEach(function (x) {
+      if (!hechas.has(x.accion)) return;
+      const uid = P.A && P.A.agenda_uid != null ? str(x.f.valores[P.A.agenda_uid]) : '';
+      out.push({ tipo: 'cancelación aplicada (Suspendida)', reunion: textoEv(x.d), semana: x.d.semana || '', grupo: x.d.grupo || '', fecha: x.d.fecha || '',
+                 hora: x.d.hora || '', lugar: x.d.lugar || '', fila: x.f.fila, que: 'la fila ' + x.f.fila + ' pasó a Suspendida: ' + x.salida + ' (nunca se borra)',
+                 sigue: 'si vuelve al mail, el sistema la reactiva; si se hizo igual, el equipo la pasa a Realizada',
+                 id: 'suspendida|' + (uid || 'fila ' + x.f.fila) + '|' + (x.f.fecha ? ymd_(x.f.fecha) : ''), avisar: false, evento: true });
+    });
+    const fp = P.fusionPrevia || {};
+    const juntada = function (x, tipo, quien) {
+      const v = x.vieja, n = x.nueva;
+      out.push({ tipo: tipo, reunion: (v.fecha ? fmtFecha_(v.fecha) : '') + ' ' + (v.hora || '') + ' | ' + (v.figura || '(sin figura)') + ' | ' + (v.lugar || '—'),
+                 semana: '', grupo: '', fecha: v.fecha || '', hora: v.hora || '', lugar: v.lugar || '', fila: v.fila,
+                 que: quien + ': la fila ' + n.fila + ' era la misma reunión que la ' + v.fila + '; se completó la ' + v.fila + ' (sólo lo vacío o lo del sistema) y la ' +
+                      n.fila + ' se borró (guardada entera en el registro de la agenda)',
+                 sigue: 'nada. Si estuvo mal: deshacer (paso 38) con la corrida ' + x.corrida,
+                 id: (tipo === 'juntada por decisión del equipo' ? 'juntada_equipo|' : 'juntada_sola|') + x.clave, avisar: true, evento: true });
+    };
+    (fp.automaticas || []).forEach(function (x) { juntada(x, 'juntada sola (fusión automática)', 'el sistema la juntó solo (las reglas del paso 97)'); });
+    (fp.decididas || []).forEach(function (x) { juntada(x, 'juntada por decisión del equipo', 'el equipo eligió quedarse con la fila ' + x.vieja.fila); });
+  }
+  (P.dosFilasDecididas || []).forEach(function (d) {
+    if (d.tipo === 'distintas') return;
+    const x = d.x, y = d.y;
+    const reunion = (x.fecha ? fmtFecha_(x.fecha) : '') + ' | ' + (x.figura || '(sin figura)') + ' | filas ' + x.fila + ' y ' + y.fila;
+    if (d.tipo === 'sobra') {
+      out.push({ tipo: 'la que sobra: borrarla a mano', reunion: reunion, semana: '', grupo: '', fecha: x.fecha || '', hora: '', lugar: '', fila: y.fila,
+                 que: 'el equipo eligió quedarse con la fila ' + x.fila + '; la ' + y.fila + ' la cargó el equipo: el sistema no la borra ni le copia nada',
+                 sigue: 'borrar la fila ' + y.fila + ' a mano (mientras tanto, "una reunión, una fila" no la cuenta)', id: 'sobra|' + d.clave, avisar: true });
+    } else {
+      out.push({ tipo: 'decisión del equipo sin aplicar', reunion: reunion, semana: '', grupo: '', fecha: x.fecha || '', hora: '', lugar: '', fila: y.fila,
+                 que: 'el equipo eligió quedarse con la fila ' + x.fila + '; la ' + y.fila + ' todavía no se juntó' + (d.motivo ? ': ' + d.motivo : ''),
+                 sigue: 'el sistema lo vuelve a intentar cada hora; si no puede, borrar la fila ' + y.fila + ' a mano',
+                 id: 'sin_aplicar|' + d.clave, avisar: !!d.motivo });
+    }
+  });
+  return out;
+}
+
+/**
+ * **AGENDA_PENDIENTES** (intermedia): lo que el equipo tiene que saber de la agenda, una línea por cosa, con su `tipo` (16/10:
+ * antes, sólo las "pendiente de definir" y las canceladas en el mail). `previas`: las líneas que ya tenía la solapa ([{ id, tipo,
+ * desde, fila: [valores] }]): un hecho (TIPOS_EVENTO_PENDIENTES_AGENDA_) se sigue listando AGENDA_PENDIENTES_DIAS_EVENTOS días;
+ * "desde" es la primera vez que se listó. Los estados se recalculan (si ya no pasa, la línea se va).
+ */
+function matrizPendientesAgenda_(P, previas) {
+  const items = P.infoAgenda || infoAgenda_(P);
+  const ahora = new Date();
+  const prev = {};
+  (previas || []).forEach(function (x) { if (x.id) prev[x.id] = x; });
+  const out = [ENC_PENDIENTES_AGENDA_.slice()];
+  const ids = new Set();
+  items.forEach(function (it) {
+    ids.add(it.id);
+    const desde = prev[it.id] && prev[it.id].desde instanceof Date ? prev[it.id].desde : ahora;
+    out.push([it.tipo, it.reunion, it.semana, it.grupo, it.fecha instanceof Date ? fmtFecha_(it.fecha) : str(it.fecha), it.hora || '', it.lugar || '',
+              it.fila === '' || it.fila == null ? '' : String(it.fila), it.que, it.sigue, desde, it.id]);
+  });
+  const limite = ahora.getTime() - AGENDA_PENDIENTES_DIAS_EVENTOS * 86400000;
+  (previas || []).forEach(function (x) {
+    if (!x.id || ids.has(x.id) || TIPOS_EVENTO_PENDIENTES_AGENDA_.indexOf(x.tipo) < 0) return;
+    if (!(x.desde instanceof Date) || x.desde.getTime() < limite) return;
+    ids.add(x.id);
+    out.push(x.fila.slice(0, ENC_PENDIENTES_AGENDA_.length));
+  });
+  return out;
+}
+
+/**
+ * Escribe AGENDA_PENDIENTES (intermedia) si hay algo que decir, o si ya existe (para que lo viejo se vaya), o con H1 prendido.
+ * `P.infoAgenda` queda calculado (lo usa el aviso diario).
+ */
+function _escribirPendientesAgenda_(P) {
+  P.infoAgenda = infoAgenda_(P);
+  const previas = _leerPendientesPreviasAgenda_();
+  const m = matrizPendientesAgenda_(P, previas.filas);
+  if (!(P.modos && P.modos.soloIdentificadas) && m.length < 2 && !previas.existe) return false;
+  escribirHoja_(AGENDA_SOLAPA_PENDIENTES, m);
+  return true;
+}
+
+/** Las líneas que ya tiene AGENDA_PENDIENTES (por su encabezado; las de antes del 16/10, sin "id", no se conservan). Sólo lectura. */
+function _leerPendientesPreviasAgenda_() {
+  const sh = ssIntermedia_().getSheetByName(AGENDA_SOLAPA_PENDIENTES);
+  if (!sh || sh.getLastRow() < 2) return { existe: !!sh, filas: [] };
+  const v = sh.getRange(1, 1, sh.getLastRow(), Math.max(1, sh.getLastColumn())).getValues();
+  const hdr = v[0].map(normalizeHeader_);
+  const i = function (n) { return hdr.indexOf(normalizeHeader_(n)); };
+  if (i('id') < 0 || i('tipo') < 0) return { existe: true, filas: [] };
+  const filas = v.slice(1).filter(function (r) { return str(r[i('id')]); }).map(function (r) {
+    const fila = ENC_PENDIENTES_AGENDA_.map(function (n) { const k = i(n); return k < 0 ? '' : r[k]; });
+    return { id: str(r[i('id')]), tipo: str(r[i('tipo')]), desde: i('desde') >= 0 && r[i('desde')] instanceof Date ? r[i('desde')] : null, fila: fila };
+  });
+  return { existe: true, filas: filas };
+}
+
+/**
+ * **El aviso diario de lo que hay que saber** (16/10; tema 'agenda_info' de 50_Avisos.js, que los junta en UN mail por día): cada
+ * cosa NUEVA de AGENDA_PENDIENTES con `avisar`, UNA sola vez. Las ya avisadas, en la propiedad AGENDA_PROP_INFO_AVISADOS (un hash
+ * corto del id → la fecha; se olvidan a los AGENDA_INFO_AVISADOS_DIAS días; si no entra en la propiedad, se descartan las más
+ * viejas). Devuelve cuántas avisó.
+ */
+function _avisarInfoAgenda_(P, av) {
+  const items = (P.infoAgenda || infoAgenda_(P)).filter(function (it) { return it.avisar; });
+  if (!items.length) return 0;
+  let props = null, vistas = {};
+  try { props = PropertiesService.getScriptProperties(); vistas = JSON.parse(props.getProperty(AGENDA_PROP_INFO_AVISADOS) || '{}') || {}; }
+  catch (err) { vistas = {}; }
+  const hoy = Utilities.formatDate(new Date(), RDV_TZ, 'yyyy-MM-dd');
+  const viejo = Utilities.formatDate(new Date(Date.now() - AGENDA_INFO_AVISADOS_DIAS * 86400000), RDV_TZ, 'yyyy-MM-dd');
+  Object.keys(vistas).forEach(function (k) { if (String(vistas[k]) < viejo) delete vistas[k]; });
+  let n = 0;
+  items.forEach(function (it) {
+    const k = _hashCortoAgenda_(it.id);
+    if (vistas[k]) return;
+    vistas[k] = hoy;
+    av('agenda_info', it.tipo.toUpperCase() + ' | ' + it.reunion + (it.fila !== '' && it.fila != null ? ' | fila ' + it.fila : '') + ' | ' + it.que + ' → ' + it.sigue);
+    n++;
+  });
+  if (n && props) {
+    try {
+      let s = JSON.stringify(vistas);
+      if (s.length > 8000) {   // 9 KB por propiedad: se descartan las más viejas
+        const ks = Object.keys(vistas).sort(function (a, b) { return String(vistas[a]).localeCompare(String(vistas[b])); });
+        while (s.length > 8000 && ks.length) { delete vistas[ks.shift()]; s = JSON.stringify(vistas); }
+      }
+      props.setProperty(AGENDA_PROP_INFO_AVISADOS, s);
+    } catch (err) { /* el aviso nunca corta */ }
+  }
+  return n;
+}
+
+/** Un hash corto (12 hex) de un texto: la clave de "ya avisado" (los ids de la agenda pueden ser largos). */
+function _hashCortoAgenda_(s) {
+  try {
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(s), Utilities.Charset.UTF_8)
+      .map(function (b) { return ('0' + ((b + 256) % 256).toString(16)).slice(-2); }).join('').slice(0, 12);
+  } catch (err) { return String(s).slice(0, 60); }
 }
 
 /** El log de lo nuevo del 15/10 (sólo si algún interruptor está prendido o hay algo que decir). */
@@ -3133,8 +3562,8 @@ function _textoReunionAgenda_(ev) {
 }
 
 /**
- * Los AVISOS de la agenda (corrida real; `registrarAviso_` es del sistema de mails, 50_Avisos.js): el invariante
- * (invariante_agenda), los mails raros y la misma reunión dos veces (mail_raro: sólo los mails de las últimas 24 h, para no
+ * Los AVISOS de la agenda (corrida real; `registrarAviso_` es del sistema de mails, 50_Avisos.js): lo nuevo de AGENDA_PENDIENTES
+ * (agenda_info, una vez por cosa: 16/10, en vez de invariante_agenda en cada corrida), los mails raros y la misma reunión dos veces (mail_raro: sólo los mails de las últimas 24 h, para no
  * repetir cada hora el mismo mail), y con el modo "suspender" cada suspensión escrita (suspendidas) y cada salvaguarda que
  * frenó una (cancelacion_no_aplicada). Sin `registrarAviso_`, nada. Devuelve cuántos avisos registró.
  */
@@ -3145,11 +3574,10 @@ function _avisosAgendaSegura_(P, r) {
     try { registrarAviso_(tema, texto); n++; } catch (err) { Logger.log('>>> el aviso "%s" no se registró: %s', tema, err); }
   };
   const reciente = function (d) { return d && (Date.now() - d.getTime()) <= 86400000; };
-  if (P.modos.invariante) {
-    (P.invariante || []).forEach(function (x) {
-      av('invariante_agenda', 'una reunión en ' + x.filas.length + ' filas de la base: ' + x.texto + ' — en esa semana la agenda no crea nada más hasta que se borre la que sobra (AGENDA_DUPLICADOS)');
-    });
-  }
+  // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo informativo NUEVO de AGENDA_PENDIENTES —una semana frenada por "una reunión en dos
+  // filas", una reunión juntada sola o por decisión del equipo, una fila que sobra, una pendiente de definir— va al aviso diario
+  // 'agenda_info', UNA vez por cosa (antes: 'invariante_agenda' en cada corrida)
+  _avisarInfoAgenda_(P, av);
   if (P.modos.validarMails) {
     ((r && r.mailsRaros) || []).forEach(function (m) {
       if (!reciente(m.fecha)) return;

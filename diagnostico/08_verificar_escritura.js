@@ -211,6 +211,12 @@ function verificarEscritura() {
                ag.invariante.length);
     ag.invariante.forEach(function (x) { Logger.log('    %s', x.texto); });
     if (ag.invariante.length) problemas.push('una reunión en dos filas (invariante de la agenda): ' + ag.invariante.length);
+    // 16/10: lo que el equipo ya decidió (AGENDA_DUPLICADOS) no es un problema: se cuenta aparte
+    const ign = ag.invariante.ignoradas || [];
+    const dist = ign.filter(function (x) { return x.por === 'distintas'; }), sob = ign.filter(function (x) { return x.por === 'sobra'; });
+    Logger.log('  "una reunión, una fila": DISTINTAS POR DECISIÓN DEL EQUIPO %s | la que sobra (el equipo eligió con cuál quedarse; borrarla a mano) %s   (no son problemas)',
+               dist.length, sob.length);
+    ign.forEach(function (x) { Logger.log('    %s | %s', x.por === 'distintas' ? 'distintas por decisión del equipo' : 'la que sobra: fila ' + x.fuera.map(function (f) { return f.fila; }).join(', '), x.texto); });
   }
 
   // --- 5) la lista, y si hoy EL MISMO PLAN las escribiría igual ---
@@ -362,7 +368,11 @@ function _filasAgenda_diag8(dest) {
   const out = { sinColumnas: A.faltan.length > 0, filas: 0, duplicados: [], vencidas: [], editadas: [], barrioDeLaAgenda: 0,
                 casiDuplicados: [], tocado: {}, filasTocadas: 0, origen: {}, invariante: [] };
   if (out.sinColumnas) return out;
-  out.invariante = reunionesRepetidasAgenda_(dest.filas, A, null);   // 15/10 (H3), 40_Agenda.js
+  // 15/10 (H3), 40_Agenda.js; 16/10: sin los pares que el equipo ya decidió en AGENDA_DUPLICADOS ("Son reuniones distintas", o
+  // "Quedarse con la fila X" con la otra del equipo, a borrar a mano): ésos se cuentan aparte (out.invariante.ignoradas)
+  let ignorados = new Map();
+  try { ignorados = ignoradosDeEleccionesAgenda_(leerEleccionesAgenda_()); } catch (err) { Logger.log('  (las elecciones de la agenda no se pudieron leer: %s)', err); }
+  out.invariante = reunionesRepetidasAgenda_(dest.filas, A, null, { ignorados: ignorados });
   const val = function (f, n) { return A[n] == null ? '' : f.valores[A[n]]; };
   const limite = new Date(hoyMediodia_().getTime() - AGENDA_DIAS_VENCIDA * 86400000);
   const porFigFecha = new Map();

@@ -5,8 +5,39 @@
 > **En corto.** Las reuniones del mail las crea el sistema (columna **"Origen fila"** = "sistema (agenda)", celdas en
 > celeste). **No carguen una fila nueva para una reunión que ya está: completen la que existe.** Lo que corrijan se
 > respeta y queda anotado en **"Tocado por el equipo"**. Si una fila sobra, **bórrenla: el sistema no la vuelve a
-> crear.** Si el sistema duda, pregunta en la solapa **AGENDA_DUPLICADOS**. El texto completo del mail queda en las
-> columnas **"(mail)"**, al final.
+> crear.** Si el sistema duda, pregunta en la solapa **AGENDA_DUPLICADOS**: ahí está **sólo lo que ustedes tienen que
+> decidir**. Lo que es para saber (una semana frenada, una reunión juntada, una cancelación aplicada, una reunión por
+> definir) está en **AGENDA_PENDIENTES** (base intermedia). El texto completo del mail queda en las columnas **"(mail)"**,
+> al final.
+
+## AGENDA_DUPLICADOS: sólo lo que hay que decidir (16/10)
+
+- **Cada línea pide una decisión** en **ELEGIR** (la única columna, con **COMENTARIO**, donde se puede escribir). Se aplica
+  en la corrida siguiente (cada hora) y la línea se va. No hay líneas "informativas".
+- **Una reunión en dos filas** (la misma reunión cargada dos veces: la misma figura el mismo día, o la misma Seguridad en tu
+  Barrio; o una fila de ustedes parecida a una que creó la agenda): **una línea por par**, con las dos filas, y en ELEGIR:
+  - *"Quedarse con la fila X"*: el sistema completa la fila X con lo de la otra **sólo donde la X está vacía o tiene lo que
+    escribió el sistema** (lo que ustedes cargaron en la X no se toca) y **borra la otra, si la creó la agenda**: queda
+    guardada entera en el registro de la agenda y se puede deshacer (lo corre quien mantiene el sistema). La agenda no la
+    vuelve a crear. **Si la otra la cargaron ustedes, el sistema NO la borra ni le copia nada**: queda en AGENDA_PENDIENTES
+    como *"la que sobra: borrarla a mano"*, y mientras tanto ya no frena nada;
+  - *"Quedarse con la fila Y"*: lo mismo, al revés;
+  - *"Son reuniones distintas"*: no se vuelve a preguntar, y esa semana la agenda sigue creando reuniones normalmente.
+  - El sistema reconoce cada fila por su identidad (no por el número de fila): aunque ordenen o borren filas en el medio, la
+    decisión vale. Si a una fila de ustedes le cambian la figura, la fecha o el barrio a otra comuna, el par puede volver a
+    aparecer.
+- **Próximamente (apagado: `AGENDA_FUSION_AUTOMATICA`)**: si las dos filas las creó la agenda, son del mismo día, el mismo
+  "Lugar (mail)" y el mismo tipo, las dos están "en agenda" y no tienen datos distintos, el sistema **las junta solo** (se
+  queda la más vieja) y lo anota en AGENDA_PENDIENTES (*"juntada sola"*). Lo que no puede juntar solo, se pregunta acá.
+
+## AGENDA_PENDIENTES: lo que hay que saber (base intermedia)
+
+Una línea por cosa, con su **tipo**: *pendiente de definir* (una Seguridad sin figura ni dirección: todavía no tiene fila),
+*cancelada en el mail: no se crea*, *semana frenada: una reunión en dos filas* (hasta que decidan en AGENDA_DUPLICADOS),
+*cancelación aplicada (Suspendida)*, *juntada sola*, *juntada por decisión del equipo*, *la que sobra: borrarla a mano* y
+*decisión del equipo sin aplicar*. Cada línea dice qué pasa y qué sigue. Se reescribe cada hora; lo que ya pasó (una
+cancelación aplicada, una reunión juntada) se sigue mostrando 7 días. También sale en el resumen del lunes y, lo nuevo, en un
+mail por día.
 
 Desde que se prende la agenda, el sistema lee los mails semanales de agenda ("Agenda Encuentros de vecinos con …") y
 mantiene al día las filas de la planilla **"RVD JM-CM - ES"**. Esta página dice qué hace solo, qué no toca nunca y qué
@@ -36,11 +67,11 @@ les queda para cargar a ustedes.
   candidata, la línea no vuelve a aparecer. Si la fila elegida ya no existe: con *"Ya está cargada en otra fila"* el sistema
   igual no crea nada; con *"Es la misma: vincular"* no crea y vuelve a preguntar, diciendo que la fila ya no está. Cada
   decisión aplicada (o cerrada porque la reunión salió del mail) queda anotada una sola vez en el registro de la agenda.
-- **Una reunión que el mail marca como cancelada** (cuando se prenda la detección del color en el mail, todavía apagada) no se crea ni se pregunta: si estaba en AGENDA_DUPLICADOS, la línea queda
-  cerrada con *"cancelada en el mail: no se crea"* y no hay nada que elegir.
-- **Si aparece un duplicado después** (alguien cargó una fila para una reunión que el sistema ya había creado), también
-  sale en AGENDA_DUPLICADOS, como *"después de crear"*. **El sistema no borra ni junta filas solo**: si es la misma
-  reunión, borren la que sobra.
+- **Una reunión que el mail marca como cancelada** no se crea ni se pregunta: no hay nada que elegir. Desde el 16/10 ya no
+  aparece en AGENDA_DUPLICADOS: queda en AGENDA_PENDIENTES como *"cancelada en el mail: no se crea"*.
+- **Si aparece un duplicado después** (alguien cargó una fila para una reunión que el sistema ya había creado), sale en
+  AGENDA_DUPLICADOS como *"una reunión en dos filas"*, para elegir con cuál quedarse o decir que son distintas (arriba). **El
+  sistema nunca borra una fila que cargaron ustedes.**
 - **Si borran una fila que creó el sistema, no la vuelve a crear** mientras la reunión siga en el mail (en el archivo
   "Agenda" figura como "borrada por el equipo"). Si la reunión sale del mail y después vuelve, es una reunión nueva y sí
   la crea.
@@ -61,8 +92,9 @@ les queda para cargar a ustedes.
   reunión, no se toca y se avisa); y la fila está "en agenda" (lo haya puesto el sistema o ustedes; si ustedes le
   pusieron otro STATUS —Realizada, Reprogramada…— no se toca y se avisa). Si se pasa a otro día
   de la misma semana, se mueve la fecha (no se suspende); si se pasa a otra semana, la vieja queda Suspendida y se crea la
-  nueva. En el archivo "Agenda", "Cambios" dice *"suspendida: salió del mail del …"*; en AGENDA_DUPLICADOS queda una línea
-  "cancelación" con el resultado. Si alguien ya había elegido *"Sigue"*, se respeta.
+  nueva. En el archivo "Agenda", "Cambios" dice *"suspendida: salió del mail del …"*; en AGENDA_PENDIENTES queda *"cancelación
+  aplicada (Suspendida)"* (16/10: ya no en AGENDA_DUPLICADOS, que es sólo para decidir). Si alguien ya había elegido *"Sigue"*,
+  se respeta.
 - **Próximamente (15/10, noche, apagado: `AGENDA_COLORES_MAIL`): el COLOR del mail.** Una reunión que el mail marca en
   **ROJO** (Evento, Hora y Lugar) en su última versión está **cancelada aunque siga escrita**: con la cancelación
   automática, pasa a "Suspendida" con las mismas reglas de arriba ("Cambios": *"suspendida: rojo en la v3 del 13/10"*), y

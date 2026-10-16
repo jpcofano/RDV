@@ -21,7 +21,7 @@
  * - AVISOS INMEDIATOS, como mucho UNO por tema por día (el último día mandado, por tema, en una propiedad del script):
  *     'corridas_con_error'      dos corridas seguidas cortadas o con error (AVISOS_CORRIDAS_MALAS_SEGUIDAS);
  *     'parte_salteada'          una parte salteada por tiempo tres corridas seguidas (AVISOS_PARTE_SALTEADA_SEGUIDAS);
- *     'invariante_agenda'       "una reunión, una fila" roto (lo registra la agenda);
+ *     'invariante_agenda'       "una reunión, una fila" roto (hasta el 16/10; desde entonces va por 'agenda_info', abajo);
  *     'mail_raro'               un mail de agenda raro (lo registra la agenda);
  *     'cancelacion_no_aplicada' una salvaguarda frenó una cancelación (lo registra la agenda);
  *     'suspendida_con_datos'    una fila que suspendió el sistema recibió después asistentes o inscriptos: no se pisó nada
@@ -29,6 +29,10 @@
  * - 'suspendidas' (lo registra la agenda, una línea por reunión suspendida): NO va de a una. Se anota en la solapa
  *   AVISOS_SUSPENDIDAS (intermedia) y sale en UN mail por día, "reuniones suspendidas hoy", en la primera corrida desde las
  *   AVISOS_SUSPENDIDAS_HORA; el lunes, además, en el resumen semanal.
+ * - 'agenda_info' (16/10; lo registra la agenda UNA vez por cosa nueva de AGENDA_PENDIENTES: una semana frenada por "una reunión en
+ *   dos filas", una reunión juntada sola o por decisión del equipo, una fila que sobra, una pendiente de definir): igual que las
+ *   suspendidas, en AVISOS_AGENDA_INFO y UN mail por día desde las AVISOS_AGENDA_INFO_HORA (`_avDigests_`). Reemplaza al aviso
+ *   'invariante_agenda' de cada corrida.
  *
  * `registrarAviso_(tema, texto)` NUNCA tira y es barato: con el mail apagado sólo loguea. Prendido, DENTRO de la corrida de
  * la hora no manda nada en el momento: lo pone en una cola (memoria + una propiedad, por si la ejecución muere por los 6 min)
@@ -54,8 +58,23 @@ const AVISOS_TITULOS_ = {
   cancelacion_no_aplicada: 'una cancelación de la agenda NO se aplicó (la frenó una salvaguarda)',
   suspendidas: 'reuniones suspendidas hoy',
   suspendida_con_datos: 'una reunión que el sistema suspendió recibió asistentes o inscriptos (no se pisó nada)',
+  agenda_info: 'lo nuevo de la agenda que el equipo tiene que saber',
   resumen_semanal: 'resumen semanal'
 };
+/**
+ * Los temas que NO van de a uno (16/10): se anotan en una solapa de la intermedia y salen en UN mail por día, desde una hora, con
+ * todo lo que todavía no se mandó. 'suspendidas' (las que suspendió la agenda) y 'agenda_info' (lo nuevo de AGENDA_PENDIENTES: una
+ * semana frenada, una reunión juntada, una fila que sobra…; la agenda ya lo manda una sola vez por cosa).
+ */
+function _avDigests_() {
+  return {
+    suspendidas: { hoja: AVISOS_HOJA_SUSPENDIDAS, hora: AVISOS_SUSPENDIDAS_HORA,
+                   intro: 'La agenda suspendió estas reuniones (desaparecieron del mail siendo futuras):' },
+    agenda_info: { hoja: AVISOS_HOJA_AGENDA_INFO, hora: AVISOS_AGENDA_INFO_HORA,
+                   intro: 'Lo nuevo de la agenda que el equipo tiene que saber (no hay que decidir nada acá: lo que se decide está en ' +
+                          'AGENDA_DUPLICADOS, en el archivo de la base). Todo, también, en la solapa ' + AVISOS_SOLAPA_PENDIENTES + ' de la intermedia:' }
+  };
+}
 /** Cuántos textos entran en un mail (los demás: "y N más"). */
 const AVISOS_MAX_LINEAS_MAIL_ = 40;
 
@@ -136,11 +155,13 @@ function _avisosVaciar_(cola) {
   Object.keys(cola || {}).forEach(function (t) {
     if (!cola[t] || !cola[t].length) return;
     try {
-      if (t === 'suspendidas') _avAnotarSuspendidas_(cola[t]);
+      if (_avDigests_()[t]) _avAnotarDigest_(t, cola[t]);
       else _avisosEnviarTema_(t, cola[t]);
     } catch (err) { Logger.log('>>> AVISOS: el tema "%s" no se pudo mandar: %s', t, err); }
   });
-  try { _avisosSuspendidasDelDia_(); } catch (err) { Logger.log('>>> AVISOS: el mail de las suspendidas falló: %s', err); }
+  Object.keys(_avDigests_()).forEach(function (t) {
+    try { _avisosDigestDelDia_(t); } catch (err) { Logger.log('>>> AVISOS: el mail diario de "%s" falló: %s', t, err); }
+  });
 }
 
 // ===================== los hooks de la corrida de la hora (49_Corridas.js) =====================
@@ -269,10 +290,14 @@ function _enviarMailAviso_(asunto, cuerpo) {
 // ===================== las suspendidas: un mail por día =====================
 
 /** Anota las suspendidas en AVISOS_SUSPENDIDAS (intermedia): fecha | texto | mandado. */
-function _avAnotarSuspendidas_(textos) {
+function _avAnotarSuspendidas_(textos) { return _avAnotarDigest_('suspendidas', textos); }
+
+/** Anota los textos de un tema "de un mail por día" (`_avDigests_`) en su solapa de la intermedia: fecha | texto | mandado. */
+function _avAnotarDigest_(tema, textos) {
+  const dg = _avDigests_()[tema];
   const ss = ssIntermedia_();
-  let sh = ss.getSheetByName(AVISOS_HOJA_SUSPENDIDAS);
-  if (!sh) { sh = ss.insertSheet(AVISOS_HOJA_SUSPENDIDAS); sh.getRange(1, 1, 1, 3).setValues([['fecha', 'texto', 'mandado']]); }
+  let sh = ss.getSheetByName(dg.hoja);
+  if (!sh) { sh = ss.insertSheet(dg.hoja); sh.getRange(1, 1, 1, 3).setValues([['fecha', 'texto', 'mandado']]); }
   const ahora = new Date();
   const filas = textos.map(function (t) { return [ahora, _avTextoCelda_(t), '']; });
   sh.getRange(sh.getLastRow() + 1, 1, filas.length, 3).setValues(filas);
@@ -282,11 +307,15 @@ function _avAnotarSuspendidas_(textos) {
  * El mail "reuniones suspendidas hoy": desde las AVISOS_SUSPENDIDAS_HORA, una vez por día, con todo lo que todavía no se
  * mandó (lo de otro día, con su fecha). Si no hay nada, ese día no se vuelve a mirar.
  */
-function _avisosSuspendidasDelDia_() {
+function _avisosSuspendidasDelDia_() { return _avisosDigestDelDia_('suspendidas'); }
+
+/** El mail diario de un tema de `_avDigests_` (16/10: 'suspendidas' y 'agenda_info'): lo mismo que el de las suspendidas. */
+function _avisosDigestDelDia_(tema) {
   if (!AVISOS_MAIL_ACTIVO) return false;
-  const props = _avProps_(), clave = AVISOS_PROP_ULTIMO + 'suspendidas', hoy = _avHoy_();
-  if (props.getProperty(clave) === hoy || _avHora_() < AVISOS_SUSPENDIDAS_HORA) return false;
-  const sh = ssIntermedia_().getSheetByName(AVISOS_HOJA_SUSPENDIDAS);
+  const dg = _avDigests_()[tema];
+  const props = _avProps_(), clave = AVISOS_PROP_ULTIMO + tema, hoy = _avHoy_();
+  if (props.getProperty(clave) === hoy || _avHora_() < dg.hora) return false;
+  const sh = ssIntermedia_().getSheetByName(dg.hoja);
   const n = sh ? sh.getLastRow() : 0;
   const v = n >= 2 ? sh.getRange(2, 1, n - 1, 3).getValues() : [];
   const pend = [];
@@ -297,10 +326,10 @@ function _avisosSuspendidasDelDia_() {
     const cuando = d ? (Utilities.formatDate(d, RDV_TZ, 'yyyy-MM-dd') === hoy ? Utilities.formatDate(d, RDV_TZ, 'HH:mm') : _avFechaHora_(d)) : '?';
     return '- [' + cuando + '] ' + str(v[i][1]);
   });
-  if (pend.length > AVISOS_MAX_LINEAS_MAIL_) lineas.push('(y ' + (pend.length - AVISOS_MAX_LINEAS_MAIL_) + ' más: ver la solapa ' + AVISOS_HOJA_SUSPENDIDAS + ')');
-  const cuerpo = 'La agenda suspendió estas reuniones (desaparecieron del mail siendo futuras):\n\n' + lineas.join('\n') +
-    '\n\nTodas, en la solapa ' + AVISOS_HOJA_SUSPENDIDAS + ' de la intermedia.\n\n' + _avPie_();
-  if (!_enviarMailAviso_(AVISOS_MAIL_ASUNTO + AVISOS_TITULOS_.suspendidas + ' (' + pend.length + ')', cuerpo)) return false;
+  if (pend.length > AVISOS_MAX_LINEAS_MAIL_) lineas.push('(y ' + (pend.length - AVISOS_MAX_LINEAS_MAIL_) + ' más: ver la solapa ' + dg.hoja + ')');
+  const cuerpo = dg.intro + '\n\n' + lineas.join('\n') +
+    '\n\nTodas, en la solapa ' + dg.hoja + ' de la intermedia.\n\n' + _avPie_();
+  if (!_enviarMailAviso_(AVISOS_MAIL_ASUNTO + AVISOS_TITULOS_[tema] + ' (' + pend.length + ')', cuerpo)) return false;
   props.setProperty(clave, hoy);
   const marca = _avFechaHora_();
   const col = v.map(function (r, i) { return [pend.indexOf(i) >= 0 ? marca : r[2]]; });
@@ -477,13 +506,26 @@ function _avLeerPendientes_() {
   const n = sh.getLastRow(), nc = sh.getLastColumn();
   if (n < 2 || nc < 1) return { filas: [] };
   const v = sh.getRange(1, 1, n, nc).getValues();
-  const filas = v.slice(1).filter(function (r) { return r.some(function (x) { return x !== '' && x != null; }); })
-    .map(function (r) {
-      return r.filter(function (x) { return x !== '' && x != null; })
-        .map(function (x) { return x instanceof Date ? fmtFecha_(x) : String(x); }).join(' | ');
-    });
-  return { filas: filas, encabezado: v[0].filter(String).join(' | ') };
+  const hdr = v[0].map(normalizeHeader_);
+  // 16/10: AGENDA_PENDIENTES tiene "tipo" (lo que el equipo tiene que saber, agrupado) y columnas que no van al mail ("desde", "id")
+  const iTipo = hdr.indexOf(normalizeHeader_('tipo'));
+  const fuera = ['id', 'desde', 'tipo'].map(normalizeHeader_);
+  const conDatos = v.slice(1).filter(function (r) { return r.some(function (x) { return x !== '' && x != null; }); });
+  const texto = function (r) {
+    return r.filter(function (x, k) { return x !== '' && x != null && (iTipo < 0 || fuera.indexOf(hdr[k]) < 0); })
+      .map(function (x) { return x instanceof Date ? fmtFecha_(x) : String(x); }).join(' | ');
+  };
+  const filas = conDatos.map(texto);
+  const out = { filas: filas, encabezado: v[0].filter(String).join(' | ') };
+  if (iTipo >= 0) {
+    out.porTipo = {};
+    conDatos.forEach(function (r) { const t = str(r[iTipo]) || '(sin tipo)'; (out.porTipo[t] = out.porTipo[t] || []).push(texto(r)); });
+  }
+  return out;
 }
+
+/** 16/10: los tipos de AGENDA_PENDIENTES que son un HECHO ya hecho (no cuentan como "cosas para revisar" en el resumen). */
+const AVISOS_TIPOS_PENDIENTES_HECHOS_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo'];
 
 /** El resumen del lunes: { asunto, cuerpo, problemas }. */
 function mailSemanal_(R) {
@@ -526,10 +568,19 @@ function mailSemanal_(R) {
   } else L.push('   ' + (R.cancelNota || 'no se corrió'));
   L.push('');
   // 3. por definir
-  L.push('3. REUNIONES POR DEFINIR (' + AVISOS_SOLAPA_PENDIENTES + ', intermedia)');
+  L.push('3. LO QUE HAY QUE SABER DE LA AGENDA: REUNIONES POR DEFINIR, SEMANAS FRENADAS, JUNTADAS, SUSPENDIDAS… (' + AVISOS_SOLAPA_PENDIENTES + ', intermedia)');
   if (!R.pendientes) L.push('   la solapa no existe todavía');
   else if (R.pendientes.error) L.push('   no se pudo leer: ' + R.pendientes.error);
-  else { L.push('   ' + R.pendientes.filas.length); lista(R.pendientes.filas); problemas += R.pendientes.filas.length; }
+  else if (R.pendientes.porTipo) {
+    // 16/10: agrupado por tipo; los HECHOS (una cancelación aplicada, una reunión juntada) no cuentan como "cosas para revisar"
+    L.push('   ' + R.pendientes.filas.length);
+    Object.keys(R.pendientes.porTipo).forEach(function (t) {
+      const xs = R.pendientes.porTipo[t];
+      L.push('   ' + t + ': ' + xs.length);
+      lista(xs, '      ');
+      if (AVISOS_TIPOS_PENDIENTES_HECHOS_.indexOf(t) < 0) problemas += xs.length;
+    });
+  } else { L.push('   ' + R.pendientes.filas.length); lista(R.pendientes.filas); problemas += R.pendientes.filas.length; }
   L.push('');
   // 4. ambiguas
   const amb = noOk.filter(function (t) { return /^\[6\]/.test(t); });
