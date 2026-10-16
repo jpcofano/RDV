@@ -720,14 +720,20 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     const fechaDelSistema = function (f) {
       return !esVacio_(val(f, 'agenda_fecha_escrita')) && cmp(val(f, 'FECHA'), 'FECHA') === cmp(val(f, 'agenda_fecha_escrita'), 'FECHA');
     };
-    // compatible = puede ser la misma reunión que cambió: nunca dos figuras distintas, nunca dos tipos distintos, y otra fecha
-    // sólo si la FECHA de la fila es la que escribió el sistema (se mueve)
+    // 16/10 (test a del usuario, caso 17/09 Seguridad Comuna 11 → "Francisco Quintana, Comuna 11"): la fila de la agenda SIN
+    // figura y la reunión que ahora la NOMBRA, la misma fecha y el mismo "Lugar (mail)": es la misma reunión, aunque el tipo cambie
+    const ganoFigura = function (ev, f) {
+      return !normalizeText_(f.figura) && !!ev.figuraFila && !!ev.lugar && ymd_(f.fecha) === ymd_(ev.fecha) &&
+             normalizeText_(ev.lugar) === normalizeText_(val(f, 'Lugar (mail)'));
+    };
+    // compatible = puede ser la misma reunión que cambió: nunca dos figuras distintas, nunca dos tipos distintos (salvo la que ganó
+    // figura, arriba), y otra fecha sólo si la FECHA de la fila es la que escribió el sistema (se mueve)
     const compatible = function (ev, f) {
       if (!libre(f) || !deSemana(ev, f)) return false;
       const fe = normalizeText_(ev.figuraFila), ff = normalizeText_(f.figura);
       if (fe && ff && fe !== ff && (ev.figuras || []).map(normalizeText_).indexOf(ff) < 0) return false;
       const tf = tipoAgendaDeTexto_(val(f, 'Evento (mail)'));
-      if (tf && ev.tipo && tf !== ev.tipo) return false;
+      if (tf && ev.tipo && tf !== ev.tipo && !ganoFigura(ev, f)) return false;
       return ymd_(f.fecha) === ymd_(ev.fecha) || fechaDelSistema(f);
     };
     const puntaje = function (ev, f) {
@@ -752,6 +758,12 @@ function planAgenda_(dest, r, A, alcance, opciones) {
         _accionActualizar_(P, f, ev, A, barrioDe, { fechaYaMovida: true });
       } else {
         _accionActualizar_(P, f, ev, A, barrioDe, {});
+      }
+      // la que ganó figura: la Figura, sólo si la celda está vacía (lectura fresca: esperado '')
+      if (ganoFigura(ev, f) && col('Figura') != null) {
+        P.acciones.push({ tipo: 'figura_mail', f: f, ev: ev, detalle: 'la misma reunión, ahora con figura: ' + ev.figuraFila,
+                          escrituras: [{ fila: f.fila, col: col('Figura'), valor: ev.figuraFila, esperado: '' }] });
+        como += ' — la misma reunión, ahora con figura (' + ev.figuraFila + ')';
       }
       P.conciliadas.push({ ev: ev, f: f, como: como });
     };
@@ -828,6 +840,14 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     };
     const noAplicada = function (motivo, f, extra) { evalua('no: ' + motivo, f, extra); if (suspenderSiempre) P.cancelNoAplicada.push({ d: d, f: f || null, motivo: motivo, mail: d.mailQueLaSaco || null }); };
     if (!d.futuraAlDesaparecer) { P.noFuturas.push(d); evalua('no: ya había pasado cuando salió del mail'); return; }
+    // 16/10 (test a del usuario): la misma reunión, ahora con figura (no es una cancelación). Con H2 o con "suspender".
+    if ((conciliar || suspenderSiempre) && !d.figuraFila && d.lugar) {
+      const suc = r.unicas.filter(function (u) {
+        return u.figuraFila && u.fecha && d.fecha && ymd_(u.fecha) === ymd_(d.fecha) && normalizeText_(u.lugar) === normalizeText_(d.lugar) &&
+               (u.hora === d.hora || ['exacta', 'parecida'].indexOf(compararDirecciones_(u.lugarTexto, d.lugarTexto)) >= 0);
+      });
+      if (suc.length === 1) { evalua('no: la misma reunión, ahora con figura (' + suc[0].figuraFila + ', ' + (suc[0].lugar || '') + ')'); return; }
+    }
     // 15/10 (noche, "el mail manda"): ya no está el resguardo del revisor "no una que ya pasó HOY": manda el TIEMPO del mail
     // (abajo: el mail que la saca tiene que ser anterior a la fecha y hora de la reunión)
     if (d.versionParcial) { P.saltadas60.push(d); noAplicada('protección del ' + Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100) + '% (el mail que la sacó trae muchas menos reuniones)'); return; }

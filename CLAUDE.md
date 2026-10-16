@@ -220,14 +220,14 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   siga en el mail (lo sabe por las líneas `crear_id` de REGISTRO_AGENDA_CAMBIOS); sin ese historial, la corrida real no
   crea. "Origen fila" y "Tocado por el equipo" dicen quién creó la fila y qué cambió el equipo (docs/agenda-equipo.md).
 - **Seguridad en tu Barrio, por su identidad del mail** (15/10, después de la auditoría del paso 66; `AGENDA_SEGURIDAD_POR_COMUNA`,
-  APAGADO hasta el paso 70): "A CONFIRMAR" —o un texto sin calle y número— **no es una dirección** (`esDireccionReal_`): nunca
+  PRENDIDO el 16/10, etapa 1): "A CONFIRMAR" —o un texto sin calle y número— **no es una dirección** (`esDireccionReal_`): nunca
   cuenta como "misma Dirección" ni "misma dirección escrita". Una reunión sin figura es la fila de la agenda de **esa fecha con
   el mismo "Lugar (mail)"** (la comuna), el mismo tipo en "Evento (mail)" y un grupo compatible (`mismaReunionSinFiguraAgenda_`):
   se ACTUALIZA (p. ej. "A CONFIRMAR" → la calle), no se crea otra. Casos: la 829 (duplicada de la 830; la borró el equipo y no se
   recrea) y las 833 / 835 del 22/10 (ambiguas: cada una es la de su comuna). **El barrio del mail** (`AGENDA_BARRIO_DEL_MAIL`,
-  APAGADO): si "Lugar (mail)" es un barrio de Comunas, se escribe como Barrio del sistema (con `agenda_barrio_escrito`) aunque la
+  PRENDIDO el 16/10): si "Lugar (mail)" es un barrio de Comunas, se escribe como Barrio del sistema (con `agenda_barrio_escrito`) aunque la
   dirección no sirva (caso: la 824); si la dirección se geocodifica a otro barrio, no escribe nada.
-- **La agenda segura: una reunión, una fila** (15/10 noche, H1–H4; APAGADAS hasta los pasos 75 y 76;
+- **La agenda segura: una reunión, una fila** (15/10 noche, H1–H4; PRENDIDAS el 16/10, etapa 1;
   `diagnostico/32_medir_agenda_segura.js`):
   - **H1, crear sólo lo identificado** (`AGENDA_CREAR_SOLO_IDENTIFICADAS`). Una reunión sin figura y sin dirección real no
     crea fila hasta que llega una de las dos o faltan `AGENDA_CREAR_SIN_DEFINIR_DIAS` (2) días. Mientras tanto queda
@@ -246,7 +246,7 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
     raros, la semana se sigue mostrando en la copia, pero no crea ni suspende filas.
 - **J, la cancelación automática SÓLO SUSPENDE** (15/10 noche; `AGENDA_CANCELACION_AUTOMATICA = true`, con
   `AGENDA_CANCELACION_MODO = 'suspender'`, que es el valor por defecto: la regla 7 que borra exige escribir `'regla7'` a
-  propósito; APAGADA hasta el paso 78).
+  propósito; PRENDIDA el 16/10, etapa 1, con el rojo).
   - **"El mail manda"** (decisión del usuario, 16/10). Una reunión está cancelada por el mail si:
     - desaparece de un mail completo (que pasó H4 y la protección del 60%); o
     - está en **ROJO entero** (Evento + Hora + Lugar, fondo rojo) en la última versión válida de su semana, con
@@ -260,7 +260,7 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
     rojo; con los colores apagados no se reactiva sola (queda la nota `suspendida_rojo` en REGISTRO_AGENDA_CAMBIOS).
   - **Si después le llegan datos:** una suspendida por el sistema que recibe asistentes o inscriptos no se pisa. Se avisa
     una vez por fila (`suspendida_con_datos`) y figura en la auditoría.
-  - **Los colores** (`41_AgendaColores.js`, `AGENDA_COLORES_MAIL`, APAGADO): la agenda lee también el HTML del mail, como
+  - **Los colores** (`41_AgendaColores.js`, `AGENDA_COLORES_MAIL`, PRENDIDO el 16/10, etapa 1): la agenda lee también el HTML del mail, como
     mucho `AGENDA_COLORES_MAIL_MAX_MS`. Las notas del encabezado ("SE CANCELA…", "CAMBIO DE DÍA…") no actúan solas: van al
     aviso y a la auditoría (paso 66) como confirmación del color. Amarillo y verde van sólo a la copia, con
     `AGENDA_COLORES_AMARILLO_VERDE` (APAGADO).
@@ -1865,7 +1865,7 @@ caminos independientes, y el que alimenta la transición es el que hoy funciona.
 > **15/10: RDV CONJUNTO es de sólo lectura** (no es nuestra): verificado, ningún código la escribe (la leen `cruzarAsistentes_`,
 > `leerConjuntoPorFecha_` y un diagnóstico). **La figura dos veces el mismo día** (Macri 15/10, filas 843 Villa Santa Rita y 849
 > Villa Devoto, misma dirección): hoy las dos caen en la misma fila de la base y el barrio sólo confirma (podía escribir los
-> asistentes de la otra). Con `CONJUNTO_REPETIDA_POR_UBICACION` (APAGADO hasta el paso 71) vale la única cuya ubicación coincide,
+> asistentes de la otra). Con `CONJUNTO_REPETIDA_POR_UBICACION` (PRENDIDO el 16/10, etapa 1) vale la única cuya ubicación coincide,
 > si no la única con la misma dirección; si no decide, no escribe y lo lista (`_resolverConjuntoRepetido_`).
 
 El flujo Agenda, además, evita pisarla a propósito

@@ -139,7 +139,11 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'" }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'",
+    // 16/10: la etapa 1 quedó PRENDIDA en 00_Config.js; cada escenario parte de todo APAGADO y prende lo suyo por `config`
+    AGENDA_SEGURIDAD_POR_COMUNA: 'false', AGENDA_BARRIO_DEL_MAIL: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false',
+    AGENDA_CREAR_SOLO_IDENTIFICADAS: 'false', AGENDA_CONCILIACION_SEMANAL: 'false', AGENDA_ELECCIONES_SIEMPRE: 'false',
+    AGENDA_INVARIANTE_UNA_FILA: 'false', AGENDA_VALIDAR_MAILS: 'false', AGENDA_COLORES_MAIL: 'false' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -427,6 +431,14 @@ c = cruce('', 95, 120, true);
 ok(c.asis === null && c.sinDecidir === 1, 'con la regla, sin barrio y las dos con asistentes: no se escribe y se lista');
 c = cruce('', 95, 95, true);
 ok(c.asis === 95 && c.sinDecidir === 0, 'con la regla, las dos con lo mismo: se escribe (no hay nada que elegir)');
+// 16/10 (pedido del usuario, test b): la 824 ya con el barrio Villa Devoto (lo cargó el equipo): RDV CONJUNTO 843 Villa Santa
+// Rita ("Cancelado", sin asistentes) / 849 Villa Devoto (Realizada, 31): el cruce elige la de Villa Devoto, no queda "sin decidir"
+c = cruce('Villa Devoto', '', 31, true);
+ok(c.asis === 31 && c.de === 3 && c.sinDecidir === 0 && c.elegidas === 1, 'b) base Villa Devoto, con la regla: elige la de Villa Devoto (31), no queda sin decidir — ' + JSON.stringify(c));
+c = cruce('Villa Devoto', 95, 31, true);
+ok(c.asis === 31 && c.de === 3 && c.sinDecidir === 0, 'b) aunque la de Villa Santa Rita también traiga asistentes: vale la de Villa Devoto — ' + JSON.stringify(c));
+c = cruce('Villa Devoto', '', 31, false);
+ok(c.asis === 31 && c.de === 3, 'b) sin la regla, con la de Villa Santa Rita sin asistentes: también 31 — ' + JSON.stringify(c));
 
 console.log('[10] medirConjuntoRepetido (en seco) y RDV CONJUNTO no se escribe');
 E = montar(true, baseMacri('Villa Santa Rita').concat([function (r, C) {

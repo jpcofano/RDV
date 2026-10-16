@@ -1951,6 +1951,39 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### ETAPA 1 PRENDIDA (16/10)
+
+Decisión del usuario después de `revisarTodo()` (13 pasos OK). Prendidos en 00_Config.js (marcados "PRENDIDO (etapa 1…)"):
+- `AGENDA_SEGURIDAD_POR_COMUNA` y `AGENDA_BARRIO_DEL_MAIL` (paso 70: 2 cambios, 0 otros);
+- H1–H4: `AGENDA_CREAR_SOLO_IDENTIFICADAS`, `AGENDA_CONCILIACION_SEMANAL`, `AGENDA_INVARIANTE_UNA_FILA`, `AGENDA_VALIDAR_MAILS`
+  (paso 76: 0 filas de más; paso 75: 0 otros cambios);
+- `AGENDA_CANCELACION_AUTOMATICA` (modo `'suspender'`) y `AGENDA_COLORES_MAIL`, la cancelación por rojo (pasos 78 y 93: 12
+  coinciden con el equipo, 1 explicada, 0 por tiempo, 0 salvaguardas);
+- `AGENDA_ELECCIONES_SIEMPRE`;
+- `CONJUNTO_REPETIDA_POR_UBICACION`. No estaba en la lista del usuario, pero es la regla del paso 71 que hace que el cruce
+  elija la 849 (test b).
+
+Siguen APAGADOS: `AGENDA_COLORES_AMARILLO_VERDE`, `AGENDA_MAIL_FORMATO_DIRECTA`, los avisos por mail y la auditoría semanal
+(etapa 2).
+
+**Los dos tests que pidió el usuario antes de prender:**
+- **a) Una Seguridad sin figura que en la v2 pasa a tener figura no es una cancelación** (caso 17/09 Comuna 11 → "Francisco
+  Quintana, Comuna 11", fila 793). Con todo prendido, **fallaba**: se creaba otra fila para la figura y se suspendía la de la
+  Seguridad. Arreglado así:
+  - la conciliación (H2) empareja "la misma reunión, ahora con figura" (misma fecha y mismo "Lugar (mail)") aunque el tipo
+    cambie, y escribe la Figura sólo si la celda está vacía;
+  - J no la trata como cancelada si la versión nueva tiene esa sucesora.
+
+  `tests/agenda_segura_1510.test.js` [10]: la fila no se suspende, no se duplica, y queda con la figura.
+- **b) Con la 824 en Villa Devoto, el cruce de RDV CONJUNTO elige la 849 (Villa Devoto)** y no la deja sin decidir.
+  `tests/agenda_seguridad_1510.test.js` [9].
+
+Los tests de escenarios "APAGADO" parten ahora de todo apagado explícitamente: ya no dependen de lo que esté prendido en 00_Config.js.
+
+**Después de prender:**
+- correr el paso 48 para que la GUÍA y la LEER muestren las reglas nuevas;
+- mirar REGISTRO_CORRIDAS (paso 67): los colores suman hasta 60 s a la parte de la agenda.
+
 #### "El mail manda" (16/10): cancelada en el mail = Suspendida — escrito y APAGADO
 
 Detalle en CLAUDE.md, sección 0 (J). Interruptores, todos apagados:

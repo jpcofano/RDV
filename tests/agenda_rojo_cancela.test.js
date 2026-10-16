@@ -142,7 +142,11 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { E.props = E.props || {}; return { getProperty: function (k) { return k in E.props ? E.props[k] : null; }, setProperty: function (k, v) { E.props[k] = String(v); }, deleteProperty: function (k) { delete E.props[k]; } }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'" }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'",
+    // 16/10: la etapa 1 quedó PRENDIDA en 00_Config.js; cada escenario parte de todo APAGADO y prende lo suyo por `config`
+    AGENDA_SEGURIDAD_POR_COMUNA: 'false', AGENDA_BARRIO_DEL_MAIL: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false',
+    AGENDA_CREAR_SOLO_IDENTIFICADAS: 'false', AGENDA_CONCILIACION_SEMANAL: 'false', AGENDA_ELECCIONES_SIEMPRE: 'false',
+    AGENDA_INVARIANTE_UNA_FILA: 'false', AGENDA_VALIDAR_MAILS: 'false', AGENDA_COLORES_MAIL: 'false' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -531,6 +535,9 @@ console.log('     (tiempo: 20 parseos de 4 mails con colores: ' + (Date.now() - 
 
 console.log('[9] GUÍA y LEER: las líneas nuevas sólo con los interruptores');
 const ayuda = function (cfg) {
+  // 16/10: la etapa 1 quedó prendida en 00_Config.js; el punto de partida de estos chequeos es todo APAGADO
+  cfg = Object.assign({ AGENDA_CANCELACION_AUTOMATICA: 'false', AGENDA_CREAR_SOLO_IDENTIFICADAS: 'false', AGENDA_COLORES_MAIL: 'false',
+                        AGENDA_ELECCIONES_SIEMPRE: 'false' }, cfg || {});
   const ctx = { console: console, Date: Date, Math: Math, JSON: JSON, Map: Map, Set: Set, Object: Object, Array: Array, String: String, Number: Number };
   vm.createContext(ctx);
   ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayuda.js'].forEach(function (f) {
@@ -543,8 +550,9 @@ const ayuda = function (cfg) {
 const a0 = ayuda({}), a1 = ayuda({ AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_COLORES_MAIL: 'true', AGENDA_COLORES_AMARILLO_VERDE: 'true' });
 ok(!/ROJO/.test(a0) && !/AMARILLO/.test(a0), 'APAGADO: ni el rojo ni el amarillo');
 ok(/una reunión en ROJO en el mail/.test(a1) && /suspendida: rojo en la v/.test(a1) && /AMARILLO aparece en "Cambios"/.test(a1), 'PRENDIDO: el rojo (GUÍA y LEER) y el amarillo / verde');
-ok(/const AGENDA_COLORES_MAIL = false;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')) &&
-   /const AGENDA_COLORES_AMARILLO_VERDE = false;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')), '00_Config.js: los dos interruptores APAGADOS');
+// 16/10: el ROJO quedó prendido en la etapa 1; el AMARILLO / VERDE sigue apagado
+ok(/const AGENDA_COLORES_MAIL = true;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')) &&
+   /const AGENDA_COLORES_AMARILLO_VERDE = false;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')), '00_Config.js: los colores PRENDIDOS (etapa 1), el amarillo / verde APAGADO');
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

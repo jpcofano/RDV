@@ -116,7 +116,12 @@ function crearEntorno() {
     Session: proxyLectura(E, 'Session', {})
   };
   vm.createContext(ctx);
-  ARCHIVOS.forEach(function (f) { vm.runInContext(fs.readFileSync(path.join(RAIZ, f), 'utf8'), ctx, { filename: f }); });
+  // 16/10: la etapa 1 quedó prendida en 00_Config.js; los escenarios de esta auditoría parten de todo APAGADO
+  ARCHIVOS.forEach(function (f) {
+    let src = fs.readFileSync(path.join(RAIZ, f), 'utf8');
+    if (f === '00_Config.js') src = src.replace(/^const (\w+) = true;\s+\/\/ 16\/10: PRENDIDO \(etapa 1[^\n]*$/gm, 'const $1 = false;');
+    vm.runInContext(src, ctx, { filename: f });
+  });
   E.ctx = ctx;
   E.run = function (expr) { vm.runInContext('_ssDestino_ = null; _ssIntermedia_ = null; _cacheParsing_ = null; _ssRegistros_ = null;', ctx); E.logs = []; return vm.runInContext(expr, ctx); };
   return E;

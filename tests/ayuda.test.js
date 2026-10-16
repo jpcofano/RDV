@@ -98,6 +98,8 @@ function crearEntorno(formsSinFila, formatoDirecta) {
   vm.createContext(ctx);
   ARCHIVOS.forEach(function (f) {
     let src = fs.readFileSync(path.join(RAIZ, f), 'utf8');
+    // 16/10: la etapa 1 quedó prendida en 00_Config.js; estos chequeos cuentan la GUÍA / LEER con todo APAGADO
+    if (f === '00_Config.js') src = src.replace(/^const (\w+) = true;\s+\/\/ 16\/10: PRENDIDO \(etapa 1[^\n]*$/gm, 'const $1 = false;');
     // 13/10: la sección de FORMULARIOS_SIN_FILA entra a la GUÍA sólo con la solapa prendida
     if (formsSinFila && f === '00_Config.js') src = src.replace('const FORMULARIOS_SIN_FILA_ACTIVA = false;', 'const FORMULARIOS_SIN_FILA_ACTIVA = true;');
     // 15/10: la LEER habla del formato de "Agenda Directa" sólo con AGENDA_MAIL_FORMATO_DIRECTA

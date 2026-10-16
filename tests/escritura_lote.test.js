@@ -379,8 +379,10 @@ function crearEntorno(opts) {
   // DERIVADAS_POR_SCRIPT: los datos sintéticos traen derivadas de mentira ("derivada-i"); sólo [19] lo prende.
   // REVISAR_FORMATO_NUEVO: los escenarios de fichas de antes del 06/10 prueban el formato de una ficha por bloque; [22], el nuevo.
   // AGENDA_ACTIVA: los escenarios del upsert no simulan Gmail; sólo [24] la prende (07/10).
+  // CONJUNTO_REPETIDA_POR_UBICACION (16/10, prendida en la etapa 1): los escenarios de RDV CONJUNTO de antes prueban el cruce
+  // columna por columna; con la regla, dos filas que no se pueden decidir no escriben ninguna (lo prueba agenda_seguridad_1510 [9]).
   const config = Object.assign({ DIAS_ACTIVOS: 'null', DERIVADAS_POR_SCRIPT: 'false',
-                                 REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false' },
+                                 REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false' },
                                opts.config || {});
   ARCHIVOS.forEach(function (f) {
     let s;

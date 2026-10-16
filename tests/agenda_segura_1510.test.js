@@ -140,7 +140,11 @@ function crearEntorno(config) {
     PropertiesService: { getScriptProperties: function () { return { getProperty: function () { return null; }, setProperty: function () {}, deleteProperty: function () {} }; } }
   };
   vm.createContext(ctx);
-  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'" }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
+  const cfg = Object.assign({ DERIVADAS_POR_SCRIPT: 'false', AGENDA_SOLO_SEMANA: 'null', AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'regla7'",
+    // 16/10: la etapa 1 quedó PRENDIDA en 00_Config.js; cada escenario parte de todo APAGADO y prende lo suyo por `config`
+    AGENDA_SEGURIDAD_POR_COMUNA: 'false', AGENDA_BARRIO_DEL_MAIL: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false',
+    AGENDA_CREAR_SOLO_IDENTIFICADAS: 'false', AGENDA_CONCILIACION_SEMANAL: 'false', AGENDA_ELECCIONES_SIEMPRE: 'false',
+    AGENDA_INVARIANTE_UNA_FILA: 'false', AGENDA_VALIDAR_MAILS: 'false', AGENDA_COLORES_MAIL: 'false' }, config || {});   // el alcance de cada escenario no depende de cómo quedó 00_Config.js
   ARCHIVOS.forEach(function (f) {
     let s = fs.readFileSync(path.join(RAIZ, f), 'utf8');
     if (f === '00_Config.js') Object.keys(cfg).forEach(function (k) { s = s.replace(new RegExp('^const ' + k + '\\s+=.*', 'm'), 'const ' + k + ' = ' + cfg[k] + ';'); });
@@ -567,6 +571,9 @@ ok(mc.cuenta.yaSuspendida === 1 && /COINCIDE/.test(mc.lineas[0].equipo), 'si el 
 
 console.log('[9] GUÍA y LEER (43_Ayuda.js): el texto nuevo sólo con el interruptor');
 const ayuda = function (cfg) {
+  // 16/10: la etapa 1 quedó prendida en 00_Config.js; el punto de partida de estos chequeos es todo APAGADO
+  cfg = Object.assign({ AGENDA_CANCELACION_AUTOMATICA: 'false', AGENDA_CREAR_SOLO_IDENTIFICADAS: 'false', AGENDA_COLORES_MAIL: 'false',
+                        AGENDA_ELECCIONES_SIEMPRE: 'false' }, cfg || {});
   const ctx = { console: console, Date: Date, Math: Math, JSON: JSON, Map: Map, Set: Set, Object: Object, Array: Array, String: String, Number: Number };
   vm.createContext(ctx);
   ['00_Config.js', '01_Utils.js', '27_RevisarFormato.js', '43_Ayuda.js'].forEach(function (f) {
@@ -580,6 +587,46 @@ const g0 = ayuda({}), g1 = ayuda({ AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA
 ok(/Se canceló: suspender\/borrar/.test(g0) && !/nunca borra la fila/.test(g0) && !/pendiente de definir/.test(g0), 'APAGADO: la GUÍA y la LEER de siempre');
 ok(!/Se canceló: suspender\/borrar/.test(g1) && /el sistema la pone en Suspendida \(nunca borra la fila\); si vuelve al mail, la reactiva/.test(g1) &&
    /suspendida: salió del mail del/.test(g1) && /pendiente de definir/.test(g1), 'PRENDIDO: "si una reunión sale del mail, el sistema la pone en Suspendida; si vuelve, la reactiva"');
+
+// ============================== 16/10 (test a del usuario): la ETAPA 1 prendida ==============================
+
+console.log('[10] ETAPA 1 (todo prendido): una Seguridad sin figura que en la v2 pasa a tener figura NO es una cancelación');
+// caso real: 17/09 Seguridad Comuna 11 "desapareció" en la v2 porque pasó a ser "Francisco Quintana, Comuna 11" (fila 793, la misma
+// reunión). Acá, inventado y futuro: 22/10 Seguridad Comuna 11 → "Gabino Tapia, Comuna 11", misma fecha, hora y dirección.
+const ETAPA1 = { AGENDA_SEGURIDAD_POR_COMUNA: 'true', AGENDA_BARRIO_DEL_MAIL: 'true', AGENDA_CREAR_SOLO_IDENTIFICADAS: 'true',
+                 AGENDA_CONCILIACION_SEMANAL: 'true', AGENDA_INVARIANTE_UNA_FILA: 'true', AGENDA_VALIDAR_MAILS: 'true',
+                 AGENDA_CANCELACION_AUTOMATICA: 'true', AGENDA_CANCELACION_MODO: "'suspender'", AGENDA_COLORES_MAIL: 'true',
+                 AGENDA_ELECCIONES_SIEMPRE: 'true', CONJUNTO_REPETIDA_POR_UBICACION: 'true' };
+const SEG11_22 = ['*Jueves 22/10*', 'Evento: Seguridad en tu Barrio, Comuna 11', 'Hora: 18:00h', 'Lugar: Calle Inventada 500, Sociedad de Fomento'];
+const TAPIA11_22 = ['*Jueves 22/10*', 'Evento: Encuentro con Vecinos Gabino Tapia, Comuna 11', 'Hora: 18:00h', 'Lugar: Calle Inventada 500, Sociedad de Fomento'];
+const Q1 = mail(13, 9, [SEG11_22, SEG14], ASUNTO_19), Q2 = mail(15, 10, [TAPIA11_22, SEG14], ASUNTO_19);
+const statusDe22 = function (X) {
+  const out = [];
+  for (let i = 1; i < X.D.v.length; i++) {
+    const r = X.D.v[i], f = r[X.C('FECHA')];
+    if (f instanceof Date && f.getDate() === 22 && f.getMonth() === 9 && /Comuna 11/.test(String(r[X.C('Lugar (mail)')]) + String(r[X.C('Evento (mail)')]))) out.push((r[X.C('Figura')] || '(sin figura)') + ': ' + r[X.C('STATUS REUNIÓN')]);
+  }
+  return out;
+};
+// A) la fila la creó la agenda, sin figura (la Seguridad); en la v2 la reunión aparece con figura
+E = montar(true, [], ETAPA1);
+r = correr(E, false, [Q1], { hoy: dia(13) });
+const iQ = sinFig(E, 'Comuna 11', 22)[0];
+ok(iQ > 0 && celda(E, iQ, 'STATUS REUNIÓN') === 'en agenda', 'v1: la Seguridad de la Comuna 11 del 22/10 tiene su fila, "en agenda"');
+E.avisos = [];
+r = correr(E, false, [Q1, Q2], { hoy: dia(15) });
+ok(celda(E, iQ, 'STATUS REUNIÓN') === 'en agenda' && r.suspender === 0,
+   'a) v2 (pasó a "Gabino Tapia, Comuna 11"): la fila NO se suspende — ' + statusDe22(E).join(' | ') + ' (suspender ' + r.suspender + ')');
+ok(statusDe22(E).length === 1, 'a) y sigue siendo UNA fila para esa reunión (no se crea otra para Tapia) — ' + statusDe22(E).join(' | '));
+ok(!(E.avisos || []).some(function (a) { return a[0] === 'suspendidas'; }), 'a) sin aviso de "suspendidas"');
+// B) como la 793 real: el equipo ya le puso la figura a la fila (y sigue "en agenda")
+E = montar(true, [], ETAPA1);
+correr(E, false, [Q1], { hoy: dia(13) });
+const iQb = sinFig(E, 'Comuna 11', 22)[0];
+E.D.v[iQb][E.C('Figura')] = 'Gabino Tapia';
+r = correr(E, false, [Q1, Q2], { hoy: dia(15) });
+ok(celda(E, iQb, 'STATUS REUNIÓN') === 'en agenda' && r.suspender === 0 && filasCon(E, 'Gabino Tapia', 22).length === 1,
+   'a) con la figura cargada por el equipo (como la 793): no se suspende y no se duplica — ' + statusDe22(E).join(' | '));
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

@@ -1533,7 +1533,7 @@ const AGENDA_OPCIONES_DUPLICADO = ['Es la misma: vincular', 'Ya está cargada en
  * reunión y el mail que la sacó, y se aplica en la corrida siguiente ("Se canceló": suspender, o borrar si la creó la
  * agenda y nadie la tocó; "Sigue": no se toca y no se vuelve a preguntar). Con `true`, la regla 7 automática.
  */
-const AGENDA_CANCELACION_AUTOMATICA = false;
+const AGENDA_CANCELACION_AUTOMATICA = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 const AGENDA_OPCIONES_CANCELACION = ['Se canceló: suspender/borrar', 'Sigue', 'No sé'];
 /**
  * **La dirección en el cruce con RDV CONJUNTO** (07/10, dato del usuario: en general es la misma que la del destino/mail,
@@ -1552,14 +1552,14 @@ const CRUCE_CONJUNTO_POR_DIRECCION = true;   // 07/10: prendido con el paso 45 (
  * (el de agenda_mail) ES la reunión: se actualiza (p. ej. la dirección "A CONFIRMAR" → "Navarro 3974"), no se crea otra.
  * Con `false`, como antes. En seco: `medirReglasAgenda1510()` (diagnostico/30_duplicados_agenda.js).
  */
-const AGENDA_SEGURIDAD_POR_COMUNA = false;
+const AGENDA_SEGURIDAD_POR_COMUNA = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /**
  * **El barrio desde "Lugar (mail)"** (15/10, caso 824): con `true`, si el mail nombra un BARRIO como lugar (no una comuna
  * ni un eje) y Comunas lo tiene, la agenda escribe ese Barrio (con su traza agenda_barrio_escrito, sólo donde ya podía
  * escribir el Barrio) aunque la dirección sea "A CONFIRMAR". Si la dirección se geocodifica bien a OTRO barrio, no se
  * escribe (se contradicen). Con `false`, el barrio sale sólo de la dirección. En seco: `medirReglasAgenda1510()`.
  */
-const AGENDA_BARRIO_DEL_MAIL = false;
+const AGENDA_BARRIO_DEL_MAIL = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /**
  * **RDV CONJUNTO con la misma figura dos veces el mismo día para UNA fila de la base** (15/10, caso Macri 15/10: Villa
  * Santa Rita y Villa Devoto con la misma dirección). Con `true`, en `cruzarAsistentes_`: si 2+ filas de RDV CONJUNTO caen en
@@ -1567,7 +1567,7 @@ const AGENDA_BARRIO_DEL_MAIL = false;
  * única con la misma dirección; si no decide y no traen lo mismo, NO se escribe y se lista. Con `false`, como antes (con una
  * sola fila de la figura ese día, el barrio sólo confirma). En seco: `medirConjuntoRepetido()`.
  */
-const CONJUNTO_REPETIDA_POR_UBICACION = false;
+const CONJUNTO_REPETIDA_POR_UBICACION = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 // ---------- 15/10 (noche): la AGENDA SEGURA — una reunión, una fila (APAGADOS hasta ver los pasos 75 y 76) ----------
 /**
  * **H1. Crear sólo lo identificado** (15/10, casos 829/830 y 833/835). Con `true`, una reunión del mail SIN figura y SIN
@@ -1576,7 +1576,7 @@ const CONJUNTO_REPETIDA_POR_UBICACION = false;
  * archivo "Agenda" la muestra igual ("Estado en la agenda" = "pendiente de definir", sin "Fila del destino") y la intermedia
  * la lista en AGENDA_SOLAPA_PENDIENTES (reescrita en cada corrida). Si ya tiene fila, se vincula / actualiza como siempre.
  */
-const AGENDA_CREAR_SOLO_IDENTIFICADAS = false;
+const AGENDA_CREAR_SOLO_IDENTIFICADAS = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 const AGENDA_CREAR_SIN_DEFINIR_DIAS = 2;
 const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
 /**
@@ -1586,7 +1586,7 @@ const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
  * único (cada una es la mejor de la otra) es la misma reunión que cambió: se ACTUALIZA (y se mueve la fecha dentro de la
  * semana, si la FECHA es del sistema). Si queda una fila compatible sin par, no se crea otra: se PREGUNTA en AGENDA_DUPLICADOS.
  */
-const AGENDA_CONCILIACION_SEMANAL = false;
+const AGENDA_CONCILIACION_SEMANAL = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /** H2 (revisor, 15/10): el puntaje mínimo para emparejar solo (figura 8, "Lugar (mail)" 4, fecha 2, hora 1, dirección 1). Debajo, se pregunta. */
 const AGENDA_CONCILIACION_PUNTAJE_MIN = 4;
 /**
@@ -1604,7 +1604,7 @@ const AGENDA_CONCILIACION_PUNTAJE_MIN = 4;
  *     ("eleccion_aplicada" / "eleccion_cerrada" / "eleccion_sin_fila"), no en cada corrida.
  * APAGADO hasta ver el paso 94 (`diagnosticarEleccionesAgenda`, diagnostico/35_elecciones_agenda.js): con `false`, todo como hoy.
  */
-const AGENDA_ELECCIONES_SIEMPRE = false;
+const AGENDA_ELECCIONES_SIEMPRE = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /**
  * **Las reuniones CANCELADAS en el mail se cierran solas** (15/10). Si el parser marca una reunión como cancelada en el mail
  * (`ev.canceladaEnMail`, con `ev.canceladaEnMailMotivo`; p. ej. "rojo en la v2 del 25/09"), la agenda no la crea ni pregunta;
@@ -1619,7 +1619,7 @@ const AGENDA_CERRAR_CANCELADAS_MAIL = true;
  * mismo "Lugar (mail)"— y el mail no trae tantas reuniones con esa clave, en ESA SEMANA no se crea nada más, se lista en
  * AGENDA_DUPLICADOS y se avisa (registrarAviso_('invariante_agenda')). El paso 16 lo cuenta siempre (tiene que dar 0).
  */
-const AGENDA_INVARIANTE_UNA_FILA = false;
+const AGENDA_INVARIANTE_UNA_FILA = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /**
  * **H4. Validar los mails** (15/10). Con `true`: (a) un mail con la misma reunión DOS veces (la misma clave: figura + fecha +
  * hora, o tipo + fecha + lugar + hora) no crea esa reunión y avisa; (b) un mail con FORMATO RARO no se usa en la corrida (la
@@ -1635,7 +1635,7 @@ const AGENDA_INVARIANTE_UNA_FILA = false;
  *     menos de la mitad de las anteriores reconocidas (no es "la anterior más reuniones nuevas").
  * La validación se calcula siempre (la usan el log y la cancelación automática); con `false` no saca ningún mail.
  */
-const AGENDA_VALIDAR_MAILS = false;
+const AGENDA_VALIDAR_MAILS = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 const AGENDA_MAIL_RARO_MIN = 2;
 const AGENDA_MAIL_RARO_FRACCION = 0.25;
 const AGENDA_MAIL_RARO_MENOS = 0.6;
@@ -1681,7 +1681,7 @@ const AGENDA_CANCELACION_MODO = 'suspender';
  * fila que el sistema suspendió por rojo NO se reactiva mientras siga en rojo; con este interruptor apagado, nunca se
  * reactiva sola (no se puede saber si dejó de estar en rojo). Con `false`: no se lee el HTML y nada cambia.
  */
-const AGENDA_COLORES_MAIL = false;
+const AGENDA_COLORES_MAIL = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 /** El tope de tiempo de leer el HTML (getBody) en la corrida de la hora: los mails más viejos que no entran quedan sin color. */
 const AGENDA_COLORES_MAIL_MAX_MS = 60 * 1000;
 /** Una fracción de las letras de la línea (sin la etiqueta) con un color: "entera" desde acá (paso 90). */
