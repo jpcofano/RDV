@@ -123,7 +123,7 @@ function _crearIdsDupAg_() {
     if (!cam || cam.getLastRow() < 2) return out;
     cam.getRange(2, 1, cam.getLastRow() - 1, Math.max(9, cam.getLastColumn())).getValues().forEach(function (r) {
       const tipo = str(r[1]), uid = str(r[8]);
-      if (tipo === 'borrar' && uid) out.borradasSistema.add(uid);
+      if (esBorradaPorSistemaAgenda_(tipo) && uid) out.borradasSistema.add(uid);   // 16/10: también la fusión (54_FusionAgenda.js)
       if (tipo !== 'crear_id' || !uid) return;
       const c = { corrida: str(r[0]), fila: r[2], id: str(r[6]), uid: uid };
       out.lista.push(c);

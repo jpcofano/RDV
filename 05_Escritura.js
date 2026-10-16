@@ -626,6 +626,24 @@ function borrarFilaAgenda_(sh, hdr, fila, uid) {
 }
 
 /**
+ * **Deshacer una fusión de la agenda (paso 38): los FONDOS de la fila que se restaura** (16/10, 54_FusionAgenda.js). La fila la
+ * acaba de volver a escribir el propio deshacer, al final (valores por `escribirAgendaLote_` / `setSiDelSistemaLote_`); acá se le
+ * ponen los fondos que tenía cuando la fusión la borró (guardados en REGISTRO_AGENDA_CAMBIOS, "borrar_fusion"), para que la marca
+ * de procedencia quede como estaba. Sólo esa fila, y sólo si su agenda_uid es el de la fila borrada (si no, tira sin tocar nada).
+ */
+function restaurarFondosFilaAgenda_(sh, hdr, fila, uid, fondos) {
+  const iUid = findIdxOr_(hdr, ['agenda_uid'], true);
+  if (iUid == null || !uid || str(sh.getRange(fila, iUid + 1).getValue()) !== uid) {
+    throw new Error('restaurarFondosFilaAgenda_: la fila ' + fila + ' no es la de agenda_uid ' + uid + '. No se pintó nada.');
+  }
+  const n = Math.min((fondos || []).length, hdr.length);
+  if (!n) return 0;
+  _selloEscrituraSistema_();
+  sh.getRange(fila, 1, 1, n).setBackgrounds([fondos.slice(0, n).map(function (b) { return b || null; })]);
+  return n;
+}
+
+/**
  * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
  * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
  * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila
