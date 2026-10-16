@@ -455,6 +455,20 @@ ok(R.sinFila === 2, 'sin fila en la base: Muzzio 03/10 y Sabor 01/10 — ' + R.s
 ok(R.pares === 1 && R.paresQueNoSuspenden === 1 && R.decisiones.misma_fila_viva === 1, 'el par Macri 15/10: lo lista y no suspende (misma_fila_viva) — ' + JSON.stringify(R.decisiones));
 ok(R.lineas.some(function (l) { return /NO COINCIDE \(Realizada, asistentes 20\)/.test(l); }), 'la Realizada muestra sus asistentes');
 ok(E.logs.some(function (l) { return /^--- RESUMEN/.test(l); }) && E.logs.some(function (l) { return /^  PAR \|/.test(l); }), 'el log: la lista, los pares y el resumen');
+// 16/10 (dato del usuario): "Estado" vale Realizada / Cancelado / Programado; un valor nuevo en el período se AVISA
+ok(R.valoresNuevos === 0 && E.logs.some(function (l) { return /sólo los conocidos \(Realizada \/ Cancelado \/ Programado\)/.test(l); }),
+   'sólo los valores conocidos: no avisa nada');
+ok(E.run('esCanceladoConjunto_("Cancelado") && esCanceladoConjunto_(" Cancelado ") && esCanceladoConjunto_("Cancelada") && !esCanceladoConjunto_("Programado") && !esCanceladoConjunto_("Realizada")') === true,
+   '"Cancelado" (exacto) y lo que contenga "cancel" cancelan; "Programado" y "Realizada" no');
+{
+  const X = montar(true, [filaEquipo('Ezequiel Sabor', 'Almagro', 15, { hora: '09:45' })], {},
+                   [cj('Sabor Ezequiel', 'Almagro', 15, '', '', 'Postergado'), cj('Tapia Gabino', 'Núñez', 14, '', '', 'Programado')]);
+  const R2 = X.run('medirCancelacionesConjunto({ desde: "2026-07-15" })');
+  ok(R2.valoresNuevos === 1 && R2.estadosNuevos.Postergado === 1 && !R2.estadosNuevos.Programado &&
+     X.logs.some(function (l) { return /AVISO: en el período, "Estado" de RDV CONJUNTO tiene valores que NO son los conocidos.*"Postergado" 1/.test(l); }),
+     'un valor nuevo ("Postergado") en el período: el paso 95 lo AVISA — ' + JSON.stringify(R2.estadosNuevos));
+  ok(R2.canceladas === 0, 'y "Postergado" no cuenta como cancelación');
+}
 
 // ============================== 6. la GUÍA / LEER, sólo con el interruptor ==============================
 

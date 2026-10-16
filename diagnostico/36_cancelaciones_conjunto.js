@@ -36,6 +36,23 @@ function medirCancelacionesConjunto(opciones) {
   const D = dest.D || {};
   const iSt = D['STATUS REUNIÓN'], iAs = D['Asistentes'];
   const enPeriodo = function (c) { return c.fecha && ymd_(c.fecha) >= ymd_(desde); };
+  // 16/10 (pedido del usuario): un valor de "Estado" en el período que no es uno de los conocidos (Realizada / Cancelado /
+  // Programado) se AVISA: puede querer decir "cancelada" y hoy no cuenta (sólo "Cancelado" o lo que contenga "cancel")
+  const conocidos = CONJUNTO_ESTADOS_CONOCIDOS.map(normalizeText_);
+  R.estadosNuevos = {};
+  cc.filas.forEach(function (c) {
+    if (!enPeriodo(c)) return;
+    const k = str(c.estado).trim();
+    if (conocidos.indexOf(normalizeText_(k)) < 0) R.estadosNuevos[k || '(vacío)'] = (R.estadosNuevos[k || '(vacío)'] || 0) + 1;
+  });
+  R.valoresNuevos = Object.keys(R.estadosNuevos).length;
+  if (R.valoresNuevos) {
+    Logger.log('>>> AVISO: en el período, "%s" de RDV CONJUNTO tiene valores que NO son los conocidos (%s): %s. Revisar si alguno quiere ' +
+               'decir "cancelada" (hoy sólo cuentan "%s" y lo que contenga "cancel").', cc.nombreEst, CONJUNTO_ESTADOS_CONOCIDOS.join(' / '),
+               Object.keys(R.estadosNuevos).map(function (k) { return '"' + k + '" ' + R.estadosNuevos[k]; }).join(' · '), CONJUNTO_ESTADO_CANCELADO_EXACTO);
+  } else {
+    Logger.log('  valores de "%s" en el período: sólo los conocidos (%s)', cc.nombreEst, CONJUNTO_ESTADOS_CONOCIDOS.join(' / '));
+  }
   // la decisión de cada fila "Cancelado" (por fila de RDV CONJUNTO)
   const decisionDe = new Map();
   cc.decisiones.forEach(function (d) { d.conjunto.forEach(function (c) { decisionDe.set(c.fila, d); }); });

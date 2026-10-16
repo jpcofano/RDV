@@ -2001,6 +2001,10 @@ Los tests de escenarios "APAGADO" parten ahora de todo apagado explícitamente: 
     - si la fila tiene otro STATUS o asistentes (avisa, una vez por fila).
   - **Reactivación:** el mail no la reactiva mientras la fila conserve la fecha con que se suspendió (revisor).
   - **Medición:** `paso95_cancelacionesConjunto`, también dentro de `revisarTodo()`.
+  - **La columna** (dato del usuario, del paso 68): "Estado" (H), con los valores Realizada, Cancelado y Programado.
+    - "Cancelado" exacto (`CONJUNTO_ESTADO_CANCELADO_EXACTO`) es la cancelación, además de lo que contenga "cancel".
+    - El paso 95 avisa si en el período aparece otro valor (`CONJUNTO_ESTADOS_CONOCIDOS`); el vacío también cuenta como valor
+      nuevo.
 
 **Después de prender:**
 - correr el paso 48 para que la GUÍA y la LEER muestren las reglas nuevas;

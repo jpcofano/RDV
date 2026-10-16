@@ -1720,6 +1720,13 @@ const CONJUNTO_ENC_ESTADO = ['estado', 'estado reunion', 'estado reunión', 'est
   'estado evento', 'estado del encuentro', 'estado encuentro', 'status', 'status reunion', 'status reunión'];
 /** Un Estado de RDV CONJUNTO que dice que la reunión NO se hizo (sobre el texto normalizado). */
 const CONJUNTO_ESTADO_CANCELADO = /cancel/;
+/**
+ * 16/10 (dato del usuario, del paso 68): la columna es "Estado" (H) y sus valores son "Realizada", "Cancelado" y "Programado".
+ * "Cancelado" (exacto) es la cancelación, además de lo que contenga "cancel". El paso 95 avisa si aparece un valor que no sea
+ * uno de los conocidos (CONJUNTO_ESTADOS_CONOCIDOS).
+ */
+const CONJUNTO_ESTADO_CANCELADO_EXACTO = 'Cancelado';
+const CONJUNTO_ESTADOS_CONOCIDOS = ['Realizada', 'Cancelado', 'Programado'];
 /** La propiedad del script con las filas de la base ya avisadas por un "Cancelado" de RDV CONJUNTO que no se aplicó. */
 const AGENDA_PROP_CONJUNTO_AVISADAS = 'AGENDA_AVISADAS_CONJUNTO_CANCELADO';
 /** La propiedad del script con las filas suspendidas por el sistema que ya avisaron que recibieron asistentes o inscriptos. */

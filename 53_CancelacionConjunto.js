@@ -50,7 +50,7 @@ function columnaEstadoConjunto_(hdr, vals, excluir) {
 
 /** ¿Un Estado de RDV CONJUNTO dice que la reunión no se hizo? ("Cancelado", "Cancelada", "CANCELADA"…). */
 function esCanceladoConjunto_(estado) {
-  return CONJUNTO_ESTADO_CANCELADO.test(normalizeText_(estado));
+  return str(estado).trim() === CONJUNTO_ESTADO_CANCELADO_EXACTO || CONJUNTO_ESTADO_CANCELADO.test(normalizeText_(estado));
 }
 
 /** Una fila de RDV CONJUNTO, en una línea: "RDV CONJUNTO fila N (Villa Devoto, "Realizada")". */
