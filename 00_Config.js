@@ -1696,6 +1696,32 @@ const AGENDA_NOTA_CANCELA = /suspend|cancel|no se realiza|se cae\b|se baja\b/;
  * VERDE → "Cambios" dice 'nueva (verde en el mail)'. Nunca escribe la base.
  */
 const AGENDA_COLORES_AMARILLO_VERDE = false;
+// ---------- 16/10: RDV CONJUNTO como TERCERA fuente de cancelación (53_CancelacionConjunto.js; APAGADO hasta ver el paso 95) ----------
+/**
+ * **"Cancelado" en RDV CONJUNTO → la fila de la base pasa a Suspendida** (decisión del usuario, 16/10). RDV CONJUNTO se LEE,
+ * nunca se escribe. Sólo cuenta con la cancelación automática en modo "suspender" (AGENDA_CANCELACION_AUTOMATICA +
+ * AGENDA_CANCELACION_MODO = 'suspender'). Con `true`, en `planAgenda_` (paso 7d):
+ *   - cada fila de RDV CONJUNTO cuyo Estado es "Cancelado" ("Cancelada", …: /cancel/) se cruza con la base con EL MISMO cruce de
+ *     Asistentes (`cruzarAsistentes_`: figura por tokens + fecha; con 2+ filas de la figura ese día, dirección y después barrio /
+ *     comuna). Un cruce que no es único no suspende nada;
+ *   - si RDV CONJUNTO tiene, para la MISMA fila de la base, otra fila que NO está cancelada (caso Macri 15/10: Villa Santa Rita
+ *     "Cancelado" y Villa Devoto "Realizada", la misma dirección, UNA fila en la base), la de la base es la no cancelada: NO se
+ *     suspende. Lo mismo si la otra fila (misma figura, mismo día) no se pudo cruzar: no se sabe cuál es (no se suspende);
+ *   - sólo una fila "en agenda" (ya Suspendida: nada; otro STATUS —Realizada…— o asistentes cargados: no se toca y se avisa UNA
+ *     vez por fila, cancelacion_no_aplicada; las ya avisadas, en la propiedad AGENDA_PROP_CONJUNTO_AVISADAS); nunca se borra;
+ *   - una fila suspendida así NO la reactiva la agenda porque la reunión siga en el mail ("suspendida_conjunto" en
+ *     REGISTRO_AGENDA_CAMBIOS): la vuelve atrás el equipo, a mano; y si el equipo la vuelve a "en agenda", no se vuelve a
+ *     suspender (aunque RDV CONJUNTO siga diciendo "Cancelado").
+ * Con `false`, nada cambia. En seco: `medirCancelacionesConjunto({ desde: '2026-07-15' })` (diagnostico/36, paso 95).
+ */
+const AGENDA_CANCELACION_CONJUNTO = false;
+/** Encabezados posibles de la columna de estado de RDV CONJUNTO (si ninguno está, se busca por el contenido). */
+const CONJUNTO_ENC_ESTADO = ['estado', 'estado reunion', 'estado reunión', 'estado de la reunion', 'estado de la reunión', 'estado del evento',
+  'estado evento', 'estado del encuentro', 'estado encuentro', 'status', 'status reunion', 'status reunión'];
+/** Un Estado de RDV CONJUNTO que dice que la reunión NO se hizo (sobre el texto normalizado). */
+const CONJUNTO_ESTADO_CANCELADO = /cancel/;
+/** La propiedad del script con las filas de la base ya avisadas por un "Cancelado" de RDV CONJUNTO que no se aplicó. */
+const AGENDA_PROP_CONJUNTO_AVISADAS = 'AGENDA_AVISADAS_CONJUNTO_CANCELADO';
 /** La propiedad del script con las filas suspendidas por el sistema que ya avisaron que recibieron asistentes o inscriptos. */
 const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */

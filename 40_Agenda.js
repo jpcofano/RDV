@@ -30,6 +30,8 @@
  *      es ANTERIOR a la fecha y hora de la reunión, y sólo una fila "en agenda" (otro STATUS: no se toca, se avisa); una
  *      suspendida por rojo no se reactiva mientras siga en rojo (ni nunca con los colores apagados: "suspendida_rojo" en el
  *      registro). La que el sistema suspendió y después recibe asistentes o inscriptos: nada se pisa, se avisa (7c);
+ *      16/10 (AGENDA_CANCELACION_CONJUNTO, apagado): la TERCERA fuente, el Estado "Cancelado" de RDV CONJUNTO (que sólo se lee),
+ *      con el mismo cruce que los Asistentes y las mismas reglas (paso 7d, 53_CancelacionConjunto.js); no se reactiva sola;
  *   8. Seguridad en tu Barrio: la fila nace sin figura; la Figura sale de RDV CONJUNTO por fecha + barrio (o comuna)
  *      cuando aparece. Ambigua o sin fila todavía → AGENDA_FIGURA_A_COMPLETAR (la carga el equipo en la fila);
  *   9. corre dentro del activador de cada hora si AGENDA_ACTIVA, antes del cruce con los formularios;
@@ -1001,6 +1003,59 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     evalua('suspender', f, { tiempo: tiempo, statusDelSistema: statusDelSistema });
   });
 
+  // --- 7d (16/10). RDV CONJUNTO como TERCERA fuente de cancelación (AGENDA_CANCELACION_CONJUNTO, 53_CancelacionConjunto.js):
+  // una fila de RDV CONJUNTO "Cancelado" → su fila de la base (el mismo cruce de Asistentes) pasa a Suspendida, con las mismas
+  // reglas que J (sólo "en agenda"; otro STATUS: aviso; nunca se borra). RDV CONJUNTO sólo se lee.
+  P.conjuntoCancela = [];
+  if (suspenderSiempre && opc('cancelacionConjunto', AGENDA_CANCELACION_CONJUNTO)) {
+    P.modos.cancelacionConjunto = true;
+    let cc;
+    try { cc = opciones.cancelacionesConjunto || cancelacionesConjunto_(dest, opciones.comunas || leerComunasMap_()); }
+    catch (err) { cc = { error: String(err && err.message || err), decisiones: [] }; }
+    P.cancelacionesConjunto = cc;
+    if (cc.error) Logger.log('  >>> RDV CONJUNTO como fuente de cancelación: %s. No se suspende nada por RDV CONJUNTO.', cc.error);
+    const colSt = col('STATUS REUNIÓN');
+    const yaCambia = function (fila) {
+      return P.acciones.some(function (a) { return a.escrituras.some(function (e) { return e.fila === fila && e.col === colSt; }); });
+    };
+    (cc.decisiones || []).forEach(function (dc) {
+      const f = dc.f;
+      if (!f) { P.conjuntoCancela.push({ dc: dc, decision: 'no: ' + dc.motivo }); return; }
+      if (!f.fecha || !_enAlcance_(alcance, f.fecha)) { P.conjuntoCancela.push({ dc: dc, decision: 'no: la fila es de antes del alcance de la agenda' }); return; }
+      // una reunión "de la agenda" armada desde la fila (los avisos, el log y el registro hablan de reuniones)
+      const ev = { fecha: f.fecha, hora: valorAgendaComparable_(val(f, 'HORA'), 'HORA') || '', figuras: f.figura ? [f.figura] : [],
+                   figuraFila: f.figura || '', tipo: f.figura ? '' : 'Seguridad en tu Barrio', lugar: f.barrio || str(val(f, 'Lugar (mail)')),
+                   porConjunto: true, conjuntoTexto: dc.conjunto.map(textoFilaConjunto_).join(' / ') };
+      if (dc.decision !== 'suspender') {
+        P.conjuntoCancela.push({ dc: dc, decision: 'no: ' + dc.motivo });
+        if (dc.aviso) P.cancelNoAplicada.push({ d: ev, f: f, motivo: dc.motivo, porConjunto: true, conjunto: dc.conjunto });
+        return;
+      }
+      if (yaCambia(f.fila)) { P.conjuntoCancela.push({ dc: dc, decision: 'no: esta corrida ya le cambia el STATUS (el mail)' }); return; }
+      // ya la suspendió RDV CONJUNTO en una corrida anterior y el equipo la volvió a "en agenda": es de ellos, no se vuelve a suspender
+      if (P.historial && P.historial.suspendidasConjunto && P.historial.suspendidasConjunto.has(str(val(f, 'agenda_uid')))) {
+        P.conjuntoCancela.push({ dc: dc, decision: 'no: ya la suspendió RDV CONJUNTO antes y el equipo la volvió a "' + str(val(f, 'STATUS REUNIÓN')) + '": no se vuelve a suspender' });
+        return;
+      }
+      const escS = [
+        { fila: f.fila, col: colSt, valor: 'Suspendida', esperado: val(f, 'STATUS REUNIÓN') },
+        { fila: f.fila, col: col('agenda_status_escrito'), valor: 'Suspendida', esperado: val(f, 'agenda_status_escrito') }
+      ];
+      const yaUid = P.acciones.some(function (a) { return a.escrituras.some(function (e) { return e.fila === f.fila && e.col === col('agenda_uid'); }); });
+      if (esVacio_(val(f, 'agenda_uid')) && !yaUid) escS.push({ fila: f.fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
+      const salida = 'Cancelado en RDV CONJUNTO: ' + ev.conjuntoTexto;
+      const accion = { tipo: 'suspender', f: f, ev: ev, escrituras: escS, detalle: salida + ' (suspendida automáticamente: nunca se borra)',
+                       porConjunto: true, motivoConjunto: ev.conjuntoTexto };
+      P.acciones.push(accion);
+      P.suspendidasAuto.push({ d: ev, f: f, salida: salida, accion: accion, porConjunto: true });
+      P.conjuntoCancela.push({ dc: dc, decision: 'suspender' });
+      // la reunión del mail que tiene esta fila (si la hay): el archivo "Agenda" lo dice
+      P.filaDe.forEach(function (x) {
+        if (x && x.fila === f.fila && !x.nueva) { x.status = 'Suspendida'; x.suspendidaAuto = true; x.porConjunto = true; x.cambiosTexto = 'suspendida: Cancelado en RDV CONJUNTO'; }
+      });
+    });
+  }
+
   // --- 7c (15/10, noche). Una fila que el sistema SUSPENDIÓ y después recibió asistentes o inscriptos: no se pisa nada (el
   // STATUS sigue Suspendida); se avisa una vez (suspendida_con_datos) y lo lista la auditoría (paso 66) ---
   P.suspendidasConDatos = [];
@@ -1143,6 +1198,19 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
   });
   P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev); });
+  // 16/10 (AGENDA_CANCELACION_CONJUNTO): la fila que suspendió RDV CONJUNTO (en esta corrida o antes) lo dice en "Cambios"
+  if (P.modos.cancelacionConjunto) {
+    const susConj = (P.historial && P.historial.suspendidasConjunto) || new Set();
+    P.copia.forEach(function (c) {
+      if (!c.x || !c.x.fila) return;
+      const fx = c.x.f || filaPorNumero.get(c.x.fila);
+      const antes = !c.x.porConjunto && fx && susConj.has(str(val(fx, 'agenda_uid'))) && normStatus_(val(fx, 'STATUS REUNIÓN')) === 'suspendida';
+      if (!c.x.porConjunto && !antes) return;
+      const t = 'suspendida: Cancelado en RDV CONJUNTO';
+      const prev = c.cambios != null ? c.cambios : str(c.ev.cambios);
+      c.cambios = prev && prev.indexOf(t) < 0 ? t + '; ' + prev : t;
+    });
+  }
   // 15/10 (noche, punto 5, AGENDA_COLORES_AMARILLO_VERDE): AMARILLO → "Cambios" y naranja en "Agenda (mail)"; VERDE → "nueva"
   if (amarilloVerde) P.copia.forEach(_marcaAmarilloVerdeAgenda_);
 
@@ -1181,9 +1249,13 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   if (coloresMail) {
     P.resumen.canceladasEnRojo = enAlcance.filter(function (ev) { return ev.canceladaEnMail; }).length;
     P.resumen.suspendidasPorRojo = P.suspendidasAuto.filter(function (x) { return x.porRojo; }).length;
-    P.resumen.noReactivadasRojo = P.noReactivadasRojo.length;
+    P.resumen.noReactivadasRojo = P.noReactivadasRojo.filter(function (x) { return !x.porConjunto; }).length;
   }
   if (suspenderSiempre || coloresMail) P.resumen.suspendidasConDatos = P.suspendidasConDatos.length;
+  if (P.modos.cancelacionConjunto) {
+    P.resumen.canceladasEnConjunto = P.conjuntoCancela.length;
+    P.resumen.suspendidasPorConjunto = P.suspendidasAuto.filter(function (x) { return x.porConjunto; }).length;
+  }
   return P;
 }
 
@@ -1335,9 +1407,13 @@ function _accionActualizar_(P, f, ev, A, barrioDe, op) {
   // sistema suspendió por rojo (la nota "suspendida_rojo" del historial) no se reactiva si no se sabe el color de la reunión
   // (los colores apagados, o el mail sin HTML): con el color sabido y sin rojo, sí (dejó de estar en rojo).
   const porRojo = P.historial && P.historial.suspendidasRojo && P.historial.suspendidasRojo.has(str(val('agenda_uid')));
-  const noReactivar = !!ev.canceladaEnMail || (!!porRojo && ev.colorMail == null);
+  // 16/10 (AGENDA_CANCELACION_CONJUNTO): la que suspendió un "Cancelado" de RDV CONJUNTO ("suspendida_conjunto" en el historial)
+  // no la reactiva la agenda porque la reunión siga en el mail: la vuelve atrás el equipo, a mano.
+  const porConjunto = !!(P.historial && P.historial.suspendidasConjunto && P.historial.suspendidasConjunto.has(str(val('agenda_uid'))));
+  const noReactivar = !!ev.canceladaEnMail || (!!porRojo && ev.colorMail == null) || porConjunto;
   if (noReactivar && normStatus_(status) === 'suspendida' && normStatus_(val('agenda_status_escrito')) === 'suspendida') {
-    (P.noReactivadasRojo = P.noReactivadasRojo || []).push({ f: f, ev: ev, motivo: ev.canceladaEnMail ? ev.canceladaEnMailMotivo : 'la suspendió el rojo del mail y hoy no se sabe el color' });
+    (P.noReactivadasRojo = P.noReactivadasRojo || []).push({ f: f, ev: ev, porConjunto: porConjunto && !ev.canceladaEnMail,
+      motivo: ev.canceladaEnMail ? ev.canceladaEnMailMotivo : (porConjunto ? 'la suspendió un "Cancelado" de RDV CONJUNTO' : 'la suspendió el rojo del mail y hoy no se sabe el color') });
   } else if (normStatus_(status) === 'suspendida' && normStatus_(val('agenda_status_escrito')) === 'suspendida') {
     if (P.filaDe.get(ev.clave)) P.filaDe.get(ev.clave).status = 'en agenda';
     P.acciones.push({ tipo: 'reactivar', f: f, ev: ev, detalle: 'volvió a aparecer en la versión ' + ev.version, escrituras: [
@@ -1623,6 +1699,9 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
   })).concat(plan.acciones.filter(function (a) { return a.tipo === 'suspender' && a.porRojo; }).map(function (a) {
     // 15/10 (noche): la suspendió el ROJO del mail: con los colores apagados (o el mail sin HTML) no se reactiva sola
     return [corrida, 'suspendida_rojo', a.f.fila, '', '', a.motivoRojo || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
+  })).concat(plan.acciones.filter(function (a) { return a.tipo === 'suspender' && a.porConjunto; }).map(function (a) {
+    // 16/10 (AGENDA_CANCELACION_CONJUNTO): la suspendió un "Cancelado" de RDV CONJUNTO: la agenda no la reactiva sola
+    return [corrida, 'suspendida_conjunto', a.f.fila, '', '', a.motivoConjunto || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
   })).concat((plan.figuraPorDireccion || []).map(function (x) {
     // la figura de una Seguridad salió de la DIRECCIÓN (07/10): queda registrado, con el barrio de RDV CONJUNTO si difiere
     return [corrida, 'figura_por_direccion', x.f.fila, '', '', x.res.barrioConjunto ? 'barrio RDV CONJUNTO: ' + x.res.barrioConjunto : '',
@@ -2408,7 +2487,7 @@ function leerHistorialAgenda_() {
   // 15/10 (noche): `suspendidasRojo`: los agenda_uid que el sistema suspendió por el ROJO del mail (líneas "suspendida_rojo");
   // `eleccionesRegistradas`: las elecciones ya anotadas en el registro (AGENDA_ELECCIONES_SIEMPRE: una sola vez)
   const h = { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), yaCargadas: new Set(), eleccionesRegistradas: new Set(),
-              suspendidasRojo: new Set(), error: '' };
+              suspendidasRojo: new Set(), suspendidasConjunto: new Set(), error: '' };
   try {
     const ss = registrosAgenda_();
     const cam = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS), reg = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
@@ -2432,6 +2511,7 @@ function leerHistorialAgenda_() {
       else if (tipo === 'olvidar_borrada') h.olvidadas.add(uid);
       else if (tipo === 'borrada_por_equipo') h.notadas.add(uid);
       else if (tipo === 'suspendida_rojo') h.suspendidasRojo.add(uid);
+      else if (tipo === 'suspendida_conjunto') h.suspendidasConjunto.add(uid);   // 16/10 (AGENDA_CANCELACION_CONJUNTO)
     });
     borradasSistema.forEach(function (uid) { h.creadas.delete(uid); });
   } catch (err) {
@@ -2937,8 +3017,19 @@ function _logAgendaSegura_(P) {
     });
     (P.cancelNoAplicada || []).forEach(function (x) {
       Logger.log('    NO SE SUSPENDE | %s %s | %s | %s%s', fmtFecha_(x.d.fecha), x.d.hora, x.d.figuraFila || x.d.tipo,
-                 x.porRojo ? 'cancelada en el mail (' + x.d.canceladaEnMailMotivo + '): ' : '', x.motivo);
+                 x.porRojo ? 'cancelada en el mail (' + x.d.canceladaEnMailMotivo + '): ' : (x.porConjunto ? 'Cancelado en ' + x.d.conjuntoTexto + ': ' : ''), x.motivo);
     });
+    // 16/10 (AGENDA_CANCELACION_CONJUNTO): cada "Cancelado" de RDV CONJUNTO y qué se hizo
+    if (m.cancelacionConjunto) {
+      const cc = P.cancelacionesConjunto || {};
+      Logger.log('  RDV CONJUNTO COMO FUENTE DE CANCELACIÓN%s: filas "Cancelado" %s | suspendidas %s | columna de estado "%s" (%s)',
+                 cc.error ? ' (ERROR: ' + cc.error + ')' : '', (P.conjuntoCancela || []).length,
+                 (P.suspendidasAuto || []).filter(function (x) { return x.porConjunto; }).length, cc.nombreEst || '—', cc.comoEst || '—');
+      (P.conjuntoCancela || []).forEach(function (x) {
+        Logger.log('    CONJUNTO | %s | fila de la base %s | %s', x.dc.conjunto.map(textoFilaConjunto_).join(' / '),
+                   x.dc.f ? x.dc.f.fila + ' (' + (x.dc.f.figura || 'sin figura') + ', ' + (x.dc.f.barrio || 'sin barrio') + ')' : '—', x.decision);
+      });
+    }
     (P.suspendidasConDatos || []).forEach(function (x) {
       Logger.log('    SUSPENDIDA POR EL SISTEMA CON DATOS (no se pisa nada; se avisa una vez) | fila %s | %s | %s%s', x.f.fila, x.f.figura || '(sin figura)',
                  x.f.fecha ? fmtFecha_(x.f.fecha) : '', _datosFilaTextoAgenda_({ D: {} }, x.f) || ' | asistentes ' + str(x.asistentes) + ', inscriptos ' + str(x.inscriptos));
@@ -2948,7 +3039,7 @@ function _logAgendaSegura_(P) {
     const rojas = (P.cancelacionesEvaluadas || []).filter(function (x) { return x.por === 'rojo'; });
     Logger.log('  COLORES DEL MAIL: reuniones del alcance CANCELADAS EN EL MAIL (rojo entero) %s | suspendidas por rojo %s | Suspendidas que no se ' +
                'reactivan (siguen en rojo, o no se sabe el color) %s%s', rojas.length, (P.suspendidasAuto || []).filter(function (x) { return x.porRojo; }).length,
-               (P.noReactivadasRojo || []).length, m.suspenderSiempre ? '' : ' (la cancelación automática está apagada: no se suspende nada)');
+               (P.noReactivadasRojo || []).filter(function (x) { return !x.porConjunto; }).length, m.suspenderSiempre ? '' : ' (la cancelación automática está apagada: no se suspende nada)');
     rojas.forEach(function (x) {
       Logger.log('    ROJO | %s | %s | %s%s', _textoReunionAgenda_(x.d), x.motivoMail, x.decision, notasTextoAgenda_(x.d));
     });
@@ -2997,9 +3088,13 @@ function _avisosAgendaSegura_(P, r) {
       if (!hechas.has(x.accion)) return;
       // 15/10 (noche): la cancelada en ROJO lo dice, con las notas del mail que la nombran (confirman el color)
       av('suspendidas', _textoReunionAgenda_(x.d) + ' | fila ' + x.f.fila + ' → Suspendida (' +
-         (x.porRojo ? 'cancelada en el mail: ' + x.d.canceladaEnMailMotivo : 'salió del mail del ' + fmtFecha_(x.d.mailQueLaSaco)) + ')' + notasTextoAgenda_(x.d));
+         (x.porRojo ? 'cancelada en el mail: ' + x.d.canceladaEnMailMotivo :
+          (x.porConjunto ? 'Cancelado en ' + x.d.conjuntoTexto : 'salió del mail del ' + fmtFecha_(x.d.mailQueLaSaco))) + ')' + notasTextoAgenda_(x.d));
     });
+    // 16/10 (AGENDA_CANCELACION_CONJUNTO): un "Cancelado" de RDV CONJUNTO que no se aplicó, UNA vez por fila (no tiene fecha de mail)
+    _avisarConjuntoNoAplicadoAgenda_(P, av);
     (P.cancelNoAplicada || []).forEach(function (x) {
+      if (x.porConjunto) return;
       if (!reciente(x.mail || x.d.mailQueLaSaco)) return;   // 15/10 (revisor): no repetir cada hora el mismo aviso
       av('cancelacion_no_aplicada', _textoReunionAgenda_(x.d) + (x.f ? ' | fila ' + x.f.fila : '') +
          (x.porRojo ? ' está cancelada en el mail (' + x.d.canceladaEnMailMotivo + ') y NO se suspendió: ' : ' salió del mail y NO se suspendió: ') +
@@ -3008,6 +3103,34 @@ function _avisosAgendaSegura_(P, r) {
     // 15/10 (noche): una fila que el sistema suspendió y después recibió asistentes o inscriptos (una vez por fila)
     _avisarSuspendidasConDatosAgenda_(P, av);   // (av ya cuenta en n)
   }
+  return n;
+}
+
+/**
+ * **"Cancelado" en RDV CONJUNTO que no se aplicó** (16/10, AGENDA_CANCELACION_CONJUNTO): otro STATUS en la base, o asistentes
+ * que se contradicen. RDV CONJUNTO no tiene fecha de mail, así que se avisa UNA vez por fila (y filas de RDV CONJUNTO): las ya
+ * avisadas, en la propiedad AGENDA_PROP_CONJUNTO_AVISADAS (se olvidan a los 120 días). Devuelve cuántas avisó.
+ */
+function _avisarConjuntoNoAplicadoAgenda_(P, av) {
+  const xs = ((P && P.cancelNoAplicada) || []).filter(function (x) { return x.porConjunto; });
+  if (!xs.length) return 0;
+  let props = null, vistas = {};
+  try { props = PropertiesService.getScriptProperties(); vistas = JSON.parse(props.getProperty(AGENDA_PROP_CONJUNTO_AVISADAS) || '{}') || {}; }
+  catch (err) { vistas = {}; }
+  const hoy = Utilities.formatDate(new Date(), RDV_TZ, 'yyyy-MM-dd');
+  const viejo = Utilities.formatDate(new Date(Date.now() - 120 * 86400000), RDV_TZ, 'yyyy-MM-dd');
+  Object.keys(vistas).forEach(function (k) { if (String(vistas[k]) < viejo) delete vistas[k]; });
+  let n = 0;
+  xs.forEach(function (x) {
+    const uid = P.A && P.A.agenda_uid != null ? str(x.f.valores[P.A.agenda_uid]) : '';
+    const k = (uid || 'fila ' + x.f.fila) + '|' + (x.f.fecha ? ymd_(x.f.fecha) : '') + '|' + (x.conjunto || []).map(function (c) { return c.fila; }).join(',');
+    if (vistas[k]) return;
+    vistas[k] = hoy;
+    av('cancelacion_no_aplicada', _textoReunionAgenda_(x.d) + ' | fila ' + x.f.fila + ' figura "Cancelado" en ' + x.d.conjuntoTexto +
+       ' y NO se suspendió: ' + x.motivo);
+    n++;
+  });
+  if (n && props) { try { props.setProperty(AGENDA_PROP_CONJUNTO_AVISADAS, JSON.stringify(vistas)); } catch (err) { /* el aviso nunca corta */ } }
   return n;
 }
 

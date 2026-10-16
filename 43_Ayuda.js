@@ -51,6 +51,8 @@ const AYUDA_GUIA_ = [
   ['item', 'Si una reunión que todavía no pasó sale del mail, el sistema la pone en Suspendida (nunca borra la fila); si vuelve al mail, la reactiva. Queda anotado como "cancelación" (aplicado).', null, 'cancelAuto'],
   // 15/10 (noche): con los colores del mail (AGENDA_COLORES_MAIL) y la cancelación automática: ver filasAyuda_
   ['item', 'El mail manda: una reunión en ROJO en el mail (Evento, Hora y Lugar) también pasa a Suspendida, aunque siga escrita, si el mail es anterior a la reunión. Sólo si está "en agenda": si el equipo ya le puso otro estado (Realizada…), no se toca y se avisa.', null, 'rojo'],
+  // 16/10: sólo con AGENDA_CANCELACION_CONJUNTO (y la cancelación automática): ver filasAyuda_
+  ['item', 'Si en RDV CONJUNTO una reunión figura "Cancelado", su fila de la base pasa a Suspendida (sólo si está "en agenda"; si tiene otro estado, no se toca y se avisa). Si RDV CONJUNTO tiene esa misma reunión también como "Realizada" (dos filas de la misma figura ese día), la de la base es la Realizada: no se suspende. RDV CONJUNTO nunca se modifica.', null, 'conjunto'],
   ['item', 'Se aplica en la próxima hora.'],
   // 15/10: sólo con AGENDA_ELECCIONES_SIEMPRE (ver filasAyuda_)
   ['item', 'Lo elegido vale aunque después cambie la hora en el mail o el barrio de la fila: la línea no vuelve. Si la fila elegida ya no está, "Ya está cargada en otra fila" igual no crea nada y "Es la misma" vuelve a preguntar.', null, 'eleccionesSiempre'],
@@ -81,6 +83,7 @@ const AYUDA_LEER_ = [
   ['item', 'Si una reunión sale del mail: "Estado en la agenda" = desaparecida (se confirma en la base).', null, 'cancelPregunta'],
   ['item', 'Si una reunión sale del mail: el sistema la pone en Suspendida en la base ("Cambios": "suspendida: salió del mail del …"); si vuelve, la reactiva.', null, 'cancelAuto'],
   ['item', 'Si una reunión está en ROJO en el mail (Evento, Hora y Lugar): está cancelada; el sistema la pone en Suspendida en la base ("Cambios": "suspendida: rojo en la v… del …").', null, 'rojo'],
+  ['item', 'Si en RDV CONJUNTO figura "Cancelado": el sistema la pone en Suspendida en la base ("Cambios": "suspendida: Cancelado en RDV CONJUNTO") y no la reactiva sola aunque siga en el mail.', null, 'conjunto'],
   ['item', 'Lo que el mail marca en AMARILLO aparece en "Cambios" ("cambió en el mail (amarillo): …") y en naranja en "Agenda (mail)"; lo VERDE, como "nueva (verde en el mail)".', null, 'amarilloVerde'],
   // 15/10 (H1): sólo con AGENDA_CREAR_SOLO_IDENTIFICADAS
   ['item', '"Estado en la agenda" = pendiente de definir: una reunión sin figura ni dirección (p. ej. Seguridad "A CONFIRMAR"). La fila de la base se crea cuando llega la figura o la dirección, o 2 días antes.', null, 'pendientes'],
@@ -132,6 +135,8 @@ function filasAyuda_(def) {
     // 15/10 (noche): los colores del mail (el ROJO cancela sólo con la cancelación automática; AMARILLO / VERDE, aparte)
     if (l[3] === 'rojo' && !(cancelAuto && AGENDA_COLORES_MAIL)) return;
     if (l[3] === 'amarilloVerde' && !(AGENDA_COLORES_MAIL && AGENDA_COLORES_AMARILLO_VERDE)) return;
+    // 16/10: RDV CONJUNTO como tercera fuente de cancelación (sólo con la cancelación automática)
+    if (l[3] === 'conjunto' && !(cancelAuto && AGENDA_CANCELACION_CONJUNTO)) return;
     if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
     else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
     else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });
