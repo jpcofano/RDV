@@ -1036,7 +1036,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       }
       if (yaCambia(f.fila)) { P.conjuntoCancela.push({ dc: dc, decision: 'no: esta corrida ya le cambia el STATUS (el mail)' }); return; }
       // ya la suspendió RDV CONJUNTO en una corrida anterior y el equipo la volvió a "en agenda": es de ellos, no se vuelve a suspender
-      if (P.historial && P.historial.suspendidasConjunto && P.historial.suspendidasConjunto.has(str(val(f, 'agenda_uid')))) {
+      if (_bloqueoConjuntoAgenda_(P.historial, str(val(f, 'agenda_uid')), f.fecha)) {
         P.conjuntoCancela.push({ dc: dc, decision: 'no: ya la suspendió RDV CONJUNTO antes y el equipo la volvió a "' + str(val(f, 'STATUS REUNIÓN')) + '": no se vuelve a suspender' });
         return;
       }
@@ -1207,7 +1207,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     P.copia.forEach(function (c) {
       if (!c.x || !c.x.fila) return;
       const fx = c.x.f || filaPorNumero.get(c.x.fila);
-      const antes = !c.x.porConjunto && fx && susConj.has(str(val(fx, 'agenda_uid'))) && normStatus_(val(fx, 'STATUS REUNIÓN')) === 'suspendida';
+      const antes = !c.x.porConjunto && fx && susConj.has(str(val(fx, 'agenda_uid'))) && _bloqueoConjuntoAgenda_(P.historial, str(val(fx, 'agenda_uid')), fx.fecha) &&
+                    normStatus_(val(fx, 'STATUS REUNIÓN')) === 'suspendida';
       if (!c.x.porConjunto && !antes) return;
       const t = 'suspendida: Cancelado en RDV CONJUNTO';
       const prev = c.cambios != null ? c.cambios : str(c.ev.cambios);
@@ -1412,7 +1413,7 @@ function _accionActualizar_(P, f, ev, A, barrioDe, op) {
   const porRojo = P.historial && P.historial.suspendidasRojo && P.historial.suspendidasRojo.has(str(val('agenda_uid')));
   // 16/10 (AGENDA_CANCELACION_CONJUNTO): la que suspendió un "Cancelado" de RDV CONJUNTO ("suspendida_conjunto" en el historial)
   // no la reactiva la agenda porque la reunión siga en el mail: la vuelve atrás el equipo, a mano.
-  const porConjunto = !!(P.historial && P.historial.suspendidasConjunto && P.historial.suspendidasConjunto.has(str(val('agenda_uid'))));
+  const porConjunto = _bloqueoConjuntoAgenda_(P.historial, str(val('agenda_uid')), f.fecha);
   const noReactivar = !!ev.canceladaEnMail || (!!porRojo && ev.colorMail == null) || porConjunto;
   if (noReactivar && normStatus_(status) === 'suspendida' && normStatus_(val('agenda_status_escrito')) === 'suspendida') {
     (P.noReactivadasRojo = P.noReactivadasRojo || []).push({ f: f, ev: ev, porConjunto: porConjunto && !ev.canceladaEnMail,
@@ -1704,7 +1705,8 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
     return [corrida, 'suspendida_rojo', a.f.fila, '', '', a.motivoRojo || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
   })).concat(plan.acciones.filter(function (a) { return a.tipo === 'suspender' && a.porConjunto; }).map(function (a) {
     // 16/10 (AGENDA_CANCELACION_CONJUNTO): la suspendió un "Cancelado" de RDV CONJUNTO: la agenda no la reactiva sola
-    return [corrida, 'suspendida_conjunto', a.f.fila, '', '', a.motivoConjunto || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
+    // (16/10, revisor: en "columna", la FECHA de la fila al suspenderla: el bloqueo vale sólo mientras siga en esa fecha)
+    return [corrida, 'suspendida_conjunto', a.f.fila, '', a.f.fecha ? ymd_(a.f.fecha) : '', a.motivoConjunto || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
   })).concat((plan.figuraPorDireccion || []).map(function (x) {
     // la figura de una Seguridad salió de la DIRECCIÓN (07/10): queda registrado, con el barrio de RDV CONJUNTO si difiere
     return [corrida, 'figura_por_direccion', x.f.fila, '', '', x.res.barrioConjunto ? 'barrio RDV CONJUNTO: ' + x.res.barrioConjunto : '',
@@ -2490,7 +2492,7 @@ function leerHistorialAgenda_() {
   // 15/10 (noche): `suspendidasRojo`: los agenda_uid que el sistema suspendió por el ROJO del mail (líneas "suspendida_rojo");
   // `eleccionesRegistradas`: las elecciones ya anotadas en el registro (AGENDA_ELECCIONES_SIEMPRE: una sola vez)
   const h = { creadas: new Map(), olvidadas: new Set(), notadas: new Set(), yaCargadas: new Set(), eleccionesRegistradas: new Set(),
-              suspendidasRojo: new Set(), suspendidasConjunto: new Set(), error: '' };
+              suspendidasRojo: new Set(), suspendidasConjunto: new Set(), suspendidasConjuntoFecha: new Map(), error: '' };
   try {
     const ss = registrosAgenda_();
     const cam = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA_CAMBIOS), reg = ss.getSheetByName(RDV_HOJA_REGISTRO_AGENDA);
@@ -2514,7 +2516,7 @@ function leerHistorialAgenda_() {
       else if (tipo === 'olvidar_borrada') h.olvidadas.add(uid);
       else if (tipo === 'borrada_por_equipo') h.notadas.add(uid);
       else if (tipo === 'suspendida_rojo') h.suspendidasRojo.add(uid);
-      else if (tipo === 'suspendida_conjunto') h.suspendidasConjunto.add(uid);   // 16/10 (AGENDA_CANCELACION_CONJUNTO)
+      else if (tipo === 'suspendida_conjunto') { h.suspendidasConjunto.add(uid); h.suspendidasConjuntoFecha.set(uid, str(r[4])); }   // 16/10
     });
     borradasSistema.forEach(function (uid) { h.creadas.delete(uid); });
   } catch (err) {
@@ -2901,6 +2903,17 @@ function _yaCargada_(P, ev, id, f, como, val) {
 }
 
 // ===================== 15/10 (noche): la AGENDA SEGURA — una reunión, una fila (H1-H4) y la cancelación que suspende (J) =====================
+
+/**
+ * 16/10 (revisor): ¿la fila la suspendió un "Cancelado" de RDV CONJUNTO ("suspendida_conjunto") y sigue en la FECHA con que se la
+ * suspendió? Si la agenda la movió a otra fecha (una reprogramación), el bloqueo ya no vale. Sin fecha anotada (líneas de antes),
+ * vale el bloqueo.
+ */
+function _bloqueoConjuntoAgenda_(h, uid, fecha) {
+  if (!h || !h.suspendidasConjunto || !uid || !h.suspendidasConjunto.has(uid)) return false;
+  const y = h.suspendidasConjuntoFecha ? h.suspendidasConjuntoFecha.get(uid) : '';
+  return !y || !fecha || y === ymd_(fecha);
+}
 
 /** El lunes (yyyyMMdd) de la semana de una fecha: la semana de los mails de agenda (lunes a domingo). */
 function lunesYmdAgenda_(d) {

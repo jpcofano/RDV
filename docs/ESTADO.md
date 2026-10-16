@@ -1989,6 +1989,19 @@ Los tests de escenarios "APAGADO" parten ahora de todo apagado explícitamente: 
   que entra al resumen del lunes) y en el aviso diario de las suspendidas, con el mismo filtro de 24 h que los otros avisos.
   `tests/agenda_rojo_cancela.test.js` [0b].
 
+- **RDV CONJUNTO como tercera fuente de cancelación** (`AGENDA_CANCELACION_CONJUNTO`, **APAGADO** hasta ver el paso 95).
+  `53_CancelacionConjunto.js` y el paso "7d" de la agenda. RDV CONJUNTO se lee y nunca se escribe.
+  - **Cuándo suspende:** una fila "Cancelado" de RDV CONJUNTO, cruzada con el mismo cruce de los asistentes, pone "Suspendida"
+    la fila de la base que está "en agenda". Nunca borra.
+  - **Cuándo no:**
+    - si a esa misma fila llega otra de RDV CONJUNTO no cancelada (Macri 15/10: la de la base es la Realizada);
+    - si el cruce es ambiguo;
+    - si el lugar de la "Cancelado" contradice el de la base: puede ser otra reunión. Lo agregó el revisor, y avisa;
+    - si la base es una conjunta y se bajó una sola figura (revisor; avisa);
+    - si la fila tiene otro STATUS o asistentes (avisa, una vez por fila).
+  - **Reactivación:** el mail no la reactiva mientras la fila conserve la fecha con que se suspendió (revisor).
+  - **Medición:** `paso95_cancelacionesConjunto`, también dentro de `revisarTodo()`.
+
 **Después de prender:**
 - correr el paso 48 para que la GUÍA y la LEER muestren las reglas nuevas;
 - mirar REGISTRO_CORRIDAS (paso 67): los colores suman hasta 60 s a la parte de la agenda.

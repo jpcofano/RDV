@@ -158,6 +158,23 @@ function cancelacionesConjunto_(dest, comunas, opciones) {
                  sueltas.map(function (o) { return o.motivoSinFila; }).join(' / ') + '): no se sabe cuál es la de la base, no se suspende';
       return;
     }
+    // 16/10 (revisor, ALTA): el lugar de la fila "Cancelado" contradice el de la base (con un solo candidato el cruce acepta igual):
+    // puede ser OTRA reunión de la figura (la de la base todavía sin su fila en RDV CONJUNTO): no se suspende, se avisa
+    const desac = canc.filter(function (c) { return c.bar && _ubicConjuntoFila_(c.bar, f, comunas) === false; });
+    if (desac.length) {
+      d.decision = 'ubicacion_difiere'; d.aviso = true;
+      d.motivo = 'RDV CONJUNTO dice ' + desac.map(function (c) { return c.bar; }).join(' / ') + ' y la fila de la base está en ' +
+                 (f.barrio || 'sin barrio') + ': puede ser otra reunión de la figura, no se suspende';
+      return;
+    }
+    // 16/10 (revisor, MEDIA): la fila de la base es una CONJUNTA y en RDV CONJUNTO se bajó UNA sola de sus figuras: no se suspende
+    const iConj = D['Conjunta con'];
+    if (iConj != null && !esVacio_(f.valores[iConj]) && canc.every(function (c) { return !!c.figura; })) {
+      d.decision = 'conjunta_parcial'; d.aviso = true;
+      d.motivo = 'la fila de la base es una conjunta (con ' + str(f.valores[iConj]) + ') y RDV CONJUNTO cancela sólo a ' +
+                 canc.map(function (c) { return c.figura; }).join(' / ') + ': no se suspende la reunión entera';
+      return;
+    }
     // 3. la fila de la base
     const stTxt = iSt != null ? str(f.valores[iSt]) : '', st = normStatus_(stTxt);
     const asisBase = iAsD != null ? f.valores[iAsD] : '';

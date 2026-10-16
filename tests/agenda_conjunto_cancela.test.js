@@ -381,6 +381,14 @@ E = montar(true, [filaEquipo('Jorge Macri', 'Villa Santa Rita', 15, { dir: 'Call
 r = correr(E, false, [M1]);
 ok(celda(E, filaBase(E, 'Jorge Macri', 15), 'STATUS REUNIÓN') === 'en agenda' && r.suspendidasPorConjunto === 0,
    'aunque la base diga Villa Santa Rita: con UNA fila en la base y el par, la de la base es la Realizada');
+// 16/10 (revisor, ALTA): la base tiene UNA fila (Villa Devoto) y RDV CONJUNTO SÓLO la de Villa Santa Rita "Cancelado" (la de Villa
+// Devoto todavía no se cargó): el lugar contradice → puede ser otra reunión: NO se suspende y se avisa
+E = montar(true, [filaEquipo('Jorge Macri', 'Villa Devoto', 15, { dir: 'Calle Inventada 100' })], ON, [PAR[0]]);
+E.avisos = [];
+r = correr(E, false, [M1]);
+ok(celda(E, filaBase(E, 'Jorge Macri', 15), 'STATUS REUNIÓN') === 'en agenda' && r.suspendidasPorConjunto === 0,
+   'sólo "Cancelado" en Villa Santa Rita y la base en Villa Devoto: NO se suspende (el lugar contradice)');
+ok(E.avisos.some(function (a) { return a[0] === 'cancelacion_no_aplicada' && /puede ser otra reunión/.test(a[1]); }), 'y se avisa (cancelacion_no_aplicada)');
 console.log('[3b] DOS filas en la base (Villa Santa Rita y Villa Devoto, la misma dirección): se suspende sólo la cancelada');
 E = montar(true, [filaEquipo('Jorge Macri', 'Villa Santa Rita', 15, { dir: 'Calle Inventada 100' }), filaEquipo('Jorge Macri', 'Villa Devoto', 15, { dir: 'Calle Inventada 100' })], ON, PAR);
 fotoCj = foto(conj(E));
