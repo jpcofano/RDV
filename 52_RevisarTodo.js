@@ -2,7 +2,7 @@
  * 52_RevisarTodo.js — REVISAR TODO (16/10, pedido del usuario): los pasos de revisión de SÓLO LECTURA, uno detrás de otro, en
  * una o varias ejecuciones. Se corre desde 99_Correr.js: `revisarTodo()` (y `reiniciarRevisarTodo()` para empezar de cero).
  *
- * - Los pasos, en orden: 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93, 94 (revisarTodoPasos_). Ninguno escribe la base. NO
+ * - Los pasos, en orden: 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93, 94, 95 (revisarTodoPasos_). Ninguno escribe la base. NO
  *   están: el 74 (escribe AGENDA_EQUIPO y oculta "Sugerencia - Equipo Directa"), el 80 (manda un mail), el 82 (instala un
  *   activador) y el 92 (suspende la fila 825).
  * - Cada paso, aislado: si falla, se anota y se sigue con el próximo.
@@ -32,7 +32,8 @@ function revisarTodoPasos_() {
     // 16/10: los de "el mail manda" y de AGENDA_DUPLICADOS, también de sólo lectura (el 92 NO: escribe la fila 825)
     { n: 91, que: 'la fila 825 cancelada en el mail (en seco)', fn: function () { return paso91_cancelarFila825_enSeco(); }, minS: 90 },
     { n: 93, que: 'cancelaciones por el mail desde el 15/07', fn: function () { return paso93_cancelacionesMail(); }, minS: 120 },
-    { n: 94, que: 'las decisiones de AGENDA_DUPLICADOS', fn: function () { return paso94_eleccionesAgenda(); }, minS: 90 }
+    { n: 94, que: 'las decisiones de AGENDA_DUPLICADOS', fn: function () { return paso94_eleccionesAgenda(); }, minS: 90 },
+    { n: 95, que: 'RDV CONJUNTO "Cancelado" desde el 15/07', fn: function () { return paso95_cancelacionesConjunto(); }, minS: 60 }
   ];
 }
 

@@ -1331,7 +1331,7 @@ function paso90_coloresMail() {
 }
 
 /**
- * REVISAR TODO (16/10) — SÓLO LECTURA: corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93 y 94, cada uno aislado (si uno
+ * REVISAR TODO (16/10) — SÓLO LECTURA: corre en orden los pasos 68, 69, 70, 71, 72, 73, 75, 76, 78, 81, 91, 93, 94 y 95, cada uno aislado (si uno
  * falla, sigue). Si quedan menos de 60 s, para y dice "FALTAN: … — volvé a correr revisarTodo()"; al correrla de nuevo sigue
  * donde quedó. Al terminar: "TERMINADO" y un resumen por paso. NO corre el 74 (escribe), el 80 (manda un mail), el 82
  * (instala un activador) ni el 92 (suspende la fila 825). Lo único que guarda es su progreso (una propiedad del script).
@@ -1376,6 +1376,18 @@ function paso93_cancelacionesMail() {
   _anunciar_('paso 93 — cancelaciones por el mail desde el 15/07 (SÓLO LECTURA)', 'medirCancelacionesMail({ desde: \'2026-07-15\' })  [diagnostico/35_cancelaciones_mail.js]',
              'NO escribe nada', 'el log: cada fila que habría suspendido (desaparecida / rojo), el STATUS del equipo (coincide o no), las que frena la regla de tiempo y las que sólo avisaría');
   return medirCancelacionesMail({ desde: '2026-07-15' });
+}
+
+/**
+ * PASO 95 — SÓLO LECTURA (16/10): RDV CONJUNTO como tercera fuente de cancelación ("Cancelado" → Suspendida), medida desde el 15/07:
+ * cada fila "Cancelado" de RDV CONJUNTO, la fila de la base que le toca (o por qué ninguna), el STATUS del equipo (COINCIDE / NO
+ * COINCIDE / SE SUSPENDERÍA) y los pares "Cancelado" + no cancelado de la misma figura y día (caso Macri 15/10). No escribe nada
+ * (ni RDV CONJUNTO, que nunca se escribe). La regla está APAGADA (AGENDA_CANCELACION_CONJUNTO).
+ */
+function paso95_cancelacionesConjunto() {
+  _anunciar_('paso 95 — RDV CONJUNTO "Cancelado" desde el 15/07 (SÓLO LECTURA)', 'medirCancelacionesConjunto({ desde: \'2026-07-15\' })  [diagnostico/36_cancelaciones_conjunto.js]',
+             'NO escribe nada', 'el log: cada "Cancelado" de RDV CONJUNTO, su fila en la base y el veredicto; los valores de "Estado" que encontró; el resumen');
+  return medirCancelacionesConjunto({ desde: '2026-07-15' });
 }
 
 /**
