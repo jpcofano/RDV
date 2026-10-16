@@ -24,8 +24,13 @@ const AGENDA_SOLAPA_GEOCODE = 'AGENDA_GEOCODE';
 /** Una última versión con menos de esta fracción de las reuniones de la versión anterior es sospechosa de parcial. */
 const AGENDA_FRACCION_VERSION_PARCIAL = 0.6;
 
-/** Tope de llamadas al geocodificador por corrida (la cache hace que la siguiente siga donde quedó). */
-const GEOCODE_MAX_POR_CORRIDA = 450;
+/**
+ * Tope de llamadas al geocodificador por corrida (la cache hace que la siguiente siga donde quedó). 16/10 (AGENDA_GEO_AHORRO):
+ * 450 → 20, las reuniones más cercanas en fecha primero; lo que no entra queda pendiente para la corrida siguiente (sin escribir
+ * nada que dependa del barrio). Con AGENDA_GEO_AHORRO apagado, el tope viejo (GEOCODE_MAX_POR_CORRIDA_VIEJO).
+ */
+const GEOCODE_MAX_POR_CORRIDA = 20;
+const GEOCODE_MAX_POR_CORRIDA_VIEJO = 450;
 /** Corte propio por tiempo (Apps Script corta a los 6 minutos). */
 const GEOCODE_CORTE_MS = 4.5 * 60 * 1000;
 /** Sufijo de la consulta al geocodificador. */
@@ -66,8 +71,23 @@ function _detectBarrioAg_(s) { return detectBarrio_(s) || (_otraGrafiaBarrio_(s)
 function _comunaBarrioAg_(s) { return comunaDeBarrio_(_canonBarrioAg_(s) || s); }
 function _subzonaBarrioAg_(s) { return subzonaDeBarrio_(_canonBarrioAg_(s) || s) || (_otraGrafiaBarrio_(s) ? subzonaDeBarrio_(_otraGrafiaBarrio_(s)) : ''); }
 
-/** Lo mismo, sobre una lista de mails `{ fecha: Date, asunto, cuerpo, truncado }` (lo usan los tests). */
+/**
+ * Lo mismo, sobre una lista de mails `{ fecha: Date, asunto, cuerpo, truncado }` (lo usan los tests). 16/10: con
+ * `meta.cacheParse` (la cache de 41_AgendaCache.js, o `true`: sólo la memoria de esta llamada), el parser con cache: el mismo
+ * resultado; `r.parseCache` dice cuántos textos salieron de la cache y cuántos se parsearon.
+ */
 function agendaDesdeListaDeMails_(lista, meta) {
+  const conMemo = !!(meta && meta.cacheParse) && typeof parseMemoAgendaIniciar_ === 'function' &&
+                  !(typeof _parseMemoAgenda_ !== 'undefined' && _parseMemoAgenda_);
+  if (conMemo && !parseMemoAgendaIniciar_(meta.cacheParse === true ? null : meta.cacheParse)) return _agendaDesdeListaDeMailsSinMemo_(lista, meta);
+  if (!conMemo) return _agendaDesdeListaDeMailsSinMemo_(lista, meta);
+  let r = null;
+  try { r = _agendaDesdeListaDeMailsSinMemo_(lista, meta); }
+  finally { const st = parseMemoAgendaTerminar_(); if (r) r.parseCache = st; }
+  return r;
+}
+
+function _agendaDesdeListaDeMailsSinMemo_(lista, meta) {
   const r = { fuente: (meta && meta.fuente) || '', mails: lista.length, truncados: 0, sinSemana: [], semanas: [],
               ultimas: [], unicas: [], desaparecidas: [], parciales: [], tipos: {}, lineasRaras: {},
               eventosIncompletos: [], fueraDeSemana: [], fechasCorregidas: [], semanaOtraForma: [], imagenes: 0,
@@ -420,7 +440,18 @@ function _cuerpoPropioAgenda_(asunto, cuerpo) {
   return { texto: lineas.join('\n'), corte: corte };
 }
 
+/**
+ * Las reuniones de un cuerpo de mail. 16/10 (AGENDA_CACHE_MAILS, 41_AgendaCache.js): mientras la agenda tiene prendido el parser con
+ * cache (`_parseMemoAgenda_`), lo ya parseado sale de la cache (la misma salida); si no, el parser de siempre.
+ */
 function _parsearCuerpoAgenda_(cuerpo, fechaMail, r, meta) {
+  if (typeof _parseMemoAgenda_ !== 'undefined' && _parseMemoAgenda_ && typeof _parsearCuerpoAgendaConCache_ === 'function') {
+    return _parsearCuerpoAgendaConCache_(cuerpo, fechaMail, r, meta);
+  }
+  return _parsearCuerpoAgendaSinCache_(cuerpo, fechaMail, r, meta);
+}
+
+function _parsearCuerpoAgendaSinCache_(cuerpo, fechaMail, r, meta) {
   const lineas = String(cuerpo || '').split(/\r?\n/);
   const out = [];
   let fecha = null, diaTexto = '', diaSemanaNum = null, diaNum = null, ev = null, campo = null;
@@ -968,25 +999,80 @@ function _distanciaAOtroBarrioM_(lng, lat, poligonos, barrio) {
  * del mismo mensaje), los más nuevos primero, hasta `opciones.topeMs` (AGENDA_COLORES_MAIL_MAX_MS; null = sin tope): los que no
  * entran quedan con `html` vacío (sin color). El resultado lleva `html: { leidos, omitidos, fallas, ms }`. Sin `opciones.html`,
  * lo de siempre (no se llama a getBody).
+ * 16/10 (AGENDA_CACHE_MAILS): con `opciones.cache` (41_AgendaCache.js), un hilo cuya fecha de último mensaje es la guardada sale
+ * entero de la cache (sin getMessages); de un hilo con un mensaje nuevo, sólo los mensajes nuevos se leen (getPlainBody, y getBody
+ * para los colores). El resultado es el mismo; `out.cache` dice cuántos hilos y mensajes salieron de la cache.
  */
 function leerMailsAgendaGmail_(desde, opciones) {
   const conHtml = !!(opciones && opciones.html);
+  const C = (opciones && opciones.cache) || null;
   const mensajes = conHtml ? {} : null;
-  const vistos = {}, lista = [], enEtiqueta = {};
+  const vistos = {}, lista = [], enEtiqueta = {}, hilosVistos = {};
+  const est = { hilosCache: 0, hilosBajados: 0, mensajesCache: 0, mensajesBajados: 0, htmlCache: 0 };
   const dias = Math.max(1, Math.ceil((Date.now() - desde.getTime()) / 86400000) + 1);
+  const desdeMs = desde.getTime();
+  const conColores = function (m) {
+    if (!conHtml || !C) return;
+    const d = cacheAgendaGet_(C, claveColoresAgenda_(m.id));
+    if (d) { m.colDerivado = derivadoColoresDeCache_(d); est.htmlCache++; }
+  };
+  /** 16/10: el hilo entero desde la cache, si su último mensaje es el guardado y están todos sus mensajes (y sus colores). */
+  const hiloDeCache = function (h, idHilo) {
+    const e = cacheAgendaGet_(C, 'agh|' + idHilo);
+    if (!e || e.last !== h.getLastMessageDate().getTime()) return false;
+    const gs = [];
+    for (let i = 0; i < e.ids.length; i++) {
+      const g = cacheAgendaGet_(C, 'agm|' + e.ids[i]);
+      if (!g) return false;
+      const nuevo = g.f >= desdeMs && !vistos[e.ids[i]];
+      if (nuevo && g.c == null) return false;
+      if (nuevo && conHtml && cacheAgendaGet_(C, claveColoresAgenda_(e.ids[i])) === undefined) return false;
+      gs.push(g);
+    }
+    gs.forEach(function (g, i) {
+      const id = e.ids[i];
+      if (vistos[id] || g.f < desdeMs) return;
+      vistos[id] = true;
+      const m = { fecha: new Date(g.f), asunto: g.a, cuerpo: g.c, truncado: false, id: id, hilo: idHilo };
+      conColores(m);
+      lista.push(m);
+      est.mensajesCache++;
+    });
+    return true;
+  };
   const agregar = function (hilos, origen) {
     hilos.forEach(function (h) {
       if (h.getLastMessageDate() < desde) return;
       const idHilo = h.getId();
       if (origen === 'etiqueta') enEtiqueta[idHilo] = true;
+      if (hilosVistos[idHilo]) return;   // el mismo hilo por la etiqueta y por el asunto: sus mensajes ya están
+      hilosVistos[idHilo] = true;
+      if (C && hiloDeCache(h, idHilo)) { est.hilosCache++; return; }
+      if (C) est.hilosBajados++;
+      const ids = [];
       h.getMessages().forEach(function (msg) {
         const id = msg.getId();
-        if (vistos[id] || msg.getDate() < desde) return;
+        ids.push(id);
+        const g = C ? cacheAgendaGet_(C, 'agm|' + id) : undefined;
+        const fecha = g ? new Date(g.f) : msg.getDate();
+        if (vistos[id] || fecha < desde) {
+          if (C && !g) cacheAgendaPut_(C, 'agm|' + id, { f: fecha.getTime(), a: '', c: null });   // anterior a lo que se lee
+          return;
+        }
         vistos[id] = true;
-        lista.push({ fecha: msg.getDate(), asunto: msg.getSubject() || '', cuerpo: String(msg.getPlainBody() || ''), truncado: false,
-                     id: id, hilo: idHilo });
-        if (mensajes) mensajes[id] = msg;
+        let m;
+        if (g && g.c != null) {
+          m = { fecha: fecha, asunto: g.a, cuerpo: g.c, truncado: false, id: id, hilo: idHilo };
+          est.mensajesCache++;
+        } else {
+          m = { fecha: fecha, asunto: msg.getSubject() || '', cuerpo: String(msg.getPlainBody() || ''), truncado: false, id: id, hilo: idHilo };
+          if (C) { cacheAgendaPut_(C, 'agm|' + id, { f: fecha.getTime(), a: m.asunto, c: m.cuerpo }); est.mensajesBajados++; }
+        }
+        conColores(m);
+        lista.push(m);
+        if (mensajes && !m.colDerivado) mensajes[id] = msg;
       });
+      if (C) cacheAgendaPut_(C, 'agh|' + idHilo, { last: h.getLastMessageDate().getTime(), ids: ids });
     });
   };
   const errores = [];
@@ -1019,7 +1105,12 @@ function leerMailsAgendaGmail_(desde, opciones) {
   lista.sort(function (x, y) { return x.fecha - y.fecha; });
   const out = { fuente: 'Gmail: etiqueta "' + AGENDA_ETIQUETA_GMAIL + '" o asunto (' + AGENDA_ASUNTOS_GMAIL.join(' / ') + '), ' + dias + ' días',
                 lista: lista, errores: errores };
-  if (mensajes) out.html = _leerHtmlMailsAgenda_(lista, mensajes, opciones.topeMs === undefined ? AGENDA_COLORES_MAIL_MAX_MS : opciones.topeMs);
+  if (mensajes) out.html = _leerHtmlMailsAgenda_(lista, mensajes, opciones.topeMs === undefined ? AGENDA_COLORES_MAIL_MAX_MS : opciones.topeMs, C);
+  if (C) {
+    out.cache = est;
+    Logger.log('[agenda] cache de los mails: hilos de la cache %s, bajados %s | mensajes de la cache %s, leídos %s | colores de la cache %s',
+               est.hilosCache, est.hilosBajados, est.mensajesCache, est.mensajesBajados, est.htmlCache);
+  }
   return out;
 }
 
@@ -1027,19 +1118,26 @@ function leerMailsAgendaGmail_(desde, opciones) {
  * El HTML (getBody) de los mails de `lista`, los MÁS NUEVOS primero, hasta `topeMs` (null = sin tope); los que no entran, y
  * los que fallan, quedan con `html` ''. Loguea el tiempo (es lo que suman los colores a la corrida de la hora).
  */
-function _leerHtmlMailsAgenda_(lista, mensajes, topeMs) {
+function _leerHtmlMailsAgenda_(lista, mensajes, topeMs, cache) {
   const t0 = Date.now();
-  let leidos = 0, omitidos = 0, fallas = 0;
+  let leidos = 0, omitidos = 0, fallas = 0, deCache = 0;
   for (let i = lista.length - 1; i >= 0; i--) {
     const m = lista[i];
+    if (m.colDerivado) { deCache++; continue; }   // 16/10 (AGENDA_CACHE_MAILS): lo del HTML ya vino de la cache
     if (topeMs != null && Date.now() - t0 > topeMs) { m.html = ''; omitidos++; continue; }
     try { m.html = String(mensajes[m.id].getBody() || ''); leidos++; } catch (e) { m.html = ''; fallas++; }
+    // 16/10: lo que sale del HTML, a la cache (un mail enviado no cambia). Sin HTML, nada: la próxima corrida lo vuelve a pedir.
+    if (cache && m.html && typeof _derivadoHtmlColMail_ === 'function') {
+      try { m.colDerivado = _derivadoHtmlColMail_(m); cacheAgendaPut_(cache, claveColoresAgenda_(m.id), derivadoColoresParaCache_(m.colDerivado)); }
+      catch (e) { delete m.colDerivado; /* el color se calcula después, como siempre (y ahí se anota el error) */ }
+    }
   }
   const ms = Date.now() - t0;
-  Logger.log('[agenda] colores del mail: el HTML (getBody) de %s mails en %s ms%s%s', leidos, ms,
+  Logger.log('[agenda] colores del mail: el HTML (getBody) de %s mails en %s ms%s%s%s', leidos, ms,
+             deCache ? ' | de la cache: ' + deCache : '',
              omitidos ? ' | SIN HTML por el tope de ' + Math.round(topeMs / 1000) + ' s: ' + omitidos + ' (los más viejos: quedan sin color)' : '',
              fallas ? ' | getBody falló en ' + fallas : '');
-  return { leidos: leidos, omitidos: omitidos, fallas: fallas, ms: ms };
+  return { leidos: leidos, omitidos: omitidos, fallas: fallas, ms: ms, deCache: deCache };
 }
 
 /** ¿No es una dirección? Un link, o un texto sin ningún número en "calle número" (sólo el nombre del lugar). */
@@ -1058,6 +1156,37 @@ function _calleNumero_(dir) {
 /** La consulta al geocodificador: "calle número" (lo anterior a la primera coma si tiene un número) + el sufijo. */
 function _consultaGeocode_(dir) {
   return _calleNumero_(dir) + GEOCODE_SUFIJO;
+}
+
+/**
+ * 16/10 (AGENDA_GEO_AHORRO): la consulta con las abreviaturas de la calle expandidas (GEOCODE_ABREVIATURAS: "Av. Int. Bullrich 55"
+ * → "Av. Intendente Bullrich 55"). SÓLO para preguntarle a Maps: lo que se escribe en la base es la dirección del mail, tal cual.
+ */
+function _consultaGeocodeExpandida_(dir) {
+  let t = _calleNumero_(dir);
+  if (typeof GEOCODE_ABREVIATURAS !== 'undefined') GEOCODE_ABREVIATURAS.forEach(function (x) { t = t.replace(x[0], x[1]); });
+  return t.replace(/\s+/g, ' ') + GEOCODE_SUFIJO;
+}
+
+/** La fecha (ms) de una geocodificación de la cache: la columna "fecha" ('yyyy-MM-dd HH:mm', o la fecha que dejó Sheets); 0 si no se sabe. */
+function _msFechaGeo_(v) {
+  if (v instanceof Date) return v.getTime();
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(str(v));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)).getTime() : 0;
+}
+
+/**
+ * 16/10 (AGENDA_GEO_AHORRO): ¿sirve lo que la cache tiene de una consulta? 'ok' (resolvió: se usa), 'fallo' (sin resultado, fuera
+ * de la Ciudad o un ERROR, todavía reciente: se usa el fallo, sin volver a llamar), 'reintentar' (un fallo viejo: un ERROR de hace
+ * GEOCODE_REINTENTAR_ERROR_HORAS horas o más; sin resultado / fuera de la Ciudad de hace GEOCODE_REINTENTAR_FALLOS_DIAS días).
+ */
+function estadoCacheGeo_(g, poligonos, ahoraMs) {
+  if (!g) return 'reintentar';
+  const b = _barrioDeGeo_(g, poligonos);
+  if (b.estado !== 'error' && b.estado !== 'sin_resultado' && b.estado !== 'fuera_de_caba') return 'ok';
+  const lim = g.estado === 'ERROR' ? GEOCODE_REINTENTAR_ERROR_HORAS * 3600000 : GEOCODE_REINTENTAR_FALLOS_DIAS * 86400000;
+  const t = g.fechaMs != null ? g.fechaMs : _msFechaGeo_(g.fecha);
+  return t && (ahoraMs || Date.now()) - t < lim ? 'fallo' : 'reintentar';
 }
 
 /**
@@ -1173,11 +1302,17 @@ function _leerCacheGeocode_() {
   try { sh = intermediaAgenda_().getSheetByName(AGENDA_SOLAPA_GEOCODE); }
   catch (err) { Logger.log('[agenda] no se pudo leer la cache %s (%s): se sigue sin cache.', AGENDA_SOLAPA_GEOCODE, err); return m; }
   if (!sh || sh.getLastRow() < 2) return m;
+  // 16/10 (AGENDA_GEO_AHORRO): también los ERROR (con su fecha: se reintentan a las GEOCODE_REINTENTAR_ERROR_HORAS horas); de una
+  // consulta repetida (un reintento) vale la más nueva. Apagado: como antes (un ERROR no se lee: se vuelve a pedir siempre).
+  const ahorro = typeof AGENDA_GEO_AHORRO !== 'undefined' && AGENDA_GEO_AHORRO;
   sh.getRange(2, 1, sh.getLastRow() - 1, GEOCODE_ENCABEZADO.length).getValues().forEach(function (v) {
-    if (!str(v[0]) || v[1] === 'ERROR') return;   // un error no se cachea: se vuelve a intentar
-    m.set(str(v[0]), { consulta: str(v[0]), estado: str(v[1]), lat: v[2], lng: v[3], tipo: str(v[4]),
-                       parcial: String(v[5]).toUpperCase() === 'TRUE', barrioGoogle: str(v[6]), formateada: str(v[7]),
-                       detalle: str(v[8]), componentes: str(v[10]) });
+    if (!str(v[0]) || (v[1] === 'ERROR' && !ahorro)) return;
+    const g = { consulta: str(v[0]), estado: str(v[1]), lat: v[2], lng: v[3], tipo: str(v[4]),
+                parcial: String(v[5]).toUpperCase() === 'TRUE', barrioGoogle: str(v[6]), formateada: str(v[7]),
+                detalle: str(v[8]), componentes: str(v[10]), fecha: v[9], fechaMs: _msFechaGeo_(v[9]) };
+    const antes = m.get(g.consulta);
+    if (ahorro && antes && antes.fechaMs > g.fechaMs) return;
+    m.set(g.consulta, g);
   });
   return m;
 }

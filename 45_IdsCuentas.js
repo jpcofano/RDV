@@ -91,7 +91,8 @@ function _correrIds_(enSeco, historial) {
   const corrida = historial ? 'historial (paso ' + (enSeco ? '56' : '57') + ')' : 'hora';
   Logger.log('=== IDs de los encuentros (%s) — %s ===', corrida, enSeco ? 'EN SECO: no toca la base' : 'ESCRIBE en la base');
   // Primero la base: las figuras que reconoce la lista salen de su columna Figura (leerDestino_ las deja en el cache).
-  let dest = leerDestino_();
+  // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA): en la corrida de la hora, la base ya leída, si nadie escribió desde entonces
+  let dest = !historial && typeof leerDestinoCompartido_ === 'function' ? leerDestinoCompartido_('los IDs') : leerDestino_();
   const lista = leerListaIds_();
   _logListaIds_(lista);
 
@@ -130,6 +131,7 @@ function _correrIds_(enSeco, historial) {
   }
 
   res.ms = Date.now() - t0;
+  res.escritas = w ? (w.ids || 0) + (w.fechas || 0) : 0;   // 16/10: para saber si la base cambió (49_Aceleraciones.js)
   res.resumen = (w ? 'escritos ' + w.ids + ' (fechas ' + w.fechas + ')' : 'escribiría ' + res.conteo.escribeId + ' (fechas ' + res.conteo.escribeFecha + ')') +
                 ' | ya estaban ' + res.conteo.yaEstaba + ' | sin cruzar ' + res.sinCruzar.length;
   Logger.log('IDs de los encuentros: %s (%s ms)', res.resumen, res.ms);

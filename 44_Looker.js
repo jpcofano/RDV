@@ -363,7 +363,13 @@ function armarAuxMaximos_(data, opciones) {
 function escribirSolapasLooker_(enSeco) {
   const ss = ssDestino_();
   const sh = ss.getSheetByName(RDV_HOJA_DESTINO);
-  const data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA, 49_Aceleraciones.js): la base ya leída en la corrida, si nadie escribió desde entonces
+  let data = typeof baseCorridaTomar_ === 'function' ? baseCorridaTomar_('bloque', 'Looker', sh) : null;
+  if (!data) {
+    const tL = Date.now();
+    data = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+    if (typeof baseCorridaLeida_ === 'function') baseCorridaLeida_('Looker', null, data, Date.now() - tL);
+  }
   const ids = idsDerivados_(data);
   const u = armarDatosUnpivot_(data, { modo: 'corregido', ids: ids, fechaCarga: new Date() });
   const a = armarAuxMaximos_(data, { modo: 'corregido', ids: ids });

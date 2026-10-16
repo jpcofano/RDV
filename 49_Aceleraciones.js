@@ -169,3 +169,83 @@ function idsAnotarCorrida_(toca, ahoraMs) {
       t: ahoraMs || _ahoraHuella_(), pend: toca && toca.pend ? toca.pend.slice(0, 600) : null }));
   } catch (e) { Logger.log('  (no se pudo anotar la corrida de los IDs: %s; la próxima los corre)', e); }
 }
+
+// ===================== La base, UNA lectura por corrida (16/10, tarde, punto 5b; BASE_UNA_LECTURA_POR_CORRIDA) =====================
+
+/**
+ * La lectura de la base de esta corrida: `{ dest, bloque, que }` (dest = armarDestino_; bloque = los valores tal cual, que usan las
+ * derivadas y Looker). La deja leerDestino_ (sólo la solapa RDV_HOJA_DESTINO, dentro de la corrida de la hora); la descarta
+ * cualquier parte que escribió en la base. null = no hay: se lee, como antes.
+ */
+var _baseCorrida_ = null;
+/** ¿Hay una corrida de la hora en curso que comparte la base? (la prende _correrUpsertConBloqueo_, la apaga al cerrar). */
+var _baseCorridaActiva_ = false;
+
+function baseCorridaIniciar_() {
+  _baseCorrida_ = null;
+  _baseCorridaActiva_ = !!(typeof BASE_UNA_LECTURA_POR_CORRIDA !== 'undefined' && BASE_UNA_LECTURA_POR_CORRIDA);
+}
+function baseCorridaTerminar_() { _baseCorrida_ = null; _baseCorridaActiva_ = false; }
+
+/** Después de leer la base ENTERA (leerDestino_, las derivadas, Looker): la cuenta (paso 67) y, si se comparte, la guarda. */
+function baseCorridaLeida_(que, dest, bloque, ms) {
+  if (typeof corridaLecturaBase_ === 'function') corridaLecturaBase_(que, ms, false);
+  if (!_baseCorridaActiva_ || !bloque || !bloque.length) return;
+  _baseCorrida_ = { dest: dest || null, bloque: bloque, que: que };
+}
+
+/**
+ * LA LECTURA COMPARTIDA, explícita: leerDestino_ NO cambia (siempre lee la hoja; sólo deja anotada su lectura). Quien quiere reusar
+ * llama a esto: la base ya leída en la corrida si todavía vale (baseCorridaTomar_), si no leerDestino_. Lo usan el cruce
+ * (calcularPlan_) y los IDs. Una parte que escribe o BORRA filas llama a invalidarDestinoCompartido_ (además, el tamaño de la hoja
+ * y la identidad de las filas se comprueban antes de reusar: una fila borrada lo invalida igual).
+ */
+function leerDestinoCompartido_(parte) {
+  return (typeof baseCorridaTomar_ === 'function' ? baseCorridaTomar_('dest', parte) : null) || leerDestino_();
+}
+function invalidarDestinoCompartido_(porque) { baseCorridaInvalidar_(porque); }
+
+/** Una parte escribió en la base: lo leído antes ya no vale (la parte siguiente vuelve a leer). */
+function baseCorridaInvalidar_(porque) {
+  if (_baseCorrida_) Logger.log('  (la base leída se descarta: %s; la parte siguiente la vuelve a leer)', porque || 'se escribió');
+  _baseCorrida_ = null;
+}
+
+/**
+ * La base ya leída en esta corrida, si todavía vale: nadie del sistema escribió desde entonces (si no, ya se descartó) y la
+ * identidad de las filas es la misma — el tamaño de la hoja, y las columnas A hasta la de HORA (Figura, Barrio, EVENTO, FECHA,
+ * HORA) releídas ahora, iguales a las de la lectura. Si el equipo ordenó, borró, agregó o cambió una fila en el medio: null (se
+ * lee entera, como antes). `que`: 'dest' (armarDestino_) o 'bloque' (los valores). `sh`: la hoja (sin dest).
+ */
+function baseCorridaTomar_(que, parte, sh) {
+  const B = _baseCorrida_;
+  if (!_baseCorridaActiva_ || !B) return null;
+  if (que === 'dest' && !B.dest && !sh && typeof ssDestino_ === 'function') sh = ssDestino_().getSheetByName(RDV_HOJA_DESTINO);
+  try {
+    const hoja = sh || (B.dest && B.dest.sh);
+    if (!hoja || hoja.getLastRow() !== B.bloque.length || hoja.getLastColumn() !== B.bloque[0].length) {
+      baseCorridaInvalidar_('cambió el tamaño de la hoja');
+      return null;
+    }
+    const hdr = B.bloque[0];
+    const k = Math.max.apply(null, ['Figura', 'Barrio', 'FECHA', 'HORA'].map(function (n) {
+      const i = findIdxOr_(hdr, aliasColumna_(n), true);
+      return i == null ? 0 : i;
+    })) + 1;
+    const ahora = hoja.getRange(1, 1, B.bloque.length, k).getValues();
+    const igual = function (a, b) {
+      if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+      return a === b || String(a) === String(b);
+    };
+    for (let i = 0; i < ahora.length; i++) {
+      for (let j = 0; j < k; j++) {
+        if (!igual(ahora[i][j], B.bloque[i][j])) { baseCorridaInvalidar_('cambió la fila ' + (i + 1) + ' (el equipo la ordenó, borró o editó)'); return null; }
+      }
+    }
+    // la leyeron las derivadas o Looker (sólo los valores): se arma igual que en leerDestino_, sin volver a leer
+    if (que === 'dest' && !B.dest) B.dest = armarDestino_(hoja, RDV_HOJA_DESTINO, B.bloque);
+  } catch (err) { baseCorridaInvalidar_('no se pudo comprobar (' + err + ')'); return null; }
+  if (typeof corridaLecturaBase_ === 'function') corridaLecturaBase_(parte || que, 0, true);
+  Logger.log('  (%s: reusa la base que leyó %s; la identidad de las filas no cambió)', parte || que, B.que);
+  return que === 'dest' ? B.dest : B.bloque;
+}

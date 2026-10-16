@@ -79,9 +79,17 @@ const GUARDA_TIEMPO_ACTIVA = true;
  * Apps Script es 360 s; cada límite deja lugar para lo que tarda esa parte en un día lento. La agenda va primero y no tiene
  * límite. La escritura tiene además su propio corte entre tandas (UPSERT_CORTE_PROPIO_MS). Se calibran con REGISTRO_CORRIDAS
  * (paso 67: cuánto tarda cada parte).
+ * 16/10 (tarde, punto 5b): las 3 CORTADAS de las últimas 30 corridas: (i) la agenda tardó 189 s, el cruce EMPEZÓ (límite 210) y
+ * no terminó antes de los 360 s (tardó más de 170 s); (ii) agenda 156 s + cruce 156 s: los asistentes empezaron a los 312 s (no
+ * tenían límite) y no terminaron (más de 48 s). El cruce tarda hasta ~160 s en un día lento y lo siguen asistentes (hasta ~50 s)
+ * y la escritura (con su corte propio): el cruce tiene que EMPEZAR antes de 360 − 160 − 50 = 150 s; los asistentes, antes de
+ * 360 − 60 = 300 s (con margen, 290). Si los asistentes no alcanzan, no se escribe el cruce (como cuando fallan): todo queda
+ * para la corrida siguiente, sin nada a medias. Lo que acelera la agenda (punto 5b: geocodificación, mails, la base una vez)
+ * es lo que hace que el cruce llegue antes de los 150 s.
  */
 const GUARDA_INICIO_MAX_MS = {
-  cruce: 210 * 1000,          // leer B y la base (~1 min en un día lento) y escribir por tandas, con su corte a los 4 min 30 s
+  cruce: 150 * 1000,          // 16/10: era 210 (CORTADA i). Leer B y la base y armar el plan: hasta ~160 s en un día lento
+  asistentes: 290 * 1000,     // 16/10: nuevo (CORTADA ii). RDV CONJUNTO: hasta ~50 s
   derivadas: 270 * 1000,
   reportes: 270 * 1000,       // las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH: se rehacen en la próxima
   ids: 180 * 1000,            // leer la lista externa tardó hasta 120 s (15/10, 9:28)
@@ -127,6 +135,58 @@ const IDS_CADA_HORAS = 3;
 const IDS_CADA_HORAS_MARGEN_MS = 10 * 60 * 1000;
 /** La última corrida de los IDs (propiedad): la hora y las reuniones que ya habían pasado sin ID. */
 const PROP_IDS_ULTIMA = 'IDS_ULTIMA_CORRIDA';
+
+/*
+ * --- Los TIEMPOS DE LA AGENDA (16/10, tarde, punto 5b; 40_Agenda.js, 41_AgendaParser.js, 41_AgendaCache.js, 49_Aceleraciones.js) ---
+ * Medido (paso 67, 30 corridas): una agenda de 257 s = plan 144 (con la geocodificación adentro) + gmail 38 + copia 28 + parse 14
+ * + base 13 + solapas 12; una CORTADA murió DENTRO de la agenda (base 71 + gmail 66 + parse 91 s, antes del plan).
+ *
+ * AGENDA_GEO_AHORRO  la geocodificación (41_AgendaParser.js, `_barrioAgenda_`):
+ *   - nunca se geocodifica lo que no es una dirección ("A CONFIRMAR", sin altura, un link) ni lo que ya está en la cache;
+ *   - los FALLOS también se guardan en AGENDA_GEOCODE (antes un ERROR no se guardaba y se volvía a pedir en CADA corrida, hasta
+ *     450 veces): sin resultado, fuera de la Ciudad → se reintentan a los GEOCODE_REINTENTAR_FALLOS_DIAS días; un ERROR (Maps no
+ *     respondió, la cuota del día) a las GEOCODE_REINTENTAR_ERROR_HORAS horas (es un fallo del servicio, no de la dirección);
+ *   - tope por corrida: GEOCODE_MAX_POR_CORRIDA (41_AgendaParser.js; 450 → 20), las reuniones MÁS CERCANAS EN FECHA primero (las
+ *     de hoy en adelante, de la más próxima a la más lejana; después las pasadas, de la más reciente). Una dirección que ya
+ *     resolvió una fila de la base (agenda_direccion_escrita con su Barrio) no gasta llamadas sólo para MOSTRARSE en la copia;
+ *   - las abreviaturas de la calle se expanden SÓLO en la consulta a Maps ("Av. Int. Bullrich" → "Av. Intendente Bullrich";
+ *     "Gral." → "General"…; GEOCODE_ABREVIATURAS). Lo que se escribe en la base es la dirección del mail, tal cual. Una dirección
+ *     que la cache ya tenía resuelta con la forma vieja se sigue usando (no se vuelve a pedir).
+ *   - lo que queda PENDIENTE (tope o la guarda de abajo) no escribe NADA que dependa del barrio: la reunión sin fila no se crea
+ *     en esta corrida (se crea en la próxima, con su barrio; antes se creaba sin barrio y podía no reconocerse como "ya cargada"),
+ *     y el barrio de una fila no se toca (antes, con el tope, un barrio del sistema podía vaciarse).
+ * AGENDA_GEO_LIMITE_TRAS_PARSE_MS  la guarda de tiempo DENTRO de la agenda: si al terminar el parse la corrida ya lleva más de
+ *   esto, se geocodifican sólo las reuniones de los próximos AGENDA_GEO_DIAS_SI_TARDE días (y las de hoy); el resto queda para la
+ *   corrida siguiente (pendiente, como arriba).
+ * AGENDA_CACHE_MAILS  los mails de agenda (41_AgendaCache.js): un mail enviado no cambia. Se guarda por id de mensaje lo que se
+ *   leyó (fecha, asunto, el texto, y lo que salió del HTML para los colores) y, por la huella de su texto, lo que parseó el
+ *   parser. Cada corrida sigue BUSCANDO los hilos (para ver si hay mails nuevos), pero sólo baja (getMessages / getPlainBody /
+ *   getBody) los hilos con un mensaje nuevo, y sólo parsea los textos nuevos. La cache es la de Apps Script (CacheService, hasta 6
+ *   h, se renueva en cada corrida): si se pierde, la corrida baja y parsea todo, como antes — el resultado no depende de ella (el
+ *   test lo compara: con y sin cache, el mismo plan). Lo parseado se invalida solo si cambian las figuras de la base, los barrios
+ *   de Comunas o el código del parser; subir AGENDA_PARSER_VERSION lo invalida a mano.
+ * BASE_UNA_LECTURA_POR_CORRIDA  la base (RVD JM-CM - ES) se leía entera hasta 5 veces por corrida (la agenda, el cruce, las
+ *   derivadas, los IDs, Looker). Ahora la lectura de la agenda la reusan las partes siguientes MIENTRAS NADIE HAYA ESCRITO en la
+ *   base (la agenda no escribió, la escritura no escribió, las derivadas no cambiaron nada): si alguna escribió, la parte
+ *   siguiente vuelve a leer, como antes. Y antes de reusar se relee sólo la identidad de las filas (Figura … HORA, columnas A:F)
+ *   y el tamaño de la hoja: si el equipo ordenó, borró, agregó o cambió una fila, se vuelve a leer entera. La escritura del
+ *   cruce, además, no escribe en una fila cuya Figura o FECHA ya no es la del plan (lectura fresca de cada tanda).
+ */
+const AGENDA_GEO_AHORRO = true;
+const GEOCODE_REINTENTAR_FALLOS_DIAS = 7;
+const GEOCODE_REINTENTAR_ERROR_HORAS = 24;
+/** Las abreviaturas de la calle que se expanden en la consulta a Maps (nunca en la base). */
+const GEOCODE_ABREVIATURAS = [[/\bInt\.?(?=\s)/gi, 'Intendente'], [/\bGral\.?(?=\s)/gi, 'General'], [/\bPte\.?(?=\s)/gi, 'Presidente'],
+  [/\bCnel\.?(?=\s)/gi, 'Coronel'], [/\bTte\.?(?=\s)/gi, 'Teniente'], [/\bIng\.(?=\s)/gi, 'Ingeniero'], [/\bDr\.(?=\s)/gi, 'Doctor'],
+  [/\bCdte\.?(?=\s)/gi, 'Comandante'], [/\bSgto\.?(?=\s)/gi, 'Sargento']];
+const AGENDA_GEO_LIMITE_TRAS_PARSE_MS = 150 * 1000;
+const AGENDA_GEO_DIAS_SI_TARDE = 3;
+const AGENDA_CACHE_MAILS = true;
+const AGENDA_PARSER_VERSION = '1';
+/** Cuánto vive una entrada en la cache de Apps Script (el máximo, 6 h); se renueva si tiene más de AGENDA_CACHE_RENOVAR_MS. */
+const AGENDA_CACHE_TTL_S = 21600;
+const AGENDA_CACHE_RENOVAR_MS = 3 * 3600 * 1000;
+const BASE_UNA_LECTURA_POR_CORRIDA = true;
 
 /*
  * --- El formato para leer (15/10; 51_FormatoLectura.js) ---

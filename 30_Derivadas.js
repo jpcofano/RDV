@@ -43,7 +43,14 @@ function _ctxDerivadas_(solapa) {
   const sh = ss.getSheetByName(solapa);
   if (!sh) throw new Error('No existe la solapa "' + solapa + '".');
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
-  const vals = sh.getRange(1, 1, nFilas, nCols).getValues();
+  // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA, 49_Aceleraciones.js): en la corrida de la hora, la base ya leída si nadie escribió desde
+  // entonces y la identidad de las filas no cambió; si no, se lee (y queda para las partes siguientes)
+  let vals = solapa === RDV_HOJA_DESTINO && typeof baseCorridaTomar_ === 'function' ? baseCorridaTomar_('bloque', 'las derivadas', sh) : null;
+  if (!vals) {
+    const tL = Date.now();
+    vals = sh.getRange(1, 1, nFilas, nCols).getValues();
+    if (solapa === RDV_HOJA_DESTINO && typeof baseCorridaLeida_ === 'function') baseCorridaLeida_('las derivadas', null, vals, Date.now() - tL);
+  }
   const hdr = vals[0];
   const f1 = sh.getRange(1, 1, 1, nCols).getFormulas()[0];
   const f2 = nFilas >= 2 ? sh.getRange(2, 1, 1, nCols).getFormulas()[0] : hdr.map(function () { return ''; });
