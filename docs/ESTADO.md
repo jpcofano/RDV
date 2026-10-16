@@ -1951,6 +1951,32 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### AGENDA_DUPLICADOS = sólo lo que el equipo tiene que decidir (16/10, noche)
+
+- **Qué queda en AGENDA_DUPLICADOS**: sólo líneas con ELEGIR: "antes de crear", "cancelación", "la fila elegida ya no está" y,
+  nuevo, **"una reunión en dos filas"**. Esta última es una línea por par, sea de H3 o de "después de crear", con tres opciones:
+  - "Quedarse con la fila X" o "Quedarse con la fila Y": se junta con la maquinaria de la fusión. La otra fila se borra sólo si la
+    creó la agenda y no tiene datos del equipo distintos. Si es del equipo, o tiene datos del equipo, no se borra y aparece en
+    AGENDA_PENDIENTES ("borrarla a mano").
+  - "Son reuniones distintas": H3 ignora ese par para siempre (no frena la semana).
+
+  La decisión se aplica una sola vez. Si se deshace con el paso 38, el par vuelve a aparecer para elegir de nuevo.
+- **AGENDA_PENDIENTES (intermedia), lo que el equipo tiene que saber**: columnas tipo | reunión | semana | grupo | fecha | hora |
+  lugar | fila | qué pasa | qué sigue | desde | id. Tipos: pendiente de definir, cancelada en el mail (no se crea), semana frenada
+  por una reunión en dos filas, cancelación aplicada, juntada sola, juntada por decisión del equipo, la que sobra (borrarla a mano),
+  decisión sin aplicar. Los hechos se listan 7 días.
+  - **Resumen del lunes**: agrupado por tipo.
+  - **Mail diario**: tema `agenda_info`, una vez por cosa, desde las 20 h. Reemplaza al aviso de "una reunión, una fila" en cada
+    corrida. Con el mail apagado no se marca nada como avisado.
+  - **Duda abierta**: AGENDA_PENDIENTES está en la intermedia. Si el equipo no la abre, no ve lo informativo (habría que escribirla
+    también en el archivo de la base).
+- **Fusión automática** (`AGENDA_FUSION_AUTOMATICA`, **APAGADA**): junta solos los pares que acepta el paso 97, dentro de la
+  corrida de la hora, con registro y deshacer. Medición: **paso 99** (`paso99_fusionAutomatica_enSeco`).
+- **Las 4 líneas viejas de 832/838 y 834/839** (juntadas por el paso 97 en la corrida 20261016-185548-cf82) desaparecen en la
+  próxima corrida: la solapa se reescribe entera y H3 se recalcula desde la base (`tests/agenda_duplicados_decidir.test.js` [7]).
+- **El archivo del editor** (`Sin título.js`, que decía "paso 96" y llamaba al 97 real) se sacó del remoto. Su reemplazo es
+  `pasos67y96_soloLectura()` en 99_Correr.js.
+
 #### Bug urgente de la etapa 1 (16/10, paso 66 de las 16:13): 832→838 y 834→839
 
 El mail del 16/10 11:41 (CM y Ministros, semana 19/10, v3) trajo la dirección de dos Seguridad del 22/10 17:15 que estaban "A
