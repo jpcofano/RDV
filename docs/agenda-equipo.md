@@ -20,7 +20,11 @@
     escribió el sistema** (lo que ustedes cargaron en la X no se toca) y **borra la otra, si la creó la agenda**: queda
     guardada entera en el registro de la agenda y se puede deshacer (lo corre quien mantiene el sistema). La agenda no la
     vuelve a crear. **Si la otra la cargaron ustedes, el sistema NO la borra ni le copia nada**: queda en AGENDA_PENDIENTES
-    como *"la que sobra: borrarla a mano"*, y mientras tanto ya no frena nada;
+    como *"la que sobra: borrarla a mano"*, y mientras tanto ya no frena nada. **Si la otra tiene datos cargados por ustedes
+    distintos de la X** (un STATUS, asistentes, inscriptos, un ID…), tampoco se borra: queda en AGENDA_PENDIENTES como *"decisión
+    del equipo sin aplicar"*, para borrarla a mano o corregir esos datos. Sólo se descarta lo que había escrito el sistema.
+    La decisión se aplica **una vez**: si después se deshace, el par vuelve a aparecer con ELEGIR vacío, y pueden elegir de
+    nuevo o cambiar de idea;
   - *"Quedarse con la fila Y"*: lo mismo, al revés;
   - *"Son reuniones distintas"*: no se vuelve a preguntar, y esa semana la agenda sigue creando reuniones normalmente.
   - El sistema reconoce cada fila por su identidad (no por el número de fila): aunque ordenen o borren filas en el medio, la

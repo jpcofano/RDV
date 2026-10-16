@@ -189,7 +189,8 @@ function medirReglasAgenda1510(opciones) {
       if (a.ev) return;
       s.push(a.tipo + '|' + (a.f ? a.f.fila : a.fila) + '|' + (a.escrituras || []).map(function (e) { return e.col + '=' + _fmtDupAg_(e.valor); }).join(';'));
     });
-    P.duplicados.forEach(function (d) { if (d.tipo === 'despues') s.push('despues|' + d.fAgenda.fila + '|' + d.candidatas.map(function (c) { return c.f.fila; }).join(',')); });
+    // 16/10: los duplicados "después de crear" son pares "una reunión en dos filas" (P.dosFilas, origen 'despues')
+    (P.dosFilas || []).forEach(function (d) { if (d.origen === 'despues') s.push('despues|' + d.a.fila + '|' + d.b.fila); });
     P.figuraACompletar.forEach(function (x) { s.push('figuraACompletar|' + x.f.fila + '|' + x.motivo); });
     return s.sort().join('\n');
   };

@@ -644,6 +644,44 @@ function restaurarFondosFilaAgenda_(sh, hdr, fila, uid, fondos) {
 }
 
 /**
+ * **Deshacer una fusión de la agenda (paso 38): la fila borrada, EXACTA** (16/10, revisor; 54_FusionAgenda.js `restaurarFilaFusion_`).
+ * Vuelve a poner la fila que una fusión borró —guardada entera en REGISTRO_AGENDA_CAMBIOS ("borrar_fusion" / "borrar_fusion_equipo")—
+ * en una fila VACÍA del final: todos sus valores (menos las derivadas, que se recalculan), también un STATUS que no es "en agenda"
+ * (Realizada, Suspendida… que puso el equipo), y sus FONDOS originales (no se pinta COLOR_SISTEMA sobre lo del equipo). Es parte de
+ * la excepción de la agenda ("deshacer la restaura", CLAUDE.md §0): no pisa nada —si la fila destino tiene algo, tira sin escribir— y
+ * el agenda_uid de lo guardado tiene que ser el de la línea del registro. Devuelve cuántas columnas escribió.
+ */
+function restaurarFilaBorradaAgenda_(sh, hdr, fila, uid, valores, fondos) {
+  const n = hdr.length;
+  const iUid = findIdxOr_(hdr, ['agenda_uid'], true);
+  if (iUid == null || !uid || str(valores[iUid]) !== uid) {
+    throw new Error('restaurarFilaBorradaAgenda_: lo guardado no es la fila de agenda_uid ' + uid + '. No se escribió nada.');
+  }
+  if (fila > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), fila - sh.getMaxRows());
+  const rg = sh.getRange(fila, 1, 1, n);
+  const actual = rg.getValues()[0];                 // lectura fresca: la fila tiene que estar vacía
+  for (let k = 0; k < n; k++) {
+    if (!esColumnaDerivada_(hdr[k]) && !esVacio_(actual[k])) {
+      throw new Error('restaurarFilaBorradaAgenda_: la fila ' + fila + ' no está vacía ("' + hdr[k] + '"). No se escribió nada.');
+    }
+  }
+  _selloEscrituraSistema_();
+  // de a tramos de columnas que no son derivadas (una derivada puede tener todavía su fórmula: no se escribe ni vacía)
+  let escritas = 0;
+  for (let k = 0; k < n; ) {
+    if (esColumnaDerivada_(hdr[k])) { k++; continue; }
+    let j = k;
+    while (j < n && !esColumnaDerivada_(hdr[j])) j++;
+    const tramo = [];
+    for (let c = k; c < j; c++) tramo.push(c < valores.length && valores[c] != null ? valores[c] : '');
+    if (tramo.some(function (v) { return !esVacio_(v); })) { sh.getRange(fila, k + 1, 1, j - k).setValues([tramo]); escritas += j - k; }
+    k = j;
+  }
+  if (fondos && fondos.length) rg.setBackgrounds([hdr.map(function (h, k) { return fondos[k] || null; })]);
+  return escritas;
+}
+
+/**
  * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
  * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
  * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila
