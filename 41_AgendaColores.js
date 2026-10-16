@@ -310,6 +310,20 @@ function _textoLetrasColMail_(x, k) {
  * `{ evs, porReunion: Map(k → { campos: {día, Evento, Hora, Lugar, otra}, total }), fuera: [{ texto, letras }] }`.
  */
 function _coloresDeMailColMail_(m) {
+  const d = m.colDerivado || _derivadoHtmlColMail_(m);
+  const porReunion = new Map(d.por), fuera = d.fuera, textos = d.textos;
+  const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
+  const evs = _parsearCuerpoAgenda_(textos.join('\n'), m.fecha, _rVacio_(), { grupo: sem ? sem.grupo : '', semana: sem ? sem.texto : '',
+    version: 0, versiones: 0, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '', desde: sem ? sem.desde : null, hasta: sem ? sem.hasta : null });
+  return { evs: evs, porReunion: porReunion, fuera: fuera, sem: sem };
+}
+
+/**
+ * 16/10 (AGENDA_CACHE_MAILS): lo que sale del HTML de un mail, aparte (sólo depende del HTML y del asunto: un mail enviado no
+ * cambia), para guardarlo en la cache (41_AgendaCache.js) y no volver a pedir getBody ni recorrer el HTML: `{ textos, por: [[k,
+ * pr]], fuera }`. `_coloresDeMailColMail_` usa el que trae el mail (`m.colDerivado`, de la cache) o éste.
+ */
+function _derivadoHtmlColMail_(m) {
   let lineas = _htmlALineasColMail_(m.html);
   if (RE_RESPUESTA_AGENDA_.test(m.asunto || '')) {
     // _propioDeHtmlAgenda_ trabaja con textos: se le pasan objetos String con el índice de la línea, y devuelve un tramo
@@ -353,10 +367,7 @@ function _coloresDeMailColMail_(m) {
       else fuera.push({ texto: limpia, letras: letras });
     }
   });
-  const sem = _semanaAgenda_(m.asunto, m.cuerpo, m.fecha);
-  const evs = _parsearCuerpoAgenda_(textos.join('\n'), m.fecha, _rVacio_(), { grupo: sem ? sem.grupo : '', semana: sem ? sem.texto : '',
-    version: 0, versiones: 0, mailFecha: m.fecha, asunto: m.asunto, mailId: m.id || '', desde: sem ? sem.desde : null, hasta: sem ? sem.hasta : null });
-  return { evs: evs, porReunion: porReunion, fuera: fuera, sem: sem };
+  return { textos: textos, por: Array.from(porReunion.entries()), fuera: fuera };
 }
 
 /** La familia principal de una reunión (la de más letras de fondo) y si hay más de una. */
@@ -413,7 +424,7 @@ function colorDeReunionAgenda_(pr) {
  * cancela ni reactiva nada). Devuelve `{ conHtml, error }`.
  */
 function coloresDeVersionAgenda_(m, evs) {
-  if (!str(m.html)) { evs.forEach(function (ev) { ev.colorMail = null; }); return { conHtml: false }; }
+  if (!str(m.html) && !m.colDerivado) { evs.forEach(function (ev) { ev.colorMail = null; }); return { conHtml: false }; }
   const n0 = _agendaTolerancia_.length;   // re-parsear el texto del HTML no suma nombres "por tolerancia" al log de la corrida
   let res;
   try { res = _coloresDeMailColMail_(m); }

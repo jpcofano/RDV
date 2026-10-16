@@ -1601,11 +1601,13 @@ function _correrUpsert_(enSeco, opciones) {
 function _correrUpsertConBloqueo_(enSeco, t0, historial, soloUids) {
   // REGISTRO_CORRIDAS (15/10, 49_Corridas.js): la corrida parte por parte; al final (también si falló), una línea.
   corridaIniciar_(t0, enSeco, historial);
+  if (typeof baseCorridaIniciar_ === 'function') baseCorridaIniciar_();   // 16/10: la base, una lectura por corrida
   let errFinal = null;
   try { return _correrUpsertPartes_(enSeco, t0, historial, soloUids); }
   catch (err) { errFinal = err; throw err; }
   finally {
     _diferirVistasAgenda_ = false;
+    if (typeof baseCorridaTerminar_ === 'function') baseCorridaTerminar_();
     corridaCerrar_(errFinal);
   }
 }
@@ -1635,6 +1637,7 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
       resGuardian = { error: String(err && err.message || err), frenar: true };
     }
     corridaAnotar_('guardian', tG, resGuardian && resGuardian.error ? resGuardian.error : null);
+    if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('el guardián pudo restaurar o reubicar');
     if (resGuardian.frenar && !enSeco) {
       Logger.log('>>> ### EL GUARDIÁN FRENÓ LA CORRIDA: no se escribe nada en la base (agenda, IDs, datos, derivadas, tablero). ' +
                  'Mirar REGISTRO_PROTECCION y el log de arriba. ###');
@@ -1652,6 +1655,7 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     try { correrAgendaEnBloqueo_(enSeco); }
     catch (err) {
       errA = err;
+      if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('la agenda falló (pudo haber escrito una parte)');
       Logger.log('>>> La agenda falló: %s (el cruce con los formularios sigue igual).', err);
       try { _registrarAgenda_(null, enSeco, tA, 'la agenda falló dentro del upsert: ' + (err && err.message || err)); }
       catch (e) { Logger.log('>>> y no se pudo registrar en REGISTRO_AGENDA: %s', e); }
@@ -1688,6 +1692,12 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     corridaAnotar_('cruce', tC, errC);
   }
 
+  // 16/10 (tarde, CORTADA ii): los asistentes también tienen límite para EMPEZAR (GUARDA_INICIO_MAX_MS.asistentes). Si no
+  // alcanzan, no se escribe el cruce en esta corrida (como cuando fallan): lo hace la siguiente, sin nada a medias.
+  if (plan && !corridaHayTiempo_('asistentes')) {
+    corridaSaltear_('asistentes', 'los asistentes y, sin ellos, la escritura del cruce, las elecciones y las fichas');
+    plan = null;
+  }
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
   if (plan) {
     const tAs = _ahoraMs_(); let errAs = null; corridaEmpieza_('asistentes');
@@ -1740,6 +1750,11 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
       Logger.log('>>> ### LA ESCRITURA FALLÓ: %s (las filas ya escritas quedan; la próxima corrida completa las celdas ' +
                  'vacías). ###', err);
     }
+    // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA): si escribió algo (o falló a la mitad), las partes siguientes leen la base de nuevo
+    const we = plan.res.escritura;
+    if (typeof baseCorridaInvalidar_ === 'function' && (errE || !we || we.celdas || we.trazas || we.uids || we.realizadas)) {
+      baseCorridaInvalidar_('la escritura del cruce escribió en la base');
+    }
     corridaAnotar_('escritura', tE, errE);
   } else if (plan) {
     Logger.log('>>> DRY_RUN: no se escribió NADA en el destino. %s decisiones calculadas y no ' +
@@ -1765,6 +1780,7 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
         porQueNoId = 'las derivadas fallaron';
         Logger.log('>>> Las derivadas NO se recalcularon: %s (el resto de la corrida sigue).', err);
       }
+      if (typeof baseCorridaInvalidar_ === 'function' && (errD || (!enSeco && plan.res.derivadas))) baseCorridaInvalidar_('las derivadas cambiaron celdas');
       corridaAnotar_('derivadas', tD, errD);
     }
   } else if (DERIVADAS_POR_SCRIPT) {
@@ -1833,6 +1849,7 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
         Logger.log('>>> Los IDs de los encuentros fallaron: %s (la corrida sigue igual).', err);
         resIds = { error: String(err && err.message || err) };
       }
+      if (typeof baseCorridaInvalidar_ === 'function' && (!resIds || resIds.error || resIds.escritas)) baseCorridaInvalidar_('los IDs escribieron en la base');
       corridaAnotar_('ids', tI, resIds && resIds.error ? resIds.error : null);
     }
   }
@@ -1972,7 +1989,9 @@ function calcularPlan_(enSeco, entradas, opciones) {
   // las mediciones de una vez y la calibración; el upsert, el paso 2 en seco y el paso 20, no.
   const historial = !!(opciones && opciones.historial);
   const esActiva = function (f) { return historial || esFilaActiva_(f.fecha); };
-  const dest = entradas ? entradas.dest : leerDestino_();
+  // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA): en la corrida de la hora, la base que ya leyó la agenda, si nadie escribió desde entonces
+  const dest = entradas ? entradas.dest
+    : (typeof leerDestinoCompartido_ === 'function' ? leerDestinoCompartido_('el cruce') : leerDestino_());
   const cands = entradas ? entradas.cands : leerCandidatos_();
   const comunas = entradas ? entradas.comunas : leerComunasMap_();
 
@@ -4718,6 +4737,15 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUid
 
     const esc = [], filasStatus = [];
     tanda.forEach(function (d) {
+      // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA): la fila fresca tiene que ser la del plan (la misma Figura y FECHA). Si el equipo
+      // ordenó o borró filas desde que se leyó la base, el número de fila ya es el de otra reunión: no se escribe nada en ella.
+      if (typeof BASE_UNA_LECTURA_POR_CORRIDA !== 'undefined' && BASE_UNA_LECTURA_POR_CORRIDA && !_mismaFilaFresca_(dest, d.fila, frescas[d.fila.fila - f1])) {
+        w.otraReunion = (w.otraReunion || 0) + 1;
+        Logger.log('    NO se escribe la fila %s: ya no es la del plan (%s %s; ahora dice %s %s). La próxima corrida la vuelve a mirar.',
+                   d.fila.fila, d.fila.figura, d.fila.fecha ? fmtFecha_(d.fila.fecha) : '', str((frescas[d.fila.fila - f1] || [])[dest.D['Figura']]),
+                   fmtFecha_(toDate_((frescas[d.fila.fila - f1] || [])[dest.D['FECHA']])) || '');
+        return;
+      }
       const c = celdasDeDecision_(dest, d, frescas[d.fila.fila - f1], false);
       c.celdas.forEach(function (x) {
         esc.push({ fila: d.fila.fila, col: x.col, valor: x.valor, tipo: x.tipo, ceroEsVacio: x.ceroEsVacio });
@@ -4745,6 +4773,18 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUid
   }
   w.msEscritura = Date.now() - tEsc;
   return w;
+}
+
+/** 16/10: ¿la fila leída recién (`fresca`) es la misma reunión que la del plan (`f`)? La misma Figura y la misma FECHA. */
+function _mismaFilaFresca_(dest, f, fresca) {
+  if (!fresca) return false;
+  const iF = dest.D['Figura'], iE = dest.D['FECHA'];
+  if (iF != null && str(fresca[iF]) !== f.figura) return false;
+  if (iE != null) {
+    const a = toDate_(fresca[iE]), b = f.fecha;
+    if (!!a !== !!b || (a && ymd_(a) !== ymd_(b))) return false;
+  }
+  return true;
 }
 
 /** Las decisiones que se escriben (no las `noEscribir`), por número de fila. */
@@ -5190,9 +5230,14 @@ function leerDestino_(nombreHoja) {
   const hoja = nombreHoja || RDV_HOJA_DESTINO;
   const sh = ssDestino_().getSheetByName(hoja);
   if (!sh) throw new Error('No existe la hoja "' + hoja + '".');
+  const t0 = Date.now();
   const nFilas = sh.getLastRow(), nCols = sh.getLastColumn();
   const bloque = sh.getRange(1, 1, nFilas, nCols).getValues();
-  return armarDestino_(sh, hoja, bloque);
+  const dest = armarDestino_(sh, hoja, bloque);
+  // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA, 49_Aceleraciones.js): cuenta la lectura y, en la corrida de la hora, la deja para las
+  // partes siguientes (que la reusan mientras nadie escriba en la base y la identidad de las filas no cambie)
+  if (hoja === RDV_HOJA_DESTINO && typeof baseCorridaLeida_ === 'function') baseCorridaLeida_('leerDestino_', dest, bloque, Date.now() - t0);
+  return dest;
 }
 
 /**

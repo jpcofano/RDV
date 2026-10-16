@@ -109,15 +109,21 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
       if (!enSeco) _releerDestinoTrasFusionAgenda_(dest);
     }
   }
+  // 16/10: los barrios de Comunas (el parser los usa) se leen acá, en "base", y no adentro del parse (que así mide sólo el parser)
+  try { _listas_(); } catch (err) { Logger.log('  (Comunas no se pudo leer acá: %s; el parser lo intenta de nuevo)', err); }
   tramo('base');
   // 15/10 (noche): los colores del mail (AGENDA_COLORES_MAIL, o `opciones.coloresMail`): el HTML y el color de cada reunión
   const coloresMail = opciones.coloresMail !== undefined ? !!opciones.coloresMail : AGENDA_COLORES_MAIL;
+  // 16/10 (AGENDA_CACHE_MAILS, 41_AgendaCache.js): lo ya leído y parseado de cada mail, de la cache (`opciones.cacheMails`: la de un test)
+  const cacheMails = opciones.cacheMails !== undefined ? opciones.cacheMails
+    : (AGENDA_CACHE_MAILS && !opciones.mails && typeof cacheAgendaAbrir_ === 'function' ? cacheAgendaAbrir_() : null);
   let mails;
   try {
     const desdeCopia = AGENDA_COPIA_DESDE ? toDate_(AGENDA_COPIA_DESDE) : null;
     const leerDesde = desdeCopia && desdeCopia < alcance.desde ? desdeCopia : alcance.desde;
     mails = opciones.mails ? { fuente: '(lista de prueba)', lista: opciones.mails }
-                           : leerMailsAgendaGmail_(new Date(leerDesde.getTime() - 7 * 86400000), coloresMail ? { html: true } : undefined);
+                           : leerMailsAgendaGmail_(new Date(leerDesde.getTime() - 7 * 86400000),
+                                                   coloresMail || cacheMails ? { html: coloresMail, cache: cacheMails } : undefined);
   } catch (err) {
     const msg = 'no se pudieron leer los mails: ' + err;
     Logger.log('>>> %s. No se escribió nada.', msg);
@@ -137,6 +143,8 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   // 15/10 (H4): `opciones.validarMails` fuerza la validación de los mails (si no, AGENDA_VALIDAR_MAILS)
   let meta = opciones.validarMails === undefined ? mails : Object.assign({}, mails, { validarMails: opciones.validarMails });
   if (opciones.coloresMail !== undefined) meta = Object.assign({}, meta, { coloresMail: opciones.coloresMail });
+  // 16/10 (AGENDA_CACHE_MAILS): el parser con cache (la de Apps Script; si no se pudo abrir, al menos la memoria de esta corrida)
+  if (cacheMails || (AGENDA_CACHE_MAILS && !opciones.mails)) meta = Object.assign({}, meta, { cacheParse: cacheMails || true });
   const r = agendaDesdeListaDeMails_(mails.lista, meta);
   _logCoberturaAgenda_(r, alcance);
   if (r.colores) {
@@ -144,10 +152,28 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
                r.colores.versionesConHtml, r.colores.versionesSinHtml, r.colores.rojas, r.colores.notas, r.colores.ms,
                r.colores.errores.length ? ' | el color no se pudo leer en: ' + r.colores.errores.join(' / ') : '');
   }
+  if (r.parseCache) Logger.log('  parser: textos de la cache %s | repetidos en esta corrida %s | parseados %s', r.parseCache.deCache,
+                               r.parseCache.repetidos, r.parseCache.parseados);
   tramo('parse');
-  const plan = planAgenda_(dest, r, A, alcance, Object.assign({ enSeco: enSeco }, opciones));
+  // 16/10: la cache de los mails se escribe apenas terminó el parse (todo lo que guarda ya se sabe): si la corrida se corta después,
+  // la próxima ya no vuelve a bajar ni a parsear estos mails
+  const statsCache = cacheMails ? cacheAgendaCerrar_(cacheMails) : null;
+  if (typeof agendaMailsAnotar_ === 'function') agendaMailsAnotar_(mails.cache || null, r.parseCache || null, statsCache, mails.html || null);
+  tramo('cache');
+  // 16/10 (d): la GUARDA DE TIEMPO dentro de la agenda: si al terminar el parse la corrida ya lleva más de
+  // AGENDA_GEO_LIMITE_TRAS_PARSE_MS, se geocodifican sólo las reuniones de hoy a AGENDA_GEO_DIAS_SI_TARDE días (el resto, pendiente)
+  const opcPlan = Object.assign({ enSeco: enSeco }, opciones);
+  const llevaMs = typeof corridaTranscurridoMs_ === 'function' && typeof _corrida_ !== 'undefined' && _corrida_ ? corridaTranscurridoMs_() : Date.now() - t0;
+  if (AGENDA_GEO_AHORRO && opcPlan.geoSoloDias === undefined && llevaMs > AGENDA_GEO_LIMITE_TRAS_PARSE_MS) {
+    opcPlan.geoSoloDias = AGENDA_GEO_DIAS_SI_TARDE;
+    Logger.log('>>> GUARDA DE TIEMPO DE LA AGENDA: al terminar el parse la corrida lleva %s s (límite %s s): esta corrida geocodifica ' +
+               'sólo las reuniones de hoy a %s días; las demás quedan para la próxima (sin crear ni tocar su barrio).',
+               Math.round(llevaMs / 1000), Math.round(AGENDA_GEO_LIMITE_TRAS_PARSE_MS / 1000), AGENDA_GEO_DIAS_SI_TARDE);
+  }
+  const plan = planAgenda_(dest, r, A, alcance, opcPlan);
   plan.hdrNombres = dest.hdr;
   logPlanAgenda_(plan, dest);
+  _logGeoAgenda_(plan);
   tramo('plan');
   if (!enSeco) {
     // REGISTRO_AGENDA es obligatorio: sin él no se puede deshacer. Si no se puede escribir, no se escribe el destino.
@@ -155,15 +181,21 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     try {
       plan.escrito = aplicarPlanAgenda_(sh, dest, plan, corrida);
     } catch (err) {
+      if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('la agenda falló escribiendo');
       const msg = String(err && err.message || err);
       Logger.log('>>> %s', msg);
       if (/REGISTRO_AGENDA/.test(msg)) return { error: msg };
       throw err;
     }
     plan.corrida = corrida;
+    // 16/10 (BASE_UNA_LECTURA_POR_CORRIDA): si la agenda escribió algo, el cruce y los demás vuelven a leer la base
+    if (typeof baseCorridaInvalidar_ === 'function' && (!plan.escrito || (plan.escrito.hechas || []).length || plan.escrito.borradas)) {
+      baseCorridaInvalidar_('la agenda escribió en la base');
+    }
     if (DERIVADAS_POR_SCRIPT && (plan.escrito.creadas || plan.escrito.borradas)) {
       try { recalcDerivadas_(RDV_HOJA_DESTINO, true); }
       catch (err) { Logger.log('>>> las derivadas NO se recalcularon: %s (la corrida sigue)', err); }
+      if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('las derivadas de la agenda');
     }
   }
   tramo('escritura');
@@ -302,6 +334,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo que juntó la fusión antes del plan (40_Agenda.js correrAgendaEnBloqueo_) y si es en seco
   P.enSeco = !!opciones.enSeco; P.fusionPrevia = opciones.fusionPrevia || null;
   P.dosFilas = []; P.dosFilasDecididas = []; P.eleccionesAMano = [];
+  P.creacionGeoDiferida = [];   // 16/10 (AGENDA_GEO_AHORRO): sin crear en esta corrida porque el barrio quedó pendiente
 
   // Índices del destino
   const porFigFecha = new Map(), porFecha = new Map(), usadas = new Set();
@@ -381,7 +414,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   };
 
   // Barrio desde la dirección (regla de confianza con el margen), con cache entre corridas.
-  const barrioDe = _barrioAgenda_(opciones, P);
+  // 16/10 (AGENDA_GEO_AHORRO): con las reuniones del mail (el orden de la geocodificación) y la base (las direcciones ya resueltas)
+  const barrioDe = _barrioAgenda_(opciones, P, { r: r, dest: dest, A: A, hoy: hoyP });
 
   // 07/10: el historial de la agenda (qué filas creó, para saber cuáles BORRÓ el equipo) y las elecciones de
   // AGENDA_DUPLICADOS. Si el historial no se puede leer, en la corrida real NO se crea nada (podría recrear una borrada).
@@ -628,9 +662,18 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       P.filaDe.set(ev.clave, { fila: null, status: '', borradaEquipo: true });
       return;
     }
+    // 16/10 (AGENDA_GEO_AHORRO): el barrio de la dirección quedó PENDIENTE (el tope de geocodificación o la guarda de tiempo de
+    // la agenda): la reunión NO se crea en esta corrida —sin su barrio, "ya cargada en otra fila" y los casi duplicados no se
+    // pueden mirar bien, y la fila nacería sin barrio—; la crea la corrida siguiente, con el barrio. No queda nada a medias.
+    const bGeo = barrioDe(ev);
+    if (bGeo.pendiente) {
+      P.creacionGeoDiferida.push(ev);
+      P.filaDe.set(ev.clave, { fila: null, status: '', geoDiferida: true });
+      return;
+    }
     // 07/10, regla del usuario (caso Macri 01/10): misma figura + mismo barrio a ±AGENDA_DUP_DIAS y el mail ANTERIOR a
     // la fecha de esa fila → es la MISMA reunión, que se adelantó o atrasó: no se crea ni se pregunta, ni se toca la fila.
-    const bEv = ev.barrio || barrioDe(ev).barrio;
+    const bEv = ev.barrio || bGeo.barrio;
     // (sin las filas que ya tomó otra reunión del mail en esta corrida: ésa no puede ser también ésta)
     const ya = yaCargadaAgenda_(ev, dest.filas.filter(function (f) { return !usadas.has(f.fila); }), bEv);
     if (ya.fila) {
@@ -1226,6 +1269,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                              'no se crea: la semana tiene una reunión en dos filas (AGENDA_DUPLICADOS)') });
       return;
     }
+    if (x && x.geoDiferida) {   // 16/10 (AGENDA_GEO_AHORRO): se crea en la próxima corrida, con su barrio
+      P.copia.push({ ev: ev, x: null, estado: 'se crea en la próxima corrida (falta geocodificar la dirección)', fechaOriginal: ev.fechaOriginal || null });
+      return;
+    }
     if (x && (x.borradaEquipo || x.duplicado)) {
       P.copia.push({ ev: ev, x: null, estado: x.borradaEquipo ? 'borrada por el equipo' : 'duplicado: ver AGENDA_DUPLICADOS', fechaOriginal: ev.fechaOriginal || null });
       return;
@@ -1257,7 +1304,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
                      cambios: yaSusp ? 'suspendida: salió del mail del ' + fmtFecha_(d.mailQueLaSaco) : undefined });
     }
   });
-  P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev); });
+  P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev, 'mostrar'); });
   // 16/10 (AGENDA_CANCELACION_CONJUNTO): la fila que suspendió RDV CONJUNTO (en esta corrida o antes) lo dice en "Cambios"
   if (P.modos.cancelacionConjunto) {
     const susConj = (P.historial && P.historial.suspendidasConjunto) || new Set();
@@ -1521,7 +1568,8 @@ function _accionActualizar_(P, f, ev, A, barrioDe, op) {
   const bCur = val('Barrio'), bEsc = val('agenda_barrio_escrito');
   if (esVacio_(bCur) || (dirCambio && !esVacio_(bEsc) && cmp(bCur, 'Barrio') === cmp(bEsc, 'Barrio'))) {
     const b = barrioDe(ev);
-    if (cmp(b.barrio, 'Barrio') !== cmp(bCur, 'Barrio') && !(esVacio_(bCur) && !b.barrio)) {
+    // 16/10: un barrio PENDIENTE (tope de geocodificación o guarda de tiempo) no toca la celda: ni la vacía ni la cambia
+    if (!b.pendiente && cmp(b.barrio, 'Barrio') !== cmp(bCur, 'Barrio') && !(esVacio_(bCur) && !b.barrio)) {
       esc.push({ fila: f.fila, col: col('Barrio'), valor: b.barrio, esperado: bCur });
       esc.push({ fila: f.fila, col: col('agenda_barrio_escrito'), valor: b.barrio, esperado: bEsc });
       if (!esVacio_(bCur)) cambia['Barrio'] = { antes: bCur, despues: b.barrio || '(vacío: ' + b.motivo + ')' };
@@ -1544,22 +1592,102 @@ function _accionActualizar_(P, f, ev, A, barrioDe, op) {
  * El barrio de una reunión desde su dirección, con la regla de confianza y el margen (punto 12): devuelve
  * `{ barrio, motivo }` (barrio '' si no se cumple). Cache por consulta en AGENDA_GEOCODE (intermedia), y las que
  * faltan se piden a Maps (hasta GEOCODE_MAX_POR_CORRIDA). `opciones.geocodificar(consulta)` lo reemplaza (tests).
+ *
+ * 16/10 (AGENDA_GEO_AHORRO, 00_Config.js): `extra` = { r, dest, A, hoy } (el plan). Las direcciones que faltan en la cache se piden
+ * en orden de CERCANÍA de la reunión (las de hoy en adelante primero, de la más próxima; después las pasadas, de la más reciente),
+ * hasta el tope; un fallo de la cache reciente no se vuelve a pedir; la consulta lleva las abreviaturas expandidas; con
+ * `opciones.geoSoloDias` (la guarda de tiempo de la agenda) sólo las reuniones de hoy a esos días. Lo que no entra devuelve
+ * `{ barrio: '', pendiente: true }`: quien lo usa no escribe nada que dependa del barrio. `uso` 'mostrar' (la copia): una dirección
+ * que ya resolvió una fila de la base no gasta una llamada sólo para mostrarse. `P.geo`: lo que hizo (para el log y el paso 67).
  */
-function _barrioAgenda_(opciones, P) {
+function _barrioAgenda_(opciones, P, extra) {
   let cache = null, poligonos = null;
   const nuevas = [];
   P.geocodeNuevas = nuevas;
   // 15/10: con su interruptor (la medición en seco lo fuerza por `opciones.barrioDelMail`)
   const barrioDelMail = opciones && opciones.barrioDelMail !== undefined ? !!opciones.barrioDelMail : AGENDA_BARRIO_DEL_MAIL;
+  const ahorro = typeof AGENDA_GEO_AHORRO !== 'undefined' && AGENDA_GEO_AHORRO && !(opciones && opciones.geocodificar);
+  const maximo = ahorro ? GEOCODE_MAX_POR_CORRIDA : (typeof GEOCODE_MAX_POR_CORRIDA_VIEJO !== 'undefined' ? GEOCODE_MAX_POR_CORRIDA_VIEJO : GEOCODE_MAX_POR_CORRIDA);
+  const soloDias = ahorro && opciones && opciones.geoSoloDias != null ? opciones.geoSoloDias : null;
+  const hoyG = (extra && extra.hoy) || hoyMediodia_();
+  const G = P.geo = { activo: ahorro, maximo: maximo, soloDias: soloDias, llamadas: 0, cache: 0, fallosCache: 0, reintentos: 0, sinDireccion: 0,
+                      resueltas: 0, pendientesTope: 0, pendientesTiempo: 0, direcciones: [] };
   let llamadas = 0;
   const memo = new Map();
-  return function (ev) {
-    if (memo.has(ev.clave + '|' + ev.version + '|' + ev.grupo)) return memo.get(ev.clave + '|' + ev.version + '|' + ev.grupo);
-    const b = _barrioAgendaUna_(ev);
-    memo.set(ev.clave + '|' + ev.version + '|' + ev.grupo, b);
+  let permitidas = null;
+  const consultasDe = function (ev) {
+    const orig = _consultaGeocode_(ev.direccion);
+    return { orig: orig, exp: ahorro && typeof _consultaGeocodeExpandida_ === 'function' ? _consultaGeocodeExpandida_(ev.direccion) : orig };
+  };
+  const enVentanaTiempo = function (ev) {
+    if (soloDias == null) return true;
+    if (!ev.fecha) return false;
+    const d = Math.round((alMediodia_(ev.fecha.getFullYear(), ev.fecha.getMonth() + 1, ev.fecha.getDate()) - hoyG) / 86400000);
+    return d >= 0 && d <= soloDias;
+  };
+  /** Lo que la cache tiene de una reunión: `{ g, estado }` ('ok' / 'fallo') o `{ g: null, previo }` (falta, o un fallo viejo). */
+  const deCache = function (q) {
+    if (!ahorro) { const g0 = cache.get(q.orig); return g0 ? { g: g0, estado: 'ok' } : { g: null }; }
+    const gE = cache.get(q.exp), eE = gE ? estadoCacheGeo_(gE, poligonos) : null;
+    if (gE && eE !== 'reintentar') return { g: gE, estado: eE };
+    if (q.orig !== q.exp) {
+      // la forma vieja (sin expandir) ya resolvió EXACTA: se usa, no se vuelve a pedir. Si dio aproximada, parcial o un fallo, se
+      // pide la expandida (Bullrich: "Int." puede ser justo lo que Maps no entendió)
+      const gO = cache.get(q.orig);
+      if (gO && _barrioDeGeo_(gO, poligonos).estado === 'ok') return { g: gO, estado: 'ok' };
+      if (gO && !gE) return { g: null, previo: gO };
+    }
+    return { g: null, previo: gE || null };
+  };
+  /** Las direcciones que la base ya resolvió: la consulta de agenda_direccion_escrita → el barrio del sistema que sigue en la fila. */
+  let resueltas = null;
+  const resueltasDeBase = function () {
+    if (resueltas) return resueltas;
+    resueltas = new Map();
+    const d = extra && extra.dest, A = extra && extra.A;
+    if (!d || !A || A.agenda_direccion_escrita == null || A.agenda_barrio_escrito == null) return resueltas;
+    d.filas.forEach(function (f) {
+      const dir = str(f.valores[A.agenda_direccion_escrita]), be = str(f.valores[A.agenda_barrio_escrito]);
+      if (!dir || !be || _noEsDireccion_(dir) || normalizeText_(be) !== normalizeText_(f.barrio)) return;
+      const q = consultasDe({ direccion: dir });
+      resueltas.set(q.exp, { barrio: be, fila: f.fila });
+      resueltas.set(q.orig, { barrio: be, fila: f.fila });
+    });
+    return resueltas;
+  };
+  /** Las consultas que esta corrida puede pedir a Maps: las de las reuniones más cercanas en fecha, hasta el tope. */
+  const prepararPermitidas = function () {
+    if (permitidas) return;
+    permitidas = new Set();
+    if (!ahorro || !extra || !extra.r) return;
+    const evs = [].concat(extra.r.unicas || [], extra.r.ultimas || [], extra.r.desaparecidas || []);
+    const prioridad = new Map();
+    const res = resueltasDeBase();
+    evs.forEach(function (ev) {
+      if (!ev || !ev.direccion || _noEsDireccion_(ev.direccion) || !enVentanaTiempo(ev)) return;
+      const q = consultasDe(ev);
+      if (deCache(q).g || res.has(q.exp) || res.has(q.orig)) return;
+      const t = ev.fecha ? ymd_(ev.fecha) : '';
+      const hoyK = ymd_(hoyG);
+      const k = !t ? [2, 0] : (t >= hoyK ? [0, ev.fecha - hoyG] : [1, hoyG - ev.fecha]);
+      const ant = prioridad.get(q.exp);
+      if (!ant || k[0] < ant[0] || (k[0] === ant[0] && k[1] < ant[1])) prioridad.set(q.exp, k);
+    });
+    Array.from(prioridad.keys()).sort(function (a, b) {
+      const x = prioridad.get(a), y = prioridad.get(b);
+      return (x[0] - y[0]) || (x[1] - y[1]) || (a < b ? -1 : a > b ? 1 : 0);
+    }).slice(0, maximo).forEach(function (q) { permitidas.add(q); });
+    G.candidatas = prioridad.size;
+  };
+  return function (ev, uso) {
+    const k = ev.clave + '|' + ev.version + '|' + ev.grupo;
+    if (memo.has(k)) return memo.get(k);
+    if (uso === 'mostrar' && memo.has(k + '|m')) return memo.get(k + '|m');
+    const b = _barrioAgendaUna_(ev, uso);
+    memo.set(b.yaResuelta ? k + '|m' : k, b);   // "ya resuelta" vale sólo para mostrar: una decisión la vuelve a mirar
     return b;
   };
-  function _barrioAgendaUna_(ev) {
+  function _barrioAgendaUna_(ev, uso) {
     const sumar = function (k) { P.barrio[k] = (P.barrio[k] || 0) + 1; };
     // 15/10 (AGENDA_BARRIO_DEL_MAIL, caso 824): sin barrio por la dirección, el barrio que el mail da como lugar (si Comunas
     // lo tiene), salvo que la dirección se haya geocodificado bien a OTRO barrio (`res`): ahí se contradicen y no va nada.
@@ -1570,24 +1698,51 @@ function _barrioAgenda_(opciones, P) {
       return b;
     };
     if (!ev.direccion || _noEsDireccion_(ev.direccion)) {
+      G.sinDireccion++;
       return vacio('sin dirección (A CONFIRMAR o sin altura)', { barrio: '', motivo: ev.direccionAConfirmar ? 'A CONFIRMAR' : 'sin dirección con altura' });
     }
     if (!poligonos) poligonos = _poligonosBarrios_();
-    const consulta = _consultaGeocode_(ev.direccion);
-    let g;
-    if (opciones.geocodificar) g = opciones.geocodificar(consulta);
+    const q = consultasDe(ev);
+    let g, llamada = null;
+    if (opciones.geocodificar) g = opciones.geocodificar(q.orig);
     else {
       if (!cache) cache = _leerCacheGeocode_();
-      g = cache.get(consulta);
+      const c = deCache(q);
+      g = c.g;
+      if (g) { if (c.estado === 'fallo') G.fallosCache++; else G.cache++; }
       if (!g) {
-        if (llamadas >= GEOCODE_MAX_POR_CORRIDA) return vacio('pendiente: tope de geocodificación', { barrio: '', motivo: 'tope' });
-        g = _geocodificar_(consulta, true);
-        llamadas++;
-        if (g.estado !== 'ERROR') { cache.set(consulta, g); nuevas.push(g); }
+        // 16/10: sólo para MOSTRAR (la copia), una dirección que ya resolvió una fila de la base no gasta una llamada
+        const yaRes = ahorro && uso === 'mostrar' ? (resueltasDeBase().get(q.exp) || resueltasDeBase().get(q.orig)) : null;
+        if (yaRes) { G.resueltas++; return { barrio: yaRes.barrio, motivo: 'cumple', por: 'ya resuelta en la base (fila ' + yaRes.fila + ')', yaResuelta: true }; }
+        // 16/10: pendiente (el tope, o la guarda de tiempo): no se escribe nada que dependa del barrio (ni el del mail)
+        const pendiente = function (porque) {
+          sumar('pendiente: ' + porque);
+          return { barrio: '', motivo: 'pendiente: tope de geocodificación (' + porque + ')', pendiente: true };
+        };
+        if (ahorro) {
+          prepararPermitidas();
+          if (!enVentanaTiempo(ev)) { G.pendientesTiempo++; return pendiente('guarda de tiempo: sólo las de los próximos ' + soloDias + ' días'); }
+          const reservada = permitidas.has(q.exp);
+          // las reservadas que todavía no se pidieron no se le dan a otra (las más cercanas en fecha tienen prioridad)
+          const libres = maximo - G.llamadas - permitidas.size;
+          if (!reservada && libres <= 0) { G.pendientesTope++; return pendiente('tope de ' + maximo + ' por corrida'); }
+          if (reservada) permitidas.delete(q.exp);
+        } else if (llamadas >= maximo) return vacio('pendiente: tope de geocodificación', { barrio: '', motivo: 'tope' });
+        if (c.previo) G.reintentos++;
+        g = _geocodificar_(ahorro ? q.exp : q.orig, true);
+        llamadas++; G.llamadas++;
+        if (ahorro) {
+          g.fechaMs = Date.now();
+          cache.set(q.exp, g); nuevas.push(g);   // también un fallo (con su fecha): no se vuelve a pedir en cada corrida
+        } else if (g.estado !== 'ERROR') { cache.set(q.orig, g); nuevas.push(g); }
+        llamada = { consulta: g.consulta, estado: g.estado, tipo: g.tipo || '', parcial: !!g.parcial, reintento: !!c.previo,
+                    fecha: ev.fecha ? fmtFecha_(ev.fecha) : '' };
+        G.direcciones.push(llamada);
       }
     }
     const res = _barrioDeGeo_(g, poligonos);
     const regla = _reglaBarrioConMargen_(res, ev, poligonos, BARRIO_MARGEN_M);
+    if (llamada) { llamada.barrio = res.barrio || ''; llamada.resultado = res.estado; llamada.regla = regla.cumple ? 'cumple' : regla.motivo; }
     if (regla.cumple) {
       sumar(regla.por && /eje/.test(regla.por) ? 'escrito (el mail trae eje)' : 'escrito (cumple la regla)');
       // 07/10: el barrio de otro eje que el del mail no frena, pero queda anotado (log del plan y paso 51)
@@ -1596,6 +1751,56 @@ function _barrioAgenda_(opciones, P) {
     }
     return vacio('vacío: ' + regla.motivo.replace(/\d+ m/, 'N m'), { barrio: '', motivo: regla.motivo, res: res }, res);
   }
+}
+
+/**
+ * 16/10 (AGENDA_GEO_AHORRO): lo que hizo la geocodificación en esta corrida, en el log (y en REGISTRO_CORRIDAS, para el paso 67):
+ * cuántas llamadas a Maps y para qué direcciones (sólo la consulta: calle, altura y la Ciudad), qué salió de la cache, qué no se
+ * geocodificó y por qué.
+ */
+function _logGeoAgenda_(P) {
+  const G = P && P.geo;
+  if (!G) return;
+  const dif = (P.creacionGeoDiferida || []).length;
+  Logger.log('  geocodificación: %s llamadas a Maps (tope %s%s) | de la cache %s (+ %s fallos recientes, sin volver a pedir) | ' +
+             'reintentos de fallos viejos %s | sin dirección (A CONFIRMAR, sin altura) %s | ya resueltas en la base (sólo para mostrar) %s | ' +
+             'pendientes por el tope %s | por la guarda de tiempo %s | reuniones que se crean en la próxima corrida por eso %s',
+             G.llamadas, G.maximo, G.soloDias != null ? '; GUARDA DE TIEMPO: sólo hoy a ' + G.soloDias + ' días' : '', G.cache, G.fallosCache,
+             G.reintentos, G.sinDireccion, G.resueltas, G.pendientesTope, G.pendientesTiempo, dif);
+  G.direcciones.forEach(function (d) {
+    Logger.log('    Maps: "%s" (reunión del %s) → %s%s%s → %s: %s%s', d.consulta, d.fecha || '?', d.estado, d.tipo ? ' ' + d.tipo : '',
+               d.parcial ? ' (coincidencia parcial)' : '', d.barrio || 'sin barrio', d.regla || '', d.reintento ? ' [reintento de un fallo viejo]' : '');
+  });
+  if (typeof agendaGeoAnotar_ === 'function') agendaGeoAnotar_(G, dif);
+}
+
+/**
+ * 16/10: por qué una dirección da o no da barrio, PASO A PASO (para revisar un caso como "Av. Int. Bullrich 55, La Mezquita"):
+ * las dos consultas (la del mail y la expandida), lo que tiene la cache AGENDA_GEOCODE de cada una, el barrio del punto, la
+ * distancia al borde de otro barrio y la regla de confianza con el lugar del mail (`lugarMail`: "Comuna 14", "Palermo", "Eje
+ * Norte"…). Con `conMaps` true pide a Maps las consultas que la cache no tiene (gasta cuota; NO escribe la cache). No escribe nada.
+ */
+function explicarBarrioAgenda(direccion, lugarMail, conMaps) {
+  direccion = direccion || 'Av. Int. Bullrich 55, La Mezquita';
+  const pol = _poligonosBarrios_(), cache = _leerCacheGeocode_();
+  const ev = _completarReunion_({ eventoTexto: 'Encuentro con Vecinos' + (lugarMail ? ', ' + lugarMail : ''), lugarTexto: direccion, horaTexto: '18:00',
+                                   fecha: hoyMediodia_() });
+  Logger.log('=== por qué "%s" da o no da barrio (lugar del mail: %s) ===', direccion, lugarMail || '(ninguno)');
+  Logger.log('  dirección leída: "%s" | ¿es una dirección? %s | lugar del mail: barrio %s, comuna %s, eje %s', ev.direccion,
+             ev.direccion && !_noEsDireccion_(ev.direccion) ? 'sí' : 'NO (no se geocodifica)', ev.barrio || '—', ev.comuna == null ? '—' : ev.comuna, ev.eje || '—');
+  const qs = [_consultaGeocode_(direccion), _consultaGeocodeExpandida_(direccion)].filter(function (q, i, a) { return a.indexOf(q) === i; });
+  qs.forEach(function (q) {
+    let g = cache.get(q), de = 'la cache (' + (g ? str(g.fecha) : '') + ')';
+    if (!g && conMaps) { g = _geocodificar_(q, true); de = 'Maps, ahora'; }
+    if (!g) { Logger.log('  "%s": no está en la cache%s', q, conMaps ? '' : ' (correr con conMaps = true para preguntarle a Maps)'); return; }
+    const res = _barrioDeGeo_(g, pol), regla = _reglaBarrioConMargen_(res, ev, pol, BARRIO_MARGEN_M);
+    const d = res.lat != null ? _distanciaAOtroBarrioM_(res.lng, res.lat, pol, res.barrio) : null;
+    Logger.log('  "%s" (de %s): Maps %s, tipo %s%s, "%s" → punto %s → barrio %s (%s); a %s m del borde de otro barrio | estado de la cache: %s',
+               q, de, g.estado, g.tipo || '—', g.parcial ? ', COINCIDENCIA PARCIAL' : '', g.formateada || '', res.lat != null ? res.lat + ',' + res.lng : '—',
+               res.barrio || '—', res.estado, d == null ? '—' : Math.round(d), estadoCacheGeo_(g, pol));
+    Logger.log('    regla de confianza: %s', regla.cumple ? 'CUMPLE (' + (regla.por || '') + ')' : 'no cumple: ' + regla.motivo);
+  });
+  return qs;
 }
 
 /**
@@ -1953,6 +2158,9 @@ function logPlanAgenda_(P, dest) {
 }
 
 function _escribirSolapasAgenda_(P) {
+  // 16/10: la cache de la geocodificación primero y aparte: si una solapa informativa falla, lo que se pidió a Maps no se pierde
+  try { _agregarCacheGeocode_(P.geocodeNuevas || []); P.geocodeNuevas = []; }
+  catch (err) { Logger.log('[agenda] la cache %s no se pudo escribir: %s (la próxima corrida vuelve a pedir esas direcciones)', AGENDA_SOLAPA_GEOCODE, err); }
   try {
     const viejas = [['fecha', 'hora', 'tipo', 'figura', 'lugar', 'direccion', 'grupo', 'mail', 'evento_texto']];
     P.viejasSinFila.forEach(function (ev) {
@@ -1968,7 +2176,6 @@ function _escribirSolapasAgenda_(P) {
     // frenadas, cancelaciones aplicadas, reuniones juntadas, filas que sobran); escribirHoja_ le da el formato
     try { _escribirPendientesAgenda_(P); }
     catch (err) { Logger.log('[agenda] %s no se pudo escribir: %s (la corrida igual terminó)', AGENDA_SOLAPA_PENDIENTES, err); }
-    _agregarCacheGeocode_(P.geocodeNuevas || []);
   } catch (err) {
     Logger.log('[agenda] no se pudieron escribir las solapas informativas: %s (la corrida igual terminó)', err);
   }

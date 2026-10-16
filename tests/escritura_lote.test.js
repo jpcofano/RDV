@@ -440,26 +440,37 @@ function escenarioGuardaTiempo() {
      'estado ok, total y la duración de cada parte que corrió (cruce ' + campo(m, 'cruce_s') + ' s, escritura ' + campo(m, 'escritura_s') + ' s); los IDs, apagados: vacío');
   ok(!E.props[E.cfg('PROP_CORRIDA_EN_CURSO')], 'la corrida en curso (propiedad) queda borrada al terminar');
 
-  // --- la agenda se demoró (215 s antes del cruce): el cruce no empieza; nada se escribe a medias ---
+  // --- la agenda se demoró (155 s antes del cruce): el cruce no empieza; nada se escribe a medias ---
+  // 16/10 (tarde): el límite del cruce bajó de 210 a 150 s (la CORTADA i: agenda 189 s, el cruce empezó y no terminó)
   const E2 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', IDS_EN_LA_HORA: 'false' } });
   const m2 = montar(E2, 120, true);
   const antes2 = dest(m2);
   const v2 = E2.ctx.verificarHojaDestino_;
-  E2.ctx.verificarHojaDestino_ = function () { const x = v2.apply(this, arguments); E2.reloj += 215000; return x; };
+  E2.ctx.verificarHojaDestino_ = function () { const x = v2.apply(this, arguments); E2.reloj += 155000; return x; };
   const r2 = E2.ejecutar('upsertDestino');
-  ok(!r2.error && dest(m2) === antes2, 'a los 215 s (límite del cruce: 210 s): el cruce NO empieza y la base queda igual, sin error');
-  ok(r2.logs.some(function (l) { return /GUARDA DE TIEMPO: la corrida ya lleva 21\d s \(límite para empezar "cruce": 210 s\)/.test(l); }) &&
+  ok(!r2.error && dest(m2) === antes2, 'a los 155 s (límite del cruce: 150 s): el cruce NO empieza y la base queda igual, sin error');
+  ok(r2.logs.some(function (l) { return /GUARDA DE TIEMPO: la corrida ya lleva 15\d s \(límite para empezar "cruce": 150 s\)/.test(l); }) &&
      campo(m2, 'cruce_s') === 'salteada' && /cruce/.test(campo(m2, 'salteadas_por_tiempo')) && campo(m2, 'estado') === 'terminó, con partes salteadas',
      '   lo dice el log y REGISTRO_CORRIDAS (cruce: "salteada")');
 
-  // --- el cruce se demoró (plan 250 s): los IDs (180 s), Looker (240 s) no empiezan; lo urgente sí corrió ---
-  const E3 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', LOOKER_EN_SISTEMA: 'true', IDS_EN_LA_HORA: 'true' }, costo: { calculo: 250000 } });
+  // --- 16/10 (tarde, la CORTADA ii): el cruce terminó tarde (plan 260 s): los asistentes (límite 290 s) no empiezan, y sin ellos
+  // no se escribe el cruce (como cuando fallan); la base queda igual ---
+  const E3b = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', IDS_EN_LA_HORA: 'false' }, costo: { calculo: 260000 } });
+  const m3b = montar(E3b, 120, true);
+  const antes3b = dest(m3b);
+  const r3b = E3b.ejecutar('upsertDestino');
+  ok(!r3b.error && dest(m3b) === antes3b && campo(m3b, 'asistentes_s') === 'salteada' && campo(m3b, 'escritura_s') === '' &&
+     typeof campo(m3b, 'cruce_s') === 'number',
+     'el plan tardó 260 s: los asistentes (límite 290 s) no empiezan, la escritura del cruce tampoco, y la base queda igual');
+
+  // --- el cruce se demoró (plan 200 s): los IDs (180 s), Looker (240 s) no empiezan; lo urgente sí corrió ---
+  const E3 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', LOOKER_EN_SISTEMA: 'true', IDS_EN_LA_HORA: 'true' }, costo: { calculo: 200000 } });
   const m3 = montar(E3, 120, true);
   let idsLlamados = 0;
   E3.ctx.idsEnLaHora_ = function () { idsLlamados++; return { resumen: 'x' }; };
   const r3 = E3.ejecutar('upsertDestino');
   ok(!r3.error && idsLlamados === 0 && campo(m3, 'ids_s') === 'salteada' && !m3.ssD.hojas['Datos_Unpivot'],
-     'el plan tardó 250 s: los IDs (límite 180 s) y Looker (240 s) quedan para la próxima; no se llamaron');
+     'el plan tardó 200 s: los IDs (límite 180 s) y Looker (240 s) quedan para la próxima; no se llamaron');
   ok(typeof campo(m3, 'escritura_s') === 'number' && typeof campo(m3, 'cruce_s') === 'number',
      '   lo urgente (el cruce y la escritura) sí corrió; las derivadas, ' + (campo(m3, 'derivadas_s') === 'salteada'
        ? 'salteadas (la corrida ya pasaba de 270 s)' : campo(m3, 'derivadas_s') + ' s'));
@@ -536,6 +547,30 @@ function escenarioGuardaTiempo() {
   E10.ctx.idsEnLaHora_ = function () { ids10++; return { resumen: 'x' }; };
   E10.ejecutar('upsertDestino'); E10.reloj += 3600000; E10.ejecutar('upsertDestino');
   ok(ids10 === 2, 'con IDS_SOLO_CADA_HORAS = false: en cada corrida, como antes');
+
+  // --- 16/10 (tarde, BASE_UNA_LECTURA_POR_CORRIDA): cuántas veces se lee la base ENTERA por corrida ---
+  const lecturasBase = function (cfgB) {
+    const Eb = crearEntorno({ config: Object.assign({ DERIVADAS_POR_SCRIPT: 'true', IDS_EN_LA_HORA: 'false' }, cfgB), extra: ['49_Aceleraciones.js'] });
+    const mb = montar(Eb, 60, true);
+    let leidas = 0;
+    const ld = Eb.ctx.leerDestino_;
+    Eb.ctx.leerDestino_ = function () { leidas++; return ld.apply(this, arguments); };
+    const ctxd = Eb.ctx._ctxDerivadas_;
+    const r1 = Eb.ejecutar('upsertDestino');
+    const l1 = leidas, b1 = [campo(mb, 'base_lecturas'), campo(mb, 'base_reusos')];
+    leidas = 0;
+    Eb.reloj += 3600000;
+    const antes = dest(mb);
+    Eb.ejecutar('upsertDestino');
+    return { r1: r1, l1: l1, b1: b1, b2: [campo(mb, 'base_lecturas'), campo(mb, 'base_reusos')], igual: dest(mb) === antes, ctxd: ctxd };
+  };
+  const conB = lecturasBase({}), sinB = lecturasBase({ BASE_UNA_LECTURA_POR_CORRIDA: 'false' });
+  ok(!conB.r1.error && conB.b1[0] === 3 && conB.b1[1] === 0,
+     'la primera corrida (el cruce y las derivadas escriben): la base se lee 3 veces (el cruce; las derivadas y Looker, cada una ' +
+     'después de una escritura) — ' + JSON.stringify(conB.b1));
+  ok(conB.b2[0] === 1 && conB.b2[1] === 2 && conB.igual,
+     'la corrida siguiente (nada que escribir): UNA lectura (el cruce); las derivadas y Looker la reusan — ' + JSON.stringify(conB.b2));
+  ok(sinB.b2[0] === 3 && sinB.b2[1] === 0, 'con BASE_UNA_LECTURA_POR_CORRIDA = false: como antes, 3 lecturas enteras — ' + JSON.stringify(sinB.b2));
 }
 
 // ============================== los datos sintéticos ==============================
@@ -2739,7 +2774,8 @@ function escenarioLooker() {
      'la base sin columna "ID": ni la ID ni el tablero, y lo dice');
 
   // --- una corrida que ya lleva más de LOOKER_TIEMPO_MAX_MS al llegar al tablero: no lo rehace (lo hace la próxima) ---
-  const Et = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg), costo: { calculo: 250000 } });
+  // 16/10 (tarde): 200 s y no 250 (con 250 los asistentes, límite 290 s, ya no empiezan y no hay cruce que escribir)
+  const Et = crearEntorno({ config: Object.assign({ LOOKER_EN_SISTEMA: 'true' }, cfg), costo: { calculo: 200000 } });
   const mt = montar(Et, 120, true);
   preparar(Et, mt);
   const rt = Et.ejecutar('upsertDestino');

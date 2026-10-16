@@ -177,7 +177,10 @@ console.log('[3] REGISTRO_CORRIDAS: las columnas nuevas al final, las filas viej
   E.ss.hojas.REGISTRO_CORRIDAS = vieja;
   const enc = E.run('encabezadoCorridas_()');
   ok(JSON.stringify(enc.slice(0, encViejo.length)) === JSON.stringify(encViejo) && enc.indexOf('agenda_gmail_s') > encViejo.length &&
-     enc.slice(-3).join('|') === 'agenda_geo_n|sin_cambios|no_tocaba', 'el encabezado: las columnas de siempre en su orden y las nuevas AL FINAL');
+     // 16/10 (tarde): las del punto 5b, también al final (después de las del 16/10 de la mañana)
+     enc.slice(-10, -7).join('|') === 'agenda_geo_n|sin_cambios|no_tocaba' &&
+     enc.slice(-7).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle',
+     'el encabezado: las columnas de siempre en su orden y las nuevas AL FINAL');
   // una corrida nueva, con los tramos de la agenda, una solapa sin cambios y los IDs que no tocaban
   E.run('corridaIniciar_(new Date(), false, false)');
   E.run('corridaEmpieza_("agenda"); agendaTiemposIniciar_(); _tiemposAgenda_.ms = { base: 3000, gmail: 40000, html: 55000, parse: 2000, plan: 90000, geo: 60000 }; _tiemposAgenda_.geoN = 12; agendaTiempo_("escritura")');

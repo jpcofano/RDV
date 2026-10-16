@@ -132,9 +132,57 @@ function agendaTiempoSumar_(k, ms, n) {
 function agendaTiemposTexto_() {
   const T = _tiemposAgenda_;
   if (!T) return '';
-  return SUBTIEMPOS_AGENDA_.filter(function (k) { return k in T.ms; })
+  return SUBTIEMPOS_AGENDA_.concat(['cache']).filter(function (k) { return k in T.ms; })
     .map(function (k) { return k + ' ' + (T.ms[k] / 1000).toFixed(1) + ' s' + (k === 'geo' ? ' (' + T.geoN + ' llamadas, dentro de plan)' : ''); })
     .join(' · ');
+}
+
+/**
+ * 16/10 (tarde, punto 5b): lo que hizo la geocodificación de la agenda (40_Agenda.js, `_logGeoAgenda_`): queda en la corrida en curso
+ * y en REGISTRO_CORRIDAS (agenda_geo_detalle): "cache 41 · fallos 3 · saltadas 12 · pendientes 0 · tiempo 0 · reintentos 1 · sin crear 0".
+ */
+function agendaGeoAnotar_(G, sinCrear) {
+  if (!_corrida_ || !G) return;
+  _corrida_.agendaGeo = { cache: G.cache, fallos: G.fallosCache, sinDireccion: G.sinDireccion, resueltas: G.resueltas,
+                          pendientes: G.pendientesTope, tiempo: G.pendientesTiempo, reintentos: G.reintentos, sinCrear: sinCrear || 0,
+                          guarda: G.soloDias != null, llamadas: G.llamadas };
+  _guardarCorridaEnCurso_();
+}
+
+/** 16/10: lo que salió de la cache de los mails (41_AgendaCache.js) en esta corrida: hilos, mensajes, colores y textos parseados. */
+function agendaMailsAnotar_(gmail, parse, cache, html) {
+  if (!_corrida_) return;
+  _corrida_.agendaMails = { hilosCache: gmail ? gmail.hilosCache : null, hilosBajados: gmail ? gmail.hilosBajados : null,
+                            mensajesCache: gmail ? gmail.mensajesCache : null, mensajesBajados: gmail ? gmail.mensajesBajados : null,
+                            htmlCache: html ? html.deCache || 0 : null, htmlLeidos: html ? html.leidos : null,
+                            parseCache: parse ? parse.deCache : null, parseados: parse ? parse.parseados : null,
+                            errores: cache && cache.errores && cache.errores.length ? cache.errores.join(' | ').slice(0, 300) : '' };
+  _guardarCorridaEnCurso_();
+}
+
+/** El texto de REGISTRO_CORRIDAS de lo de arriba (columnas agenda_geo_detalle y agenda_mails_cache). */
+function _textoGeoCorrida_(g) {
+  if (!g) return '';
+  return 'cache ' + g.cache + ' · fallos ' + g.fallos + ' · sin dirección ' + g.sinDireccion + ' · ya resueltas ' + g.resueltas +
+         ' · pendientes ' + g.pendientes + ' · guarda ' + g.tiempo + ' · reintentos ' + g.reintentos + ' · sin crear ' + g.sinCrear +
+         (g.guarda ? ' · GUARDA DE TIEMPO' : '');
+}
+function _textoMailsCorrida_(m) {
+  if (!m) return '';
+  const p = function (a, b) { return a == null ? '—' : a + '/' + ((a || 0) + (b || 0)); };
+  return 'hilos ' + p(m.hilosCache, m.hilosBajados) + ' · mensajes ' + p(m.mensajesCache, m.mensajesBajados) +
+         ' · colores ' + p(m.htmlCache, m.htmlLeidos) + ' · parse ' + p(m.parseCache, m.parseados) + (m.errores ? ' · ' + m.errores : '');
+}
+
+/**
+ * 16/10 (BASE_UNA_LECTURA_POR_CORRIDA, 49_Aceleraciones.js): cada lectura ENTERA de la base en la corrida (y cuánto tardó), y cada
+ * vez que una parte reusó la de otra. Para el paso 67 (base_lecturas, base_reusos, base_lecturas_s).
+ */
+function corridaLecturaBase_(que, ms, reuso) {
+  if (!_corrida_) return;
+  const b = _corrida_.base = _corrida_.base || { lecturas: 0, reusos: 0, ms: 0, detalle: [] };
+  if (reuso) b.reusos++; else { b.lecturas++; b.ms += ms || 0; }
+  if (b.detalle.length < 12) b.detalle.push(que + (reuso ? ' (reusada)' : ' ' + ((ms || 0) / 1000).toFixed(1) + ' s'));
 }
 
 /** Marca la parte que empieza (para saber dónde murió una corrida cortada). */
@@ -191,7 +239,8 @@ function _guardarCorridaEnCurso_() {
     PropertiesService.getScriptProperties().setProperty(PROP_CORRIDA_EN_CURSO, JSON.stringify({
       id: _corrida_.id, t0: _corrida_.t0, modo: _corrida_.modo, partes: _corrida_.partes, salteadas: _corrida_.salteadas,
       errores: _corrida_.errores.map(function (e) { return e.slice(0, 600); }), actual: _corrida_.actual,
-      agenda: _corrida_.agenda, sinCambios: _corrida_.sinCambios, noTocaba: _corrida_.noTocaba }));
+      agenda: _corrida_.agenda, sinCambios: _corrida_.sinCambios, noTocaba: _corrida_.noTocaba,
+      agendaGeo: _corrida_.agendaGeo || null, agendaMails: _corrida_.agendaMails || null, base: _corrida_.base || null }));
   } catch (e) { /* el registro nunca corta la corrida */ }
 }
 
@@ -203,8 +252,12 @@ function encabezadoCorridas_() {
   return ['inicio', 'id', 'modo', 'estado', 'total_s'].concat(PARTES_CORRIDA_.map(function (p) { return p + '_s'; }))
     .concat(['salteadas_por_tiempo', 'errores'])
     .concat(SUBTIEMPOS_AGENDA_.map(function (k) { return 'agenda_' + k + '_s'; }))
-    .concat(['agenda_geo_n', 'sin_cambios', 'no_tocaba']);
+    .concat(['agenda_geo_n', 'sin_cambios', 'no_tocaba'])
+    // 16/10 (tarde, punto 5b): también AL FINAL (las filas de antes no las tienen)
+    .concat(COLUMNAS_CORRIDA_5B_);
 }
+/** 16/10 (tarde): la escritura de la cache de los mails, la geocodificación y los mails por dentro, y las lecturas de la base. */
+const COLUMNAS_CORRIDA_5B_ = ['agenda_cache_s', 'agenda_geo_detalle', 'agenda_mails_cache', 'base_lecturas', 'base_reusos', 'base_lecturas_s', 'base_detalle'];
 
 function _escribirFilaCorrida_(c, estado, totalMs) {
   try {
@@ -233,7 +286,11 @@ function _escribirFilaCorrida_(c, estado, totalMs) {
         return c.agenda && c.agenda.ms && k in c.agenda.ms ? Math.round(c.agenda.ms[k] / 100) / 10 : '';
       }))
       .concat([c.agenda ? c.agenda.geoN || 0 : '', (c.sinCambios || []).join(', '),
-               Object.keys(c.noTocaba || {}).map(function (p) { return p + ': ' + c.noTocaba[p]; }).join(' | ')]);
+               Object.keys(c.noTocaba || {}).map(function (p) { return p + ': ' + c.noTocaba[p]; }).join(' | ')])
+      .concat([c.agenda && c.agenda.ms && 'cache' in c.agenda.ms ? Math.round(c.agenda.ms.cache / 100) / 10 : '',
+               _textoGeoCorrida_(c.agendaGeo), _textoMailsCorrida_(c.agendaMails),
+               c.base ? c.base.lecturas : '', c.base ? c.base.reusos : '', c.base ? Math.round(c.base.ms / 100) / 10 : '',
+               c.base ? c.base.detalle.join(' · ') : '']);
     sh.appendRow(fila);
     SpreadsheetApp.flush();
   } catch (err) { Logger.log('>>> REGISTRO_CORRIDAS: no se pudo escribir la línea de la corrida: %s', err); }
@@ -306,7 +363,11 @@ function tiemposDeCorridas(n) {
   };
   const textoTramos = function (r) {
     const t = tramosDe(r), jn = col('agenda_geo_n');
-    return t.length ? t.map(function (x) { return x.k + ' ' + seg(x.v) + (x.k === 'geo' && jn >= 0 && r[jn] !== '' ? ' (' + r[jn] + ' llamadas)' : ''); }).join(' · ')
+    // 16/10 (tarde): la escritura de la cache, y qué hizo la geocodificación y la cache de los mails (las corridas de antes no lo tienen)
+    const extra = function (k, rot) { const j = col(k); return j >= 0 && r[j] !== '' && r[j] != null ? ' | ' + rot + ': ' + (typeof r[j] === 'number' ? seg(r[j]) : r[j]) : ''; };
+    return t.length ? t.map(function (x) { return x.k + ' ' + seg(x.v) + (x.k === 'geo' && jn >= 0 && r[jn] !== '' ? ' (' + r[jn] + ' llamadas)' : ''); }).join(' · ') +
+                      extra('agenda_cache_s', 'cache') + extra('agenda_geo_detalle', 'geocodificación') + extra('agenda_mails_cache', 'mails') +
+                      extra('base_detalle', 'lecturas de la base')
                     : '(sin los tramos: corrida de antes del 16/10)';
   };
   const partesDe = function (r) {
@@ -327,6 +388,22 @@ function tiemposDeCorridas(n) {
       Logger.log('    agenda/%s mediana %s · máximo %s', (s + '          ').slice(0, 10), seg(med(xs)), seg(Math.max.apply(null, xs)));
     });
   } else Logger.log('  (la agenda por dentro: todavía ninguna corrida con los tramos; aparecen desde la próxima)');
+  // 16/10 (tarde, punto 5b): la cache de los mails, la geocodificación y las lecturas de la base, de las corridas que lo tienen
+  const iGn = col('agenda_geo_n'), iCa = col('agenda_cache_s'), iBl = col('base_lecturas'), iBr = col('base_reusos'), iBs = col('base_lecturas_s');
+  const iGd = col('agenda_geo_detalle'), iMc = col('agenda_mails_cache');
+  const con5b = filas.filter(function (r) { return iBl >= 0 && num(r[iBl]) != null; });
+  out.punto5b = null;
+  if (con5b.length) {
+    const serie = function (j) { return con5b.map(function (r) { return j < 0 ? null : num(r[j]); }).filter(function (v) { return v != null; }); };
+    const mm = function (xs) { return xs.length ? med(xs) + ' (máx ' + Math.max.apply(null, xs) + ')' : '—'; };
+    out.punto5b = { corridas: con5b.length, geoLlamadas: serie(iGn), cacheS: serie(iCa), lecturas: serie(iBl), reusos: serie(iBr), lecturasS: serie(iBs) };
+    Logger.log('  --- punto 5b (%s corridas desde el cambio): llamadas a Maps por corrida %s | escribir la cache de los mails %s s | ' +
+               'lecturas enteras de la base %s, reusos %s, tiempo de leerla %s s ---', con5b.length, mm(out.punto5b.geoLlamadas),
+               mm(out.punto5b.cacheS), mm(out.punto5b.lecturas), mm(out.punto5b.reusos), mm(out.punto5b.lecturasS));
+    const ult = con5b[con5b.length - 1];
+    if (iGd >= 0) Logger.log('    la última: geocodificación %s', ult[iGd] || '—');
+    if (iMc >= 0) Logger.log('    la última: cache de los mails (de la cache / total) %s', ult[iMc] || '—');
+  } else Logger.log('  (punto 5b: todavía ninguna corrida con la geocodificación, la cache de los mails y las lecturas de la base; aparecen desde la próxima)');
   // 16/10: las CORTADAS, una por una: en qué parte murió (lo dice el estado) y cuánto tardó lo que alcanzó a terminar
   const iEst = col('estado'), iId = col('id'), iTot = col('total_s'), iAg = col('agenda_s');
   out.cortadas = filas.filter(function (r) { return /^CORTADA/.test(String(r[iEst])); }).map(function (r) {
