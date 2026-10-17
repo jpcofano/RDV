@@ -1951,6 +1951,34 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### Tiempos de la agenda (16/10, noche) — PRENDIDO
+
+Medido por el usuario (paso 67, 30 corridas): 3 CORTADAS y un plan de 144 s con la geocodificación adentro. Cambios:
+
+- **Geocodificación** (`AGENDA_GEO_AHORRO`):
+  - nunca "A CONFIRMAR", una dirección sin altura ni una dirección ya resuelta;
+  - los fallos quedan en la cache: "sin resultado" y "fuera de CABA" se reintentan a los 7 días, un ERROR del servicio a las 2 h;
+  - tope de **20 por corrida**, primero las fechas más cercanas;
+  - el log dice cuántas llamadas hizo y para qué direcciones;
+  - "Av. Int. Bullrich 55" ahora se le pide a Maps como "Av. Intendente Bullrich 55" (sólo en la consulta). La causa real se
+    confirma con `explicarBarrioAgenda('Av. Int. Bullrich 55, La Mezquita', '<lugar del mail>', true)`;
+  - si cambia la dirección y el barrio queda pendiente, no se escribe ninguno de los dos hasta la corrida siguiente (revisor).
+- **Mails** (`AGENDA_CACHE_MAILS`, `41_AgendaCache.js`): cache en CacheService por mensaje, de lo parseado y de los colores.
+  - Sólo se bajan y parsean los mails nuevos.
+  - La huella incluye el código del parser: cualquier cambio de código vuelve a parsear todo.
+  - Cada entrada vence a las 24 h.
+  - Probado: con y sin cache da el mismo resultado.
+- **La base, una lectura por corrida** (`BASE_UNA_LECTURA_POR_CORRIDA`): se leía entera 3 a 5 veces.
+  - Ahora la reusan el cruce, los IDs, las derivadas y Looker, mientras nadie haya escrito.
+  - Antes de reusarla se comprueban el tamaño y las columnas A:F; toda escritura la invalida.
+  - El revisor confirmó que nunca escribe en una fila equivocada ni sobre un valor del equipo.
+- **Guarda dentro de la agenda**: si al terminar el parse ya pasaron 90 s, se geocodifica sólo de 7 días atrás a 3 adelante. La
+  copia y AGENDA_DUPLICADOS se escriben al final.
+- **Límites**: el cruce empieza antes de los 150 s y los asistentes antes de los 290 s. Si el cruce quedó salteado, la corrida
+  siguiente corre **el cruce antes que la agenda** (columna "orden" de REGISTRO_CORRIDAS).
+- **Para medir**: el paso 67 muestra las llamadas a Maps, los aciertos de la cache de mails, las lecturas y reusos de la base y
+  el orden de cada corrida. No hace falta reautorizar nada (CacheService, Utilities y Maps ya estaban).
+
 #### AGENDA_DUPLICADOS = sólo lo que el equipo tiene que decidir (16/10, noche)
 
 - **Qué queda en AGENDA_DUPLICADOS**: sólo líneas con ELEGIR: "antes de crear", "cancelación", "la fila elegida ya no está" y,
