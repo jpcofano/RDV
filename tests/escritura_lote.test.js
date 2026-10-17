@@ -571,6 +571,27 @@ function escenarioGuardaTiempo() {
   ok(conB.b2[0] === 1 && conB.b2[1] === 2 && conB.igual,
      'la corrida siguiente (nada que escribir): UNA lectura (el cruce); las derivadas y Looker la reusan — ' + JSON.stringify(conB.b2));
   ok(sinB.b2[0] === 3 && sinB.b2[1] === 0, 'con BASE_UNA_LECTURA_POR_CORRIDA = false: como antes, 3 lecturas enteras — ' + JSON.stringify(sinB.b2));
+
+  // --- 16/10 (noche, revisor): una agenda lenta (160 s) no deja sin cruce TODAS las horas: la corrida siguiente al salteo corre el
+  // cruce ANTES de la agenda (CRUCE_PRIMERO_TRAS_SALTEOS) y REGISTRO_CORRIDAS lo dice en "orden" ---
+  const Es = crearEntorno({ config: { AGENDA_ACTIVA: 'true', IDS_EN_LA_HORA: 'false' }, extra: ['49_Aceleraciones.js'] });
+  const ms = montar(Es, 60, true);
+  const ordenS = [];
+  Es.ctx.correrAgendaEnBloqueo_ = function () { ordenS.push('agenda'); Es.reloj += 160000; return {}; };
+  const cpS = Es.ctx.calcularPlan_;
+  Es.ctx.calcularPlan_ = function () { ordenS.push('cruce'); return cpS.apply(this, arguments); };
+  Es.ejecutar('upsertDestino');
+  ok(ordenS.join(',') === 'agenda' && campo(ms, 'cruce_s') === 'salteada' && campo(ms, 'orden') === 'agenda, cruce' &&
+     Es.props[Es.cfg('PROP_CRUCE_SALTEADO')] === '1', '1ª corrida: la agenda tardó 160 s y el cruce (límite 150 s) quedó salteado: el contador va a 1');
+  ordenS.length = 0; Es.reloj += 3600000;
+  Es.ejecutar('upsertDestino');
+  ok(ordenS[0] === 'cruce' && typeof campo(ms, 'cruce_s') === 'number' && typeof campo(ms, 'escritura_s') === 'number' &&
+     /^cruce antes de la agenda/.test(campo(ms, 'orden')) && Es.props[Es.cfg('PROP_CRUCE_SALTEADO')] === '0',
+     '2ª corrida: el cruce corre PRIMERO (y escribe); REGISTRO_CORRIDAS: "' + campo(ms, 'orden') + '"; la agenda ' +
+     (ordenS.indexOf('agenda') > 0 ? 'después' : 'para la próxima (límite 120 s)'));
+  ordenS.length = 0; Es.reloj += 3600000;
+  Es.ejecutar('upsertDestino');
+  ok(ordenS[0] === 'agenda' && campo(ms, 'orden') === 'agenda, cruce', '3ª corrida: vuelve al orden de siempre (la agenda primero)');
 }
 
 // ============================== los datos sintéticos ==============================

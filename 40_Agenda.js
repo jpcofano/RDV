@@ -164,8 +164,13 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
   // AGENDA_GEO_LIMITE_TRAS_PARSE_MS, se geocodifican sólo las reuniones de hoy a AGENDA_GEO_DIAS_SI_TARDE días (el resto, pendiente)
   const opcPlan = Object.assign({ enSeco: enSeco }, opciones);
   const llevaMs = typeof corridaTranscurridoMs_ === 'function' && typeof _corrida_ !== 'undefined' && _corrida_ ? corridaTranscurridoMs_() : Date.now() - t0;
+  // 16/10 (revisor): con la guarda, en la corrida de la hora la copia del archivo "Agenda" y AGENDA_DUPLICADOS también quedan para
+  // el FINAL (con las vistas, prioridad 5): primero el cruce. Son reportes que se reescriben enteros: si no hay tiempo, la próxima.
+  let diferirReportes = false;
   if (AGENDA_GEO_AHORRO && opcPlan.geoSoloDias === undefined && llevaMs > AGENDA_GEO_LIMITE_TRAS_PARSE_MS) {
     opcPlan.geoSoloDias = AGENDA_GEO_DIAS_SI_TARDE;
+    diferirReportes = !enSeco && typeof _diferirVistasAgenda_ !== 'undefined' && !!_diferirVistasAgenda_;
+    if (diferirReportes) Logger.log('>>> GUARDA DE TIEMPO DE LA AGENDA: la copia del archivo "Agenda" y %s quedan para el final de la corrida.', AGENDA_SOLAPA_DUPLICADOS);
     Logger.log('>>> GUARDA DE TIEMPO DE LA AGENDA: al terminar el parse la corrida lleva %s s (límite %s s): esta corrida geocodifica ' +
                'sólo las reuniones de hoy a %s días; las demás quedan para la próxima (sin crear ni tocar su barrio).',
                Math.round(llevaMs / 1000), Math.round(AGENDA_GEO_LIMITE_TRAS_PARSE_MS / 1000), AGENDA_GEO_DIAS_SI_TARDE);
@@ -208,8 +213,10 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     // AGENDA_DUPLICADOS (archivo del destino) y las elecciones leídas: no son obligatorias, el destino ya quedó escrito.
     try { _guardarEleccionesAgenda_(plan); }
     catch (err) { Logger.log('>>> %s NO se guardó: %s (las elecciones siguen en la solapa)', RDV_HOJA_ELECCIONES_AGENDA, err); }
-    try { escribirDuplicadosAgenda_(plan); }
-    catch (err) { Logger.log('>>> %s NO se escribió: %s', AGENDA_SOLAPA_DUPLICADOS, err); }
+    if (!diferirReportes) {
+      try { escribirDuplicadosAgenda_(plan); }
+      catch (err) { Logger.log('>>> %s NO se escribió: %s', AGENDA_SOLAPA_DUPLICADOS, err); }
+    }
   } else if (plan.duplicados.length) {
     Logger.log('  %s: en seco no se escribe (tendría %s reuniones).', AGENDA_SOLAPA_DUPLICADOS, plan.duplicados.length);
   }
@@ -229,7 +236,10 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
       catch (err) { Logger.log('>>> la vista previa de "%s" y "%s" falló: %s', AGENDA_SOLAPA_CALL, AGENDA_SOLAPA_VISTA_MAIL, err); }
     }
   }
-  else {
+  else if (diferirReportes) {
+    // la corrida de la hora la escribe al final (escribirVistasAgendaDiferidas_, 49_Corridas.js): copia, vistas, RDV y duplicados
+    _vistasAgendaPendientes_ = { copiaCompleta: copia, P: plan, duplicados: true };
+  } else {
     try { escribirCopiaAgenda_(copia, plan); }
     catch (err) { Logger.log('>>> la copia en el archivo "Agenda" NO se escribió: %s (el destino ya quedó escrito).', err); }
   }
@@ -1562,12 +1572,17 @@ function _accionActualizar_(P, f, ev, A, barrioDe, op) {
   seguir('HORA', horaAgendaEquipo_(ev), 'agenda_hora_escrita');
   const lugar = _direccionAgenda_(ev);
   const dirAntes = val('agenda_direccion_escrita');
-  seguir('Dirección', lugar, 'agenda_direccion_escrita');
   const dirCambio = !esVacio_(dirAntes) && cmp(dirAntes, 'Dirección') !== cmp(lugar, 'Dirección');
   // Barrio: si está vacío, o si cambió la dirección y el barrio es el del sistema.
   const bCur = val('Barrio'), bEsc = val('agenda_barrio_escrito');
-  if (esVacio_(bCur) || (dirCambio && !esVacio_(bEsc) && cmp(bCur, 'Barrio') === cmp(bEsc, 'Barrio'))) {
-    const b = barrioDe(ev);
+  const miraBarrio = esVacio_(bCur) || (dirCambio && !esVacio_(bEsc) && cmp(bCur, 'Barrio') === cmp(bEsc, 'Barrio'));
+  const b = miraBarrio ? barrioDe(ev) : null;
+  // 16/10 (revisor): la dirección cambió y su barrio quedó PENDIENTE (el tope o la guarda de tiempo): la Dirección TAMPOCO se
+  // escribe en esta corrida. Si se escribiera sola, la corrida siguiente ya no vería el cambio (dirCambio) y el barrio viejo del
+  // sistema quedaría para siempre. Dirección y Barrio cambian juntos en una corrida posterior.
+  if (dirCambio && b && b.pendiente) (P.direccionGeoDiferida = P.direccionGeoDiferida || []).push({ f: f, ev: ev });
+  else seguir('Dirección', lugar, 'agenda_direccion_escrita');
+  if (miraBarrio) {
     // 16/10: un barrio PENDIENTE (tope de geocodificación o guarda de tiempo) no toca la celda: ni la vacía ni la cambia
     if (!b.pendiente && cmp(b.barrio, 'Barrio') !== cmp(bCur, 'Barrio') && !(esVacio_(bCur) && !b.barrio)) {
       esc.push({ fila: f.fila, col: col('Barrio'), valor: b.barrio, esperado: bCur });
@@ -1623,7 +1638,10 @@ function _barrioAgenda_(opciones, P, extra) {
     if (soloDias == null) return true;
     if (!ev.fecha) return false;
     const d = Math.round((alMediodia_(ev.fecha.getFullYear(), ev.fecha.getMonth() + 1, ev.fecha.getDate()) - hoyG) / 86400000);
-    return d >= 0 && d <= soloDias;
+    // 16/10 (revisor): también las de los últimos días de la semana (hasta AGENDA_GEO_DIAS_ATRAS_SI_TARDE): si no, una reunión que
+    // ya pasó y no tiene la dirección en la cache no se crearía nunca mientras la guarda salte
+    const atras = typeof AGENDA_GEO_DIAS_ATRAS_SI_TARDE !== 'undefined' ? AGENDA_GEO_DIAS_ATRAS_SI_TARDE : 0;
+    return d >= -atras && d <= soloDias;
   };
   /** Lo que la cache tiene de una reunión: `{ g, estado }` ('ok' / 'fallo') o `{ g: null, previo }` (falta, o un fallo viejo). */
   const deCache = function (q) {
@@ -1761,10 +1779,11 @@ function _barrioAgenda_(opciones, P, extra) {
 function _logGeoAgenda_(P) {
   const G = P && P.geo;
   if (!G) return;
-  const dif = (P.creacionGeoDiferida || []).length;
+  // las que no se crean, y las filas cuyo cambio de dirección (con su barrio) queda para la próxima corrida
+  const dif = (P.creacionGeoDiferida || []).length + (P.direccionGeoDiferida || []).length;
   Logger.log('  geocodificación: %s llamadas a Maps (tope %s%s) | de la cache %s (+ %s fallos recientes, sin volver a pedir) | ' +
              'reintentos de fallos viejos %s | sin dirección (A CONFIRMAR, sin altura) %s | ya resueltas en la base (sólo para mostrar) %s | ' +
-             'pendientes por el tope %s | por la guarda de tiempo %s | reuniones que se crean en la próxima corrida por eso %s',
+             'pendientes por el tope %s | por la guarda de tiempo %s | reuniones que se crean (o cambian de dirección) en la próxima corrida por eso %s',
              G.llamadas, G.maximo, G.soloDias != null ? '; GUARDA DE TIEMPO: sólo hoy a ' + G.soloDias + ' días' : '', G.cache, G.fallosCache,
              G.reintentos, G.sinDireccion, G.resueltas, G.pendientesTope, G.pendientesTiempo, dif);
   G.direcciones.forEach(function (d) {

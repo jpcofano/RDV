@@ -90,6 +90,7 @@ const GUARDA_TIEMPO_ACTIVA = true;
 const GUARDA_INICIO_MAX_MS = {
   cruce: 150 * 1000,          // 16/10: era 210 (CORTADA i). Leer B y la base y armar el plan: hasta ~160 s en un día lento
   asistentes: 290 * 1000,     // 16/10: nuevo (CORTADA ii). RDV CONJUNTO: hasta ~50 s
+  agenda_tras_cruce: 120 * 1000,   // 16/10 (noche): sólo cuando el cruce va primero (CRUCE_PRIMERO_TRAS_SALTEOS); la agenda, ~70-250 s
   derivadas: 270 * 1000,
   reportes: 270 * 1000,       // las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH: se rehacen en la próxima
   ids: 180 * 1000,            // leer la lista externa tardó hasta 120 s (15/10, 9:28)
@@ -170,22 +171,45 @@ const PROP_IDS_ULTIMA = 'IDS_ULTIMA_CORRIDA';
  *   base (la agenda no escribió, la escritura no escribió, las derivadas no cambiaron nada): si alguna escribió, la parte
  *   siguiente vuelve a leer, como antes. Y antes de reusar se relee sólo la identidad de las filas (Figura … HORA, columnas A:F)
  *   y el tamaño de la hoja: si el equipo ordenó, borró, agregó o cambió una fila, se vuelve a leer entera. La escritura del
- *   cruce, además, no escribe en una fila cuya Figura o FECHA ya no es la del plan (lectura fresca de cada tanda).
+ *   cruce, además, no escribe en una fila cuya Figura, FECHA, Barrio u HORA ya no es la del plan (lectura fresca de cada tanda), y
+ *   los IDs vuelven a mirar la identidad de las filas después de leer la lista (lo lento) y antes de cruzar y escribir.
+ *
+ * 16/10 (noche, revisor):
+ *   - la guarda de la agenda baja a 90 s (era 150 s = el límite del cruce: una agenda lenta dejaba sin cruce todas las horas) y,
+ *     cuando salta, la copia del archivo "Agenda" y AGENDA_DUPLICADOS también van al final de la corrida (con las vistas);
+ *   - una reunión de un día que ya pasó en la semana (hasta 7 días atrás) también se geocodifica con la guarda (si no, no se
+ *     crearía nunca mientras la guarda salte);
+ *   - un ERROR de Maps se reintenta a las 2 h (era 24);
+ *   - CRUCE_PRIMERO_TRAS_SALTEOS: si el cruce quedó SALTEADO por tiempo (él o, sin asistentes, su escritura) en la corrida
+ *     anterior, ésta corre el cruce ANTES de la agenda (las filas que necesita ya existen de corridas anteriores) y la agenda
+ *     después, sólo si empieza antes de GUARDA_INICIO_MAX_MS.agenda_tras_cruce. REGISTRO_CORRIDAS lo dice en la columna "orden".
  */
 const AGENDA_GEO_AHORRO = true;
 const GEOCODE_REINTENTAR_FALLOS_DIAS = 7;
-const GEOCODE_REINTENTAR_ERROR_HORAS = 24;
+const GEOCODE_REINTENTAR_ERROR_HORAS = 2;
+/** Con la guarda, también las reuniones de hasta esta cantidad de días atrás (las de la semana que ya pasaron). */
+const AGENDA_GEO_DIAS_ATRAS_SI_TARDE = 7;
+/** Con cuántos salteos seguidos del cruce la corrida siguiente corre el cruce antes que la agenda (0 = nunca). */
+const CRUCE_PRIMERO_TRAS_SALTEOS = 1;
+/** Las corridas seguidas en que el cruce quedó salteado por tiempo (propiedad del script). */
+const PROP_CRUCE_SALTEADO = 'CRUCE_SALTEADO_SEGUIDAS';
 /** Las abreviaturas de la calle que se expanden en la consulta a Maps (nunca en la base). */
 const GEOCODE_ABREVIATURAS = [[/\bInt\.?(?=\s)/gi, 'Intendente'], [/\bGral\.?(?=\s)/gi, 'General'], [/\bPte\.?(?=\s)/gi, 'Presidente'],
   [/\bCnel\.?(?=\s)/gi, 'Coronel'], [/\bTte\.?(?=\s)/gi, 'Teniente'], [/\bIng\.(?=\s)/gi, 'Ingeniero'], [/\bDr\.(?=\s)/gi, 'Doctor'],
   [/\bCdte\.?(?=\s)/gi, 'Comandante'], [/\bSgto\.?(?=\s)/gi, 'Sargento']];
-const AGENDA_GEO_LIMITE_TRAS_PARSE_MS = 150 * 1000;
+const AGENDA_GEO_LIMITE_TRAS_PARSE_MS = 90 * 1000;
 const AGENDA_GEO_DIAS_SI_TARDE = 3;
 const AGENDA_CACHE_MAILS = true;
 const AGENDA_PARSER_VERSION = '1';
 /** Cuánto vive una entrada en la cache de Apps Script (el máximo, 6 h); se renueva si tiene más de AGENDA_CACHE_RENOVAR_MS. */
 const AGENDA_CACHE_TTL_S = 21600;
 const AGENDA_CACHE_RENOVAR_MS = 3 * 3600 * 1000;
+/**
+ * 16/10 (noche, revisor): una entrada de la cache de los mails creada hace esto o más no se usa (se baja o parsea de nuevo), aunque
+ * se haya renovado. Y la huella de lo parseado y de los colores incluye el código de TODAS las funciones del proyecto: un cambio
+ * de código (un clasp push) vuelve a parsear todo una vez.
+ */
+const AGENDA_CACHE_MAX_EDAD_MS = 24 * 3600 * 1000;
 const BASE_UNA_LECTURA_POR_CORRIDA = true;
 
 /*

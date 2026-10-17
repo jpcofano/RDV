@@ -272,7 +272,7 @@ console.log('[1] la geocodificación: lo que no se pide, la cache de los fallos,
     ['Av. Santa Fe 1234' + SUF, 'OK', pR.lat, pR.lng, 'ROOFTOP', 'FALSE', '', '', '', '2026-09-01 10:00', ''],              // resuelta
     ['Calle Falla Reciente 10' + SUF, 'ZERO_RESULTS', '', '', '', 'FALSE', '', '', '', '2026-10-14 10:00', ''],              // hace 2 días
     ['Calle Falla Vieja 20' + SUF, 'ZERO_RESULTS', '', '', '', 'FALSE', '', '', '', '2026-10-05 10:00', ''],                 // hace 11 días
-    ['Calle Error Reciente 30' + SUF, 'ERROR', '', '', '', 'FALSE', '', '', 'cuota', '2026-10-16 08:00', ''],                // hace 4 h
+    ['Calle Error Reciente 30' + SUF, 'ERROR', '', '', '', 'FALSE', '', '', 'cuota', '2026-10-16 11:00', ''],                // hace 1 h
     ['Calle Error Viejo 40' + SUF, 'ERROR', '', '', '', 'FALSE', '', '', 'cuota', '2026-10-15 06:00', '']                   // hace 30 h
   ]);
   const M = mail(new D(2026, 9, 12, 9), ASUNTO('12/10', '18/10'), [
@@ -291,7 +291,7 @@ console.log('[1] la geocodificación: lo que no se pide, la cache de los fallos,
   ok(E.geo.every(function (q) { return q.indexOf('Calle Falla Reciente') < 0; }) && G.fallosCache >= 1,
      'un "sin resultado" de hace 2 días: se usa el fallo de la cache, no se pide (GEOCODE_REINTENTAR_FALLOS_DIAS = 7)');
   ok(E.geo.some(function (q) { return q.indexOf('Calle Falla Vieja 20') === 0; }), 'uno de hace 11 días se vuelve a pedir (reintento)');
-  ok(E.geo.every(function (q) { return q.indexOf('Calle Error Reciente') < 0; }), 'un ERROR de hace 4 h no se pide (GEOCODE_REINTENTAR_ERROR_HORAS = 24)');
+  ok(E.geo.every(function (q) { return q.indexOf('Calle Error Reciente') < 0; }), 'un ERROR de hace 1 h no se pide (GEOCODE_REINTENTAR_ERROR_HORAS = 2)');
   ok(E.geo.some(function (q) { return q.indexOf('Calle Error Viejo 40') === 0; }) && G.reintentos === 2, 'uno de hace 30 h sí (reintentos: ' + G.reintentos + ')');
   ok(E.geo.indexOf('Av. Intendente Bullrich 55' + SUF) >= 0 && E.geo.every(function (q) { return q.indexOf('Int. Bullrich') < 0; }),
      'la consulta a Maps lleva la abreviatura expandida: "Av. Intendente Bullrich 55, …" (' + E.geo.filter(function (q) { return /Bullrich/.test(q); }).join(' / ') + ')');
@@ -379,17 +379,24 @@ console.log('[1c] la guarda de tiempo (sólo hoy a 3 días) y un barrio pendient
   }]);
   const M = mail(new D(2026, 9, 15, 9), ASUNTO('19/10', '25/10'), [
     bloque(19, 'Jorge Macri', 'Comuna 2', '10:00', 'Calle Cerca 1, Club'),          // dentro de los 3 días
-    bloque(21, 'Clara Muzzio', 'Comuna 2', '18:00', 'Calle Lejos 2, Club'),         // a 5 días: pendiente
+    bloque(21, 'Clara Muzzio', 'Comuna 14', '18:00', 'Calle Lejos 2, Club'),        // a 5 días: pendiente (se mudó a Palermo)
     bloque(23, 'Gabino Tapia', 'Comuna 2', '12:00', 'Calle Lejos 3, Club')
   ]);
+  E.tablaGeo['Calle Lejos 2'] = 'Palermo';
   E.tablaGeo['Calle'] = 'Recoleta';
   const P = plan(E, [M], { geoSoloDias: 3 });
   ok(E.geo.length === 1 && /^Calle Cerca 1/.test(E.geo[0]) && P.geo.pendientesTiempo >= 2,
      'con la guarda de tiempo sólo se geocodifica la de los próximos 3 días (' + E.geo.join(' / ') + '; diferidas ' + P.geo.pendientesTiempo + ')');
-  const act = P.acciones.filter(function (a) { return a.f && a.f.figura === 'Clara Muzzio'; })[0];
-  ok(act && !act.escrituras.some(function (e) { return e.col === E.C('Barrio') + 1 || e.col === E.C('agenda_barrio_escrito') + 1; }) &&
-     act.escrituras.some(function (e) { return e.col === E.C('Dirección') + 1; }),
-     'la fila de Muzzio: la dirección se actualiza, pero el barrio PENDIENTE no se toca (antes se vaciaba)');
+  const cols = [E.C('Barrio'), E.C('agenda_barrio_escrito'), E.C('Dirección'), E.C('agenda_direccion_escrita')].map(function (k) { return k + 1; });
+  const escMuzzio = function (Px) {
+    return [].concat.apply([], Px.acciones.filter(function (a) { return a.f && a.f.figura === 'Clara Muzzio'; }).map(function (a) { return a.escrituras; }));
+  };
+  ok(!escMuzzio(P).some(function (e) { return cols.indexOf(e.col) >= 0; }) && (P.direccionGeoDiferida || []).length === 1,
+     'la fila de Muzzio: con el barrio PENDIENTE no se escribe ni el Barrio NI la Dirección (si no, la corrida siguiente ya no vería el cambio)');
+  const P2 = plan(E, [M]);
+  const e2 = escMuzzio(P2);
+  ok(e2.some(function (e) { return e.col === cols[2] && /Calle Lejos 2/.test(e.valor); }) && e2.some(function (e) { return e.col === cols[0] && e.valor === 'Palermo'; }),
+     'la corrida siguiente (sin la guarda): la Dirección y el Barrio cambian JUNTOS (Palermo)');
   ok(!P.acciones.some(function (a) { return a.tipo === 'crear' && a.ev.figuraFila === 'Gabino Tapia'; }) &&
      P.acciones.some(function (a) { return a.tipo === 'crear' && a.ev.figuraFila === 'Jorge Macri'; }),
      'la de Tapia (23/10) no se crea en esta corrida; la de Macri (19/10), sí');
@@ -525,33 +532,35 @@ console.log('[3] la base UNA vez por corrida: la que leyó la agenda la reusan l
 
 // ============================== [4] la guarda de tiempo dentro de la agenda ==============================
 
-console.log('[4] la guarda de tiempo DENTRO de la agenda: con más de 150 s al terminar el parse, sólo hoy a 3 días');
+console.log('[4] la guarda de tiempo DENTRO de la agenda: con más de 90 s al terminar el parse, sólo de 7 días atrás a 3 días adelante');
 {
   const E = montar();
   E.tablaGeo['Calle'] = 'Recoleta';
   E.ctx.__m = [mail(new D(2026, 9, 15, 9), ASUNTO('19/10', '25/10'), [bloque(19, 'Jorge Macri', 'Comuna 2', '10:00', 'Calle Cerca 1, Club'),
-                                                                        bloque(24, 'Gabino Tapia', 'Comuna 2', '12:00', 'Calle Lejos 3, Club')])];
+                                                                        bloque(24, 'Gabino Tapia', 'Comuna 2', '12:00', 'Calle Lejos 3, Club')]),
+               mail(new D(2026, 9, 12, 9), ASUNTO('12/10', '18/10'), [bloque(14, 'Laura Alonso', 'Comuna 2', '11:00', 'Calle Pasada 5, Club')])];
   // la corrida empezó hace 200 s (la agenda tardó en Gmail y el parse)
   E.run('corridaIniciar_(new Date(Date.now() - 200000), false, false); correrAgendaEnBloqueo_(true, { mails: __m });');
-  ok(E.logs.some(function (l) { return /GUARDA DE TIEMPO DE LA AGENDA: al terminar el parse la corrida lleva 200 s \(límite 150 s\)/.test(l); }),
-     'el log lo dice (lleva 200 s, límite 150 s)');
-  ok(E.geo.length === 1 && /^Calle Cerca 1/.test(E.geo[0]), 'sólo se geocodifica la de los próximos 3 días (' + E.geo.join(' / ') + ')');
+  ok(E.logs.some(function (l) { return /GUARDA DE TIEMPO DE LA AGENDA: al terminar el parse la corrida lleva 200 s \(límite 90 s\)/.test(l); }),
+     'el log lo dice (lleva 200 s, límite 90 s)');
+  ok(E.geo.length === 2 && E.geo.some(function (q) { return /^Calle Cerca 1/.test(q); }) && E.geo.some(function (q) { return /^Calle Pasada 5/.test(q); }),
+     'se geocodifica la de los próximos 3 días Y la del 14/10 (ya pasó, en la semana: si no, no se crearía nunca); no la del 24/10 (' + E.geo.join(' / ') + ')');
   const g = E.run('_corrida_.agendaGeo');
   ok(g && g.guarda && g.tiempo >= 1 && g.sinCrear >= 1, 'REGISTRO_CORRIDAS (agenda_geo_detalle) lo anota: ' + E.run('_textoGeoCorrida_(_corrida_.agendaGeo)'));
   const E2 = montar();
   E2.tablaGeo['Calle'] = 'Recoleta';
   E2.ctx.__m = E.ctx.__m;
   E2.run('corridaIniciar_(new Date(Date.now() - 60000), false, false); correrAgendaEnBloqueo_(true, { mails: __m });');
-  ok(E2.geo.length === 2 && !E2.logs.some(function (l) { return /GUARDA DE TIEMPO DE LA AGENDA/.test(l); }), 'con 60 s, todo como siempre (' + E2.geo.length + ' llamadas)');
+  ok(E2.geo.length === 3 && !E2.logs.some(function (l) { return /GUARDA DE TIEMPO DE LA AGENDA/.test(l); }), 'con 60 s (límite 90), todo como siempre (' + E2.geo.length + ' llamadas)');
   // REGISTRO_CORRIDAS: las columnas nuevas, con lo de esta corrida
   E.run('corridaCerrar_(null)');
   const reg = E.ssI.hojas['REGISTRO_CORRIDAS'];
   const enc = reg.v[0], ult = reg.v[reg.v.length - 1];
-  ok(enc.slice(-7).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle' &&
-     /GUARDA DE TIEMPO/.test(ult[enc.indexOf('agenda_geo_detalle')]) && ult[enc.indexOf('agenda_geo_n')] === 1,
-     'REGISTRO_CORRIDAS: las columnas del punto 5b al final, y la línea con la geocodificación (1 llamada, la guarda)');
+  ok(enc.slice(-8).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' &&
+     /GUARDA DE TIEMPO/.test(ult[enc.indexOf('agenda_geo_detalle')]) && ult[enc.indexOf('agenda_geo_n')] === 2,
+     'REGISTRO_CORRIDAS: las columnas del punto 5b al final (con "orden"), y la línea con la geocodificación (2 llamadas, la guarda)');
   const t = E.run('tiemposDeCorridas(10)');
-  ok(t && t.punto5b && t.punto5b.corridas === 1 && E.logs.some(function (l) { return /punto 5b \(1 corridas desde el cambio\): llamadas a Maps por corrida 1/.test(l); }),
+  ok(t && t.punto5b && t.punto5b.corridas === 1 && E.logs.some(function (l) { return /punto 5b \(1 corridas desde el cambio\): llamadas a Maps por corrida 2/.test(l); }),
      'el paso 67 lo muestra (llamadas a Maps, la cache, las lecturas de la base)');
 }
 
@@ -562,8 +571,51 @@ console.log('[5] los límites de la guarda de tiempo (CORTADAS i y ii)');
   const E = montar();
   const g = E.run('GUARDA_INICIO_MAX_MS');
   ok(g.cruce === 150000 && g.asistentes === 290000, 'el cruce empieza antes de los 150 s (era 210) y los asistentes antes de los 290 s (no tenían)');
-  ok(E.run('GEOCODE_MAX_POR_CORRIDA') === 20 && E.run('AGENDA_GEO_LIMITE_TRAS_PARSE_MS') === 150000 && E.run('AGENDA_GEO_DIAS_SI_TARDE') === 3,
-     'el tope de geocodificación: 20 por corrida; la guarda de la agenda: 150 s, hoy a 3 días');
+  ok(E.run('GEOCODE_MAX_POR_CORRIDA') === 20 && E.run('AGENDA_GEO_LIMITE_TRAS_PARSE_MS') === 90000 && E.run('GEOCODE_REINTENTAR_ERROR_HORAS') === 2 && E.run('AGENDA_GEO_DIAS_SI_TARDE') === 3,
+     'el tope de geocodificación: 20 por corrida; la guarda de la agenda: 90 s, de 7 días atrás a 3 adelante; un ERROR, 2 h');
+}
+
+// ============================== [6] lo del revisor (16/10, noche) ==============================
+
+console.log('[6] la cache vence a las 24 h; la huella es de TODO el código; la fila fresca mira Barrio y HORA; los IDs releen la identidad');
+{
+  const E = montar();
+  // una entrada creada hace 25 h (aunque se haya renovado hace 1 h) no se usa; una de hace 2 h, sí
+  const svc = cacheServicio();
+  E.ctx.__svc = svc;
+  E.run('(function () { var ahora = Date.now(); __svc.putAll({ "ag|manifiesto": JSON.stringify(["agp|vieja", "agp|nueva"]), ' +
+        '"agp|vieja": _cacheComprimir_(JSON.stringify({ t: ahora - 3600000, c: ahora - 25 * 3600000, v: "x" })), ' +
+        '"agp|nueva": _cacheComprimir_(JSON.stringify({ t: ahora - 7200000, c: ahora - 7200000, v: "y" })) }); })()');
+  const S = E.run('(function () { var S = cacheAgendaAbrir_(__svc); return { vieja: cacheAgendaGet_(S, "agp|vieja"), nueva: cacheAgendaGet_(S, "agp|nueva"), vencidas: S.stats.vencidas }; })()');
+  ok(S.vieja === undefined && S.nueva === 'y' && S.vencidas === 1, 'una entrada creada hace 25 h no se usa (se vuelve a parsear); una de hace 2 h, sí');
+  // la huella del código: cambia con CUALQUIER función (también las que el parser llama de otros archivos)
+  const h1 = E.run('_huellaCodigoAgenda_ = null; huellaCodigoAgenda_()');
+  E.run('function figurasEnTexto_() { return []; }');   // otra versión de una función que el parser usa (02_Parsing.js)
+  const h2 = E.run('_huellaCodigoAgenda_ = null; huellaCodigoAgenda_()');
+  ok(h1 && h2 && h1 !== h2, 'la huella de lo parseado cambia si cambia una función de otro archivo (figurasEnTexto_)');
+  const v1 = E.run('versionColoresAgenda_()');
+  E.run('function _colorColMail_() { return ""; }');
+  const v2 = E.run('_huellaCodigoAgenda_ = null; versionColoresAgenda_()');
+  ok(v1 !== v2, 'y la de los colores también');
+}
+{
+  const E = montar({}, null, [function (r, C) {
+    r[C('Figura')] = 'Jorge Macri'; r[C('FECHA')] = new D(2026, 9, 20, 12); r[C('HORA')] = '10:00'; r[C('Barrio')] = 'Palermo';
+  }, function (r, C) {
+    r[C('Figura')] = 'Jorge Macri'; r[C('FECHA')] = new D(2026, 9, 20, 12); r[C('HORA')] = '18:00'; r[C('Barrio')] = 'Recoleta';
+  }]);
+  const d = E.run('leerDestino_()');
+  const f1 = d.filas[d.filas.length - 2], f2 = d.filas[d.filas.length - 1];
+  E.ctx.__f = f1; E.ctx.__v2 = f2.valores;
+  ok(E.run('_mismaFilaFresca_(leerDestino_(), __f, __f.valores)') === true && E.run('_mismaFilaFresca_(leerDestino_(), __f, __v2)') === false,
+     'dos filas de Macri el mismo día: la fresca con el otro Barrio y la otra HORA no es la del plan (no se escribe)');
+  // los IDs: después de leer la lista, la identidad de las filas otra vez
+  E.ctx.__d = E.run('leerDestino_()');
+  ok(E.run('destinoSigueIgual_(__d)') === true, 'los IDs: la base sigue igual → se cruza con la que ya estaba leída');
+  const t = E.D.v[2]; E.D.v[2] = E.D.v[3]; E.D.v[3] = t;
+  ok(E.run('destinoSigueIgual_(__d)') === false, 'el equipo ordenó mientras se leía la lista → se vuelve a leer antes de cruzar');
+  E.D.v.splice(2, 1);
+  ok(E.run('destinoSigueIgual_(__d)') === false, 'y si borró una fila, también');
 }
 
 console.log('\n%s chequeos. %s', chequeos, fallas ? fallas + ' FALLA(S)' : 'TODO OK');

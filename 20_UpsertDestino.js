@@ -1649,7 +1649,26 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
   // 07/10: el error queda también en REGISTRO_AGENDA (si la intermedia responde); el upsert sigue igual.
   // 15/10: las vistas del archivo "Agenda" y la copia del archivo RDV quedan para el final (prioridad 5).
+  // 16/10 (noche, revisor, CRUCE_PRIMERO_TRAS_SALTEOS): si el cruce quedó salteado por tiempo en la corrida anterior, ésta corre
+  // el cruce (2) ANTES de la agenda (1): las filas que necesita ya están de las corridas anteriores. La agenda va después, sólo si
+  // empieza antes de GUARDA_INICIO_MAX_MS.agenda_tras_cruce (si no, la próxima, que vuelve al orden de siempre).
+  const props = PropertiesService.getScriptProperties();
+  let salteosCruce = 0;
+  try { salteosCruce = Number(props.getProperty(PROP_CRUCE_SALTEADO) || 0) || 0; } catch (e) { salteosCruce = 0; }
+  const cruceAntes = !historial && AGENDA_ACTIVA && CRUCE_PRIMERO_TRAS_SALTEOS > 0 && salteosCruce >= CRUCE_PRIMERO_TRAS_SALTEOS;
+  if (typeof corridaOrden_ === 'function') corridaOrden_(cruceAntes ? 'cruce antes de la agenda (el cruce quedó salteado en ' + salteosCruce + ' corrida(s) seguida(s))' : 'agenda, cruce');
+  if (cruceAntes) Logger.log('>>> ORDEN: el cruce quedó salteado por tiempo en %s corrida(s) seguida(s): esta corrida corre el cruce ANTES de la agenda.', salteosCruce);
+  let plan = null, cruceSalteado = false;
+  let idListo = false, porQueNoId = 'las derivadas no se recalcularon (DERIVADAS_POR_SCRIPT)';
+  const fallaron = [];
+  const parteAgenda = function (despuesDelCruce) {
   if (AGENDA_ACTIVA && !historial) {
+    if (despuesDelCruce && !corridaHayTiempo_('agenda_tras_cruce')) {
+      Logger.log('>>> GUARDA DE TIEMPO: la corrida ya lleva %s s (límite para empezar la agenda después del cruce: %s s): la agenda ' +
+                 'queda para la corrida siguiente.', Math.round(corridaTranscurridoMs_() / 1000), Math.round(GUARDA_INICIO_MAX_MS.agenda_tras_cruce / 1000));
+      corridaSaltear_('agenda', 'la agenda (iba después del cruce)');
+      return;
+    }
     const tA = _ahoraMs_(); let errA = null; corridaEmpieza_('agenda');
     _diferirVistasAgenda_ = true;
     try { correrAgendaEnBloqueo_(enSeco); }
@@ -1663,10 +1682,11 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     _diferirVistasAgenda_ = false;
     corridaAnotar_('agenda', tA, errA);
   }
+  };
 
+  const parteCruce = function () {
   // ¿La corrida anterior se cortó a mitad de la escritura? No hay que hacer nada especial: las filas
   // que ya escribió tienen RDV_UID y entran por ahí; sólo se completan sus celdas vacías.
-  const props = PropertiesService.getScriptProperties();
   const anterior = props.getProperty(PROP_ESCRITURA_INCOMPLETA);
   if (anterior) {
     Logger.log('>>> La escritura anterior quedó a mitad: %s. Ésta sigue desde ahí: las filas ya ' +
@@ -1674,8 +1694,8 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   }
 
   // (2) EL CRUCE con los formularios: el plan (leer B, la base, Comunas, las elecciones), en memoria.
-  let plan = null;
   if (!corridaHayTiempo_('cruce')) {
+    cruceSalteado = true;
     corridaSaltear_('cruce', 'el cruce con los formularios (y la escritura, las derivadas, las elecciones y las fichas)');
   } else {
     const tC = _ahoraMs_(); let errC = null; corridaEmpieza_('cruce');
@@ -1697,6 +1717,7 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   if (plan && !corridaHayTiempo_('asistentes')) {
     corridaSaltear_('asistentes', 'los asistentes y, sin ellos, la escritura del cruce, las elecciones y las fichas');
     plan = null;
+    cruceSalteado = true;
   }
   // Asistentes desde RDV CONJUNTO (paso B, 02/10): no dependen del formulario; se cruzan aparte.
   if (plan) {
@@ -1763,7 +1784,6 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
 
   // Las derivadas por script (05/10): en TODAS las filas, sólo donde cambió, sin color. En seco sólo cuenta.
   // Con LOOKER_EN_SISTEMA (08/10), también la ID (la derivada 12).
-  let idListo = false, porQueNoId = 'las derivadas no se recalcularon (DERIVADAS_POR_SCRIPT)';
   if (DERIVADAS_POR_SCRIPT && plan) {
     if (!corridaHayTiempo_('derivadas')) {
       porQueNoId = 'las derivadas quedaron para la corrida siguiente (guarda de tiempo)';
@@ -1787,7 +1807,6 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     porQueNoId = 'el cruce no corrió en esta corrida';
   }
 
-  const fallaron = [];
   if (plan) {
     // Las elecciones: se guardan con su resultado y se vuelven a mostrar en las solapas regeneradas. Siempre que hubo
     // cruce (sin guarda de tiempo): dicen qué elecciones se aplicaron en esta corrida.
@@ -1823,6 +1842,14 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
       corridaAnotar_('reportes', tR, fallaron.length ? 'no se escribieron: ' + fallaron.join(', ') : null);
     }
   }
+  };
+
+  if (cruceAntes) { parteCruce(); parteAgenda(true); }
+  else { parteAgenda(false); parteCruce(); }
+  // el contador de salteos seguidos del cruce (por tiempo: él, o los asistentes y con ellos su escritura). Un error no cuenta.
+  try {
+    if (!historial) props.setProperty(PROP_CRUCE_SALTEADO, String(cruceSalteado ? salteosCruce + 1 : 0));
+  } catch (e) { Logger.log('  (no se pudo anotar el salteo del cruce: %s)', e); }
 
   // (3) Los IDs de los encuentros (08/10, IDS_EN_LA_HORA; 45_IdsCuentas.js): después de la agenda, que crea y mueve filas;
   // sólo filas activas, por la regla general (sólo celda vacía). No en el paso 22: el historial de los IDs es el paso 57.
@@ -4775,15 +4802,20 @@ function aplicarDecisiones_(dest, decisiones, t0, asistentes, historial, soloUid
   return w;
 }
 
-/** 16/10: ¿la fila leída recién (`fresca`) es la misma reunión que la del plan (`f`)? La misma Figura y la misma FECHA. */
+/**
+ * 16/10: ¿la fila leída recién (`fresca`) es la misma reunión que la del plan (`f`)? La misma Figura, FECHA, Barrio y HORA (16/10,
+ * revisor: dos filas de Macri el mismo día se distinguen por el barrio o la hora).
+ */
 function _mismaFilaFresca_(dest, f, fresca) {
   if (!fresca) return false;
-  const iF = dest.D['Figura'], iE = dest.D['FECHA'];
+  const iF = dest.D['Figura'], iE = dest.D['FECHA'], iB = dest.D['Barrio'], iH = dest.D['HORA'];
   if (iF != null && str(fresca[iF]) !== f.figura) return false;
   if (iE != null) {
     const a = toDate_(fresca[iE]), b = f.fecha;
     if (!!a !== !!b || (a && ymd_(a) !== ymd_(b))) return false;
   }
+  if (iB != null && str(fresca[iB]) !== f.barrio) return false;
+  if (iH != null && _horaEnMinutos_(fresca[iH]) !== f.horaMin) return false;
   return true;
 }
 
@@ -5326,7 +5358,7 @@ function armarDestino_(sh, hoja, bloque) {
       clave: claveNatural_(figura, fecha)
     });
   }
-  return { sh: sh, hdr: hdr, D: D, T: T, filas: filas };
+  return { sh: sh, hdr: hdr, D: D, T: T, filas: filas, nFilas: bloque.length };
 }
 
 /**

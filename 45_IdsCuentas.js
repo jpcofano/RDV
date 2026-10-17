@@ -95,6 +95,13 @@ function _correrIds_(enSeco, historial) {
   let dest = !historial && typeof leerDestinoCompartido_ === 'function' ? leerDestinoCompartido_('los IDs') : leerDestino_();
   const lista = leerListaIds_();
   _logListaIds_(lista);
+  // 16/10 (noche, revisor): leer la lista tarda (hasta 120 s): si mientras tanto el equipo ordenó, borró o cambió filas, la base se
+  // vuelve a leer ANTES de cruzar (las escrituras van por número de fila)
+  if (typeof destinoSigueIgual_ === 'function' && !destinoSigueIgual_(dest)) {
+    Logger.log('>>> La base cambió mientras se leía la lista (filas ordenadas, borradas o editadas): se vuelve a leer antes de cruzar.');
+    if (typeof invalidarDestinoCompartido_ === 'function') invalidarDestinoCompartido_('la base cambió mientras se leía la lista de IDs');
+    dest = leerDestino_();
+  }
 
   const col = agregarColumnasIds_(dest.sh, !enSeco && historial);
   if (col.faltan.length) {

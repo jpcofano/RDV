@@ -240,7 +240,8 @@ function _guardarCorridaEnCurso_() {
       id: _corrida_.id, t0: _corrida_.t0, modo: _corrida_.modo, partes: _corrida_.partes, salteadas: _corrida_.salteadas,
       errores: _corrida_.errores.map(function (e) { return e.slice(0, 600); }), actual: _corrida_.actual,
       agenda: _corrida_.agenda, sinCambios: _corrida_.sinCambios, noTocaba: _corrida_.noTocaba,
-      agendaGeo: _corrida_.agendaGeo || null, agendaMails: _corrida_.agendaMails || null, base: _corrida_.base || null }));
+      agendaGeo: _corrida_.agendaGeo || null, agendaMails: _corrida_.agendaMails || null, base: _corrida_.base || null,
+      orden: _corrida_.orden || '' }));
   } catch (e) { /* el registro nunca corta la corrida */ }
 }
 
@@ -257,7 +258,15 @@ function encabezadoCorridas_() {
     .concat(COLUMNAS_CORRIDA_5B_);
 }
 /** 16/10 (tarde): la escritura de la cache de los mails, la geocodificación y los mails por dentro, y las lecturas de la base. */
-const COLUMNAS_CORRIDA_5B_ = ['agenda_cache_s', 'agenda_geo_detalle', 'agenda_mails_cache', 'base_lecturas', 'base_reusos', 'base_lecturas_s', 'base_detalle'];
+const COLUMNAS_CORRIDA_5B_ = ['agenda_cache_s', 'agenda_geo_detalle', 'agenda_mails_cache', 'base_lecturas', 'base_reusos', 'base_lecturas_s', 'base_detalle',
+  'orden'];
+
+/** 16/10 (noche): el orden de las partes de esta corrida (CRUCE_PRIMERO_TRAS_SALTEOS): "agenda, cruce" o "cruce antes de la agenda (…)". */
+function corridaOrden_(texto) {
+  if (!_corrida_) return;
+  _corrida_.orden = String(texto || '');
+  _guardarCorridaEnCurso_();
+}
 
 function _escribirFilaCorrida_(c, estado, totalMs) {
   try {
@@ -290,7 +299,7 @@ function _escribirFilaCorrida_(c, estado, totalMs) {
       .concat([c.agenda && c.agenda.ms && 'cache' in c.agenda.ms ? Math.round(c.agenda.ms.cache / 100) / 10 : '',
                _textoGeoCorrida_(c.agendaGeo), _textoMailsCorrida_(c.agendaMails),
                c.base ? c.base.lecturas : '', c.base ? c.base.reusos : '', c.base ? Math.round(c.base.ms / 100) / 10 : '',
-               c.base ? c.base.detalle.join(' · ') : '']);
+               c.base ? c.base.detalle.join(' · ') : '', c.orden || '']);
     sh.appendRow(fila);
     SpreadsheetApp.flush();
   } catch (err) { Logger.log('>>> REGISTRO_CORRIDAS: no se pudo escribir la línea de la corrida: %s', err); }
@@ -304,6 +313,19 @@ function escribirVistasAgendaDiferidas_() {
   const p = _vistasAgendaPendientes_;
   _vistasAgendaPendientes_ = null;
   if (!p) return null;
+  // 16/10 (revisor): con la guarda de tiempo de la agenda, también la copia del archivo "Agenda" y AGENDA_DUPLICADOS quedaron para
+  // acá (después del cruce). escribirCopiaAgenda_ escribe la copia y, como ya no se difiere, las vistas y la del archivo RDV.
+  if (p.copiaCompleta) {
+    _diferirVistasAgenda_ = false;
+    let errC = null;
+    try { escribirCopiaAgenda_(p.copiaCompleta, p.P); } catch (err) { errC = err; Logger.log('>>> la copia en el archivo "Agenda" NO se escribió: %s', err); }
+    if (p.duplicados) {
+      try { escribirDuplicadosAgenda_(p.P); } catch (err) { Logger.log('>>> %s NO se escribió: %s', AGENDA_SOLAPA_DUPLICADOS, err); errC = errC || err; }
+    }
+    SpreadsheetApp.flush();
+    if (errC) throw errC;
+    return true;
+  }
   if (AGENDA_VISTAS_NUEVAS) escribirVistasAgenda_(SpreadsheetApp.openById(AGENDA_COPIA_SS), p.abierta, p.P);
   if (AGENDA_COPIA_EN_RDV) {
     try { escribirAgendaEnRdv_(p.abierta); }
@@ -403,6 +425,11 @@ function tiemposDeCorridas(n) {
     const ult = con5b[con5b.length - 1];
     if (iGd >= 0) Logger.log('    la última: geocodificación %s', ult[iGd] || '—');
     if (iMc >= 0) Logger.log('    la última: cache de los mails (de la cache / total) %s', ult[iMc] || '—');
+    const iOr = col('orden');
+    if (iOr >= 0) {
+      out.punto5b.cruceAntes = con5b.filter(function (r) { return /^cruce antes/.test(String(r[iOr])); }).length;
+      Logger.log('    corridas con el cruce ANTES de la agenda (porque la anterior lo salteó): %s de %s', out.punto5b.cruceAntes, con5b.length);
+    }
   } else Logger.log('  (punto 5b: todavía ninguna corrida con la geocodificación, la cache de los mails y las lecturas de la base; aparecen desde la próxima)');
   // 16/10: las CORTADAS, una por una: en qué parte murió (lo dice el estado) y cuánto tardó lo que alcanzó a terminar
   const iEst = col('estado'), iId = col('id'), iTot = col('total_s'), iAg = col('agenda_s');
