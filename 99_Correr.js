@@ -1412,6 +1412,18 @@ function paso97_fusionarPares() {
 }
 
 /**
+ * PASO 100 — SÓLO LECTURA (16/10): por qué "Av. Int. Bullrich 55, La Mezquita" (fila 834, Seguridad Comuna 14) no dio barrio
+ * (es Palermo): las dos consultas (la del mail y "Av. Intendente Bullrich 55"), lo que tiene la cache, el barrio del punto, la
+ * distancia al borde y la regla de confianza con el lugar del mail. Pide a Maps lo que la cache no tiene (2 llamadas como mucho);
+ * no escribe nada, ni la cache.
+ */
+function paso100_explicarBarrioBullrich() {
+  _anunciar_('paso 100 — por qué Bullrich 55 no dio barrio (SÓLO LECTURA)', "explicarBarrioAgenda('Av. Int. Bullrich 55, La Mezquita', 'Comuna 14', true)  [40_Agenda.js]",
+             'NO escribe nada (ni la cache del geocode)', 'el log: paso a paso, y el barrio que daría');
+  return explicarBarrioAgenda('Av. Int. Bullrich 55, La Mezquita', 'Comuna 14', true);
+}
+
+/**
  * PASO 99 — EN SECO (16/10): la FUSIÓN AUTOMÁTICA de "una reunión en dos filas" (AGENDA_FUSION_AUTOMATICA, APAGADA): qué pares
  * juntaría el sistema solo (las reglas del paso 97) y cuáles irían a AGENDA_DUPLICADOS con ELEGIR ("Quedarse con la fila X" /
  * "… Y" / "Son reuniones distintas"), y por qué. No escribe nada.
