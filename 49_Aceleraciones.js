@@ -205,6 +205,35 @@ function leerDestinoCompartido_(parte) {
 }
 function invalidarDestinoCompartido_(porque) { baseCorridaInvalidar_(porque); }
 
+/**
+ * 16/10 (noche, revisor): ¿la base sigue como cuando se armó `dest`? El mismo número de filas y, en cada fila, las columnas A hasta
+ * la de HORA (Figura, Barrio, EVENTO, FECHA, HORA) iguales. Una lectura chica. Lo usan los IDs después de leer la lista (que tarda
+ * hasta 120 s): si el equipo ordenó o borró filas mientras tanto, se vuelve a leer la base antes de cruzar y escribir.
+ */
+function destinoSigueIgual_(dest) {
+  try {
+    const sh = dest.sh;
+    if (dest.nFilas != null && sh.getLastRow() !== dest.nFilas) return false;
+    const k = Math.max.apply(null, ['Figura', 'Barrio', 'FECHA', 'HORA'].map(function (n) {
+      const i = findIdxOr_(dest.hdr, aliasColumna_(n), true);
+      return i == null ? 0 : i;
+    })) + 1;
+    const n = dest.nFilas != null ? dest.nFilas : sh.getLastRow();
+    if (n < 2) return true;
+    const ahora = sh.getRange(1, 1, n, k).getValues();
+    const igual = function (a, b) {
+      if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+      return a === b || String(a) === String(b);
+    };
+    return dest.filas.every(function (f) {
+      const r = ahora[f.fila - 1];
+      if (!r) return false;
+      for (let j = 0; j < k; j++) if (!igual(r[j], f.valores[j])) return false;
+      return true;
+    });
+  } catch (e) { return false; }
+}
+
 /** Una parte escribió en la base: lo leído antes ya no vale (la parte siguiente vuelve a leer). */
 function baseCorridaInvalidar_(porque) {
   if (_baseCorrida_) Logger.log('  (la base leída se descarta: %s; la parte siguiente la vuelve a leer)', porque || 'se escribió');

@@ -33,8 +33,8 @@ function cacheAgendaAbrir_(servicio) {
   let svc = servicio || null;
   if (!svc) { try { svc = CacheService.getScriptCache(); } catch (e) { svc = null; } }
   if (!svc) return null;
-  const S = { svc: svc, mem: new Map(), edad: new Map(), nuevos: new Map(), usados: new Set(),
-              stats: { leidas: 0, nuevas: 0, renovadas: 0, errores: [] }, t0: Date.now() };
+  const S = { svc: svc, mem: new Map(), edad: new Map(), creada: new Map(), nuevos: new Map(), usados: new Set(),
+              stats: { leidas: 0, nuevas: 0, renovadas: 0, vencidas: 0, errores: [] }, t0: Date.now() };
   try {
     const man = svc.get(AGENDA_CACHE_MANIFIESTO_);
     const claves = man ? JSON.parse(man) : [];
@@ -49,8 +49,13 @@ function cacheAgendaAbrir_(servicio) {
       if (v == null) return;
       try {
         const o = JSON.parse(_cacheDescomprimir_(v));
+        // 16/10 (noche, revisor): una entrada creada hace AGENDA_CACHE_MAX_EDAD_MS o más no se usa (se vuelve a bajar o parsear),
+        // aunque se haya renovado: así ningún error queda guardado para siempre
+        const creada = o.c || o.t || 0;
+        if (Date.now() - creada >= AGENDA_CACHE_MAX_EDAD_MS) { S.stats.vencidas++; return; }
         S.mem.set(k, o.v);
         S.edad.set(k, o.t || 0);
+        S.creada.set(k, creada);
         S.stats.leidas++;
       } catch (e) { /* una entrada rota es una entrada que no está */ }
     });
@@ -73,6 +78,7 @@ function cacheAgendaPut_(S, k, v) {
   if (!S) return;
   S.mem.set(k, v);
   S.edad.set(k, Date.now());
+  S.creada.set(k, Date.now());
   S.nuevos.set(k, v);
   S.usados.add(k);
 }
@@ -88,7 +94,8 @@ function cacheAgendaCerrar_(S) {
     S.usados.forEach(function (k) {
       const nuevo = S.nuevos.has(k);
       const viejo = !nuevo && ahora - (S.edad.get(k) || 0) > AGENDA_CACHE_RENOVAR_MS;
-      const txt = _cacheComprimir_(JSON.stringify({ t: nuevo ? ahora : (viejo ? ahora : S.edad.get(k) || ahora), v: S.mem.get(k) }));
+      const txt = _cacheComprimir_(JSON.stringify({ t: nuevo ? ahora : (viejo ? ahora : S.edad.get(k) || ahora), c: S.creada.get(k) || ahora,
+                                                    v: S.mem.get(k) }));
       const partes = txt.length > AGENDA_CACHE_MAX_VALOR ? Math.ceil(txt.length / AGENDA_CACHE_MAX_VALOR) : 0;
       manifiesto.push(k);
       for (let i = 1; i <= partes; i++) manifiesto.push(k + '#' + i);
@@ -211,11 +218,31 @@ function _contextoParserAgenda_() {
     variantes: typeof FIGURAS_VARIANTES !== 'undefined' ? JSON.stringify(FIGURAS_VARIANTES, re) : '',
     bvariantes: typeof BARRIOS_VARIANTES !== 'undefined' ? JSON.stringify(BARRIOS_VARIANTES, re) : '',
     apellido: [FIGURA_POR_APELLIDO, MIN_LARGO_APELLIDO], tipos: JSON.stringify(AGENDA_TIPOS, re), marcas: JSON.stringify(AGENDA_MARCAS, re),
-    codigo: ['_parsearCuerpoAgendaSinCache_', '_completarReunion_', '_figurasConPosicionSinMemo_', '_textoDespuesDelTipo_',
-             '_limpiarLineaAgenda_', '_horaAgenda_', '_fechaDiaMes_', '_levenshtein_', 'detectComuna_', 'detectSubzonaComuna1_',
-             'detectEje_', '_detectBarrioAg_', 'detectBarrio_', 'canonizarBarrio_', '_otraGrafiaBarrio_', '_canonFiguraDestino_',
-             '_apellidosUnicos_', 'normalizeText_', '_expandirAbreviaturas_', 'alMediodia_'].map(fn)
+    // 16/10 (noche, revisor): el código de TODAS las funciones del proyecto (no una lista que se queda corta: el parser llama a
+    // _figurasConPosicion_, figurasEnTexto_, _canonEje_, barrioPorVariante_, numComuna_…). Un cambio de código re-parsea todo una vez.
+    codigo: huellaCodigoAgenda_(),
+    lista: ['_parsearCuerpoAgendaSinCache_', '_completarReunion_', '_figurasConPosicionSinMemo_'].map(fn)
   };
+}
+
+var _huellaCodigoAgenda_ = null;
+/**
+ * La huella del código de todas las funciones globales del proyecto (su texto, ordenadas por nombre) y de las constantes que el
+ * parser y los colores leen. Una vez por ejecución.
+ */
+function huellaCodigoAgenda_() {
+  if (_huellaCodigoAgenda_) return _huellaCodigoAgenda_;
+  const g = typeof globalThis !== 'undefined' ? globalThis : (function () { return this; })();
+  const re = function (k, x) { return x instanceof RegExp ? String(x) : x; };
+  const nombres = Object.keys(g).filter(function (k) { try { return typeof g[k] === 'function'; } catch (e) { return false; } }).sort();
+  const consts = ['AGENDA_TIPOS', 'AGENDA_MARCAS', 'RE_CITA_AGENDA_', 'RE_REENVIO_AGENDA_', 'RE_RESPUESTA_AGENDA_', 'RE_ESCRIBIO_AGENDA_',
+                  'ABREV_DIRECCION_', 'COLORES_MAIL_NOMBRES', 'COLORES_MAIL_CITA', 'COLORES_MAIL_ENTERA', 'COLORES_MAIL_PALABRAS',
+                  'AGENDA_NOTA_CANCELA', 'FIGURAS_VARIANTES', 'BARRIOS_VARIANTES', 'FIGURA_POR_APELLIDO', 'MIN_LARGO_APELLIDO',
+                  'COMUNA1_SUBZONAS', 'EJES_CONOCIDOS', 'AGENDA_PARSER_VERSION'].map(function (n) {
+    try { const v = eval(n); return n + '=' + JSON.stringify(v instanceof RegExp ? String(v) : v, re); } catch (e) { return n + '=?'; }
+  });
+  _huellaCodigoAgenda_ = huellaContenido_([nombres.map(function (k) { return k + ':' + String(g[k]); }).join('\n'), consts]);
+  return _huellaCodigoAgenda_;
 }
 
 /**
@@ -262,11 +289,8 @@ var _versionColoresAgenda_ = null;
 /** La versión del código que saca los colores del HTML (si cambia, lo guardado no vale). */
 function versionColoresAgenda_() {
   if (_versionColoresAgenda_) return _versionColoresAgenda_;
-  const fn = function (nombre) { try { const f = eval(nombre); return typeof f === 'function' ? String(f) : ''; } catch (e) { return ''; } };
-  _versionColoresAgenda_ = huellaContenido_([AGENDA_PARSER_VERSION, typeof COLORES_MAIL_NOMBRES !== 'undefined' ? COLORES_MAIL_NOMBRES : null,
-    ['_derivadoHtmlColMail_', '_htmlALineasColMail_', '_letrasColMail_', '_clasesDeEstiloColMail_', '_declaracionColMail_', '_colorColMail_',
-     '_familiaColMail_', '_colorDeFondoCortoColMail_', '_entidadesHtmlAgenda_', '_propioDeHtmlAgenda_', '_textoLineaColMail_',
-     '_sumarLetrasColMail_', '_letrasVaciasColMail_', '_limpiarLineaAgenda_'].map(fn)]).replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
+  // 16/10 (noche, revisor): con el código de TODAS las funciones (huellaCodigoAgenda_), no una lista
+  _versionColoresAgenda_ = huellaContenido_(['colores', AGENDA_PARSER_VERSION, huellaCodigoAgenda_()]).replace(/[^A-Za-z0-9]/g, '').slice(0, 16);
   return _versionColoresAgenda_;
 }
 
