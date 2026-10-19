@@ -1659,6 +1659,9 @@ function _barrioAgenda_(opciones, P, extra) {
   P.geocodeNuevas = nuevas;
   // 15/10: con su interruptor (la medición en seco lo fuerza por `opciones.barrioDelMail`)
   const barrioDelMail = opciones && opciones.barrioDelMail !== undefined ? !!opciones.barrioDelMail : AGENDA_BARRIO_DEL_MAIL;
+  // 19/10 (AGENDA_BARRIO_APROXIMADO, apagado): la geocodificación 'aproximada' lejos del borde y en la comuna del mail (la
+  // medición en seco la fuerza por `opciones.barrioAproximado`; apagada, la regla de confianza de siempre)
+  const reglaOpc = { aproximado: opciones && opciones.barrioAproximado !== undefined ? !!opciones.barrioAproximado : AGENDA_BARRIO_APROXIMADO };
   const ahorro = typeof AGENDA_GEO_AHORRO !== 'undefined' && AGENDA_GEO_AHORRO && !(opciones && opciones.geocodificar);
   const maximo = ahorro ? GEOCODE_MAX_POR_CORRIDA : (typeof GEOCODE_MAX_POR_CORRIDA_VIEJO !== 'undefined' ? GEOCODE_MAX_POR_CORRIDA_VIEJO : GEOCODE_MAX_POR_CORRIDA);
   const soloDias = ahorro && opciones && opciones.geoSoloDias != null ? opciones.geoSoloDias : null;
@@ -1797,10 +1800,11 @@ function _barrioAgenda_(opciones, P, extra) {
       }
     }
     const res = _barrioDeGeo_(g, poligonos);
-    const regla = _reglaBarrioConMargen_(res, ev, poligonos, BARRIO_MARGEN_M);
+    const regla = _reglaBarrioConMargen_(res, ev, poligonos, BARRIO_MARGEN_M, reglaOpc);
     if (llamada) { llamada.barrio = res.barrio || ''; llamada.resultado = res.estado; llamada.regla = regla.cumple ? 'cumple' : regla.motivo; }
     if (regla.cumple) {
-      sumar(regla.por && /eje/.test(regla.por) ? 'escrito (el mail trae eje)' : 'escrito (cumple la regla)');
+      sumar(regla.aproximada ? 'escrito (aproximada, lejos del borde: AGENDA_BARRIO_APROXIMADO)'
+                             : regla.por && /eje/.test(regla.por) ? 'escrito (el mail trae eje)' : 'escrito (cumple la regla)');
       // 07/10: el barrio de otro eje que el del mail no frena, pero queda anotado (log del plan y paso 51)
       if (regla.nota) (P.notasEje = P.notasEje || []).push({ ev: ev, barrio: res.barrio, nota: regla.nota });
       return { barrio: res.barrio, motivo: 'cumple', por: regla.por || '', nota: regla.nota || '' };
@@ -1856,6 +1860,12 @@ function explicarBarrioAgenda(direccion, lugarMail, conMaps) {
                q, de, g.estado, g.tipo || '—', g.parcial ? ', COINCIDENCIA PARCIAL' : '', g.formateada || '', res.lat != null ? res.lat + ',' + res.lng : '—',
                res.barrio || '—', res.estado, d == null ? '—' : Math.round(d), estadoCacheGeo_(g, pol));
     Logger.log('    regla de confianza: %s', regla.cumple ? 'CUMPLE (' + (regla.por || '') + ')' : 'no cumple: ' + regla.motivo);
+    // 19/10: la regla de la geocodificación aproximada (AGENDA_BARRIO_APROXIMADO, forzada acá: sólo para mostrar)
+    if (res.estado === 'aproximada') {
+      const rA = _reglaBarrioConMargen_(res, ev, pol, BARRIO_MARGEN_M, { aproximado: true });
+      Logger.log('    con la regla de la aproximada (AGENDA_BARRIO_APROXIMADO = %s; margen %s m): %s', AGENDA_BARRIO_APROXIMADO,
+                 BARRIO_APROXIMADO_MARGEN_M, rA.cumple ? 'CUMPLE (' + rA.por + ') → ' + res.barrio : 'no cumple: ' + rA.motivo);
+    }
   });
   return qs;
 }

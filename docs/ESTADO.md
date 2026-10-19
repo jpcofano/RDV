@@ -1984,6 +1984,16 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
   en la base (o cuya única candidata está Suspendida en otro barrio) → SÓLO un aviso (AGENDA_PENDIENTES + mail diario), nunca crea
   la fila (`53_HechasSinFila.js`). Medición desde el 15/07: **`paso104_hechasSinFila()`** (sólo lectura). Macri 15/10 hoy NO
   tiene que salir (la 824 ya es Villa Devoto / Realizada).
+- **Punto 5 (sólo medir; `AGENDA_BARRIO_APROXIMADO` APAGADO):** el "Palermo" de la 834, por el código: lo más probable es la
+  **fusión del paso 97** (corrida 20261016-185548-cf82), copiado de la 839, que lo recibió al crearse (16/10). Lo que no cierra: ese
+  día la única regla que pudo darlo exige una geocodificación exacta, y hoy la cache da "aproximada" ("Lugar (mail)" = Comuna 14:
+  el barrio del mail no aplica). Si quedó como escrito por el sistema, `agenda_barrio_escrito = Palermo`. Lo confirma con los datos
+  **`paso105_explicarBarrioFila834()`** (sólo lectura: la fila, todas las líneas de REGISTRO_AGENDA_CAMBIOS de la 834 y de la 839,
+  la cache de "Bullrich 55" fila por fila con su fecha y su tipo; si hay una anterior a esa corrida ROOFTOP / RANGE_INTERPOLATED,
+  ése fue el camino; si ninguna línea escribe "Palermo", lo cargó una persona). La regla nueva (aceptar una "aproximada" a más de
+  500 m del borde de otro barrio y en la comuna o el barrio del mail; más estricta: no con otro barrio del mail ni con sólo un eje):
+  **`paso106_barrioAproximado_enSeco()`** (sólo la cache, sin Maps ni Gmail): qué filas ganarían barrio y la prueba contra los
+  barrios del equipo (tiene que dar 0 contradicciones). Código: `diagnostico/38_barrio_aproximado.js`, 41_AgendaParser.js.
 - **Punto 7 (escrito, APAGADO: `BASE_ORDEN_POR_FECHA`):** `57_OrdenBase.js`. Al final de la corrida de la hora (dentro del bloqueo,
   si queda tiempo: `GUARDA_INICIO_MAX_MS.orden`), la base por FECHA, HORA y Figura (las sin FECHA al final), sólo si hace falta, con
   el ordenamiento de la hoja sobre filas enteras; antes guarda el orden (ORDEN_BASE_PREVIO, intermedia) y después verifica cada fila

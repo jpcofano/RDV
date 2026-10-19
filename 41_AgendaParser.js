@@ -954,14 +954,61 @@ function _reglaBarrio_(res, ev) {
  * **La regla de confianza con el margen de borde** (06/10, etapa 2, punto 12): (a) y (b) de `_reglaBarrio_`, y
  * además (c) el punto está a más de `margenM` metros de cualquier OTRO barrio. (d), la celda vacía, se mira al
  * escribir. Sin `margenM` (null), es la regla sin margen.
+ *
+ * 19/10 (AGENDA_BARRIO_APROXIMADO, APAGADO): una geocodificación 'aproximada' va por `_reglaBarrioAproximado_` (lejos del
+ * borde y en la comuna del mail). `opc.aproximado` la fuerza (true / false) para la medición en seco; sin `opc`, el
+ * interruptor. Apagada, esto es exactamente lo de antes.
  */
-function _reglaBarrioConMargen_(res, ev, poligonos, margenM) {
+function _reglaBarrioConMargen_(res, ev, poligonos, margenM, opc) {
+  if (res && res.estado === 'aproximada' && barrioAproximadoActivo_(opc)) return _reglaBarrioAproximado_(res, ev, poligonos);
   const r = _reglaBarrio_(res, ev);
   if (!r.cumple || margenM == null) return r;
   const d = _distanciaAOtroBarrioM_(res.lng, res.lat, poligonos, res.barrio);
   if (d != null && d <= margenM) return { cumple: false, motivo: '(c) a ' + Math.round(d) + ' m de otro barrio (margen ' + margenM + ' m)', distancia: d };
   r.distancia = d;
   return r;
+}
+
+/** 19/10: ¿va la regla de la geocodificación aproximada? `opc.aproximado` (la medición) o AGENDA_BARRIO_APROXIMADO. */
+function barrioAproximadoActivo_(opc) {
+  if (opc && opc.aproximado !== undefined) return !!opc.aproximado;
+  return typeof AGENDA_BARRIO_APROXIMADO !== 'undefined' && !!AGENDA_BARRIO_APROXIMADO;
+}
+
+/**
+ * **La regla de la geocodificación APROXIMADA** (19/10, AGENDA_BARRIO_APROXIMADO; caso 834). Sólo para `res.estado`
+ * 'aproximada' (GEOMETRIC_CENTER / APPROXIMATE: Maps no encontró la altura y dio un punto de la calle). Vale si:
+ *   (b) el barrio del punto es el barrio que dice el mail, o está en la comuna que dice el mail (en la Comuna 1 con
+ *       subzona, también en esa subzona). Más estricta que la de una "ok": si el mail nombra OTRO barrio, no vale aunque
+ *       sea de la misma comuna; si el mail trae sólo un eje (o nada), no vale;
+ *   (c) el punto está a MÁS de BARRIO_APROXIMADO_MARGEN_M metros del borde de cualquier otro barrio.
+ * Devuelve lo mismo que `_reglaBarrioConMargen_` (`{ cumple, por, distancia }` o `{ cumple: false, motivo }`), con
+ * `aproximada: true`. No mira la celda (eso lo hace quien escribe).
+ */
+function _reglaBarrioAproximado_(res, ev, poligonos) {
+  const margen = BARRIO_APROXIMADO_MARGEN_M;
+  const no = function (m, d) { return { cumple: false, motivo: '(a) geocodificación aproximada: ' + m, aproximada: true, distancia: d == null ? null : d }; };
+  if (!ev) return no('sin reunión del mail');
+  if (!res.barrio) return no('el punto no cae en ningún barrio');
+  const kb = function (b) { return normalizeText_(_canonBarrioAg_(b) || b); };
+  let por = '';
+  if (ev.barrio) {
+    if (kb(ev.barrio) !== kb(res.barrio)) return no('(b) el mail dice otro barrio (' + ev.barrio + ')');
+    por = 'el barrio del mail';
+  } else if (ev.comuna != null) {
+    if (res.comuna !== ev.comuna) return no('(b) otra comuna que la del mail (C' + res.comuna + ', el mail dice C' + ev.comuna + ')');
+    if (ev.comuna === 1 && ev.subzona) {
+      const sz = subzonaDeBarrio_(res.barrio);
+      if (sz && sz !== ev.subzona) return no('(b) otra subzona de la Comuna 1 (' + sz + ', el mail dice ' + ev.subzona + ')');
+    }
+    por = 'la comuna del mail (C' + ev.comuna + (ev.subzona ? ' ' + ev.subzona : '') + ')';
+  } else {
+    return no('(b) el mail no trae comuna ni barrio' + (ev.eje ? ' (sólo un eje)' : ''));
+  }
+  const d = _distanciaAOtroBarrioM_(res.lng, res.lat, poligonos, res.barrio);
+  if (d == null) return no('sin punto');
+  if (d <= margen) return no('(c) a ' + Math.round(d) + ' m de otro barrio (margen ' + margen + ' m)', d);
+  return { cumple: true, por: 'aproximada, en ' + por + ', a ' + Math.round(d) + ' m del borde (margen ' + margen + ' m)', distancia: d, aproximada: true };
 }
 
 /**

@@ -1616,6 +1616,19 @@ const LIMPIAR_LEGADO_CONFIRMADO = false;
 /** Regla de confianza del barrio, (c): el punto tiene que estar a MÁS de estos metros de cualquier otro barrio. */
 const BARRIO_MARGEN_M = 100;
 /**
+ * **El barrio con una geocodificación APROXIMADA** (19/10, prompt 08 punto 5; caso 834, "Av. Int. Bullrich 55": Maps da el
+ * centro de la calle, GEOMETRIC_CENTER, y la regla de confianza la rechaza en (a)). Con `true`, una geocodificación
+ * 'aproximada' (GEOMETRIC_CENTER / APPROXIMATE) también vale si: (b) el barrio del punto es el barrio que dice el mail, o
+ * está en la comuna que dice el mail (en la Comuna 1, también en su subzona si el mail la dice) — un mail que nombra OTRO
+ * barrio la rechaza aunque sea de la misma comuna; con sólo un eje, no vale — y (c) el punto está a MÁS de
+ * `BARRIO_APROXIMADO_MARGEN_M` metros del borde de cualquier otro barrio. Vive en `_reglaBarrioConMargen_` (41_AgendaParser.js):
+ * la medición la fuerza por `opciones` y usa el mismo código. Con `false`, todo igual que antes.
+ * En seco: `medirBarrioAproximado()` (diagnostico/38_barrio_aproximado.js, paso 106). APAGADO hasta ver la medición.
+ */
+const AGENDA_BARRIO_APROXIMADO = false;
+/** El margen de borde de la regla de la geocodificación aproximada (19/10): MÁS de estos metros de cualquier otro barrio. */
+const BARRIO_APROXIMADO_MARGEN_M = 500;
+/**
  * El EVENTO de una fila nueva, según el tipo de la reunión del mail, **como lo escribe el equipo** (06/10, de la tabla
  * del paso 37 en seco): "{tema}" e "{invitado}" se completan con lo que dice el evento del mail (`eventoAgenda_`).
  * "Café con Vecinos": sin confirmar (no apareció en el destino); la corrida en seco vuelve a listar la tabla.
