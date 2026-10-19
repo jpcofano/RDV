@@ -1951,6 +1951,36 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 19/10 — prompt 08: Macri 15/10, "una reunión, una fila" y el orden de la base
+
+Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (paso 66 del 19/10, 14:30): todo OK.
+
+- **Punto 3 (hecho, sin interruptor: es un arreglo):** una fila Suspendida y otra de la misma figura y fecha no son "una reunión
+  en dos filas" (`esSuspendidaYReemplazoAgenda_`, 40_Agenda.js): ni en "después de crear", ni en la auditoría (secciones 2 y 5). El
+  H3 ya no contaba las Suspendidas. Dos filas no suspendidas siguen siendo un par. Tests: `tests/agenda_macri_1510.test.js` [1].
+- **Punto 2 (escrito, NADA escribió todavía):** `56_SepararReunion.js` y `55_SimularCorrida.js`. La 824 conserva todos sus datos
+  (Villa Devoto, Realizada, asistentes, formularios, IDs) y pierde la identidad del mail; la reunión del mail (Villa Santa Rita,
+  Suspendida) va a una fila nueva AL FINAL. Pasos, en orden:
+  1. **`paso101_separarMacri1510_enSeco()`** — SÓLO LECTURA (guarda la huella si da LISTO). Dice: el plan; (e) de qué reunión son
+     el formulario, los inscriptos, el ID y los asistentes de la 824 (si algo es de Villa Santa Rita: NO LISTO); la simulación de la
+     próxima corrida de la hora COMPLETA sobre la base de hoy y sobre la separada, con todas las celdas que cambiarían; "FUERA DE LO
+     ESPERADO" (tiene que decir "nada"); lo que la próxima corrida escribiría en las dos filas (tiene que ser nada); (a, b, c) la
+     agenda; (d) RDV CONJUNTO de ese día; (f) la ID derivada de cada una; (g) qué diría la auditoría. Tarda: lee Gmail, B, RDV
+     CONJUNTO y la lista de IDs (si no alcanza el tiempo dice INCOMPLETA: volver a correrlo).
+     **`paso101b_…ConDireccion_enSeco()`**: lo mismo con "Bahía Blanca 4025" en la Dirección de la 824. Ojo: con esa dirección, la
+     843 (Cancelado, sin asistentes) también cruza con la 824 por dirección exacta (no escribe nada; el 101b lo muestra en (d)).
+  2. **`paso102_separarMacri1510()`** (o el 102b) — ESCRIBE; exige la huella del último seco LISTO.
+  3. **`paso103_deshacerSepararMacri1510()`** — deshace (el `_enSeco` dice qué haría). El paso 38 NO deshace una separación.
+  4. Para mirarlo: **`paso66b_auditoriaSemanaPasada()`** (la semana del 12/10).
+  - **Predicción del 101**: LISTO; la 824 = la fila con el agenda_uid c-33a3fd0b…; la nueva = la primera después de la última con
+    datos; (e) el formulario y el ID, de Villa Devoto o "Comuna 11 (no distingue)" —si alguno es de Villa Santa Rita, NO LISTO y
+    hay que decidir—; FUERA DE LO ESPERADO: nada; (d) la 849 → la 824, la 843 → la nueva; (f) "Jorge Macri - Villa Devoto -
+    15/10/2026" y "Jorge Macri - Villa Santa Rita - 15/10/2026". Un riesgo que el seco mira: si la 824 NO tuviera ID cuentas, la
+    lista de campañas (planeada en Villa Santa Rita) lo mandaría a la fila nueva → NO LISTO (lo decide el usuario).
+- **Punto 1:** AGENDA_PENDIENTES queda sólo en la intermedia (ya era así): la GUÍA y AGENDA_DUPLICADOS ya no mandan al equipo a
+  buscarla (le llega a quien administra, en el mail diario y el resumen del lunes). Sale con el próximo `paso48_ayuda()`.
+- **Punto 6:** `Sin título.js` del editor (`pasos100y99_soloLectura`) pasó a 99_Correr.js; el push lo saca del remoto.
+
 #### Tiempos de la agenda (16/10, noche) — PRENDIDO
 
 Medido por el usuario (paso 67, 30 corridas): 3 CORTADAS y un plan de 144 s con la geocodificación adentro. Cambios:

@@ -1216,7 +1216,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     // 07/10, UBICACION_TRES_NIVELES: la ubicación de la fila de la agenda en tres niveles (su barrio; la comuna del
     // barrio o la del mail; el eje del mail), contra las filas del equipo.
     if (usarUbicacion3_()) evFila.ubic = ubicacionDeFila_(Object.assign({}, fa, { lugarMail: lugarMail }));
-    const casi = casiDuplicados(evFila, true).filter(function (x) { return x.f.fila !== fa.fila; });
+    // 19/10 (punto 3 del prompt 08, caso Macri 15/10): una Suspendida y otra de la misma figura y fecha no son un par
+    const casi = casiDuplicados(evFila, true).filter(function (x) { return x.f.fila !== fa.fila && !esSuspendidaYReemplazoAgenda_(fa, x.f, A); });
     if (casi.length) despuesPares.push({ fAgenda: fa, candidatas: casi });
   });
   // 16/10: "una reunión en dos filas" — los pares del H3 y de "después de crear" que el equipo tiene que decidir (AGENDA_DUPLICADOS)
@@ -2267,6 +2268,12 @@ function _deshacerAgenda_(enSeco, corrida) {
   }
   if (!id) { Logger.log('>>> No hay ninguna corrida de ESCRITURA sin deshacer.'); return { deshecho: 0 }; }
   if (deshechas[id]) { Logger.log('>>> La corrida %s ya fue deshecha.', id); return { deshecho: 0 }; }
+  // 19/10 (56_SepararReunion.js): una separación ("dos reuniones en una fila", paso 102) tiene su propio deshacer, que encuentra la
+  // fila que quedó por su identidad (no tiene agenda_uid): éste la dejaría a medias
+  if (typeof SEPARAR_MODO_REGISTRO !== 'undefined' && regV.some(function (r) { return str(r[0]) === id && str(r[2]) === SEPARAR_MODO_REGISTRO; })) {
+    Logger.log('>>> La corrida %s es una SEPARACIÓN (paso 102): se deshace con el paso 103 (deshacerSepararReunionAgenda), no con éste.', id);
+    return { deshecho: 0, error: 'es una separación: paso 103' };
+  }
   const anchoCam = Math.max(9, cam.getLastColumn());
   const camV = cam.getRange(2, 1, cam.getLastRow() - 1, anchoCam).getValues().filter(function (r) { return str(r[0]) === id; });
   Logger.log('  corrida %s: %s líneas de cambios', id, camV.length);
@@ -3176,8 +3183,8 @@ function escribirDuplicadosAgenda_(P) {
                    : 'La misma reunión está en dos filas: en esa semana la agenda no crea nada más hasta que se decida. ') +
         '"Quedarse con la fila N": el sistema completa la fila N con lo de la otra (sólo lo vacío; lo que ustedes cargaron en la N no se ' +
         'toca) y borra la otra, si la creó la agenda (queda guardada y se puede deshacer); si la otra la cargaron ustedes, no la borra: queda ' +
-        'en AGENDA_PENDIENTES para borrarla a mano. Lo distinto de la otra fila se descarta sólo si lo escribió el sistema: si tiene datos ' +
-        'cargados por ustedes distintos de la N (un STATUS, asistentes, inscriptos, un ID…), no se borra y queda en AGENDA_PENDIENTES para ' +
+        'anotada para quien administra el sistema (aviso diario), para borrarla a mano. Lo distinto de la otra fila se descarta sólo si lo escribió el sistema: si tiene datos ' +
+        'cargados por ustedes distintos de la N (un STATUS, asistentes, inscriptos, un ID…), no se borra y queda anotada para quien administra el sistema, para ' +
         'resolver a mano. "Son reuniones distintas": no se vuelve a preguntar. ' +
         (puede ? 'Sugerencia: quedarse con la fila ' + ev.vieja.fila + ' (' + ev.regla + ')' +
                  (AGENDA_FUSION_AUTOMATICA ? '.' : '; con la fusión automática prendida, el sistema la juntaría solo.')
@@ -3330,6 +3337,21 @@ function claveInvarianteFila_(f, A) {
     return lugar ? 'seg|' + ymd_(f.fecha) + '|' + normalizeText_(tipo) + '|' + normalizeText_(lugar) : '';
   }
   return f.figura ? 'fig|' + ymd_(f.fecha) + '|' + normalizeText_(f.figura) : '';
+}
+
+/**
+ * **Una Suspendida y su reemplazo no son "una reunión en dos filas"** (19/10, punto 3 del prompt 08; caso Macri 15/10: el 1 a 1 de
+ * Villa Santa Rita se suspendió y se hizo otro en Villa Devoto, que nunca estuvo en el mail). Así carga el equipo una reunión
+ * cancelada y la que se hizo en su lugar: no frena la semana, no pide decisión y no va a AGENDA_DUPLICADOS. ¿Las dos filas son eso?
+ * La misma FECHA, la misma Figura (no vacía) y UNA sola de las dos "Suspendida". El invariante H3 (`reunionesRepetidasAgenda_`) ya
+ * deja afuera a las Suspendidas; esto lo dice también para los pares de "después de crear" y la auditoría (paso 66). Dos filas NO
+ * suspendidas de la misma reunión siguen siendo un par, como siempre.
+ */
+function esSuspendidaYReemplazoAgenda_(fa, fb, A) {
+  if (!fa || !fb || fa === fb || !fa.fecha || !fb.fecha || ymd_(fa.fecha) !== ymd_(fb.fecha)) return false;
+  if (!fa.figura || normalizeText_(fa.figura) !== normalizeText_(fb.figura)) return false;
+  const st = function (f) { return A['STATUS REUNIÓN'] == null ? '' : normStatus_(f.valores[A['STATUS REUNIÓN']]); };
+  return (st(fa) === 'suspendida') !== (st(fb) === 'suspendida');
 }
 
 /** La misma clave, de una reunión del mail. */

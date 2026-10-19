@@ -51,7 +51,9 @@ function auditoriaAgenda(opciones) {
   opciones = opciones || {};
   const t0 = Date.now();
   const hoy = opciones.hoy || hoyMediodia_();
-  const sem = semanasAuditoriaAgenda_(hoy);
+  // 19/10 (prompt 08, punto 2): `opciones.semanas` (las dos semanas a auditar: [{ nombre, desde, hasta }], p. ej. la del 12/10) y
+  // `opciones.dest` (una base en memoria: la del paso 101 en seco, con la separación aplicada)
+  const sem = opciones.semanas || semanasAuditoriaAgenda_(hoy);
   const lunesPasado = _masDias_(sem[0].desde, -7);
   const C = {
     hoy: hoy, sem: sem, desdeMails: new Date(lunesPasado.getFullYear(), lunesPasado.getMonth(), lunesPasado.getDate(), 0, 0, 0),
@@ -65,7 +67,7 @@ function auditoriaAgenda(opciones) {
 
   // --- las lecturas (cada una aislada) ---
   _seccionAudAg_(C, 'lectura de la base', function () {
-    C.dest = leerDestino_();
+    C.dest = opciones.dest || leerDestino_();
     C.A = indicesAgenda_(C.dest.hdr);
     if (C.A.faltan.length) Logger.log('  AVISO: a la base le faltan columnas de la agenda: %s', C.A.faltan.join(', '));
     C.porFila = new Map();
@@ -153,6 +155,15 @@ function _s8SuspendidasConDatosAudAg_(C) {
 }
 
 /** La semana en curso y la siguiente, de lunes a domingo. */
+/** 19/10 (paso 66b): la auditoría de la semana PASADA y la en curso (p. ej. para ver la separación de Macri 15/10). Sólo lectura. */
+function auditoriaAgendaSemanaPasada(opciones) {
+  const hoy = (opciones && opciones.hoy) || hoyMediodia_();
+  const lunes = _lunesAgenda_(hoy);
+  return auditoriaAgenda(Object.assign({}, opciones || {}, {
+    semanas: [{ nombre: 'pasada', desde: _masDias_(lunes, -7), hasta: _masDias_(lunes, -1) }, { nombre: 'en curso', desde: lunes, hasta: _masDias_(lunes, 6) }]
+  }));
+}
+
 function semanasAuditoriaAgenda_(hoy) {
   const lunes = _lunesAgenda_(hoy);
   return [{ nombre: 'en curso', desde: lunes, hasta: _masDias_(lunes, 6) },
@@ -518,6 +529,8 @@ function _otrasFilasAudAg_(C, ev, f, asignadas) {
     if (g.fila === f.fila || asignadas.has(g.fila) || !g.fecha || ymd_(g.fecha) !== ymd_(ev.fecha)) return;
     const st = normStatus_(_valAudAg_(C, g, 'STATUS REUNIÓN'));
     if (st === 'suspendida' || st === 'reprogramada') return;
+    // 19/10 (punto 3 del prompt 08, caso Macri 15/10): la fila de la reunión está Suspendida y ésta es la que se hizo en su lugar
+    if (esSuspendidaYReemplazoAgenda_(f, g, C.A)) return;
     if (ev.figuraFila) {
       if (g.figura && figs.indexOf(normalizeText_(g.figura)) >= 0) out.push({ fila: g.fila, f: g, por: 'misma figura y fecha' });
       return;
@@ -555,6 +568,14 @@ function _s3FilasSinMailAudAg_(C) {
              dd.x.borrada ? ': la agenda la borraría' : st === 'suspendida' ? ': ya está Suspendida' : '');
     } else if (st === 'suspendida') que = 'SUSPENDIDA (¿cancelada?)';
     else if (st === 'reprogramada') que = 'REPROGRAMADA';
+    else if (!uid && normalizeText_(origen) === normalizeText_(ORIGEN_EQUIPO) && st === 'realizada') {
+      // 19/10 (punto 2 del prompt 08, caso 824 = Macri 15/10 en Villa Devoto): una fila que cargó el equipo, REALIZADA, y no es de
+      // ninguna reunión del mail (ni duplicada de una) es legítima —una reunión que se hizo sin estar en el mail—: OK, no se lista.
+      // Una del equipo "en agenda" fuera del mail sigue "a revisar" (puede ser una reunión del mail que no se vinculó)
+      Logger.log('  FILA DEL EQUIPO FUERA DEL MAIL: OK (sin agenda_uid; Origen fila: %s) | %s', origen, _filaTextoAudAg_(C, f));
+      C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] = (C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] || 0) + 1;
+      return;
+    }
     else if (!uid) que = 'CARGADA A MANO (sin agenda_uid; Origen fila: ' + (origen || 'vacío') + ')';
     else que = 'de la agenda (' + (/^c-/.test(uid) ? 'la creó' : 'la vinculó') + '), pero la reunión ya no está en el mail' +
                (C.plan.yaCargadas.some(function (y) { return y.f.fila === f.fila; }) ? ' (es "ya cargada" de otra fecha)' : '');
@@ -772,6 +793,8 @@ function _duplicadasDeFilaAudAg_(C, f) {
     if (g.fila === f.fila || !g.fecha || ymd_(g.fecha) !== ymd_(f.fecha)) return false;
     const st = normStatus_(_valAudAg_(C, g, 'STATUS REUNIÓN'));
     if (st === 'suspendida' || st === 'reprogramada') return false;
+    // 19/10 (punto 3 del prompt 08, caso Macri 15/10): la creada está Suspendida y ésta es la que se hizo en su lugar
+    if (esSuspendidaYReemplazoAgenda_(f, g, C.A)) return false;
     if (f.figura) return normalizeText_(g.figura) === normalizeText_(f.figura);
     if (dir && normalizeText_(_valAudAg_(C, g, 'Dirección')) === dir) return true;
     return seg && _esSeguridadAudAg_(C, g) && !g.figura &&
@@ -961,8 +984,9 @@ function _resumenAudAg_(C) {
   Logger.log('=== RESUMEN de la auditoría de la agenda ===');
   Logger.log('  reuniones del mail (dos semanas): OK %s | DISTINTO %s | FALTA EN LA BASE %s | DUPLICADA %s', C.cuentas.OK, C.cuentas.DISTINTO,
              C.cuentas['FALTA EN LA BASE'], C.cuentas.DUPLICADA);
-  Logger.log('  filas de la base sin reunión en el mail: %s | ambiguas: %s | creadas (14 días) con algo para revisar: %s | AGENDA_DUPLICADOS ' +
-             'pendientes: %s | Seguridad sin figura: %s', _cAudAg_(C, 'FILA SIN MAIL'), _cAudAg_(C, 'AMBIGUAS'), _cAudAg_(C, 'CREADAS CON PROBLEMAS'),
+  Logger.log('  filas de la base sin reunión en el mail: %s (y del equipo fuera del mail, OK: %s) | ambiguas: %s | creadas (14 días) con algo ' +
+             'para revisar: %s | AGENDA_DUPLICADOS pendientes: %s | Seguridad sin figura: %s', _cAudAg_(C, 'FILA SIN MAIL'),
+             C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] || 0, _cAudAg_(C, 'AMBIGUAS'), _cAudAg_(C, 'CREADAS CON PROBLEMAS'),
              _cAudAg_(C, 'DUPLICADOS PENDIENTES'), _cAudAg_(C, 'FIGURA A COMPLETAR'));
   Object.keys(C.extra.copias || {}).forEach(function (k) {
     const x = C.extra.copias[k];

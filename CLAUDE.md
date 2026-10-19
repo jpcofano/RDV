@@ -240,6 +240,22 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   - **H3, el invariante** (`AGENDA_INVARIANTE_UNA_FILA`): clave fecha + figura, o fecha + tipo + "Lugar (mail)" para una
     Seguridad sin figura. Si hay más filas que reuniones, esa semana no se crea nada más, se avisa y se lista. El paso 16
     lo cuenta siempre.
+  - **Una Suspendida y su reemplazo no son "una reunión en dos filas"** (19/10, prompt 08, punto 3; caso Macri 15/10): una
+    fila "Suspendida" y otra de la misma figura y la misma fecha que no está suspendida (`esSuspendidaYReemplazoAgenda_`) es
+    como el equipo carga una reunión cancelada y la que se hizo en su lugar: no frena la semana, no pide decisión, no va a
+    AGENDA_DUPLICADOS (ni el H3, que ya no contaba las Suspendidas, ni "después de crear", ni la auditoría del paso 66). Dos
+    filas no suspendidas de la misma reunión se siguen detectando como antes.
+  - **Separar "dos reuniones en una fila"** (19/10, prompt 08, punto 2; `56_SepararReunion.js`, pasos 101 / 102 / 103): la
+    824 (Macri 15/10) tenía la identidad del mail (Villa Santa Rita, suspendida en rojo) y los datos de la reunión que se hizo
+    (Villa Devoto, que nunca estuvo en el mail). La fila conserva todos sus datos y se le saca la identidad del mail (agenda_uid,
+    agenda_*, las columnas del mail; "Origen fila" = equipo); la reunión del mail pasa a una fila NUEVA AL FINAL (Suspendida,
+    por las transiciones de la agenda). Todo por esta excepción; el seco **simula la próxima corrida de la hora completa**
+    (`55_SimularCorrida.js`) sobre la base de hoy y la separada y frena si algo cambia fuera de las dos filas; el real exige su
+    huella; el deshacer encuentra las filas por su identidad. Es una corrida "SEPARAR" en REGISTRO_AGENDA: el paso 38 no la
+    deshace. La auditoría (paso 66) muestra una fila del equipo, Realizada y fuera del mail, como "fila del equipo fuera del
+    mail: OK".
+  - **AGENDA_PENDIENTES es para quien administra el sistema** (19/10, prompt 08, punto 1): sólo en la intermedia; le llega en
+    el mail diario (`agenda_info`) y en el resumen del lunes. La GUÍA y AGENDA_DUPLICADOS no mandan al equipo a buscarla.
   - **H4, mails raros** (`AGENDA_VALIDAR_MAILS`). La validación se calcula siempre, pero sólo descarta con el interruptor
     prendido. Un mail se descarta si tiene reuniones sin día o sin Hora/Lugar/tipo, líneas que el parser no entiende,
     mucho menos o mucho más que la versión anterior, o la misma reunión dos veces. Si **todos** los mails de una semana son
@@ -2965,6 +2981,11 @@ diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una de
                    (AGENDA_CANCELACION_CONJUNTO); medición: paso 95 (diagnostico/36)                               ← 16/10
 54_FusionAgenda.js  juntar "una reunión en dos filas" (832/838, 834/839): paso 96 en seco (guarda la huella), 97 real (la
                    exige; se queda la vieja, borra la nueva como "fusionada por el sistema"), 98 deshace por id     ← 16/10
+55_SimularCorrida.js  LA PRÓXIMA CORRIDA DE LA HORA, EN MEMORIA (prompt 08, regla 3; SÓLO LECTURA): agenda, cruce, asistentes,
+                   derivadas, IDs y Looker con las mismas funciones que la corrida, sobre una copia de la base; compara dos
+                   bases (la de hoy y "como quedaría") fila por fila por su identidad. La usan los pasos 101 y 107  ← 19/10
+56_SepararReunion.js  separar "dos reuniones en una fila" (Macri 15/10, la 824): paso 101 en seco (con la simulación; LISTO →
+                   huella), 102 real (la exige), 103 deshace por identidad                                       ← 19/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,
                    que escribe, ni el 80 / 82), cada uno aislado; el progreso en una propiedad: si no alcanza el tiempo
                    dice "FALTAN" y la siguiente sigue donde quedó; al final TERMINADO + resumen                    ← 16/10

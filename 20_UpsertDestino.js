@@ -4954,9 +4954,13 @@ function cruzarAsistentes_(dest, comunas, opciones) {
   // 07/10: con 2+ filas de la figura ese día, primero la DIRECCIÓN (CRUCE_CONJUNTO_POR_DIRECCION; la medición del
   // paso 45 lo fuerza con opciones.conDireccion para comparar).
   const usarDir = opciones && opciones.conDireccion !== undefined ? opciones.conDireccion : CRUCE_CONJUNTO_POR_DIRECCION;
-  const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
-  if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
-  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  // 19/10 (55_SimularCorrida.js): `opciones.valoresConjunto`, RDV CONJUNTO ya leído (la simulación lo cruza dos veces y lo lee una)
+  let vals = opciones && opciones.valoresConjunto ? opciones.valoresConjunto : null;
+  if (!vals) {
+    const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
+    if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
+    vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  }
   const hdr = vals[0];
   const iFig = findIdxOr_(hdr, ['figura', 'persona', 'nombre'], true);
   const iBar = findIdxOr_(hdr, ['barrion', 'barrio'], true);

@@ -17,6 +17,11 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 19/10 (prompt 08): separar Macri 15/10 (la 824) — docs/ESTADO.md, "19/10 — prompt 08".
+ *        paso101_separarMacri1510_enSeco()   SÓLO LECTURA (+ la huella): el plan y la próxima corrida SIMULADA. Tiene que dar LISTO.
+ *        paso102_separarMacri1510()          ESCRIBE (exige la huella del 101). Con la dirección: 101b → 102b.
+ *        paso103_deshacerSepararMacri1510()  deshace (el _enSeco dice qué haría). Después: paso66b_auditoriaSemanaPasada().
+ *
  *  >>> 15/10 (2): la auditoría del paso 66 → correcciones (todo lo que escribe, APAGADO) y una auditoría de cancelaciones.
  *        paso68_auditoriaCancelaciones()     SÓLO LECTURA: desde el 07/09, lo que desapareció del mail, lo marcado/tachado,
  *                                            RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", las vencidas; y el resumen.
@@ -1432,6 +1437,74 @@ function paso99_fusionAutomatica_enSeco() {
   _anunciar_('paso 99 — fusión automática de "una reunión en dos filas" (EN SECO)', 'fusionAutomaticaAgenda_enSeco()  [54_FusionAgenda.js]',
              'NO escribe nada', 'el log: cada par, si se juntaría solo o pediría decisión, y por qué');
   return fusionAutomaticaAgenda_enSeco();
+}
+
+/**
+ * PASOS 100 + 99 JUNTOS — SÓLO LECTURA (19/10; el usuario lo escribió en el editor como "Sin título.js" y se movió acá tal cual,
+ * para que el push no lo borre): el barrio de Bullrich 55 (100) y la fusión automática EN SECO (99).
+ */
+function pasos100y99_soloLectura() {
+  Logger.log('########## paso 100 — barrio de Av. Int. Bullrich 55 (sólo lectura) ##########');
+  try { paso100_explicarBarrioBullrich(); }
+  catch (e) { Logger.log('*** el paso 100 falló: ' + (e && e.stack ? e.stack : e)); }
+  Logger.log('########## paso 99 — fusión automática, EN SECO (sólo lectura) ##########');
+  try { paso99_fusionAutomatica_enSeco(); }
+  catch (e) { Logger.log('*** el paso 99 falló: ' + (e && e.stack ? e.stack : e)); }
+  Logger.log('########## TERMINADO: pasos 100 y 99 (sólo lectura) ##########');
+}
+
+/**
+ * PASO 101 — EN SECO (19/10, prompt 08, punto 2): separar Macri 15/10. La 824 (Villa Devoto, Realizada) conserva TODOS sus datos y
+ * pierde la identidad del mail; la reunión del mail (Villa Santa Rita, Suspendida) pasa a una fila NUEVA, AL FINAL. Muestra el plan,
+ * de qué reunión son el formulario / los inscriptos / el ID / los asistentes de la 824, y SIMULA la próxima corrida de la hora
+ * completa (agenda, cruce, asistentes, derivadas, IDs, Looker) sobre la base de hoy y sobre la separada, con todas las celdas que
+ * cambiarían. Si todo da, LISTO y guarda la huella (el 102 la exige). Tarda: lee Gmail, B, RDV CONJUNTO y la lista de IDs.
+ * El 101b es lo mismo, pero además con la Dirección "Bahía Blanca 4025" en la 824 (sólo si el usuario lo aprueba).
+ */
+function paso101_separarMacri1510_enSeco() {
+  _anunciar_('paso 101 — separar Macri 15/10 (EN SECO)', 'separarReunionAgenda_enSeco()  [56_SepararReunion.js]',
+             'NO escribe la base (sólo guarda la huella del plan, si está LISTO)', 'el log: el plan, (e), la simulación, FUERA DE LO ESPERADO, LISTO / NO LISTO');
+  return separarReunionAgenda_enSeco();
+}
+function paso101b_separarMacri1510ConDireccion_enSeco() {
+  _anunciar_('paso 101b — separar Macri 15/10, CON la dirección Bahía Blanca 4025 en la 824 (EN SECO)', 'separarReunionAgenda_enSeco({ conDireccion: true })  [56_SepararReunion.js]',
+             'NO escribe la base (sólo guarda la huella, si está LISTO)', 'el log: como el 101');
+  return separarReunionAgenda_enSeco({ conDireccion: true });
+}
+
+/** PASO 102 — ESCRIBE (19/10): la separación del paso 101 (exige su huella: si algo cambió, no escribe). El 102b, la del 101b. */
+function paso102_separarMacri1510() {
+  _anunciar_('paso 102 — separar Macri 15/10 (ESCRIBE)', 'separarReunionAgenda()  [56_SepararReunion.js]',
+             'SÍ: la 824 (columnas de la agenda) y una fila nueva al final; REGISTRO_AGENDA (SEPARAR) y REGISTRO_AGENDA_CAMBIOS',
+             'el log; deshacer: paso103_deshacerSepararMacri1510()');
+  return separarReunionAgenda();
+}
+function paso102b_separarMacri1510ConDireccion() {
+  _anunciar_('paso 102b — separar Macri 15/10, CON la dirección (ESCRIBE)', 'separarReunionAgenda({ conDireccion: true })  [56_SepararReunion.js]',
+             'SÍ: como el 102, y la Dirección de la 824', 'el log; deshacer: paso 103');
+  return separarReunionAgenda({ conDireccion: true });
+}
+
+/** PASO 103 — deshacer la separación (la 824 vuelve a como estaba; la fila nueva sale). El "_enSeco" sólo dice qué haría. */
+function paso103_deshacerSepararMacri1510_enSeco() {
+  _anunciar_('paso 103 — deshacer la separación (EN SECO)', 'deshacerSepararReunionAgenda(true)  [56_SepararReunion.js]', 'NO escribe nada', 'el log');
+  return deshacerSepararReunionAgenda(true);
+}
+function paso103_deshacerSepararMacri1510() {
+  _anunciar_('paso 103 — deshacer la separación (ESCRIBE)', 'deshacerSepararReunionAgenda(false)  [56_SepararReunion.js]',
+             'SÍ: vuelve la 824 y saca la fila nueva (la borra si es la última; si no, la vacía)', 'el log');
+  return deshacerSepararReunionAgenda(false);
+}
+
+/**
+ * PASO 66b — SÓLO LECTURA (19/10): la auditoría de la agenda (paso 66) de la semana PASADA y la en curso, en vez de la en curso y
+ * la siguiente. Para ver, después del paso 102, la reunión de Macri del 15/10 → la fila nueva (Suspendida, OK) y la 824 como "fila
+ * del equipo fuera del mail: OK". (Las copias del archivo "Agenda" muestran la semana en curso: la pasada puede salir como "falta".)
+ */
+function paso66b_auditoriaSemanaPasada() {
+  _anunciar_('paso 66b — auditoría de la agenda, semana pasada y en curso (SÓLO LECTURA)', 'auditoriaAgendaSemanaPasada()  [diagnostico/29_auditoria_agenda.js]',
+             'NO escribe nada', 'el log, como el paso 66');
+  return auditoriaAgendaSemanaPasada();
 }
 
 /**

@@ -244,27 +244,14 @@ function recalcDerivadas_(solapa, escribe) {
   }
   // `conId`: con el tablero de Looker, si la base tiene la columna ID (sin ella, el tablero no se escribe).
   const out = { total: 0, porCol: {}, conFormula: [], conId: kId != null };
-  const calc = [];
-  for (let i = 1; i < ctx.vals.length; i++) calc.push(i < ctx.ultima ? calcularDerivadasFila_(ctx.vals[i], ctx) : null);
-  if (kId != null) {
-    const ids = idsDerivados_(ctx.vals);
-    for (let i = 1; i < ctx.vals.length; i++) if (calc[i - 1]) calc[i - 1][COLUMNA_ID] = ids[i];
-  }
-  Object.keys(ctx.cols).forEach(function (n) {
-    if (fx[n].tipo) { out.conFormula.push(n); return; }
-    const k = ctx.cols[n], tramos = [];
-    for (let i = 1; i < ctx.vals.length; i++) {
-      const nuevo = calc[i - 1] ? calc[i - 1][n] : '';          // debajo de la última fila con datos: vacío
-      if (_igualDerivada_(nuevo, ctx.vals[i][k])) continue;
-      const t = tramos[tramos.length - 1];
-      if (t && t.desde + t.valores.length === i + 1) t.valores.push(nuevo);
-      else tramos.push({ desde: i + 1, valores: [nuevo] });
-    }
+  const cambios = derivadasQueCambian_(ctx, fx, kId);
+  out.conFormula = cambios.conFormula;
+  Object.keys(cambios.tramos).forEach(function (n) {
+    const tramos = cambios.tramos[n];
     const n2 = tramos.reduce(function (s, t) { return s + t.valores.length; }, 0);
-    if (!n2) return;
     out.porCol[n] = n2;
     out.total += n2;
-    if (escribe) escribirDerivadas_(ctx.sh, ctx.hdr, k + 1, tramos);
+    if (escribe) escribirDerivadas_(ctx.sh, ctx.hdr, ctx.cols[n] + 1, tramos);
   });
   if (escribe && out.total) SpreadsheetApp.flush();
   Logger.log('--- derivadas por script en "%s" (%s), todas las filas ---', solapa, escribe ? 'ESCRIBE' : 'sólo cuenta');
@@ -278,6 +265,55 @@ function recalcDerivadas_(solapa, escribe) {
     Logger.log('  >>> la columna %s todavía tiene fórmula: no se escribe. Correr paso26_quitarFormulasDerivadas.', n);
   });
   return out;
+}
+
+/**
+ * **Qué derivadas cambiarían** (19/10: separado de `recalcDerivadas_`, que es quien escribe, para que la simulación de la corrida
+ * de la hora —55_SimularCorrida.js— use exactamente el mismo cálculo sobre una base en memoria). `ctx`: el de `_ctxDerivadas_` (o uno
+ * armado igual sobre un bloque: vals, hdr, cols, fuente, tabla, ultima); `fx`: `_formulasDerivadas_` (una columna con fórmula no
+ * se escribe); `kId`: la columna de la ID (derivada 12) o null. Devuelve `{ tramos: { nombre: [{ desde (fila 1-based), valores }] },
+ * conFormula: [nombres] }`, sólo con las columnas que cambian. No lee ni escribe Sheets.
+ */
+function derivadasQueCambian_(ctx, fx, kId) {
+  const out = { tramos: {}, conFormula: [] };
+  const calc = [];
+  for (let i = 1; i < ctx.vals.length; i++) calc.push(i < ctx.ultima ? calcularDerivadasFila_(ctx.vals[i], ctx) : null);
+  if (kId != null) {
+    const ids = idsDerivados_(ctx.vals);
+    for (let i = 1; i < ctx.vals.length; i++) if (calc[i - 1]) calc[i - 1][COLUMNA_ID] = ids[i];
+  }
+  Object.keys(ctx.cols).forEach(function (n) {
+    if (fx[n] && fx[n].tipo) { out.conFormula.push(n); return; }
+    const k = ctx.cols[n], tramos = [];
+    for (let i = 1; i < ctx.vals.length; i++) {
+      const nuevo = calc[i - 1] ? calc[i - 1][n] : '';          // debajo de la última fila con datos: vacío
+      if (_igualDerivada_(nuevo, ctx.vals[i][k])) continue;
+      const t = tramos[tramos.length - 1];
+      if (t && t.desde + t.valores.length === i + 1) t.valores.push(nuevo);
+      else tramos.push({ desde: i + 1, valores: [nuevo] });
+    }
+    if (tramos.length) out.tramos[n] = tramos;
+  });
+  return out;
+}
+
+/**
+ * El contexto de las derivadas sobre un BLOQUE en memoria (19/10, 55_SimularCorrida.js): lo mismo que `_ctxDerivadas_` (las
+ * columnas, las fuentes, la última fila con datos), sin leer la hoja. `tabla`: la de Comunas (`_tablaComunasDerivadas_`).
+ */
+function ctxDerivadasDeBloque_(vals, tabla) {
+  const hdr = vals[0];
+  const ix = function (nombre) { return findIdxOr_(hdr, aliasColumna_(nombre), true); };
+  const cols = {};
+  COLUMNAS_DERIVADAS.forEach(function (n) { const k = findIdxOr_(hdr, [n], true); if (k != null) cols[n] = k; });
+  const fuente = { fecha: ix('FECHA'), ins: ix('Inscriptos'), asis: ix('Asistentes'), dir: ix('Dirección'),
+                   barrio: ix('Barrio'), figura: ix('Figura') };
+  let ultima = 1;
+  for (let i = vals.length - 1; i >= 1; i--) {
+    const r = vals[i];
+    if ((fuente.figura != null && r[fuente.figura] !== '') || (fuente.fecha != null && r[fuente.fecha] !== '')) { ultima = i + 1; break; }
+  }
+  return { vals: vals, hdr: hdr, cols: cols, fuente: fuente, tabla: tabla, ultima: ultima };
 }
 
 /** El paso 26b: recalcular a mano sobre una solapa (la copia, para probar sin el upsert). Respeta DRY_RUN. */
