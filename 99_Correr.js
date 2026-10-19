@@ -17,6 +17,8 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 19/10: paso104_hechasSinFila()  SÓLO LECTURA: reuniones de RDV CONJUNTO "Realizada" (o con asistentes) que no están en la
+ *      base desde el 15/07 (caso Macri 15/10). El aviso (AGENDA_AVISO_HECHAS_SIN_FILA), APAGADO; nunca crea la fila.
  *  >>> 15/10 (2): la auditoría del paso 66 → correcciones (todo lo que escribe, APAGADO) y una auditoría de cancelaciones.
  *        paso68_auditoriaCancelaciones()     SÓLO LECTURA: desde el 07/09, lo que desapareció del mail, lo marcado/tachado,
  *                                            RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", las vencidas; y el resumen.
@@ -1783,4 +1785,16 @@ function limpiar24() {
   }
   Logger.log('');
   Logger.log('########## limpiar24 — fin');
+}
+
+/**
+ * PASO 104 — SÓLO LECTURA (19/10, PROMPT-08 punto 4): "una reunión que se hizo y no está en la base", medida desde el 15/07: cada
+ * fila de RDV CONJUNTO "Realizada" o con asistentes cuya figura no tiene fila en la base ese día, o sólo una Suspendida en otro
+ * lugar (caso Macri 15/10), con fecha, figura, barrio, dirección, asistentes, motivo y filas candidatas. No escribe nada (ni RDV
+ * CONJUNTO, que nunca se escribe). El aviso está APAGADO (AGENDA_AVISO_HECHAS_SIN_FILA) y nunca crea la fila.
+ */
+function paso104_hechasSinFila() {
+  _anunciar_('paso 104 — reuniones hechas sin fila en la base, desde el 15/07 (SÓLO LECTURA)', 'medirHechasSinFila(\'2026-07-15\')  [diagnostico/37_hechas_sin_fila.js]',
+             'NO escribe nada', 'el log: una por línea (fecha, figura, barrio, dirección, asistentes, motivo, filas candidatas) y el resumen');
+  return medirHechasSinFila('2026-07-15');
 }

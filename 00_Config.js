@@ -1892,6 +1892,21 @@ const CONJUNTO_ESTADOS_CONOCIDOS = ['Realizada', 'Cancelado', 'Programado'];
 const AGENDA_PROP_CONJUNTO_AVISADAS = 'AGENDA_AVISADAS_CONJUNTO_CANCELADO';
 /** La propiedad del script con las filas suspendidas por el sistema que ya avisaron que recibieron asistentes o inscriptos. */
 const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
+// ---------- 19/10: "una reunión que se hizo y no está en la base" (53_HechasSinFila.js; SÓLO AVISO; APAGADO hasta ver el paso 104) ----------
+/**
+ * **Una reunión que se hizo y no está en la base** (PROMPT-08 punto 4, decisión del usuario del 19/10). El caso: Macri 15/10/2026.
+ * El 1 a 1 de Villa Santa Rita se suspendió y se hizo otro en Villa Devoto, que nunca estuvo en el mail. RDV CONJUNTO tiene las
+ * dos: 843, Villa Santa Rita, "Cancelado"; 849, Villa Devoto, "Realizada", 31 asistentes. Si la base tuviera sólo la fila de Villa
+ * Santa Rita (Suspendida), la de Villa Devoto sería una reunión hecha sin fila: nadie la ve y sus asistentes no van a ningún lado.
+ * Con `true`, en la corrida de la agenda (`planAgenda_`): cada fila de RDV CONJUNTO "Realizada" o con asistentes (no "Cancelado",
+ * no "No aplica"), de una fecha del alcance de la agenda (desde hoy − DIAS_ACTIVOS) que YA PASÓ, cuya figura no tiene ninguna fila
+ * en la base ese día, o cuyas filas de ese día están todas "Suspendida" y en OTRA ubicación, va a AGENDA_PENDIENTES (intermedia)
+ * como "se hizo y no está en la base" y al aviso diario 'agenda_info', UNA vez, con todos los datos para cargarla. El cruce es el
+ * de los Asistentes (`cruzarAsistentes_`); RDV CONJUNTO se lee una vez más por corrida (sólo prendido).
+ * **NUNCA crea la fila ni escribe la base**: la carga el equipo. Con `false`, la corrida es la de siempre (ni siquiera lee RDV
+ * CONJUNTO para esto). En seco: `medirHechasSinFila('2026-07-15')` (diagnostico/37_hechas_sin_fila.js, paso 104).
+ */
+const AGENDA_AVISO_HECHAS_SIN_FILA = false;
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';
