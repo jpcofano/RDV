@@ -1980,6 +1980,9 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
     // 16/10 (revisor): una acción posterior de la misma fila (sin escribir el uid) no pisa con '' el que le estampa otra
     if (nuevo || !uidDe[fila]) uidDe[fila] = nuevo;
   });
+  // 19/10 (prompt 08, 7f): una fila SIN agenda_uid (una del equipo: "Origen fila") se anota con su identidad ("id:" figura|fecha|
+  // barrio), para que deshacer la encuentre aunque la base se haya ordenado (antes, por el número de fila)
+  plan.acciones.forEach(function (a) { if (a.f && !uidDe[a.f.fila]) uidDe[a.f.fila] = 'id:' + idFilaAgenda_(a.f); });
   // 1a. los fondos de lo que se va a pisar (una lectura)
   const ultima = sh.getLastRow();
   const existentes = todas.filter(function (e) { return e.fila <= ultima; });
@@ -2329,7 +2332,27 @@ function _deshacerAgenda_(enSeco, corrida) {
   const uids = A.agenda_uid != null && ultimaHoja > 1 ? sh.getRange(2, A.agenda_uid + 1, ultimaHoja - 1, 1).getValues() : [];
   const filaDeUid = {};
   uids.forEach(function (r, i) { if (str(r[0])) filaDeUid[str(r[0])] = i + 2; });
-  const filaActual = function (c) { return c.uid ? (filaDeUid[c.uid] || null) : c.fila; };
+  // 19/10 (prompt 08, 7f): una fila sin agenda_uid, por su identidad ("id:" figura|fecha|barrio: la única fila SIN agenda_uid con
+  // ésa); si no hay una sola (cambió, o hay dos iguales), no se toca. Las líneas viejas (sin nada), por el número, como antes.
+  const iFigD = findIdxOr_(hdr, aliasColumna_('Figura'), true), iFecD = findIdxOr_(hdr, aliasColumna_('FECHA'), true), iBarD = findIdxOr_(hdr, aliasColumna_('Barrio'), true);
+  let filaDeIdent = null;
+  const porIdentidad = function (ident) {
+    if (!filaDeIdent) {
+      filaDeIdent = {};
+      const v = ultimaHoja > 1 ? sh.getRange(2, 1, ultimaHoja - 1, nCols).getValues() : [];
+      v.forEach(function (r, i) {
+        if (A.agenda_uid != null && !esVacio_(r[A.agenda_uid])) return;
+        const k = 'id:' + idFilaAgenda_({ figura: str(r[iFigD]), fecha: toDate_(r[iFecD]), barrio: str(r[iBarD]) });
+        filaDeIdent[k] = filaDeIdent[k] ? -1 : i + 2;
+      });
+    }
+    const f = filaDeIdent[ident];
+    return f > 0 ? f : null;
+  };
+  const filaActual = function (c) {
+    if (/^id:/.test(c.uid)) return porIdentidad(c.uid);
+    return c.uid ? (filaDeUid[c.uid] || null) : c.fila;
+  };
   const cambios = camV.map(function (r) {
     const col = num(r[3]);
     return { tipo: str(r[1]), fila: num(r[2]), col: col, antes: col ? valor(r[5], hdr[col - 1]) : r[5],

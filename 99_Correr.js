@@ -21,6 +21,10 @@
  *        paso101_separarMacri1510_enSeco()   SÓLO LECTURA (+ la huella): el plan y la próxima corrida SIMULADA. Tiene que dar LISTO.
  *        paso102_separarMacri1510()          ESCRIBE (exige la huella del 101). Con la dirección: 101b → 102b.
  *        paso103_deshacerSepararMacri1510()  deshace (el _enSeco dice qué haría). Después: paso66b_auditoriaSemanaPasada().
+ *      Ordenar la base por FECHA (BASE_ORDEN_POR_FECHA, APAGADO), DESPUÉS del 102:
+ *        paso107_ordenBase_enSeco()          SÓLO LECTURA: qué se movería y la próxima corrida simulada con la base ordenada.
+ *        paso108_ordenarBaseAhora()          ESCRIBE (una vez, a mano). Después: BASE_ORDEN_POR_FECHA = true + clasp push.
+ *        paso109_deshacerOrdenBase()         vuelve al orden de antes del último orden.
  *
  *  >>> 19/10: paso104_hechasSinFila()  SÓLO LECTURA: reuniones de RDV CONJUNTO "Realizada" (o con asistentes) que no están en la
  *      base desde el 15/07 (caso Macri 15/10). El aviso (AGENDA_AVISO_HECHAS_SIN_FILA), APAGADO; nunca crea la fila.
@@ -1496,6 +1500,36 @@ function paso103_deshacerSepararMacri1510() {
   _anunciar_('paso 103 — deshacer la separación (ESCRIBE)', 'deshacerSepararReunionAgenda(false)  [56_SepararReunion.js]',
              'SÍ: vuelve la 824 y saca la fila nueva (la borra si es la última; si no, la vacía)', 'el log');
   return deshacerSepararReunionAgenda(false);
+}
+
+/**
+ * PASO 107 — SÓLO LECTURA (19/10, prompt 08, punto 7): la base ordenada por FECHA, HORA y Figura (las más nuevas al final; las sin
+ * FECHA al final de todo). Cuántas filas se moverían, las primeras 20, las sin FECHA, que cada agenda_uid y RDV_UID sigue con sus
+ * datos, y la próxima corrida de la hora SIMULADA sobre la base de hoy y sobre la ordenada (tiene que hacer lo mismo). LISTO / NO
+ * LISTO para prender BASE_ORDEN_POR_FECHA. No escribe nada.
+ */
+function paso107_ordenBase_enSeco() {
+  _anunciar_('paso 107 — ordenar la base por FECHA (EN SECO)', 'ordenBase_enSeco()  [57_OrdenBase.js]', 'NO escribe nada',
+             'el log: el plan, las sin FECHA, las identidades, la simulación; LISTO / NO LISTO');
+  return ordenBase_enSeco();
+}
+
+/** PASO 108 — ESCRIBE (19/10): ordena la base ahora (con el bloqueo; no depende de BASE_ORDEN_POR_FECHA). Deshacer: paso 109. */
+function paso108_ordenarBaseAhora() {
+  _anunciar_('paso 108 — ordenar la base por FECHA (ESCRIBE)', 'ordenarBaseAhora()  [57_OrdenBase.js]',
+             'SÍ: mueve filas enteras (el ordenamiento de la hoja); guarda el orden de antes en ORDEN_BASE_PREVIO (intermedia)', 'el log');
+  return ordenarBaseAhora();
+}
+
+/** PASO 109 — deshacer el último orden (vuelve cada fila a su lugar de antes). El "_enSeco" sólo dice cuántas se moverían. */
+function paso109_deshacerOrdenBase_enSeco() {
+  _anunciar_('paso 109 — deshacer el orden (EN SECO)', 'deshacerOrdenBase(true)  [57_OrdenBase.js]', 'NO escribe nada', 'el log');
+  return deshacerOrdenBase(true);
+}
+function paso109_deshacerOrdenBase() {
+  _anunciar_('paso 109 — deshacer el orden (ESCRIBE)', 'deshacerOrdenBase(false)  [57_OrdenBase.js]',
+             'SÍ: vuelve las filas al orden de antes (con una columna auxiliar al final que se borra al terminar)', 'el log');
+  return deshacerOrdenBase(false);
 }
 
 /**

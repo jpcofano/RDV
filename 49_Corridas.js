@@ -241,7 +241,7 @@ function _guardarCorridaEnCurso_() {
       errores: _corrida_.errores.map(function (e) { return e.slice(0, 600); }), actual: _corrida_.actual,
       agenda: _corrida_.agenda, sinCambios: _corrida_.sinCambios, noTocaba: _corrida_.noTocaba,
       agendaGeo: _corrida_.agendaGeo || null, agendaMails: _corrida_.agendaMails || null, base: _corrida_.base || null,
-      orden: _corrida_.orden || '' }));
+      orden: _corrida_.orden || '', baseOrdenada: _corrida_.baseOrdenada || '' }));
   } catch (e) { /* el registro nunca corta la corrida */ }
 }
 
@@ -255,11 +255,20 @@ function encabezadoCorridas_() {
     .concat(SUBTIEMPOS_AGENDA_.map(function (k) { return 'agenda_' + k + '_s'; }))
     .concat(['agenda_geo_n', 'sin_cambios', 'no_tocaba'])
     // 16/10 (tarde, punto 5b): también AL FINAL (las filas de antes no las tienen)
-    .concat(COLUMNAS_CORRIDA_5B_);
+    .concat(COLUMNAS_CORRIDA_5B_)
+    // 19/10 (prompt 08, punto 7): también AL FINAL
+    .concat(['base_ordenada']);
 }
 /** 16/10 (tarde): la escritura de la cache de los mails, la geocodificación y los mails por dentro, y las lecturas de la base. */
 const COLUMNAS_CORRIDA_5B_ = ['agenda_cache_s', 'agenda_geo_detalle', 'agenda_mails_cache', 'base_lecturas', 'base_reusos', 'base_lecturas_s', 'base_detalle',
   'orden'];
+
+/** 19/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js): qué hizo el orden de la base en esta corrida ("ordenada: N filas movidas"…). */
+function corridaBaseOrdenada_(texto) {
+  if (!_corrida_) return;
+  _corrida_.baseOrdenada = String(texto || '');
+  _guardarCorridaEnCurso_();
+}
 
 /** 16/10 (noche): el orden de las partes de esta corrida (CRUCE_PRIMERO_TRAS_SALTEOS): "agenda, cruce" o "cruce antes de la agenda (…)". */
 function corridaOrden_(texto) {
@@ -299,7 +308,8 @@ function _escribirFilaCorrida_(c, estado, totalMs) {
       .concat([c.agenda && c.agenda.ms && 'cache' in c.agenda.ms ? Math.round(c.agenda.ms.cache / 100) / 10 : '',
                _textoGeoCorrida_(c.agendaGeo), _textoMailsCorrida_(c.agendaMails),
                c.base ? c.base.lecturas : '', c.base ? c.base.reusos : '', c.base ? Math.round(c.base.ms / 100) / 10 : '',
-               c.base ? c.base.detalle.join(' · ') : '', c.orden || '']);
+               c.base ? c.base.detalle.join(' · ') : '', c.orden || ''])
+      .concat([c.baseOrdenada || '']);
     sh.appendRow(fila);
     SpreadsheetApp.flush();
   } catch (err) { Logger.log('>>> REGISTRO_CORRIDAS: no se pudo escribir la línea de la corrida: %s', err); }

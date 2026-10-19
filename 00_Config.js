@@ -95,7 +95,8 @@ const GUARDA_INICIO_MAX_MS = {
   reportes: 270 * 1000,       // las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH: se rehacen en la próxima
   ids: 180 * 1000,            // leer la lista externa tardó hasta 120 s (15/10, 9:28)
   looker: 240 * 1000,         // (LOOKER_TIEMPO_MAX_MS)
-  vistas_agenda: 240 * 1000   // AgendaCall, Agenda (mail) y la "Agenda" del archivo RDV
+  vistas_agenda: 240 * 1000,  // AgendaCall, Agenda (mail) y la "Agenda" del archivo RDV
+  orden: 300 * 1000           // 19/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js): ordenar la base, al final; si no alcanza, la próxima
 };
 /** Una línea por corrida (intermedia): inicio, duración total y de cada parte, lo que se salteó por tiempo, el error completo. */
 const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
@@ -1907,6 +1908,19 @@ const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
  * CONJUNTO para esto). En seco: `medirHechasSinFila('2026-07-15')` (diagnostico/37_hechas_sin_fila.js, paso 104).
  */
 const AGENDA_AVISO_HECHAS_SIN_FILA = false;
+/**
+ * **La base ordenada por FECHA** (19/10, prompt 08, punto 7; 57_OrdenBase.js). Al final de cada corrida de la hora —dentro del
+ * bloqueo, sólo si queda tiempo (GUARDA_INICIO_MAX_MS.orden) y nunca a la mitad de una escritura—, la base queda ordenada por FECHA
+ * ascendente (las más nuevas al final), dentro del mismo día por HORA y después por Figura; las filas sin FECHA, al final de todo.
+ * Sólo si hace falta (ya en orden: no toca nada); con el ordenamiento nativo de la hoja sobre TODAS las columnas (cada fila entera,
+ * con formatos, notas y colores), sólo las filas con datos; antes guarda el orden anterior (ORDEN_SOLAPA_PREVIO, intermedia) para
+ * deshacerlo (paso 109) y después verifica que cada fila siguió con lo suyo. **APAGADO** hasta ver el seco: paso 107.
+ */
+const BASE_ORDEN_POR_FECHA = false;
+/** El orden anterior a cada orden del sistema (intermedia): corrida | hora | posición | clave del contenido | identidad. */
+const ORDEN_SOLAPA_PREVIO = 'ORDEN_BASE_PREVIO';
+/** El encabezado de la columna AUXILIAR que usa el deshacer del orden (al final; se borra al terminar). */
+const ORDEN_COLUMNA_AUX = '__orden_deshacer';
 /** Dos direcciones con la misma calle y números a esta distancia o menos son "parecidas". */
 const DIRECCION_NUMERO_TOLERANCIA = 100;
 const DESC_PROTECCION_DUPLICADOS = 'RDV: la escribe la agenda — sólo se escribe en ELEGIR y COMENTARIO';

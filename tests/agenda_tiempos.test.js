@@ -556,7 +556,7 @@ console.log('[4] la guarda de tiempo DENTRO de la agenda: con más de 90 s al te
   E.run('corridaCerrar_(null)');
   const reg = E.ssI.hojas['REGISTRO_CORRIDAS'];
   const enc = reg.v[0], ult = reg.v[reg.v.length - 1];
-  ok(enc.slice(-8).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' &&
+  ok(enc.slice(-9, -1).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' && enc[enc.length - 1] === 'base_ordenada' &&
      /GUARDA DE TIEMPO/.test(ult[enc.indexOf('agenda_geo_detalle')]) && ult[enc.indexOf('agenda_geo_n')] === 2,
      'REGISTRO_CORRIDAS: las columnas del punto 5b al final (con "orden"), y la línea con la geocodificación (2 llamadas, la guarda)');
   const t = E.run('tiemposDeCorridas(10)');

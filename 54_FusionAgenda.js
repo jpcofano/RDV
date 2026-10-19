@@ -180,7 +180,8 @@ function _aplicarFusionesAgenda_(sh, hdr, A, aplicar, opc) {
   const corrida = _idCorridaAgenda_();
   const cambios = [];
   aplicar.forEach(function (p) {
-    const uidV = p.uidVieja, uidN = p.uidNueva;
+    // 19/10 (prompt 08, 7f): la vieja sin agenda_uid (una fila del equipo), por su identidad: deshacer la encuentra aunque la base se ordene
+    const uidV = p.uidVieja || 'id:' + idFilaAgenda_(p.vieja), uidN = p.uidNueva;
     p.copiar.forEach(function (c) {
       cambios.push([corrida, c.via === 'agenda' ? 'fusionar' : 'fusionar_general', p.vieja.fila, c.col, hdr[c.col - 1], _celdaRegistro_(c.esperado),
                     _celdaRegistro_(c.valor), fresca[p.vieja.fila].bg[c.col - 1] || '', uidV]);
@@ -190,7 +191,7 @@ function _aplicarFusionesAgenda_(sh, hdr, A, aplicar, opc) {
     cambios.push([corrida, p.porEquipo ? 'fusionada_equipo' : 'fusionada_sistema', p.nueva.fila, '', 'fila ' + p.vieja.fila,
                   (p.porEquipo ? 'juntada por decisión del equipo (AGENDA_DUPLICADOS: "' + ((p.eleccion && p.eleccion.texto) || 'Quedarse con la fila ' + p.vieja.fila) +
                                  '") con la fila ' : (p.automatica ? 'fusionada por el sistema (automática, AGENDA_FUSION_AUTOMATICA) con la fila ' : 'fusionada por el sistema con la fila ')) +
-                  p.vieja.fila + ' (agenda_uid ' + (uidV || '—, fila del equipo') + ')', p.idReunionNueva || p.clave || '', '', uidN]);
+                  p.vieja.fila + ' (agenda_uid ' + (p.uidVieja || '—, fila del equipo') + ')', p.idReunionNueva || p.clave || '', '', uidN]);
   });
   const nCeldas = aplicar.reduce(function (a, p) { return a + p.copiar.length; }, 0);
   const Pf = { resumen: {} };

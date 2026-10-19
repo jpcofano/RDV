@@ -1980,6 +1980,42 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
 - **Punto 1:** AGENDA_PENDIENTES queda sólo en la intermedia (ya era así): la GUÍA y AGENDA_DUPLICADOS ya no mandan al equipo a
   buscarla (le llega a quien administra, en el mail diario y el resumen del lunes). Sale con el próximo `paso48_ayuda()`.
 - **Punto 6:** `Sin título.js` del editor (`pasos100y99_soloLectura`) pasó a 99_Correr.js; el push lo saca del remoto.
+- **Punto 4 (escrito, APAGADO: `AGENDA_AVISO_HECHAS_SIN_FILA`):** una fila de RDV CONJUNTO "Realizada" o con asistentes sin fila
+  en la base (o cuya única candidata está Suspendida en otro barrio) → SÓLO un aviso (AGENDA_PENDIENTES + mail diario), nunca crea
+  la fila (`53_HechasSinFila.js`). Medición desde el 15/07: **`paso104_hechasSinFila()`** (sólo lectura). Macri 15/10 hoy NO
+  tiene que salir (la 824 ya es Villa Devoto / Realizada).
+- **Punto 7 (escrito, APAGADO: `BASE_ORDEN_POR_FECHA`):** `57_OrdenBase.js`. Al final de la corrida de la hora (dentro del bloqueo,
+  si queda tiempo: `GUARDA_INICIO_MAX_MS.orden`), la base por FECHA, HORA y Figura (las sin FECHA al final), sólo si hace falta, con
+  el ordenamiento de la hoja sobre filas enteras; antes guarda el orden (ORDEN_BASE_PREVIO, intermedia) y después verifica cada fila
+  (valores, fondos, notas, formatos; si la hoja no moviera un fondo, lo repone). REGISTRO_CORRIDAS: columna "base_ordenada".
+  Pasos: **`paso107_ordenBase_enSeco()`** (sólo lectura: cuántas se moverían, las primeras 20, las sin FECHA, cada agenda_uid y
+  RDV_UID con sus datos, y la próxima corrida SIMULADA sobre la base ordenada: tiene que hacer exactamente lo mismo, por identidad)
+  → **`paso108_ordenarBaseAhora()`** (el primer orden, a mano) → `BASE_ORDEN_POR_FECHA = true` + clasp push.
+  **`paso109_deshacerOrdenBase()`** vuelve al orden de antes. Va DESPUÉS del punto 2 (la fila nueva queda al lado de la 824).
+  **Predicción del 107**: se mueven pocas filas (las cargadas a mano fuera de orden y las de la agenda creadas antes que otras de fechas
+  anteriores); las sin FECHA, las filas "a medias" del equipo; identidades OK; la simulación, "lo mismo".
+- **La verificación 7f — qué depende del número de fila entre corridas** (leído en el código; nada más que esto):
+  - **arreglado:** el **paso 38** (y el 98) deshacía por NÚMERO de fila las celdas de filas SIN agenda_uid ("Origen fila" = equipo
+    en las filas del equipo; la fila del equipo que se queda en una fusión). Con la base ordenada (o si el equipo ordena) podía
+    vaciar el "Origen fila" de OTRA fila. Ahora esas líneas de REGISTRO_AGENDA_CAMBIOS llevan la identidad ("id:" figura | fecha |
+    barrio) y deshacer busca la fila por ella; si no hay una sola, no toca nada (test `orden_base` [7]). Las líneas viejas (sin
+    identidad) siguen por el número, como antes;
+  - **por clave, ya estaba bien:** AGENDA_DUPLICADOS (identidad de cada fila y el mapa "X=identidad" en la misma línea),
+    REVISAR_MATCH / fichas y EMPAREJAR_MANUAL (figura + fecha + barrio, form_clave), ELECCIONES_MATCH / ELECCIONES_AGENDA,
+    AGENDA_EQUIPO (agenda_uid), SISTEMA_COPIA del guardián (agenda_uid / RDV_UID + huella), el paso 103 (identidad), la escritura del
+    cruce (`_mismaFilaFresca_`), la lectura única de la base (se invalida al ordenar);
+  - **se niegan solos si la base se ordenó en el medio (correcto):** los pasos 97 y 102 (su huella incluye los números de fila):
+    volver a correr el seco;
+  - **se regeneran en cada corrida, pero muestran números que quedan viejos hasta la corrida siguiente (≤ 1 h) si el orden movió
+    filas:** "fila" en REVISAR_MATCH, AGENDA_DUPLICADOS, AGENDA_PENDIENTES ("borrar la fila Y a mano"), IDS_SIN_CRUZAR y "Fila del
+    destino" del archivo "Agenda". Ninguna decisión se aplica por esos números (todas por identidad), pero una persona que busque
+    "la fila 838" a mano en esa hora puede mirar otra. Es lo mismo que pasa hoy cuando el equipo ordena. Para acortarlo, al ordenar
+    se olvidan las huellas de las vistas (la corrida siguiente las reescribe);
+  - **cosmético:** dos registros recuerdan "ya avisado / ya anotado" con el número de fila (la nota "ya_cargada" y el aviso de RDV
+    CONJUNTO en una fila SIN agenda_uid): después de un orden que mueve esa fila, se anotan / avisan una vez más;
+  - **Looker:** la ID derivada desempata " (2)", " (3)" por orden de fila sólo entre filas IGUALES (figura, barrio, fecha y hora): el
+    orden de la hoja deja los empates como estaban (si no lo hiciera, el paso 108 lo dice en "distintas del cálculo"), así que entre
+    ellas no cambia.
 
 #### Tiempos de la agenda (16/10, noche) — PRENDIDO
 

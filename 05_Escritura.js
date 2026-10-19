@@ -682,6 +682,62 @@ function restaurarFilaBorradaAgenda_(sh, hdr, fila, uid, valores, fondos) {
 }
 
 /**
+ * **Ordenar las filas de la base** (19/10, prompt 08, punto 7; 57_OrdenBase.js; BASE_ORDEN_POR_FECHA). El ordenamiento NATIVO de
+ * la hoja (`Range.sort`) sobre las filas 2..`ultima` (sólo las que tienen datos: sin el encabezado ni las vacías de abajo) y TODAS
+ * las columnas (`getMaxColumns`: también las ocultas y las del sistema): cada fila se mueve entera, con sus valores, formatos, notas
+ * y colores (el COLOR_SISTEMA de lo que escribió el sistema). Nunca reescribe valores ni ordena sólo algunas columnas. `specs`:
+ * [{ column (1-based), ascending }]. Quien llama verificó antes que no hay fórmulas y guardó el orden anterior; después verifica
+ * (y, si la hoja no movió algún formato, lo repone con `reponerFormatoFilas_`). Es una excepción anunciada a CLAUDE.md §6
+ * ("prohibido sort"): ese riesgo era ordenar SIN la verificación de fondos, y la fila 2374 de las fórmulas, que ya no existen.
+ */
+function ordenarFilasBase_(sh, ultima, specs) {
+  if (!(ultima >= 3)) return 0;
+  _selloEscrituraSistema_();
+  sh.getRange(2, 1, ultima - 1, sh.getMaxColumns()).sort(specs);
+  return ultima - 1;
+}
+
+/**
+ * **Deshacer el orden** (paso 109): pone las filas 2..`ultima` en el orden de `posiciones` (posiciones[i] = el lugar que tiene que
+ * ocupar la fila i + 2). Con el ordenamiento nativo y una columna AUXILIAR al final (`ORDEN_COLUMNA_AUX`, nueva, después de la
+ * última: no corre nada), que se borra al terminar —también si algo falla—. No toca ningún valor de la base.
+ */
+function ordenarFilasPorPosicion_(sh, ultima, posiciones) {
+  if (!(ultima >= 3)) return 0;
+  _selloEscrituraSistema_();
+  const nCols = sh.getMaxColumns();
+  sh.insertColumnAfter(nCols);
+  const aux = nCols + 1;
+  try {
+    sh.getRange(1, aux).setValue(ORDEN_COLUMNA_AUX);
+    sh.getRange(2, aux, ultima - 1, 1).setValues(posiciones.map(function (p) { return [p]; }));
+    SpreadsheetApp.flush();
+    sh.getRange(2, 1, ultima - 1, aux).sort([{ column: aux, ascending: true }]);
+    SpreadsheetApp.flush();
+  } finally {
+    sh.deleteColumn(aux);
+  }
+  return ultima - 1;
+}
+
+/**
+ * Repone los fondos, las notas y los formatos de número de las filas 2.. (`m` = { fondos, notas, formatos }, matrices desde la fila
+ * 2): sólo si la hoja no los movió con su fila al ordenar (57_OrdenBase.js lo verifica). Es volver cada formato a su fila, no
+ * cambiarlo.
+ */
+function reponerFormatoFilas_(sh, m) {
+  const n = (m.fondos || m.notas || m.formatos || []).length;
+  if (!n) return 0;
+  _selloEscrituraSistema_();
+  const ancho = (m.fondos || m.notas || m.formatos)[0].length;
+  const rg = sh.getRange(2, 1, n, ancho);
+  if (m.fondos) rg.setBackgrounds(m.fondos);
+  if (m.notas) rg.setNotes(m.notas);
+  if (m.formatos) rg.setNumberFormats(m.formatos);
+  return n;
+}
+
+/**
  * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
  * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
  * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila

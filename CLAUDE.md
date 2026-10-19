@@ -2990,6 +2990,9 @@ diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una de
                    bases (la de hoy y "como quedaría") fila por fila por su identidad. La usan los pasos 101 y 107  ← 19/10
 56_SepararReunion.js  separar "dos reuniones en una fila" (Macri 15/10, la 824): paso 101 en seco (con la simulación; LISTO →
                    huella), 102 real (la exige), 103 deshace por identidad                                       ← 19/10
+57_OrdenBase.js    la base ordenada por FECHA, HORA y Figura, al final de la corrida de la hora (BASE_ORDEN_POR_FECHA, APAGADO):
+                   paso 107 en seco (con la simulación: la próxima corrida tiene que hacer lo mismo con la base ordenada), 108
+                   ordena a mano, 109 deshace (ORDEN_BASE_PREVIO, intermedia); REGISTRO_CORRIDAS "base_ordenada"         ← 19/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,
                    que escribe, ni el 80 / 82), cada uno aislado; el progreso en una propiedad: si no alcanza el tiempo
                    dice "FALTAN" y la siguiente sigue donde quedó; al final TERMINADO + resumen                    ← 16/10
@@ -4083,7 +4086,7 @@ Prohibido contra el destino:
 |---|---|---|
 | `Sheet.clear()` | borra contenido **y formato** | `clearContents()` |
 | `Range.clear()` | ídem | `clearContent()` |
-| `sort()` | mueve los valores y deja los fondos quietos: cada celda queda con el color de otra fila | ordenar una copia, o leer a memoria y ordenar ahí |
+| `sort()` | mueve los valores y deja los fondos quietos: cada celda queda con el color de otra fila | ordenar una copia, o leer a memoria y ordenar ahí. **Única excepción (19/10, prompt 08, punto 7): `ordenarFilasBase_`** (05_Escritura.js; 57_OrdenBase.js, BASE_ORDEN_POR_FECHA): filas ENTERAS (todas las columnas), sólo las que tienen datos, sin fórmulas, con el orden anterior guardado antes y, después, la verificación fila por fila (valores, fondos, notas, formatos): si la hoja no movió un fondo con su fila, se repone |
 | `deleteRow()` / `deleteRows()` | desplaza todo lo de abajo contra fondos que no se mueven igual | marcar la fila, no borrarla |
 | `insertRow*()` en el medio | ídem | `appendRow` / escribir después de la última fila |
 | `setBackground` con cualquier color que no sea `#4F81BD` | pisa la marca de procedencia | sólo `setSiDelSistema_` pinta |

@@ -1916,6 +1916,26 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     }
   }
 
+  // (6) 19/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js): la base ordenada por FECHA, HORA y Figura, al FINAL (todo lo de arriba ya
+  // escribió), sólo si hace falta y si queda tiempo; si no, la próxima. Si falla, la corrida termina igual (la base no se tocó o
+  // quedó verificada). En REGISTRO_CORRIDAS, "base_ordenada".
+  if (typeof BASE_ORDEN_POR_FECHA !== 'undefined' && BASE_ORDEN_POR_FECHA && !enSeco && !historial) {
+    if (!corridaHayTiempo_('orden')) {
+      corridaSaltear_('orden', 'ordenar la base');
+      if (typeof corridaBaseOrdenada_ === 'function') corridaBaseOrdenada_('salteada por tiempo (la próxima)');
+    } else {
+      const tO = _ahoraMs_(); let errO = null; corridaEmpieza_('orden');
+      try {
+        const o = ordenarBaseEnLaHora_();
+        if (typeof corridaBaseOrdenada_ === 'function') {
+          corridaBaseOrdenada_(o.error ? 'error: ' + o.error : o.movidas ? 'ordenada: ' + o.movidas + ' filas movidas' + (o.repuestos ? ' (formatos repuestos en ' + o.repuestos + ')' : '') +
+                                                           ' — deshacer: paso 109, ' + o.corrida : 'no hacía falta (' + (o.nada || 'en orden') + ')');
+        }
+      } catch (err) { errO = err; Logger.log('>>> Ordenar la base falló: %s (el resto de la corrida ya terminó).', err); }
+      corridaAnotar_('orden', tO, errO);
+    }
+  }
+
   // El guardián: la copia de las columnas del sistema, al final (después de todo lo que escribió esta corrida).
   if (GUARDIAN_ACTIVO && !enSeco) {
     const tGc = _ahoraMs_(); corridaEmpieza_('guardian_copia');
