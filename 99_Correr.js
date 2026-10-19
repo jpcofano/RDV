@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 19/10: el barrio de la 834 (SÓLO LECTURA, al final del archivo): paso105_explicarBarrioFila834() — de dónde salió su
+ *      "Palermo" y si quedó como escrito por el sistema; paso106_barrioAproximado_enSeco() — la regla de la geocodificación
+ *      aproximada (AGENDA_BARRIO_APROXIMADO, APAGADA): qué filas ganarían barrio y si contradice algún barrio del equipo.
  *  >>> 15/10 (2): la auditoría del paso 66 → correcciones (todo lo que escribe, APAGADO) y una auditoría de cancelaciones.
  *        paso68_auditoriaCancelaciones()     SÓLO LECTURA: desde el 07/09, lo que desapareció del mail, lo marcado/tachado,
  *                                            RDV CONJUNTO, CANCELACIÓN de "Agenda Directa", las vencidas; y el resumen.
@@ -1783,4 +1786,31 @@ function limpiar24() {
   }
   Logger.log('');
   Logger.log('########## limpiar24 — fin');
+}
+
+/**
+ * PASO 105 — SÓLO LECTURA (19/10; prompt 08, punto 5): de dónde salió el Barrio "Palermo" de la fila 834 (Seguridad del 22/10,
+ * "Av. Int. Bullrich 55, La Mezquita"): la fila, TODAS las líneas de REGISTRO_AGENDA_CAMBIOS que tocaron su Barrio (y las de la
+ * 839, que se juntó con ella en el paso 97, con la fila borrada entera), la cache AGENDA_GEOCODE de su dirección fila por fila
+ * (con su fecha y la regla de cada una) y el barrio del mail. Termina con "el Palermo salió de …" y si quedó registrado como
+ * escrito por el sistema. No llama a Maps; no escribe nada.
+ */
+function paso105_explicarBarrioFila834() {
+  _anunciar_('paso 105 — de dónde salió el Barrio de la fila 834 (SÓLO LECTURA)',
+             "explicarBarrioFila(834, { esperado: { figura: 'Landerreche', fecha: '2026-10-22' } })  [diagnostico/38_barrio_aproximado.js]",
+             'NO escribe nada (ni la cache del geocode; no llama a Maps)', 'el log: la fila, el registro, la cache y la conclusión');
+  return explicarBarrioFila(834, { esperado: { figura: 'Landerreche', fecha: '2026-10-22' } });
+}
+
+/**
+ * PASO 106 — EN SECO (19/10; prompt 08, punto 5): la regla de la geocodificación APROXIMADA (AGENDA_BARRIO_APROXIMADO, APAGADA):
+ * aceptar una 'aproximada' a más de 500 m del borde de otro barrio y en la comuna (o el barrio) del mail. Con el mismo código que
+ * la agenda y SÓLO la cache (sin Maps ni Gmail): qué filas ganarían barrio y LA PRUEBA contra los barrios cargados por el equipo
+ * (tiene que dar 0). Resumen: "ganarían barrio N | contradicen al equipo M → LISTO / NO LISTO para prender". No escribe nada.
+ */
+function paso106_barrioAproximado_enSeco() {
+  _anunciar_('paso 106 — el barrio con una geocodificación aproximada (EN SECO)', 'medirBarrioAproximado()  [diagnostico/38_barrio_aproximado.js]',
+             'NO escribe nada (no llama a Maps ni a Gmail; sólo lee la cache AGENDA_GEOCODE)',
+             'el log: (i) las que ganarían barrio, (ii) la prueba contra el equipo, (iii) lo que no se mide, y el RESUMEN');
+  return medirBarrioAproximado();
 }
