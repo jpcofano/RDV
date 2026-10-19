@@ -1345,6 +1345,42 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     });
   }
 
+  // --- 19/10 (AGENDA_AVISO_HECHAS_SIN_FILA, 53_HechasSinFila.js): "una reunión que se hizo y no está en la base" — SÓLO AVISO, nunca
+  // crea la fila. Las filas de RDV CONJUNTO "Realizada" o con asistentes, del alcance y que ya pasaron, sin fila de su figura ese día
+  // o con sólo una Suspendida en otro lugar (caso Macri 15/10). El mismo cruce que los Asistentes. Con el STATUS como queda después
+  // de esta corrida, y sin lo que esta corrida crea o mueve (la próxima lo vuelve a mirar). Va a AGENDA_PENDIENTES (`infoAgenda_`).
+  if (opc('avisoHechasSinFila', AGENDA_AVISO_HECHAS_SIN_FILA)) {
+    P.modos.avisoHechasSinFila = true;
+    try {
+      const comunasH = opciones.comunas || leerComunasMap_();
+      const cruceH = opciones.cruceConjunto || cruzarAsistentes_(dest, comunasH);
+      const colSt = col('STATUS REUNIÓN');
+      const stNuevo = new Map(), excluirH = new Set();
+      P.acciones.forEach(function (a) {
+        (a.escrituras || []).forEach(function (e) { if (colSt != null && e.col === colSt) stNuevo.set(e.fila, e.valor); });
+        // lo que esta corrida crea o mueve (la fecha nueva y, si se mueve, la vieja): esa figura y ese día se miran en la próxima
+        if ((a.tipo === 'crear' || a.tipo === 'mover') && a.ev && a.ev.fecha) {
+          const dias = [a.ev.fecha].concat(a.tipo === 'mover' && a.f && a.f.fecha ? [a.f.fecha] : []);
+          (a.ev.figuras || []).concat(a.f && a.f.figura ? [a.f.figura] : []).forEach(function (fig) {
+            dias.forEach(function (d) { excluirH.add(normalizeText_(fig) + '|' + ymd_(d)); });
+          });
+          // una fila nueva SIN figura (Seguridad en tu Barrio): puede ser la de cualquier figura de RDV CONJUNTO ese día
+          if (a.tipo === 'crear' && !(a.ev.figuras || []).length) excluirH.add('*|' + ymd_(a.ev.fecha));
+        }
+      });
+      P.hechasSinFila = reunionesHechasSinFila_(dest, cruceH, comunasH, {
+        desde: alcance.desde, hasta: hoyP, excluir: excluirH,
+        statusDe: function (f) { return stNuevo.has(f.fila) ? str(stNuevo.get(f.fila)) : str(val(f, 'STATUS REUNIÓN')); } });
+    } catch (err) { P.hechasSinFila = { error: String(err && err.message || err), lista: [], cuenta: {} }; }
+    const hs = P.hechasSinFila;
+    if (hs.error) Logger.log('  >>> "se hizo y no está en la base": %s. No se avisa nada.', hs.error);
+    else {
+      Logger.log('  SE HIZO Y NO ESTÁ EN LA BASE (sólo aviso, nunca se crea): %s (sin fila de la figura ese día %s | sólo una Suspendida en otro lugar %s)',
+                 hs.lista.length, hs.cuenta.sinFila, hs.cuenta.soloSuspendida);
+      hs.lista.forEach(function (h) { Logger.log('    HECHA SIN FILA | %s', h.texto); });
+    }
+  }
+
   const n = function (t) { return P.acciones.filter(function (a) { return a.tipo === t; }).length; };
   P.resumen = { mails: r.mails, reunionesEnAlcance: enAlcance.length, crear: n('crear'), vincular: n('vincular'),
                 actualizar: n('actualizar'), mover: n('mover'), suspender: n('suspender'), borrar: n('borrar'), reactivar: n('reactivar'),
@@ -1377,6 +1413,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     P.resumen.canceladasEnConjunto = P.conjuntoCancela.length;
     P.resumen.suspendidasPorConjunto = P.suspendidasAuto.filter(function (x) { return x.porConjunto; }).length;
   }
+  if (P.modos.avisoHechasSinFila) P.resumen.hechasSinFila = (P.hechasSinFila.lista || []).length;
   return P;
 }
 
@@ -3645,6 +3682,18 @@ function infoAgenda_(P) {
                     (bl.length ? ' (esperan ' + bl.length + ': ' + bl.slice(0, 5).map(textoEv).join(' / ') + (bl.length > 5 ? ' …' : '') + ')' : ''),
                sigue: 'elegir en AGENDA_DUPLICADOS (archivo de la base): "Quedarse con la fila …" o "Son reuniones distintas"',
                id: 'semana_frenada|' + x.clave, avisar: true });
+  });
+  // 19/10 (AGENDA_AVISO_HECHAS_SIN_FILA, 53_HechasSinFila.js): una reunión que se hizo (RDV CONJUNTO) y no está en la base. Es un
+  // ESTADO (se recalcula: cuando el equipo carga la fila, la línea se va); va al aviso diario una sola vez (por su id)
+  ((P.hechasSinFila && P.hechasSinFila.lista) || []).forEach(function (h) {
+    out.push({ tipo: 'se hizo y no está en la base', reunion: fmtFecha_(h.fecha) + ' | ' + (h.figura || '(sin figura)') + ' | ' + (h.barrio || '—') +
+                                                          (h.direccion ? ' | ' + h.direccion : ''),
+               semana: '', grupo: '', fecha: h.fecha, hora: '', lugar: h.barrio || '', fila: h.candidatas.map(function (c) { return c.fila; }).join(', '),
+               que: h.texto,
+               sigue: 'cargar la reunión en la base a mano (el sistema no crea la fila): ' + (h.figura || '(figura)') + ', ' + fmtFecha_(h.fecha) + ', ' +
+                      (h.barrio || 'barrio a confirmar') + (h.direccion ? ', ' + h.direccion : '') + ', STATUS "Realizada"' +
+                      (h.asistentes > 0 ? ' (los ' + h.asistentes + ' asistentes los completa el sistema cuando la fila exista)' : ''),
+               id: h.id, avisar: true });
   });
   if (real) {
     const hechas = new Set();

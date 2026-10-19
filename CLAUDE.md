@@ -2979,6 +2979,10 @@ diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una de
                    REGISTRO_CORRIDAS (paso 67)                                                                   ← 16/10
 53_CancelacionConjunto.js  RDV CONJUNTO "Cancelado" → Suspendida (paso 7d de la agenda; RDV CONJUNTO sólo se lee). APAGADO
                    (AGENDA_CANCELACION_CONJUNTO); medición: paso 95 (diagnostico/36)                               ← 16/10
+53_HechasSinFila.js  "una reunión que se hizo y no está en la base" (RDV CONJUNTO "Realizada" o con asistentes, sin fila de la
+                   figura ese día o con sólo una Suspendida en otro lugar: caso Macri 15/10). SÓLO AVISO, nunca crea la fila:
+                   AGENDA_PENDIENTES + 'agenda_info'. El cruce de los Asistentes. APAGADO (AGENDA_AVISO_HECHAS_SIN_FILA);
+                   medición: paso 104 (diagnostico/37_hechas_sin_fila.js, sólo lectura)                            ← 19/10
 54_FusionAgenda.js  juntar "una reunión en dos filas" (832/838, 834/839): paso 96 en seco (guarda la huella), 97 real (la
                    exige; se queda la vieja, borra la nueva como "fusionada por el sistema"), 98 deshace por id     ← 16/10
 55_SimularCorrida.js  LA PRÓXIMA CORRIDA DE LA HORA, EN MEMORIA (prompt 08, regla 3; SÓLO LECTURA): agenda, cruce, asistentes,
