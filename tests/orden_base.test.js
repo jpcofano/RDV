@@ -392,6 +392,25 @@ const otras2 = []; for (let i = 1; i < E.D.v.length; i++) if (i !== filaSabor) o
 ok(E.D.v[filaSabor][E.C('Origen fila')] === '' && JSON.stringify(otras) === JSON.stringify(otras2),
    'deshacer: vuelve "Origen fila" de Sabor (por su identidad), y ninguna otra fila se toca');
 
+// ============================== [8] revisor A1: la fila de una línea "id:" quedó vinculada (con agenda_uid) ==============================
+
+console.log('[8] revisor A1: deshacer encuentra por su identidad una fila que DESPUÉS quedó vinculada, y la base ordenada');
+E = montar({ BASE_ORDEN_POR_FECHA: 'true' });
+const iAl = 3;   // Laura Alonso 08/10, Flores (sin agenda_uid ni RDV_UID): una "fusión" le copió la HORA
+E.ssI.hojas['REGISTRO_AGENDA'] = new E.Hoja('REGISTRO_AGENDA', [['corrida', 'hora', 'modo'], ['20261019-110000-x', new D(), 'ESCRITURA']]);
+E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'] = new E.Hoja('REGISTRO_AGENDA_CAMBIOS', [['corrida', 'tipo', 'fila', 'col', 'columna', 'antes', 'despues', 'fondo_antes', 'agenda_uid'],
+  ['20261019-110000-x', 'fusionar', iAl + 1, E.C('HORA') + 1, 'HORA', '', '19:00', '', 'id:laura alonso|20261008|flores']]);
+E.D.v[iAl][E.C('HORA')] = '19:00';
+E.D.v[iAl][E.C('agenda_uid')] = 'v-vinculada-despues';   // la corrida siguiente la vinculó
+E.run('ordenarBaseEnLaHora_()');
+let filaAl = -1;
+for (let i = 1; i < E.D.v.length; i++) if (E.D.v[i][E.C('Figura')] === 'Laura Alonso') filaAl = i;
+ok(filaAl !== iAl, 'la base se ordenó: Alonso pasó de la fila ' + (iAl + 1) + ' a la ' + (filaAl + 1));
+const obsOtras = E.D.v.map(function (r, i) { return i === filaAl ? null : r[E.C('HORA')]; });
+r = E.run('deshacerAgenda(false, "20261019-110000-x")');
+ok(E.D.v[filaAl][E.C('HORA')] === '' && JSON.stringify(E.D.v.map(function (r, i) { return i === filaAl ? null : r[E.C('HORA')]; })) === JSON.stringify(obsOtras),
+   'deshacer vuelve la celda en la fila de Alonso (por su identidad, aunque ahora tenga agenda_uid) y no toca otra');
+
 console.log('');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');
 process.exit(fallas ? 1 : 0);

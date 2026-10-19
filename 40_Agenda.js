@@ -1992,7 +1992,7 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
   });
   // 19/10 (prompt 08, 7f): una fila SIN agenda_uid (una del equipo: "Origen fila") se anota con su identidad ("id:" figura|fecha|
   // barrio), para que deshacer la encuentre aunque la base se haya ordenado (antes, por el número de fila)
-  plan.acciones.forEach(function (a) { if (a.f && !uidDe[a.f.fila]) uidDe[a.f.fila] = 'id:' + idFilaAgenda_(a.f); });
+  plan.acciones.forEach(function (a) { if (a.f && !uidDe[a.f.fila]) uidDe[a.f.fila] = a.f.uid ? 'rdv:' + a.f.uid : 'id:' + idFilaAgenda_(a.f); });
   // 1a. los fondos de lo que se va a pisar (una lectura)
   const ultima = sh.getLastRow();
   const existentes = todas.filter(function (e) { return e.fila <= ultima; });
@@ -2350,17 +2350,19 @@ function _deshacerAgenda_(enSeco, corrida) {
     if (!filaDeIdent) {
       filaDeIdent = {};
       const v = ultimaHoja > 1 ? sh.getRange(2, 1, ultimaHoja - 1, nCols).getValues() : [];
+      // 19/10 (revisor): todas las filas (la de una línea "id:" pudo quedar vinculada después: tener agenda_uid), y también por RDV_UID
+      const iRdvD = findIdxOr_(hdr, ['rdv_uid'], true);
       v.forEach(function (r, i) {
-        if (A.agenda_uid != null && !esVacio_(r[A.agenda_uid])) return;
-        const k = 'id:' + idFilaAgenda_({ figura: str(r[iFigD]), fecha: toDate_(r[iFecD]), barrio: str(r[iBarD]) });
-        filaDeIdent[k] = filaDeIdent[k] ? -1 : i + 2;
+        const ks = ['id:' + idFilaAgenda_({ figura: str(r[iFigD]), fecha: toDate_(r[iFecD]), barrio: str(r[iBarD]) })];
+        if (iRdvD != null && str(r[iRdvD])) ks.push('rdv:' + str(r[iRdvD]));
+        ks.forEach(function (k) { filaDeIdent[k] = filaDeIdent[k] ? -1 : i + 2; });
       });
     }
     const f = filaDeIdent[ident];
     return f > 0 ? f : null;
   };
   const filaActual = function (c) {
-    if (/^id:/.test(c.uid)) return porIdentidad(c.uid);
+    if (/^(id|rdv):/.test(c.uid)) return porIdentidad(c.uid);
     return c.uid ? (filaDeUid[c.uid] || null) : c.fila;
   };
   const cambios = camV.map(function (r) {
@@ -2394,10 +2396,16 @@ function _deshacerAgenda_(enSeco, corrida) {
   });
   // 16/10 (54_FusionAgenda.js): una fusión copió celdas de la REGLA GENERAL en la vieja ("fusionar_general": se vacían, no
   // son columnas de la agenda) y borró la nueva entera ("borrar_fusion": se restaura con todo, también lo que no es de la agenda)
+  const noEncontradas = [];
+  const conFila = function (c) { if (!c.fila) noEncontradas.push(c); return !!c.fila; };
   const otros = cambios.filter(function (c) { return c.col && c.tipo !== 'crear' && c.tipo !== 'fusionar_general'; })
-    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
+    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c), filaRegistro: c.fila }); }).filter(conFila);
   const generales = cambios.filter(function (c) { return c.col && c.tipo === 'fusionar_general'; })
-    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c) }); }).filter(function (c) { return c.fila; });
+    .map(function (c) { return Object.assign({}, c, { fila: filaActual(c), filaRegistro: c.fila }); }).filter(conFila);
+  // 19/10 (revisor): las celdas cuya fila ya no se encuentra (la identidad cambió o se repite, o la fila no está): se dicen, no se tocan
+  noEncontradas.forEach(function (c) {
+    Logger.log('    NO SE ENCUENTRA la fila de "%s" (%s; en el registro, la fila %s): esa celda no se deshace', hdr[c.col - 1] || '', c.uid || 'sin identidad', c.filaRegistro || '—');
+  });
   const restaurar = cambios.filter(function (c) { return c.tipo === 'borrar' && !cancelados[c.uid] && !filaDeUid[c.uid]; });
   // 16/10: también la que borró una decisión del equipo ("borrar_fusion_equipo", AGENDA_DUPLICADOS "Quedarse con la fila X")
   const restaurarFusion = cambios.filter(function (c) {

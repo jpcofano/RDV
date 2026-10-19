@@ -103,6 +103,9 @@ function simularCorridaHora_(bloque, E, opciones) {
   const S = { cambios: [], saltadas: [], borrar: [], fusion: [], avisos: [], incompleta: '', partes: [] };
   const sim = bloque.map(function (r) { return r.slice(); });
   const hdr = sim[0], ancho = hdr.length;
+  // 19/10 (revisor): las filas vacías al empezar (o fantasma): lo que la corrida escriba ahí es una fila NUEVA, no la de ese número
+  S.filasEntrada = bloque.length; S.vaciasEntrada = new Set();
+  for (let i = 1; i < bloque.length; i++) if (!bloque[i].some(function (x, k) { return !esColumnaDerivada_(hdr[k]) && !esVacio_(x); })) S.vaciasEntrada.add(i + 1);
   const vistas = {};
   const hayTiempo = function (parte) {
     if (Date.now() - E.t0 < E.limiteMs) return true;
@@ -238,11 +241,11 @@ function _idsFantasmaDeBloqueSim_(bloque, dest) {
  * La identidad de una fila de un bloque, para comparar simulaciones de bases con las filas en otro lugar: agenda_uid; si no,
  * RDV_UID; si no, Figura + FECHA + HORA + Barrio. '' si la fila está vacía.
  */
-function identidadFilaSim_(bloque, fila) {
+function identidadFilaSim_(bloque, fila, sinUid) {
   const hdr = bloque[0], r = bloque[fila - 1];
   if (!r) return '';
   const k = function (n) { const i = findIdxOr_(hdr, aliasColumna_(n), true); return i == null ? '' : r[i]; };
-  const uid = str(k('agenda_uid'));
+  const uid = sinUid ? '' : str(k('agenda_uid'));
   if (uid) return 'uid:' + uid;
   const rdv = str(k('RDV_UID'));
   if (rdv) return 'rdv:' + rdv;
@@ -265,11 +268,20 @@ function compararSimulaciones_(sA, sB, opciones) {
   const nA = sA.bloqueFinal.length, filasA = opciones.filasOriginalesA || nA;
   const claveFila = function (S, fila, enB) {
     const f = enB ? mapaB(fila) : fila;
-    if (f != null && f <= filasA && !(enB && opciones.nuevasB && opciones.nuevasB.has(fila))) return 'f' + f;
-    return 'nueva:' + identidadFilaSim_(S.bloqueFinal, fila);   // una fila creada por la corrida simulada
+    const nueva = f == null || f > filasA || fila > (S.filasEntrada || Infinity) || (S.vaciasEntrada && S.vaciasEntrada.has(fila)) ||
+                  (enB && opciones.nuevasB && opciones.nuevasB.has(fila));
+    if (!nueva) return 'f' + f;
+    // una fila creada por la corrida simulada: por lo que tiene (no por su número ni por su agenda_uid, que es aleatorio)
+    return 'nueva:' + identidadFilaSim_(S.bloqueFinal, fila, true);
+  };
+  // 19/10 (revisor): un RDV_UID o un agenda_uid NUEVO es aleatorio: vale por "uno nuevo"
+  const valorClave = function (c) {
+    if (c.tipo === 'uid') return 'uid';
+    if (normalizeHeader_(c.nombre) === 'agenda_uid' && esVacio_(c.antes)) return 'uid nuevo ' + String(c.despues).slice(0, 2);
+    return valorAgendaComparable_(c.despues, c.nombre);
   };
   const clave = function (S, c, enB) {
-    return c.parte + '|' + claveFila(S, c.fila, enB) + '|' + normalizeHeader_(c.nombre) + '|' + (c.tipo === 'uid' ? 'uid' : valorAgendaComparable_(c.despues, c.nombre));
+    return c.parte + '|' + claveFila(S, c.fila, enB) + '|' + normalizeHeader_(c.nombre) + '|' + valorClave(c);
   };
   const setA = new Map(), setB = new Map();
   sA.cambios.forEach(function (c) { if (!exA.has(c.fila)) setA.set(clave(sA, c, false), c); });
@@ -283,6 +295,16 @@ function compararSimulaciones_(sA, sB, opciones) {
   const bB = new Set(sB.borrar.filter(function (b) { return !exB.has(b.fila); }).map(function (b) { return claveFila(sB, b.fila, true); }));
   out.borrar = { soloEnB: Array.from(bB).filter(function (k) { return !bA.has(k); }), soloEnA: Array.from(bA).filter(function (k) { return !bB.has(k); }),
                  enExcluidas: sB.borrar.filter(function (b) { return exB.has(b.fila); }) };
+  // 19/10 (revisor): los pares que juntaría la fusión antes del plan (por las dos filas)
+  const fus = function (S, enB, ex) {
+    return (S.fusion || []).filter(function (x) { return !ex.has(x.vieja.fila) && !ex.has(x.nueva.fila); })
+      .map(function (x) { return claveFila(S, x.vieja.fila, enB) + ' + ' + claveFila(S, x.nueva.fila, enB); });
+  };
+  const fA = fus(sA, false, exA), fB = fus(sB, true, exB);
+  out.borrar.soloEnB = out.borrar.soloEnB.concat(fB.filter(function (k) { return fA.indexOf(k) < 0; }).map(function (k) { return 'fusión ' + k; }));
+  out.borrar.soloEnA = out.borrar.soloEnA.concat(fA.filter(function (k) { return fB.indexOf(k) < 0; }).map(function (k) { return 'fusión ' + k; }));
+  out.borrar.enExcluidas = out.borrar.enExcluidas.concat((sB.fusion || []).filter(function (x) { return exB.has(x.vieja.fila) || exB.has(x.nueva.fila); })
+    .map(function (x) { return { fila: x.nueva.fila, detalle: 'la fusión la juntaría con la ' + x.vieja.fila }; }));
   // lo que la agenda tendría para decidir o avisar (por texto, sin números de fila)
   const textos = function (S) {
     const P = S.P || {};

@@ -721,20 +721,21 @@ function ordenarFilasPorPosicion_(sh, ultima, posiciones) {
 }
 
 /**
- * Repone los fondos, las notas y los formatos de número de las filas 2.. (`m` = { fondos, notas, formatos }, matrices desde la fila
- * 2): sólo si la hoja no los movió con su fila al ordenar (57_OrdenBase.js lo verifica). Es volver cada formato a su fila, no
- * cambiarlo.
+ * Repone los fondos, las notas y los formatos de número de algunas filas (`filas` = [{ fila, fondos, notas, formatos }], cada uno
+ * un arreglo de la fila): sólo las que la hoja no movió con su fila al ordenar (57_OrdenBase.js lo verifica). Es volver cada formato
+ * a su fila, no cambiarlo. 19/10 (revisor): el blanco que devuelve getBackgrounds (#ffffff) vuelve como "sin relleno", para no tapar
+ * los colores alternados de la hoja.
  */
-function reponerFormatoFilas_(sh, m) {
-  const n = (m.fondos || m.notas || m.formatos || []).length;
-  if (!n) return 0;
+function reponerFormatoFilas_(sh, filas) {
+  if (!filas.length) return 0;
   _selloEscrituraSistema_();
-  const ancho = (m.fondos || m.notas || m.formatos)[0].length;
-  const rg = sh.getRange(2, 1, n, ancho);
-  if (m.fondos) rg.setBackgrounds(m.fondos);
-  if (m.notas) rg.setNotes(m.notas);
-  if (m.formatos) rg.setNumberFormats(m.formatos);
-  return n;
+  filas.forEach(function (x) {
+    const rg = sh.getRange(x.fila, 1, 1, x.fondos.length);
+    rg.setBackgrounds([x.fondos.map(function (b) { return !b || String(b).toLowerCase() === '#ffffff' ? null : b; })]);
+    if (x.notas) rg.setNotes([x.notas]);
+    if (x.formatos) rg.setNumberFormats([x.formatos]);
+  });
+  return filas.length;
 }
 
 /**

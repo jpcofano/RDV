@@ -41,6 +41,8 @@ const SEPARAR_PROP_HUELLA = 'SEPARAR_REUNION_HUELLA_101';
 const SEPARAR_PROP_CORRIDA = 'SEPARAR_REUNION_CORRIDA_102';
 /** El modo de su línea en REGISTRO_AGENDA: el paso 38 (deshacer la agenda) busca "ESCRITURA" y no la toca. */
 const SEPARAR_MODO_REGISTRO = 'SEPARAR';
+/** 19/10 (revisor): cuántas horas vale la huella del paso 101 para el 102. */
+const SEPARAR_HUELLA_HORAS = 2;
 
 /** El caso del prompt (los números del 19/10; la fila se encuentra por el agenda_uid, no por el número). */
 const SEPARAR_CASO_MACRI_1510 = {
@@ -90,8 +92,8 @@ function _separarReunion_(enSeco, opciones) {
     const v = verificarSepararEnSeco_(bloque, plan, caso, opciones);
     const out = { huella: plan.huella, listo: v.listo, motivos: v.motivos, plan: plan, verificacion: v };
     if (v.listo) {
-      try { PropertiesService.getScriptProperties().setProperty(SEPARAR_PROP_HUELLA, plan.huella); } catch (e) { Logger.log('  (la huella no se pudo guardar: %s)', e); }
-      Logger.log('>>> LISTO. HUELLA del plan: %s (el paso %s la exige igual). Para aplicarlo: paso%s.', plan.huella, conDireccion ? '102b' : '102',
+      try { PropertiesService.getScriptProperties().setProperty(SEPARAR_PROP_HUELLA, JSON.stringify({ h: plan.huella, t: Date.now() })); } catch (e) { Logger.log('  (la huella no se pudo guardar: %s)', e); }
+      Logger.log('>>> LISTO. HUELLA del plan: %s (el paso %s la exige igual, dentro de las próximas ' + SEPARAR_HUELLA_HORAS + ' horas). Para aplicarlo: paso%s.', plan.huella, conDireccion ? '102b' : '102',
                  conDireccion ? '102b_separarMacri1510ConDireccion()' : '102_separarMacri1510()');
     } else {
       try { PropertiesService.getScriptProperties().deleteProperty(SEPARAR_PROP_HUELLA); } catch (e) { /* el log lo dice */ }
@@ -102,15 +104,17 @@ function _separarReunion_(enSeco, opciones) {
 
   // --- REAL (paso 102) ---
   const no = function (msg) { Logger.log('>>> NO SE ESCRIBE NADA: %s', msg); return fin({ error: msg, plan: plan }); };
-  const huella101 = opciones.huella || (function () { try { return PropertiesService.getScriptProperties().getProperty(SEPARAR_PROP_HUELLA) || ''; } catch (e) { return ''; } })();
+  // 19/10 (revisor): la huella vence a las SEPARAR_HUELLA_HORAS horas (la base y los formularios siguen moviéndose); no se puede pasar a mano
+  let g = null;
+  try { g = JSON.parse(PropertiesService.getScriptProperties().getProperty(SEPARAR_PROP_HUELLA) || 'null'); } catch (e) { g = null; }
+  const huella101 = g && g.h ? g.h : '';
+  if (huella101 && Date.now() - (g.t || 0) > SEPARAR_HUELLA_HORAS * 3600000) return no('la huella del paso 101 tiene más de ' + SEPARAR_HUELLA_HORAS + ' horas: volver a correr el paso 101');
   if (!huella101) return no('primero hay que correr el paso 101 (en seco) y que dé LISTO: el 102 exige que el plan sea el mismo que se vio');
   if (huella101 !== plan.huella) return no('la huella del plan es ' + plan.huella + ' y el paso 101 dio ' + huella101 + ': algo cambió (o se corrió el 101 con/sin la dirección), volver a correr el paso 101');
   const r = aplicarSepararReunion_(sh, plan, caso);
   if (r.error && !r.corrida) return no(r.error);
-  try {
-    PropertiesService.getScriptProperties().setProperty(SEPARAR_PROP_CORRIDA, r.corrida);
-    PropertiesService.getScriptProperties().deleteProperty(SEPARAR_PROP_HUELLA);   // una huella sirve una vez
-  } catch (e) { Logger.log('  (el id de la corrida no se pudo guardar: %s; para deshacer, pasar el id: %s)', e, r.corrida); }
+  // el id de la corrida ya quedó guardado antes de escribir (aplicarSepararReunion_); si se volvió atrás, ya no está
+  try { PropertiesService.getScriptProperties().deleteProperty(SEPARAR_PROP_HUELLA); } catch (e) { /* una huella sirve una vez */ }
   return fin(Object.assign({ plan: plan }, r));
 }
 
@@ -203,7 +207,14 @@ function planSepararReunion_(bloque, caso, conDireccion) {
   SEPARAR_COLUMNAS_MAIL_.forEach(function (n) { vieja(n, ''); });
   vieja('Origen fila', ORIGEN_EQUIPO);
   vieja('Tocado por el equipo', '');
-  if (conDireccion) vieja('Dirección', caso.direccionPropuesta);
+  if (conDireccion) {
+    // 19/10 (revisor, B3): sólo si la Dirección todavía es la que escribió el sistema (si el equipo cargó otra, no se pisa)
+    if (valorAgendaComparable_(v('Dirección'), 'Dirección') !== valorAgendaComparable_(v('agenda_direccion_escrita'), 'Dirección')) {
+      out.error = 'la Dirección de la fila ' + X + ' ("' + str(v('Dirección')) + '") no es la que escribió el sistema: la cargó el equipo, no se pisa (usar el paso sin la dirección)';
+      return out;
+    }
+    vieja('Dirección', caso.direccionPropuesta);
+  }
   out.conDireccion = conDireccion;
   // la huella: la identidad, toda la fila vieja como está y lo que se escribiría
   out.huella = _huellaSeparar_([caso.agendaUid, X, N, conDireccion ? 'dir' : '',
@@ -332,6 +343,13 @@ function verificarSepararEnSeco_(bloque, plan, caso, opciones) {
   agenda.forEach(function (t) { Logger.log('    NO: %s', t); });
   if (!agenda.length) Logger.log('    nada: la agenda no vincula, actualiza, concilia, suspende ni avisa nada de las dos filas.');
   else motivos.push('la agenda: ' + agenda.join(' | '));
+  // 19/10 (revisor, B7): qué hace el cruce con formularios con cada una (no escribe nada en ellas —eso ya se miró arriba—, pero la
+  // nueva, Suspendida y sin formulario, puede aparecer en las fichas de REVISAR_MATCH o en SIN_MATCH como cualquier fila sin formulario)
+  Logger.log('--- el cruce con formularios, en las dos filas (informativo) ---');
+  [[X, 'la que queda'], [N, 'la nueva']].forEach(function (p) {
+    const pf = S1.plan && S1.plan.porFila ? S1.plan.porFila[p[0]] : null;
+    Logger.log('    fila %s (%s): %s%s', p[0], p[1], pf ? pf.veredicto : '(sin veredicto: no es activa)', pf && pf.motivo ? ' (' + pf.motivo + ')' : '');
+  });
   // (d) RDV CONJUNTO de ese día: a qué fila iría cada una
   Logger.log('--- (d) RDV CONJUNTO de %s del %s, con la base separada ---', caso.figura, caso.fecha);
   _conjuntoDelDiaSeparar_(S1, E, caso).forEach(function (t) { Logger.log('    %s', t); });
@@ -478,11 +496,31 @@ function aplicarSepararReunion_(sh, plan, caso) {
     });
   } catch (err) { out.error = 'no se pudo escribir REGISTRO_AGENDA (' + err + '): NO se escribió nada en la base'; return out; }
   out.corrida = corrida;
-  // 3. la fila nueva (todas sus celdas, y el STATUS por las dos transiciones de la agenda), 4. la vieja
-  let hechas = 0;
-  const w1 = escribirAgendaLote_(sh, hdr, plan.nueva.concat([{ fila: N, col: plan.statusNueva.col, valor: 'en agenda', esperado: '' }]));
-  const w2 = escribirAgendaLote_(sh, hdr, [{ fila: N, col: plan.statusNueva.col, valor: 'Suspendida', esperado: 'en agenda' }]);
-  const w3 = escribirAgendaLote_(sh, hdr, plan.viejas);
+  // 19/10 (revisor): el id, ANTES de escribir (si la ejecución muere en el medio, el paso 103 lo encuentra)
+  Logger.log('  corrida %s: escribiendo (si algo falla, deshacer con el paso 103)', corrida);
+  try { PropertiesService.getScriptProperties().setProperty(SEPARAR_PROP_CORRIDA, corrida); } catch (e) { Logger.log('  (el id no se pudo guardar: %s)', e); }
+  // 3. la fila nueva (todas sus celdas, y el STATUS por las dos transiciones de la agenda), 4. la vieja. 19/10 (revisor): si algo
+  // falla en el medio, se vuelve atrás lo que se llegó a escribir (la vieja a lo que tenía; la nueva, sacada): nunca dos filas con el
+  // mismo agenda_uid ni la reunión sin fila
+  let hechas = 0, w1 = { hechas: [], saltadas: [] }, w2 = { hechas: [], saltadas: [] }, w3 = { hechas: [], saltadas: [] };
+  try {
+    w1 = escribirAgendaLote_(sh, hdr, plan.nueva.concat([{ fila: N, col: plan.statusNueva.col, valor: 'en agenda', esperado: '' }]));
+    w2 = escribirAgendaLote_(sh, hdr, [{ fila: N, col: plan.statusNueva.col, valor: 'Suspendida', esperado: 'en agenda' }]);
+    w3 = escribirAgendaLote_(sh, hdr, plan.viejas);
+  } catch (err) {
+    Logger.log('>>> la escritura falló a la mitad: %s. Se vuelve atrás lo escrito.', err && err.message || err);
+    try {
+      deshacerAgendaLote_(sh, hdr, w3.hechas.map(function (e) { return { fila: X, col: e.col, antes: e.antes, despues: e.valor, fondoAntes: e.fondoAntes }; }));
+      if (w1.hechas.length) sacarFilasCreadasAgenda_(sh, [N], N);
+      SpreadsheetApp.flush();
+      _anotarCambiosAgenda_([[corrida, 'separar_fallo', N, '', '', String(err && err.message || err).slice(0, 500), '', '', caso.agendaUid]]);
+      registrosAgenda_().getSheetByName(RDV_HOJA_REGISTRO_AGENDA).appendRow([corrida + '-deshacer', new Date(), 'DESHACER ' + corrida, '', '', '', '', '', '', '', '', '', '',
+                                                                            '', '', '', 0, 'falló a la mitad: vuelto atrás', 0, 0, '', '', '', '', '']);
+      PropertiesService.getScriptProperties().deleteProperty(SEPARAR_PROP_CORRIDA);
+    } catch (e2) { Logger.log('>>> ### Y NO SE PUDO VOLVER ATRÁS: %s. Mirar las filas %s y %s a mano (corrida %s). ###', e2, X, N, corrida); }
+    out.error = 'la escritura falló a la mitad (' + (err && err.message || err) + '); se volvió atrás lo escrito';
+    return out;
+  }
   hechas = w1.hechas.length + w2.hechas.length + w3.hechas.length;
   const saltadas = w1.saltadas.concat(w2.saltadas, w3.saltadas);
   try { formatearColumnasAgenda_(sh, hdr, [N]); } catch (err) { Logger.log('    el formato de las columnas de traza no se pudo poner: %s', err); }

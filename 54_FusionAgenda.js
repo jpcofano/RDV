@@ -180,8 +180,9 @@ function _aplicarFusionesAgenda_(sh, hdr, A, aplicar, opc) {
   const corrida = _idCorridaAgenda_();
   const cambios = [];
   aplicar.forEach(function (p) {
-    // 19/10 (prompt 08, 7f): la vieja sin agenda_uid (una fila del equipo), por su identidad: deshacer la encuentra aunque la base se ordene
-    const uidV = p.uidVieja || 'id:' + idFilaAgenda_(p.vieja), uidN = p.uidNueva;
+    // 19/10 (prompt 08, 7f): la vieja sin agenda_uid (una fila del equipo), por su identidad: deshacer la encuentra aunque la base se
+    // ordene. Revisor: la identidad como QUEDA después de copiar (la fusión puede llenarle Figura, FECHA o Barrio), o su RDV_UID
+    const uidV = p.uidVieja || _identidadViejaFusion_(hdr, p), uidN = p.uidNueva;
     p.copiar.forEach(function (c) {
       cambios.push([corrida, c.via === 'agenda' ? 'fusionar' : 'fusionar_general', p.vieja.fila, c.col, hdr[c.col - 1], _celdaRegistro_(c.esperado),
                     _celdaRegistro_(c.valor), fresca[p.vieja.fila].bg[c.col - 1] || '', uidV]);
@@ -265,6 +266,19 @@ function _aplicarFusionesAgenda_(sh, hdr, A, aplicar, opc) {
   out.borradas = borradas;
   out.noBorradas = aplicar.filter(function (p) { return p.cancelada; }).map(function (p) { return { fila: p.nueva.fila, motivo: p.cancelada }; });
   return out;
+}
+
+/**
+ * 19/10 (prompt 08, 7f; revisor): la identidad de la fila VIEJA sin agenda_uid como queda después de la fusión: "rdv:" su RDV_UID (el
+ * que tiene o el que se le copia), si no "id:" figura | fecha | barrio con lo que se le copia en una celda vacía. La usa deshacer.
+ */
+function _identidadViejaFusion_(hdr, p) {
+  const v = p.vieja.valores.slice();
+  (p.copiar || []).forEach(function (c) { if (esVacio_(v[c.col - 1])) v[c.col - 1] = c.valor; });
+  const k = function (n) { const i = findIdxOr_(hdr, aliasColumna_(n), true); return i == null ? '' : v[i]; };
+  const rdv = str(k('RDV_UID'));
+  if (rdv) return 'rdv:' + rdv;
+  return 'id:' + idFilaAgenda_({ figura: str(k('Figura')), fecha: toDate_(k('FECHA')), barrio: str(k('Barrio')) });
 }
 
 // ===================== El plan (en memoria) =====================

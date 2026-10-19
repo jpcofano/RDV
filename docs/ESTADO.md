@@ -2004,6 +2004,20 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
   **`paso109_deshacerOrdenBase()`** vuelve al orden de antes. Va DESPUÉS del punto 2 (la fila nueva queda al lado de la 824).
   **Predicción del 107**: se mueven pocas filas (las cargadas a mano fuera de orden y las de la agenda creadas antes que otras de fechas
   anteriores); las sin FECHA, las filas "a medias" del equipo; identidades OK; la simulación, "lo mismo".
+- **El revisor (19/10, sobre los puntos 2, 3, 4 y 7) — lo que se arregló:** (A1) el deshacer de una fusión cuya fila vieja es del
+  equipo: la identidad se anota como queda DESPUÉS de copiar (o su RDV_UID) y se busca en todas las filas (aunque después las haya
+  vinculado la agenda); lo que no se encuentra se dice en el log; (M1) el paso 102 guarda su id antes de escribir y, si la escritura
+  falla a la mitad, vuelve atrás (nunca dos filas con el mismo agenda_uid); (M2) la simulación ya no da diferencias falsas por los
+  agenda_uid / RDV_UID nuevos (aleatorios) ni por las filas que crea la agenda o que estaban vacías; (M3) ORDEN_BASE_PREVIO guarda
+  sólo los últimos 5 órdenes, y con celdas combinadas no se ordena; (M5) se reponen sólo las filas cuyo formato no siguió a su fila
+  (sin pintar de blanco) y el deshacer del orden también verifica; (B1) el id del orden, antes de ordenar; (B2) la huella del 101
+  vence a las 2 horas; (B3) "con la dirección" sólo si la Dirección de la 824 es la que escribió el sistema; (B5) la simulación
+  compara también lo que juntaría la fusión; (B7) el 101 dice qué hace el cruce con cada fila (la nueva, Suspendida y sin
+  formulario, puede ir a las fichas o a SIN_MATCH como cualquier fila sin formulario). **Sin cambiar, a decidir:** (M4) el orden va
+  AL FINAL (lo pide el prompt): los reportes de esa corrida muestran números de fila viejos hasta la corrida siguiente; ordenar al
+  PRINCIPIO de la corrida lo evitaría (las filas que cree la agenda quedarían al final una hora). (B4) si el formulario de la 824
+  dice sólo "Comuna 11" (Villa Devoto y Villa Santa Rita son las dos Comuna 11), el 101 lo marca "no distingue" pero no frena.
+  (B9) la auditoría da OK a cualquier fila del equipo Realizada fuera del mail (no sólo la 824).
 - **La verificación 7f — qué depende del número de fila entre corridas** (leído en el código; nada más que esto):
   - **arreglado:** el **paso 38** (y el 98) deshacía por NÚMERO de fila las celdas de filas SIN agenda_uid ("Origen fila" = equipo
     en las filas del equipo; la fila del equipo que se queda en una fusión). Con la base ordenada (o si el equipo ordena) podía

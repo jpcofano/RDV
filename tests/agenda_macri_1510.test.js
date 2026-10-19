@@ -344,7 +344,7 @@ ok(/la reunión del mail .*Jorge Macri.* → fila \d+ \| en ROJO/.test(L101) && 
    '(a, b, c) la reunión del mail → la fila nueva; la agenda no toca ninguna');
 ok(/RDV CONJUNTO fila 3 \(Villa Devoto, Realizada, asistentes 31\) → fila \d+/.test(L101), '(d) RDV CONJUNTO de ese día, en el log');
 ok(/\(f\) la ID derivada: fila \d+ "Jorge Macri - Villa Devoto - 15\/10\/2026" \| fila nueva \d+ "Jorge Macri - Villa Santa Rita - 15\/10\/2026"/.test(L101), '(f) la ID de cada una');
-ok(E.props && E.props.SEPARAR_REUNION_HUELLA_101 === s101.huella, 'guardó la huella');
+ok(E.props && JSON.parse(E.props.SEPARAR_REUNION_HUELLA_101).h === s101.huella, 'guardó la huella (con su hora: vence a las 2 h)');
 // un formulario de Villa Santa Rita en la 824: NO LISTO (lo decide el usuario)
 const F0 = E.D.v[X][E.C('form_origen')];
 E.D.v[X][E.C('form_origen')] = 'JORGE MACRI - Encuentro "1 a 1" - 15/10 Villa Santa Rita';
@@ -381,6 +381,33 @@ const igual = E.run('(function () {' +
 ok(igual.sim === igual.agenda, 'la agenda simulada da exactamente las mismas acciones que el plan de la agenda (' + igual.n + ' acciones)');
 const seco = E.run('correrAgendaEnBloqueo_(true, { mails: __mm, geocodificar: __gg })');
 ok(seco && !seco.error, 'y la agenda en seco corre igual sobre la misma base');
+// 19/10 (revisor, M2): dos simulaciones de la MISMA base, con una reunión nueva en el mail (la agenda la CREARÍA, con un agenda_uid
+// aleatorio en cada una): nada "fuera de lo esperado"
+const TAPIA = ['*Miércoles 21/10*', 'Evento: Encuentro con Vecinos Gabino Tapia, Núñez', 'Hora: 18:00h', 'Lugar: Av. Inventada 100, Club'];
+E.ctx.__mm2 = MAILS.concat([mail(19, 9, [TAPIA], 'Agenda Encuentros de vecinos con CM y Ministros - Semana del 19/10 al 25/10')]);
+const m2 = E.run('(function () {' +
+  ' const ent = entradasSimulacion_({ mails: __mm2, geocodificar: __gg, listaIds: { registros: [] } });' +
+  ' const a = simularCorridaHora_(ent.bloque, ent), b = simularCorridaHora_(ent.bloque, ent);' +
+  ' const c = compararSimulaciones_(a, b, {});' +
+  ' return { crea: a.P.resumen.crear, sB: c.soloEnB.length, sA: c.soloEnA.length }; })()');
+ok(m2.crea === 1 && m2.sB === 0 && m2.sA === 0, 'dos simulaciones iguales que CREAN una fila (uids aleatorios): ninguna diferencia — ' + JSON.stringify(m2));
+// 19/10 (revisor, B2): una huella de más de 2 horas no vale
+const sV = E.run('separarReunionAgenda_enSeco(__opc)');
+ok(sV.listo === true, 'el 101: LISTO');
+E.props.SEPARAR_REUNION_HUELLA_101 = JSON.stringify({ h: sV.huella, t: D.now() - 3 * 3600000 });
+const sVieja = E.run('separarReunionAgenda({ caso: ' + JSON.stringify(CASO) + ' })');
+ok(sVieja && /más de 2 horas/.test(sVieja.error || '') && E.D.v.length === antes.filas, 'la huella del 101 de hace 3 horas: el 102 no corre — ' + (sVieja && sVieja.error));
+// 19/10 (revisor, M1): si la escritura falla a la mitad, se vuelve atrás (nunca dos filas con el mismo agenda_uid)
+E.run('separarReunionAgenda_enSeco(__opc)');
+E.run('var __escOrig = escribirAgendaLote_; var __n = 0; escribirAgendaLote_ = function (a, b, c) { if (++__n === 3) throw new Error("falla simulada"); return __escOrig(a, b, c); };');
+const xFalla = fila(E, X);
+const sF = E.run('separarReunionAgenda({ caso: ' + JSON.stringify(CASO) + ' })');
+E.run('escribirAgendaLote_ = __escOrig;');
+let conUid = 0; for (let i = 1; i < E.D.v.length; i++) if (E.D.v[i][E.C('agenda_uid')] === uidX) conUid++;
+ok(sF && /falló a la mitad/.test(sF.error || '') && conUid === 1 && fila(E, X) === xFalla && E.D.v.length === antes.filas,
+   'la escritura falla a la mitad: vuelve atrás (la 824 igual, sin fila nueva, un solo agenda_uid) — ' + (sF && sF.error));
+ok(!E.props.SEPARAR_REUNION_CORRIDA_102, 'y no queda una separación para deshacer');
+
 // el último seco dio NO LISTO (el ID): borró la huella; sin un seco LISTO, el 102 no corre
 E.ctx.__opcR0 = { caso: CASO };
 const sinSeco = E.run('separarReunionAgenda(__opcR0)');

@@ -216,20 +216,22 @@ function ordenarBase_(opciones) {
   // lo de antes: valores, fondos, notas y formatos de las filas 2..ultima
   const n = plan.ultima - 1;
   const rgAntes = sh.getRange(2, 1, n, nCols);
+  // 19/10 (revisor): celdas combinadas en el rango → el orden de la hoja falla: no se intenta (ni se guarda nada)
+  if (typeof rgAntes.getMergedRanges === 'function' && rgAntes.getMergedRanges().length) {
+    Logger.log('>>> NO SE ORDENA: la base tiene celdas combinadas en las filas con datos.');
+    return { error: 'la base tiene celdas combinadas' };
+  }
   const antes = { valores: bloque.slice(1, plan.ultima), fondos: rgAntes.getBackgrounds(), notas: rgAntes.getNotes(), formatos: rgAntes.getNumberFormats() };
-  // el orden anterior, OBLIGATORIO antes de mover nada
+  // el orden anterior, OBLIGATORIO antes de mover nada; y el id, también antes (si la ejecución muere en el medio, el 109 deshace ÉSTE)
   const corrida = Utilities.formatDate(new Date(), RDV_TZ, 'yyyyMMdd-HHmmss') + '-o' + Utilities.getUuid().slice(0, 4);
-  try { _guardarOrdenPrevio_(corrida, plan); }
+  try { _guardarOrdenPrevio_(corrida, plan); props.setProperty(ORDEN_PROP_CORRIDA, corrida); }
   catch (err) { Logger.log('>>> NO SE ORDENA: no se pudo guardar el orden anterior (%s)', err); return { error: 'no se pudo guardar el orden anterior: ' + err }; }
   ordenarFilasBase_(sh, plan.ultima, plan.specs);
   SpreadsheetApp.flush();
   if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('se ordenó la base');
   // la verificación
   const v = _verificarOrden_(sh, antes, plan, nCols);
-  try {
-    props.setProperty(ORDEN_PROP_HUELLA, v.huellaDespues);
-    props.setProperty(ORDEN_PROP_CORRIDA, corrida);
-  } catch (e) { Logger.log('  (la huella del orden no se pudo guardar: %s)', e); }
+  try { props.setProperty(ORDEN_PROP_HUELLA, v.huellaDespues); } catch (e) { Logger.log('  (la huella del orden no se pudo guardar: %s)', e); }
   // las vistas muestran "Fila del destino": que la próxima corrida las reescriba (49_Aceleraciones.js)
   if (typeof olvidarHuellasVistas === 'function') { try { olvidarHuellasVistas(); } catch (e) { /* la red de seguridad de 6 h igual las rehace */ } }
   if (GUARDIAN_ACTIVO && typeof tomarCopiaSiAlineada_ === 'function') { try { tomarCopiaSiAlineada_(); } catch (e) { Logger.log('  el guardián no pudo tomar la copia: %s', e); } }
@@ -250,7 +252,20 @@ function _guardarOrdenPrevio_(corrida, plan) {
   const desde = sh.getLastRow() + 1;
   sh.getRange(desde, 1, filas.length, enc.length).setValues(filas);
   SpreadsheetApp.flush();
+  // 19/10 (revisor): sólo los últimos ORDEN_PREVIOS_GUARDADOS órdenes (la solapa no crece sin límite); los viejos, arriba, se borran
+  // (es la intermedia, no la base)
+  const col = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(function (r) { return str(r[0]); });
+  const corridas = col.filter(function (c, i) { return c && col.indexOf(c) === i; });
+  if (corridas.length > ORDEN_PREVIOS_GUARDADOS) {
+    const quedan = corridas.slice(-ORDEN_PREVIOS_GUARDADOS);
+    let n = 0;
+    while (n < col.length && quedan.indexOf(col[n]) < 0) n++;
+    if (n) sh.deleteRows(2, n);
+  }
 }
+
+/** 19/10 (revisor): cuántos órdenes anteriores se guardan en ORDEN_SOLAPA_PREVIO (el paso 109 deshace sólo el último). */
+const ORDEN_PREVIOS_GUARDADOS = 5;
 
 /**
  * Después de ordenar: cada fila de ahora es una de antes (por su contenido, como multiconjunto); su fondo, sus notas y sus formatos,
@@ -273,16 +288,17 @@ function _verificarOrden_(sh, antes, plan, nCols) {
     if (!l || !l.length) { if (!error) error = 'la fila ' + (j + 2) + ' quedó con un contenido que no tenía ninguna fila antes'; de.push(null); return; }
     de.push(l.shift());
   });
-  // los formatos de cada fila, los de su fila de antes
-  const esp = { fondos: [], notas: [], formatos: [] };
-  let repuestos = 0;
+  // los formatos de cada fila, los de su fila de antes (19/10, revisor: sólo las filas que difieren)
+  const reponer = [];
   de.forEach(function (i, j) {
-    ['fondos', 'notas', 'formatos'].forEach(function (k) { esp[k].push(i == null ? ahora[k][j] : antes[k][i]); });
-    if (i != null && ['fondos', 'notas', 'formatos'].some(function (k) { return JSON.stringify(antes[k][i]) !== JSON.stringify(ahora[k][j]); })) repuestos++;
+    if (i != null && ['fondos', 'notas', 'formatos'].some(function (k) { return JSON.stringify(antes[k][i]) !== JSON.stringify(ahora[k][j]); })) {
+      reponer.push({ fila: j + 2, fondos: antes.fondos[i], notas: antes.notas[i], formatos: antes.formatos[i] });
+    }
   });
+  const repuestos = reponer.length;
   if (repuestos && !error) {
     Logger.log('  ATENCIÓN: la hoja no movió los fondos / notas / formatos de %s filas con sus valores: se reponen (cada uno a su fila).', repuestos);
-    reponerFormatoFilas_(sh, esp);
+    reponerFormatoFilas_(sh, reponer);
   }
   const bAhora = [plan.hdr].concat(ahora.valores);
   const despues = ahora.valores.map(function (r, j) { return { clave: claveContenidoFila_(r), id: identidadFilaSim_(bAhora, j + 2) }; });
@@ -343,8 +359,14 @@ function _deshacerOrden_(enSeco, corrida) {
   Logger.log('  filas %s | vuelven a su lugar de antes %s | nuevas desde el orden (quedan después) %s | se moverían %s', destino.length,
              destino.length - extra, extra, moverian);
   if (enSeco || !moverian) { if (!moverian) Logger.log('  ya está en el orden de antes.'); return { corrida: id, moverian: moverian }; }
+  // 19/10 (revisor): la misma verificación que el orden (cada fila con sus valores, fondos, notas y formatos; si no, se reponen)
+  const nCols = sh.getMaxColumns();
+  const rgA = sh.getRange(2, 1, plan.ultima - 1, nCols);
+  const antes = { valores: bloque.slice(1, plan.ultima), fondos: rgA.getBackgrounds(), notas: rgA.getNotes(), formatos: rgA.getNumberFormats() };
   ordenarFilasPorPosicion_(sh, plan.ultima, posiciones);
   SpreadsheetApp.flush();
+  const v = _verificarOrden_(sh, antes, { ultima: plan.ultima, hdr: plan.hdr, orden: rank.map(function (d) { return d.x; }) }, nCols);
+  if (v.error) Logger.log('>>> ATENCIÓN (deshacer el orden): %s', v.error);
   if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('se deshizo el orden de la base');
   try {
     const props = PropertiesService.getScriptProperties();
