@@ -1951,6 +1951,23 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — las decisiones del usuario sobre el prompt 08
+
+1. **El orden de la base, al PRINCIPIO de la corrida** (como propuso el revisor): después del guardián, antes de la agenda y del
+   cruce, sin guarda de tiempo. Los reportes de la corrida ya ven la base ordenada; una fila que cree la agenda queda al final hasta
+   la corrida siguiente. Sigue APAGADO (`BASE_ORDEN_POR_FECHA`) hasta los pasos 107 y 108.
+2. **Las Suspendidas sin formulario no van a las fichas ni a SIN_MATCH** (`SUSPENDIDAS_FUERA_DE_FICHAS = true`, por decisión del
+   usuario): una fila "Suspendida" que iría a REVISAR_MATCH o a SIN_MATCH tiene veredicto propio (`suspendida_sin_formulario`) y no
+   va a las fichas, SIN_MATCH, EMPAREJAR_MANUAL ni HISTORICO_SIN_RESOLVER. Nada más del cruce cambia: una Suspendida que se escribe,
+   se escribe igual. El log del cruce la cuenta ("Suspendidas sin formulario"); el paso 20 dice la causa. Test:
+   `tests/suspendidas_fichas.test.js`.
+3. **Macri 15/10: el paso 101 dio NO LISTO** (bien): la 824 tiene el formulario de Villa Santa Rita (176 inscriptos) y los asistentes
+   de Villa Devoto (31), con la misma dirección, fecha y hora. Probablemente fue UNA reunión con el barrio corregido. **El usuario lo
+   está confirmando con el equipo: los pasos 101-103 NO se tocan hasta que lo diga.**
+4. **`mediciones_soloLectura()`** (99_Correr.js): los pasos 67, 104, 105 y 106 juntos, sólo lectura. El `zz_mediciones.js` del
+   editor no estaba en el remoto al hacer el push (84 archivos, los mismos del 19/10): se escribió la función a partir de la
+   descripción.
+
 #### 19/10 — prompt 08: Macri 15/10, "una reunión, una fila" y el orden de la base
 
 Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (paso 66 del 19/10, 14:30): todo OK.
@@ -1994,8 +2011,8 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
   500 m del borde de otro barrio y en la comuna o el barrio del mail; más estricta: no con otro barrio del mail ni con sólo un eje):
   **`paso106_barrioAproximado_enSeco()`** (sólo la cache, sin Maps ni Gmail): qué filas ganarían barrio y la prueba contra los
   barrios del equipo (tiene que dar 0 contradicciones). Código: `diagnostico/38_barrio_aproximado.js`, 41_AgendaParser.js.
-- **Punto 7 (escrito, APAGADO: `BASE_ORDEN_POR_FECHA`):** `57_OrdenBase.js`. Al final de la corrida de la hora (dentro del bloqueo,
-  si queda tiempo: `GUARDA_INICIO_MAX_MS.orden`), la base por FECHA, HORA y Figura (las sin FECHA al final), sólo si hace falta, con
+- **Punto 7 (escrito, APAGADO: `BASE_ORDEN_POR_FECHA`):** `57_OrdenBase.js`. Al PRINCIPIO de la corrida de la hora (20/10, decisión
+  del usuario; dentro del bloqueo, antes de la agenda y del cruce, sin guarda de tiempo), la base por FECHA, HORA y Figura (las sin FECHA al final), sólo si hace falta, con
   el ordenamiento de la hoja sobre filas enteras; antes guarda el orden (ORDEN_BASE_PREVIO, intermedia) y después verifica cada fila
   (valores, fondos, notas, formatos; si la hoja no moviera un fondo, lo repone). REGISTRO_CORRIDAS: columna "base_ordenada".
   Pasos: **`paso107_ordenBase_enSeco()`** (sólo lectura: cuántas se moverían, las primeras 20, las sin FECHA, cada agenda_uid y
@@ -2013,9 +2030,8 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
   (sin pintar de blanco) y el deshacer del orden también verifica; (B1) el id del orden, antes de ordenar; (B2) la huella del 101
   vence a las 2 horas; (B3) "con la dirección" sólo si la Dirección de la 824 es la que escribió el sistema; (B5) la simulación
   compara también lo que juntaría la fusión; (B7) el 101 dice qué hace el cruce con cada fila (la nueva, Suspendida y sin
-  formulario, puede ir a las fichas o a SIN_MATCH como cualquier fila sin formulario). **Sin cambiar, a decidir:** (M4) el orden va
-  AL FINAL (lo pide el prompt): los reportes de esa corrida muestran números de fila viejos hasta la corrida siguiente; ordenar al
-  PRINCIPIO de la corrida lo evitaría (las filas que cree la agenda quedarían al final una hora). (B4) si el formulario de la 824
+  formulario, puede ir a las fichas o a SIN_MATCH como cualquier fila sin formulario). **Decidido el 20/10 por el usuario:** (M4) el orden va al
+  PRINCIPIO de la corrida (los reportes ya ven la base ordenada; una fila que cree la agenda queda al final una hora). (B4) si el formulario de la 824
   dice sólo "Comuna 11" (Villa Devoto y Villa Santa Rita son las dos Comuna 11), el 101 lo marca "no distingue" pero no frena.
   (B9) la auditoría da OK a cualquier fila del equipo Realizada fuera del mail (no sólo la 824).
 - **La verificación 7f — qué depende del número de fila entre corridas** (leído en el código; nada más que esto):
@@ -2030,11 +2046,10 @@ Prompt: docs/prompts/PROMPT-08-AGENDA-MACRI-Y-ORDEN-BASE.md. Estado de partida (
     cruce (`_mismaFilaFresca_`), la lectura única de la base (se invalida al ordenar);
   - **se niegan solos si la base se ordenó en el medio (correcto):** los pasos 97 y 102 (su huella incluye los números de fila):
     volver a correr el seco;
-  - **se regeneran en cada corrida, pero muestran números que quedan viejos hasta la corrida siguiente (≤ 1 h) si el orden movió
-    filas:** "fila" en REVISAR_MATCH, AGENDA_DUPLICADOS, AGENDA_PENDIENTES ("borrar la fila Y a mano"), IDS_SIN_CRUZAR y "Fila del
-    destino" del archivo "Agenda". Ninguna decisión se aplica por esos números (todas por identidad), pero una persona que busque
-    "la fila 838" a mano en esa hora puede mirar otra. Es lo mismo que pasa hoy cuando el equipo ordena. Para acortarlo, al ordenar
-    se olvidan las huellas de las vistas (la corrida siguiente las reescribe);
+  - **se regeneran en cada corrida y muestran números de fila:** "fila" en REVISAR_MATCH, AGENDA_DUPLICADOS, AGENDA_PENDIENTES,
+    IDS_SIN_CRUZAR y "Fila del destino" del archivo "Agenda". Ninguna decisión se aplica por esos números (todas por identidad). Con
+    el orden al PRINCIPIO de la corrida (20/10) esos reportes ya salen con la base ordenada; quedan viejos sólo si el EQUIPO ordena o
+    borra filas entre dos corridas (como hasta hoy). Al ordenar, igual se olvidan las huellas de las vistas;
   - **cosmético:** dos registros recuerdan "ya avisado / ya anotado" con el número de fila (la nota "ya_cargada" y el aviso de RDV
     CONJUNTO en una fila SIN agenda_uid): después de un orden que mueve esa fila, se anotan / avisan una vez más;
   - **Looker:** la ID derivada desempata " (2)", " (3)" por orden de fila sólo entre filas IGUALES (figura, barrio, fecha y hora): el

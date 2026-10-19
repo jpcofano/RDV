@@ -17,6 +17,9 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 20/10: mediciones_soloLectura()  SÓLO LECTURA: los pasos 67, 104, 105 y 106 juntos.
+ *      Decisiones del 20/10: el orden de la base va al PRINCIPIO de la corrida; las Suspendidas sin formulario no van a las fichas
+ *      ni a SIN_MATCH (SUSPENDIDAS_FUERA_DE_FICHAS); Macri 15/10: los pasos 101-103 quedan como están hasta que confirme el equipo.
  *  >>> 19/10 (prompt 08): separar Macri 15/10 (la 824) — docs/ESTADO.md, "19/10 — prompt 08".
  *        paso101_separarMacri1510_enSeco()   SÓLO LECTURA (+ la huella): el plan y la próxima corrida SIMULADA. Tiene que dar LISTO.
  *        paso102_separarMacri1510()          ESCRIBE (exige la huella del 101). Con la dirección: 101b → 102b.
@@ -1460,6 +1463,21 @@ function pasos100y99_soloLectura() {
   try { paso99_fusionAutomatica_enSeco(); }
   catch (e) { Logger.log('*** el paso 99 falló: ' + (e && e.stack ? e.stack : e)); }
   Logger.log('########## TERMINADO: pasos 100 y 99 (sólo lectura) ##########');
+}
+
+/**
+ * MEDICIONES — SÓLO LECTURA (20/10; el usuario la pidió como zz_mediciones.js del editor): los pasos 67 (tiempos de las corridas),
+ * 104 (reuniones hechas sin fila), 105 (el barrio de la 834) y 106 (la geocodificación aproximada), uno tras otro, cada uno aislado:
+ * si uno falla, los demás siguen. Ninguno escribe nada.
+ */
+function mediciones_soloLectura() {
+  const pasos = [['paso 67 — tiempos de las corridas', paso67_tiemposCorridas], ['paso 104 — reuniones hechas sin fila', paso104_hechasSinFila],
+                 ['paso 105 — el barrio de la fila 834', paso105_explicarBarrioFila834], ['paso 106 — la geocodificación aproximada (en seco)', paso106_barrioAproximado_enSeco]];
+  pasos.forEach(function (p) {
+    Logger.log('########## %s (sólo lectura) ##########', p[0]);
+    try { p[1](); } catch (e) { Logger.log('*** %s falló: %s', p[0], e && e.stack ? e.stack : e); }
+  });
+  Logger.log('########## TERMINADO: mediciones (pasos 67, 104, 105 y 106; sólo lectura) ##########');
 }
 
 /**

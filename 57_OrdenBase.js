@@ -1,7 +1,8 @@
 /**
  * 57_OrdenBase.js — LA BASE ORDENADA POR FECHA, LAS MÁS NUEVAS AL FINAL (19/10; prompt 08, punto 7; pasos 107, 108 y 109).
  *
- * Al final de cada corrida de la hora (con BASE_ORDEN_POR_FECHA, APAGADO hasta ver el seco), la base queda ordenada por FECHA
+ * Al PRINCIPIO de cada corrida de la hora (20/10, decisión del usuario; con BASE_ORDEN_POR_FECHA, APAGADO hasta ver el seco), la base
+ * queda ordenada por FECHA
  * ascendente, dentro del mismo día por HORA y después por Figura; las filas sin FECHA, al final de todo (y se listan). Lo seguro:
  *   - sólo si hace falta: si ya está en orden, no toca nada. "En orden" es lo que daría el ordenamiento de la hoja (`_claveOrden_`
  *     imita su criterio: números y fechas antes que textos, las celdas vacías al final, el texto sin mayúsculas). Si la hoja ordena
@@ -12,8 +13,8 @@
  *   - antes: si hay una fórmula en la base no ordena; guarda el orden anterior en ORDEN_SOLAPA_PREVIO (intermedia), OBLIGATORIO;
  *   - después: verifica, fila por fila por su contenido, que cada una siguió con sus valores, fondos, notas y formatos (cada
  *     agenda_uid y cada RDV_UID con lo suyo); si la hoja no movió un fondo / nota / formato con su fila, lo repone;
- *   - en la corrida de la hora: al FINAL, dentro del bloqueo, sólo si queda tiempo (GUARDA_INICIO_MAX_MS.orden); en
- *     REGISTRO_CORRIDAS, "base_ordenada";
+ *   - en la corrida de la hora: al PRINCIPIO (después del guardián, antes de la agenda: la corrida anterior ya terminó de escribir y
+ *     los reportes de ésta ven la base ordenada), dentro del bloqueo; en REGISTRO_CORRIDAS, "base_ordenada";
  *   - deshacer (paso 109): vuelve al orden guardado (por el contenido de cada fila y, si cambió, por su identidad).
  *
  *   ordenBase_enSeco(opciones)       (paso 107, SÓLO LECTURA) cuántas filas se moverían, las primeras 20 (de qué fila a qué fila),

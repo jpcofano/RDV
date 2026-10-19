@@ -1645,6 +1645,23 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     }
   }
 
+  // (0) 20/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js; decisión del usuario: al PRINCIPIO, como propuso el revisor del prompt 08): la
+  // base ordenada por FECHA, HORA y Figura ANTES de la agenda y del cruce, así toda la corrida y sus reportes (fichas, AGENDA_DUPLICADOS,
+  // las vistas) ven la base ordenada; sin guarda de tiempo (es lo primero: no se saltea). La corrida anterior ya terminó de escribir; una
+  // fila que cree la agenda en ésta queda al final hasta la próxima. Si falla, la corrida sigue (la base no se tocó o quedó verificada).
+  // Con el guardián frenando (o en seco), no. En REGISTRO_CORRIDAS, "base_ordenada".
+  if (typeof BASE_ORDEN_POR_FECHA !== 'undefined' && BASE_ORDEN_POR_FECHA && !enSeco && !historial) {
+    const tO = _ahoraMs_(); let errO = null; corridaEmpieza_('orden');
+    try {
+      const o = ordenarBaseEnLaHora_();
+      if (typeof corridaBaseOrdenada_ === 'function') {
+        corridaBaseOrdenada_(o.error ? 'error: ' + o.error : o.movidas ? 'ordenada: ' + o.movidas + ' filas movidas' + (o.repuestos ? ' (formatos repuestos en ' + o.repuestos + ')' : '') +
+                                                         ' — deshacer: paso 109, ' + o.corrida : 'no hacía falta (' + (o.nada || 'en orden') + ')');
+      }
+    } catch (err) { errO = err; Logger.log('>>> Ordenar la base falló: %s (la corrida sigue).', err); }
+    corridaAnotar_('orden', tO, errO);
+  }
+
   // (1) La AGENDA (06/10, etapa 2): con AGENDA_ACTIVA, primero crea y actualiza las filas de la agenda, en este mismo
   // bloqueo, para que el cruce con los formularios ya las vea. Si falla, lo dice y el upsert sigue. No en el paso 22.
   // 07/10: el error queda también en REGISTRO_AGENDA (si la intermedia responde); el upsert sigue igual.
@@ -1916,26 +1933,6 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     }
   }
 
-  // (6) 19/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js): la base ordenada por FECHA, HORA y Figura, al FINAL (todo lo de arriba ya
-  // escribió), sólo si hace falta y si queda tiempo; si no, la próxima. Si falla, la corrida termina igual (la base no se tocó o
-  // quedó verificada). En REGISTRO_CORRIDAS, "base_ordenada".
-  if (typeof BASE_ORDEN_POR_FECHA !== 'undefined' && BASE_ORDEN_POR_FECHA && !enSeco && !historial) {
-    if (!corridaHayTiempo_('orden')) {
-      corridaSaltear_('orden', 'ordenar la base');
-      if (typeof corridaBaseOrdenada_ === 'function') corridaBaseOrdenada_('salteada por tiempo (la próxima)');
-    } else {
-      const tO = _ahoraMs_(); let errO = null; corridaEmpieza_('orden');
-      try {
-        const o = ordenarBaseEnLaHora_();
-        if (typeof corridaBaseOrdenada_ === 'function') {
-          corridaBaseOrdenada_(o.error ? 'error: ' + o.error : o.movidas ? 'ordenada: ' + o.movidas + ' filas movidas' + (o.repuestos ? ' (formatos repuestos en ' + o.repuestos + ')' : '') +
-                                                           ' — deshacer: paso 109, ' + o.corrida : 'no hacía falta (' + (o.nada || 'en orden') + ')');
-        }
-      } catch (err) { errO = err; Logger.log('>>> Ordenar la base falló: %s (el resto de la corrida ya terminó).', err); }
-      corridaAnotar_('orden', tO, errO);
-    }
-  }
-
   // El guardián: la copia de las columnas del sistema, al final (después de todo lo que escribió esta corrida).
   if (GUARDIAN_ACTIVO && !enSeco) {
     const tGc = _ahoraMs_(); corridaEmpieza_('guardian_copia');
@@ -2069,7 +2066,9 @@ function calcularPlan_(enSeco, entradas, opciones) {
                 // DIAS_FUTUROS_CRUCE (07/10): futuras que se cruzaron, y las que todavía no tienen formulario.
                 futurasCruzadas: 0, futurasSinFormulario: 0,
                 // FICHAS_0810_ACTIVAS (08/10): "esperando formulario" (no van a las fichas ni a SIN_MATCH).
-                esperando: contador_() };
+                esperando: contador_(),
+                // 20/10 (SUSPENDIDAS_FUERA_DE_FICHAS): las Suspendidas sin formulario (no van a las fichas ni a SIN_MATCH)
+                suspendidas: contador_() };
   const motivos = {};
 
   /*
@@ -2265,6 +2264,16 @@ function calcularPlan_(enSeco, entradas, opciones) {
                           score: r.mejor ? r.mejor.score : null };
       continue;
     }
+    // 20/10 (decisión del usuario, prompt 08; SUSPENDIDAS_FUERA_DE_FICHAS): una fila "Suspendida" que no se escribe (iría a
+    // REVISAR_MATCH o a SIN_MATCH) nunca va a tener formulario: no va a las fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL, ni a
+    // HISTORICO_SIN_RESOLVER. Nada más del cruce cambia (una Suspendida que se escribe, se escribe igual).
+    if (SUSPENDIDAS_FUERA_DE_FICHAS && (r.veredicto === 'SIN_MATCH' || r.veredicto === 'REVISAR_MATCH') && dest.D['STATUS REUNIÓN'] != null &&
+        normStatus_(f.valores[dest.D['STATUS REUNIÓN']]) === 'suspendida') {
+      sumar_(res.suspendidas, ev);
+      porFila[f.fila] = { veredicto: 'suspendida_sin_formulario', motivo: 'suspendida_sin_formulario', antes: r.veredicto,
+                          motivoAntes: r.motivo || '', cand: r.mejor ? r.mejor.c : null, score: r.mejor ? r.mejor.score : null };
+      continue;
+    }
     // 07/10 (DIAS_FUTUROS_CRUCE): una fila FUTURA sin formulario todavía no es un hueco: no va a los reportes (ni a las
     // fichas) y se reevalúa sola. Con formulario, se escribe o va a revisión como cualquiera. (Con FICHAS_0810_ACTIVAS
     // la reemplaza "esperando formulario", arriba.)
@@ -2377,7 +2386,7 @@ function calcularPlan_(enSeco, entradas, opciones) {
   Object.keys(porFila).forEach(function (k) {
     // Y las cerradas (DIAS_ACTIVOS): no se proponen.
     if (porFila[k].veredicto === 'pendiente_barrio' || porFila[k].veredicto === 'ninguno_por_persona' ||
-        porFila[k].veredicto === 'esperando_formulario' ||
+        porFila[k].veredicto === 'esperando_formulario' || porFila[k].veredicto === 'suspendida_sin_formulario' ||
         porFila[k].veredicto === 'cerrada' || porFila[k].cerrada) resueltas[k] = true;
   });
   // Las opciones de cada fila a revisar: hasta OPCIONES_REVISION formularios, con sus puntajes.
@@ -2864,6 +2873,10 @@ function logResumen_(plan) {
     Logger.log('  esperando formulario  %s   (de hasta %s días atrás o futuras, sin formulario libre a ±%s: no van a ' +
                'las fichas ni a SIN_MATCH; causa en el paso 20)', _dcp_(r.esperando, base), DIAS_ESPERANDO_FORMULARIO,
                TOLERANCIA_REPROGRAMACION_DIAS);
+  }
+  if (SUSPENDIDAS_FUERA_DE_FICHAS && r.suspendidas) {
+    Logger.log('  Suspendidas sin formulario  %s   (no van a las fichas, a SIN_MATCH ni a EMPAREJAR_MANUAL: nunca van a tener formulario)',
+               _dcp_(r.suspendidas, base));
   }
   Logger.log('  de las que escribiría, a 1-%s días (entran por la tolerancia de reprogramación; ' +
              'con la escala vieja quedaban abajo): %s', TOLERANCIA_REPROGRAMACION_DIAS,

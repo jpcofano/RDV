@@ -95,8 +95,7 @@ const GUARDA_INICIO_MAX_MS = {
   reportes: 270 * 1000,       // las fichas de REVISAR_MATCH, EMPAREJAR_MANUAL, SIN_MATCH: se rehacen en la próxima
   ids: 180 * 1000,            // leer la lista externa tardó hasta 120 s (15/10, 9:28)
   looker: 240 * 1000,         // (LOOKER_TIEMPO_MAX_MS)
-  vistas_agenda: 240 * 1000,  // AgendaCall, Agenda (mail) y la "Agenda" del archivo RDV
-  orden: 300 * 1000           // 19/10 (BASE_ORDEN_POR_FECHA, 57_OrdenBase.js): ordenar la base, al final; si no alcanza, la próxima
+  vistas_agenda: 240 * 1000   // AgendaCall, Agenda (mail) y la "Agenda" del archivo RDV
 };
 /** Una línea por corrida (intermedia): inicio, duración total y de cada parte, lo que se salteó por tiempo, el error completo. */
 const RDV_HOJA_CORRIDAS = 'REGISTRO_CORRIDAS';
@@ -1031,6 +1030,12 @@ const DIAS_CONTEXTO_FICHA = 7;
  *
  * Paso 52 (08/10 17:09): escritura 0; sale la 813 (esperando formulario). Prendido ese día, con esa regla sumada.
  */
+/**
+ * **Las Suspendidas, fuera de las fichas** (20/10, decisión del usuario, prompt 08): una fila "Suspendida" que no se escribe (iría a
+ * REVISAR_MATCH o a SIN_MATCH) nunca va a tener formulario: no va a las fichas, ni a SIN_MATCH, ni a EMPAREJAR_MANUAL, ni a
+ * HISTORICO_SIN_RESOLVER (veredicto propio, 'suspendida_sin_formulario'). Nada más del cruce cambia.
+ */
+const SUSPENDIDAS_FUERA_DE_FICHAS = true;
 const FICHAS_0810_ACTIVAS = true;   // PRENDIDO el 08/10, con el paso 52 de las 17:09 y la regla de las de otra figura (abajo)
 const DIAS_ESPERANDO_FORMULARIO = 3;
 const DIAS_OPCIONES_FICHA = 14;
@@ -1922,8 +1927,9 @@ const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
  */
 const AGENDA_AVISO_HECHAS_SIN_FILA = false;
 /**
- * **La base ordenada por FECHA** (19/10, prompt 08, punto 7; 57_OrdenBase.js). Al final de cada corrida de la hora —dentro del
- * bloqueo, sólo si queda tiempo (GUARDA_INICIO_MAX_MS.orden) y nunca a la mitad de una escritura—, la base queda ordenada por FECHA
+ * **La base ordenada por FECHA** (19/10, prompt 08, punto 7; 57_OrdenBase.js). Al PRINCIPIO de cada corrida de la hora (20/10, decisión
+ * del usuario: antes de la agenda y del cruce, así los reportes de la corrida ya ven la base ordenada; dentro del bloqueo, sin guarda de
+ * tiempo: es lo primero; una fila que cree la agenda queda al final hasta la corrida siguiente), la base queda ordenada por FECHA
  * ascendente (las más nuevas al final), dentro del mismo día por HORA y después por Figura; las filas sin FECHA, al final de todo.
  * Sólo si hace falta (ya en orden: no toca nada); con el ordenamiento nativo de la hoja sobre TODAS las columnas (cada fila entera,
  * con formatos, notas y colores), sólo las filas con datos; antes guarda el orden anterior (ORDEN_SOLAPA_PREVIO, intermedia) para

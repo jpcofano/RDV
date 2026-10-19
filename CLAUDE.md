@@ -2508,6 +2508,10 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
    ELEGIR sólo con Ninguno / No sé; si el formulario del motivo quedó afuera, "¿por qué?" lo nombra igual. No cambia
    ningún cruce escrito (lo controlan el paso 52 y el test [29]).
 
+   **Las Suspendidas sin formulario, tampoco** (20/10, decisión del usuario; `SUSPENDIDAS_FUERA_DE_FICHAS`): una fila "Suspendida"
+   que iría a REVISAR_MATCH o a SIN_MATCH nunca va a tener formulario: veredicto `suspendida_sin_formulario`, fuera de las fichas,
+   SIN_MATCH, EMPAREJAR_MANUAL e HISTORICO_SIN_RESOLVER. Nada más del cruce cambia (una Suspendida que se escribe, se escribe igual).
+
    **Lo viejo sin resolver no son fichas.** En la corrida de completar el historial (paso 22, decisión 13),
    lo que queda en revisión o sin match con más de `DIAS_ACTIVOS` días va a `HISTORICO_SIN_RESOLVER`
    (intermedia), **sólo informativa**: fila, figura, fecha, barrio, motivo y la mejor opción con su
@@ -2990,7 +2994,7 @@ diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una de
                    bases (la de hoy y "como quedaría") fila por fila por su identidad. La usan los pasos 101 y 107  ← 19/10
 56_SepararReunion.js  separar "dos reuniones en una fila" (Macri 15/10, la 824): paso 101 en seco (con la simulación; LISTO →
                    huella), 102 real (la exige), 103 deshace por identidad                                       ← 19/10
-57_OrdenBase.js    la base ordenada por FECHA, HORA y Figura, al final de la corrida de la hora (BASE_ORDEN_POR_FECHA, APAGADO):
+57_OrdenBase.js    la base ordenada por FECHA, HORA y Figura, al PRINCIPIO de la corrida de la hora (BASE_ORDEN_POR_FECHA, APAGADO):
                    paso 107 en seco (con la simulación: la próxima corrida tiene que hacer lo mismo con la base ordenada), 108
                    ordena a mano, 109 deshace (ORDEN_BASE_PREVIO, intermedia); REGISTRO_CORRIDAS "base_ordenada"         ← 19/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,

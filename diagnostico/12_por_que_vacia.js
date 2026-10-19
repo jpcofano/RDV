@@ -118,6 +118,8 @@ function _causaDato_(f, col, pf, d, dest) {
              ' sin formulario libre a ±' + TOLERANCIA_REPROGRAMACION_DIAS + '; pasados esos días, ficha)';
     }
     if (pf.veredicto === 'ninguno_por_persona') return 'a) sin formulario: "ninguno" de una persona';
+    // 20/10 (SUSPENDIDAS_FUERA_DE_FICHAS): una Suspendida no va a las fichas ni a SIN_MATCH
+    if (pf.veredicto === 'suspendida_sin_formulario') return 'a) sin formulario: Suspendida (nunca va a tener formulario; no va a las fichas ni a SIN_MATCH)';
     if (pf.veredicto === 'rdv_uid') return 'a) sin formulario: RDV_UID con la traza ambigua';
     return 'a) sin formulario: ' + (pf.veredicto || 'sin veredicto');
   }

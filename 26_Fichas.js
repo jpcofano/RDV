@@ -365,6 +365,7 @@ function _otrasReuniones_(ctx, f) {
     else if (pf.veredicto === 'cerrada') estado = 'cerrada, sin formulario';
     else if (pf.veredicto === 'pendiente_barrio') estado = 'esperando el barrio';
     else if (pf.veredicto === 'esperando_formulario') estado = 'esperando su formulario';
+    else if (pf.veredicto === 'suspendida_sin_formulario') estado = 'Suspendida, sin formulario';
     else if (pf.veredicto === 'ninguno_por_persona') estado = '"ninguno" (lo decidió una persona)';
     else estado = pf.veredicto || '';
     return { f: o, d: diasEntre_(o.fecha, f.fecha), estado: estado };
@@ -858,6 +859,7 @@ function _estadoCorto_(pf) {
     case 'cerrada': return 'cerrada, sin form.';
     case 'pendiente_barrio': return 'esperando barrio';
     case 'esperando_formulario': return 'esperando form.';
+    case 'suspendida_sin_formulario': return 'Suspendida';
     case 'ninguno_por_persona': return '"ninguno"';
     default: return pf.veredicto || '';
   }
