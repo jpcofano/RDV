@@ -33,11 +33,14 @@ function cacheAgendaAbrir_(servicio) {
   let svc = servicio || null;
   if (!svc) { try { svc = CacheService.getScriptCache(); } catch (e) { svc = null; } }
   if (!svc) return null;
-  const S = { svc: svc, mem: new Map(), edad: new Map(), creada: new Map(), nuevos: new Map(), usados: new Set(),
-              stats: { leidas: 0, nuevas: 0, renovadas: 0, vencidas: 0, errores: [] }, t0: Date.now() };
+  const S = { svc: svc, mem: new Map(), edad: new Map(), creada: new Map(), nuevos: new Map(), usados: new Set(), manifiesto: null,
+              partes: new Map(), stats: { leidas: 0, nuevas: 0, renovadas: 0, vencidas: 0, errores: [] }, t0: Date.now() };
   try {
     const man = svc.get(AGENDA_CACHE_MANIFIESTO_);
-    const claves = man ? JSON.parse(man) : [];
+    // 20/10 (3c): el manifiesto es { t, k } (cuándo se escribió y las claves); el de antes, sólo la lista de claves
+    const mo = man ? JSON.parse(man) : null;
+    const claves = Array.isArray(mo) ? mo : (mo && Array.isArray(mo.k) ? mo.k : []);
+    S.manifiesto = mo ? { t: Array.isArray(mo) ? 0 : Number(mo.t) || 0, k: claves } : null;
     const crudo = {};
     for (let i = 0; i < claves.length; i += 500) {
       const parte = svc.getAll(claves.slice(i, i + 500)) || {};
@@ -54,6 +57,7 @@ function cacheAgendaAbrir_(servicio) {
         const creada = o.c || o.t || 0;
         if (Date.now() - creada >= AGENDA_CACHE_MAX_EDAD_MS) { S.stats.vencidas++; return; }
         S.mem.set(k, o.v);
+        S.partes.set(k, /^p:(\d+)$/.test(crudo[k]) ? +/^p:(\d+)$/.exec(crudo[k])[1] : 0);   // 20/10 (3c): en cuántas partes estaba
         S.edad.set(k, o.t || 0);
         S.creada.set(k, creada);
         S.stats.leidas++;
@@ -86,14 +90,31 @@ function cacheAgendaPut_(S, k, v) {
 /**
  * Cierra la cache: escribe lo nuevo, renueva lo usado que tiene más de AGENDA_CACHE_RENOVAR_MS y el manifiesto (sólo las claves
  * usadas en esta corrida: lo que no se usó se deja vencer solo). Nunca tira.
+ * 20/10 (prompt 09, 3c; AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA): si no hay nada nuevo, ninguna entrada para renovar y el manifiesto es
+ * el mismo (y no viejo), NO se escribe nada (escribir llegaba a 41 s). Cuando alguna entrada tiene que renovarse, se renuevan juntas
+ * todas las de más de la mitad de AGENDA_CACHE_RENOVAR_MS: así se escribe cada tanto, no un poco en cada corrida. `stats.escrita`.
  */
 function cacheAgendaCerrar_(S) {
   if (!S) return null;
   try {
     const ahora = Date.now(), salida = {}, manifiesto = [];
+    const soloSiCambia = typeof AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA !== 'undefined' && AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA;
+    let limiteRenovar = AGENDA_CACHE_RENOVAR_MS;
+    if (soloSiCambia) {
+      let hayVieja = false;
+      S.usados.forEach(function (k) { if (!S.nuevos.has(k) && ahora - (S.edad.get(k) || 0) > AGENDA_CACHE_RENOVAR_MS) hayVieja = true; });
+      limiteRenovar = hayVieja ? AGENDA_CACHE_RENOVAR_MS / 2 : Infinity;
+    }
     S.usados.forEach(function (k) {
       const nuevo = S.nuevos.has(k);
-      const viejo = !nuevo && ahora - (S.edad.get(k) || 0) > AGENDA_CACHE_RENOVAR_MS;
+      const viejo = !nuevo && ahora - (S.edad.get(k) || 0) > limiteRenovar;
+      // 20/10 (3c): lo que no se escribe no se comprime (comprimir es una llamada al servicio por entrada): las partes, las que tenía
+      if (soloSiCambia && !nuevo && !viejo && S.partes.has(k)) {
+        const pp = S.partes.get(k);
+        manifiesto.push(k);
+        for (let i = 1; i <= pp; i++) manifiesto.push(k + '#' + i);
+        return;
+      }
       const txt = _cacheComprimir_(JSON.stringify({ t: nuevo ? ahora : (viejo ? ahora : S.edad.get(k) || ahora), c: S.creada.get(k) || ahora,
                                                     v: S.mem.get(k) }));
       const partes = txt.length > AGENDA_CACHE_MAX_VALOR ? Math.ceil(txt.length / AGENDA_CACHE_MAX_VALOR) : 0;
@@ -105,7 +126,16 @@ function cacheAgendaCerrar_(S) {
       salida[k] = 'p:' + partes;
       for (let i = 1; i <= partes; i++) salida[k + '#' + i] = txt.slice((i - 1) * AGENDA_CACHE_MAX_VALOR, i * AGENDA_CACHE_MAX_VALOR);
     });
-    salida[AGENDA_CACHE_MANIFIESTO_] = JSON.stringify(manifiesto);
+    // el manifiesto: si es el mismo que se leyó (las mismas claves) y no tiene más de AGENDA_CACHE_RENOVAR_MS, no hace falta reescribirlo
+    const previo = S.manifiesto;
+    const mismo = !!previo && previo.k.length === manifiesto.length && ahora - previo.t <= AGENDA_CACHE_RENOVAR_MS &&
+                  previo.k.slice().sort().join('|') === manifiesto.slice().sort().join('|');
+    if (soloSiCambia && mismo && !Object.keys(salida).length) {
+      S.stats.escrita = false;
+      return S.stats;
+    }
+    salida[AGENDA_CACHE_MANIFIESTO_] = JSON.stringify({ t: ahora, k: manifiesto });
+    S.stats.escrita = true;
     const claves = Object.keys(salida);
     for (let i = 0; i < claves.length; i += 200) {
       const lote = {};

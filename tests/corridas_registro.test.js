@@ -88,6 +88,30 @@ ok(E.ss.hojas.REGISTRO_CORRIDAS.v.length === 2 && E.ss.hojas.REGISTRO_CORRIDAS.v
 t = E.run('tiemposDeCorridas()');
 ok(t === null || (t.estados && !t.estados.undefined), 'con una sola corrida no hay nada raro');
 
+console.log('[4] 20/10 (prompt 09, punto 3): el paso 67 muestra el plan por dentro, Gmail barata / completa y los topes');
+E = entorno(null);
+{
+  const e = enc(E);
+  const fila = function (o) { return e.map(function (k) { return k in o ? o[k] : (k === 'inicio' ? new Date(2026, 9, 20, 9) : (k === 'estado' ? 'ok' : '')); }); };
+  const h = hoja('REGISTRO_CORRIDAS', [e,
+    fila({ total_s: 150, plan_indices_s: 0.5, plan_historial_s: 12, plan_conciliacion_s: 40, plan_copia_s: 3, agenda_gmail_s: 1.2, agenda_gmail: 'barata',
+           agenda_mails_cache: 'hilos 29/29 · cache sin cambios (no se escribió)' }),
+    fila({ total_s: 160, plan_indices_s: 0.7, plan_historial_s: 14, plan_conciliacion_s: 60, plan_copia_s: 5, agenda_gmail_s: 22, agenda_gmail: 'completa: cada 4 horas',
+           agenda_mails_cache: 'hilos 29/29 · cache escrita', topes: 'agenda (205 s)', salteadas_por_tiempo: 'agenda' }),
+    fila({ total_s: 300, agenda_gmail_s: 30, agenda_gmail: 'completa: un mensaje nuevo en un hilo (asunto)', topes: 'escritura (250 s)', escritura_s: 'salteada' }),
+    fila({ total_s: 120 })]);
+  E = entorno(h);
+  const t = E.run('tiemposDeCorridas()');
+  ok(t.planTramos && t.planTramos.conciliacion && t.planTramos.conciliacion.mediana === 50 && t.planTramos.conciliacion.max === 60 && t.planTramos.historial.mediana === 13,
+     'los tramos del plan: conciliación mediana 50 s, máximo 60 s; historial mediana 13 s — ' + JSON.stringify(t.planTramos));
+  ok(E.logs.some(function (l) { return /plan\/conciliacion\s+mediana 50\.0 s · máximo 60\.0 s/.test(l); }), 'y el log los muestra');
+  ok(t.gmail && t.gmail.barata === 1 && t.gmail.completa === 2 && t.gmail.motivos['cada 4 horas'] === 1, 'Gmail: barata 1, completa 2 (con el motivo) — ' + JSON.stringify(t.gmail));
+  ok(E.logs.some(function (l) { return /Gmail: búsqueda BARATA 1 veces \(tramo gmail 1\.2 s/.test(l); }), 'el log dice cuánto tarda el tramo gmail con la barata y con la completa');
+  ok(t.topes.agenda === 1 && t.topes.escritura === 1 && E.logs.some(function (l) { return /TOPES antes de escribir: la agenda no escribió por el tope 1 veces/.test(l); }),
+     'los topes: la agenda 1 vez, la escritura del cruce 1 vez');
+  ok(t.cacheEscrita && t.cacheEscrita.no === 1 && t.cacheEscrita.si === 1, 'la cache de los mails: sin cambios 1, escrita 1');
+}
+
 console.log('\n' + chequeos + ' chequeos.');
 if (fallas) { console.log(fallas + ' FALLA(S)'); process.exit(1); }
 console.log('Todo en verde.');

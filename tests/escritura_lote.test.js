@@ -466,16 +466,28 @@ function escenarioGuardaTiempo() {
   // --- el cruce se demoró (plan 200 s): los IDs (180 s), Looker (240 s) no empiezan; lo urgente sí corrió ---
   const E3 = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', LOOKER_EN_SISTEMA: 'true', IDS_EN_LA_HORA: 'true' }, costo: { calculo: 200000 } });
   const m3 = montar(E3, 120, true);
+  const antes3 = dest(m3);
   let idsLlamados = 0;
   E3.ctx.idsEnLaHora_ = function () { idsLlamados++; return { resumen: 'x' }; };
   const r3 = E3.ejecutar('upsertDestino');
   ok(!r3.error && idsLlamados === 0 && campo(m3, 'ids_s') === 'salteada' && !m3.ssD.hojas['Datos_Unpivot'],
      'el plan tardó 200 s: los IDs (límite 180 s) y Looker (240 s) quedan para la próxima; no se llamaron');
-  ok(typeof campo(m3, 'escritura_s') === 'number' && typeof campo(m3, 'cruce_s') === 'number',
-     '   lo urgente (el cruce y la escritura) sí corrió; las derivadas, ' + (campo(m3, 'derivadas_s') === 'salteada'
-       ? 'salteadas (la corrida ya pasaba de 270 s)' : campo(m3, 'derivadas_s') + ' s'));
-  const regUp = m3.ssI.hojas['REGISTRO_UPSERT'];
-  ok(regUp && /salteado: guarda de tiempo/.test(regUp.v[regUp.v.length - 1].join('|')), '   REGISTRO_UPSERT lo dice en la columna ids');
+  // 20/10 (prompt 09, 3e): con el plan de 200 s, la escritura del cruce empieza pasado CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS (240 s): el
+  // tope actúa y el cruce no escribe NADA en esta corrida (antes empezaba y el corte propio sólo miraba la tanda anterior)
+  ok(typeof campo(m3, 'cruce_s') === 'number' && campo(m3, 'escritura_s') === 'salteada' && /^escritura \(\d+ s\)$/.test(String(campo(m3, 'topes'))) &&
+     dest(m3) === antes3 && E3.props[E3.cfg('PROP_CRUCE_SALTEADO')] === '1',
+     '   el cruce corrió; la escritura, pasado el tope (' + campo(m3, 'topes') + '), no escribe nada y la próxima corre el cruce primero');
+  // y con el plan de 150 s, lo urgente (el cruce y la escritura) sí corre, sin tope
+  const E3c = crearEntorno({ config: { DERIVADAS_POR_SCRIPT: 'true', LOOKER_EN_SISTEMA: 'true', IDS_EN_LA_HORA: 'true' }, costo: { calculo: 150000 } });
+  const m3c = montar(E3c, 120, true);
+  E3c.ctx.idsEnLaHora_ = function () { return { resumen: 'x' }; };
+  const r3c = E3c.ejecutar('upsertDestino');
+  ok(!r3c.error && typeof campo(m3c, 'escritura_s') === 'number' && typeof campo(m3c, 'cruce_s') === 'number' && !campo(m3c, 'topes'),
+     '   con el plan de 150 s, lo urgente (el cruce y la escritura) sí corrió; las derivadas, ' + (campo(m3c, 'derivadas_s') === 'salteada'
+       ? 'salteadas (la corrida ya pasaba de 270 s)' : campo(m3c, 'derivadas_s') + ' s'));
+  const regUp = m3c.ssI.hojas['REGISTRO_UPSERT'];
+  ok(regUp && (campo(m3c, 'ids_s') !== 'salteada' || /salteado: guarda de tiempo/.test(regUp.v[regUp.v.length - 1].join('|'))),
+     '   REGISTRO_UPSERT lo dice en la columna ids (ids: ' + campo(m3c, 'ids_s') + ')');
 
   // --- el orden: los IDs DESPUÉS del cruce, la agenda antes ---
   const E4 = crearEntorno({ config: { IDS_EN_LA_HORA: 'true' } });
@@ -2801,7 +2813,8 @@ function escenarioLooker() {
   preparar(Et, mt);
   const rt = Et.ejecutar('upsertDestino');
   // 15/10: con la guarda de tiempo, a esa altura ya se saltearon las derivadas (límite 270 s), y sin la ID no hay tablero
-  ok(!rt.error && !mt.ssD.hojas['Datos_Unpivot'] && rt.logs.some(function (l) { return /no se rehacen en ésta|quedaron para la corrida siguiente/.test(l); }),
+  // 20/10 (prompt 09, 3e): con el plan de 200 s ya actúa antes el tope de la escritura del cruce (240 s): sin cruce no hay derivadas ni ID
+  ok(!rt.error && !mt.ssD.hojas['Datos_Unpivot'] && rt.logs.some(function (l) { return /no se rehacen en ésta|quedaron para la corrida siguiente|no se recalculó en esta corrida/.test(l); }),
      'sin tiempo (la corrida ya lleva más de 4 minutos): no rehace el tablero en ésta, y lo dice');
 
   // --- una fórmula en la columna ID: ni la ID ni las solapas ---

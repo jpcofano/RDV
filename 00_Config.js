@@ -213,6 +213,51 @@ const AGENDA_CACHE_MAX_EDAD_MS = 24 * 3600 * 1000;
 const BASE_UNA_LECTURA_POR_CORRIDA = true;
 
 /*
+ * --- 20/10 (prompt 09, punto 3): QUE LA AGENDA (Y EL CRUCE) NUNCA MUERAN ADENTRO ---
+ * Medido (paso 67, 48 corridas del 19/10): 2 de las 4 CORTADAS murieron DENTRO de la agenda (gmail 72 y 58 s, con todo en la cache;
+ * escribir la cache 41 y 30 s); el plan tardó 141 s dos veces con 0 llamadas a Maps; una murió en "escritura" (cruce 230 s +
+ * asistentes 94 s).
+ *
+ * AGENDA_GMAIL_BUSQUEDA_BARATA  (a) antes de la búsqueda completa (la etiqueta página por página y las dos búsquedas por asunto, con
+ *   getLastMessageDate de cada hilo), una consulta BARATA: "¿hay algo nuevo desde la última búsqueda completa?" — los hilos de la
+ *   etiqueta más recientes y `subject:(…) after:<la última completa − AGENDA_GMAIL_MARGEN_MS>`, comparando la fecha del último
+ *   mensaje de cada hilo con la guardada. Si no hay nada nuevo, la lista de mails sale de la cache (41_AgendaCache.js: 'ag|listado'
+ *   y cada mensaje): EXACTAMENTE la misma lista que daría la búsqueda completa (tests/agenda_tiempos.test.js [7]). La completa corre
+ *   si hay algo nuevo, si falta algo en la cache, si la anterior tuvo errores, si cambió la etiqueta o los asuntos, si el alcance
+ *   empieza antes, y cada AGENDA_GMAIL_COMPLETA_CADA_HORAS horas (lo que la consulta barata no ve: una etiqueta puesta a un hilo
+ *   viejo, un mensaje borrado). REGISTRO_CORRIDAS (agenda_gmail) dice cuál fue y por qué.
+ * AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA  (c) la cache de los mails se escribe sólo si hay algo nuevo, si alguna entrada tiene que
+ *   renovarse (más de AGENDA_CACHE_RENOVAR_MS: se renuevan juntas las de más de la mitad, así no se escribe un poco en cada corrida)
+ *   o si cambió la lista de claves (el manifiesto, que también se renueva). Si no, no se llama a la cache.
+ * AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS  (d) el TOPE DURO de la agenda: si antes de escribir (la fusión antes del plan, o
+ *   aplicarPlanAgenda_) la corrida ya lleva esto, la agenda NO escribe NADA en esta corrida (ni la base, ni AGENDA_DUPLICADOS, ni la
+ *   copia, ni las vistas, ni REGISTRO_AGENDA; sólo la cache de la geocodificación, para no volver a pagarle a Maps), queda
+ *   "salteada por tiempo" y corren las demás partes. La corrida siguiente arranca por la agenda (AGENDA_PRIMERO_TRAS_SALTEOS, el
+ *   simétrico de CRUCE_PRIMERO_TRAS_SALTEOS; si en la anterior quedaron salteados los dos y la agenda ya había ido primero, va
+ *   primero el cruce: se alternan). Se calibra así: la escritura de la agenda + derivadas + solapas tardan hasta ~60 s y el cruce
+ *   tiene que poder empezar antes de los 150 s de la corrida siguiente; 360 − 200 = 160 s de margen para escribir.
+ * CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS  (e) lo mismo para el cruce: si al terminar los asistentes la corrida ya lleva esto, el cruce NO
+ *   escribe nada en esta corrida (ni las elecciones ni las fichas: como cuando no alcanzan los asistentes) y la próxima corre el
+ *   cruce primero. El corte propio entre tandas (UPSERT_CORTE_PROPIO_MS, 270 s) no cubría la PRIMERA tanda (no tiene una tanda
+ *   anterior para estimar): empezaba hasta los 270 s y una tanda lenta (hasta ~90 s) pasaba de los 360 s. Con 240 s, la primera
+ *   tanda tiene 120 s.
+ * CONJUNTO_UNA_LECTURA_POR_CORRIDA  RDV CONJUNTO (que nadie del sistema escribe) se lee UNA vez por corrida: la figura de Seguridad
+ *   y el aviso de "hechas sin fila" de la agenda, la cancelación por RDV CONJUNTO y los asistentes del cruce usan la misma lectura.
+ */
+const AGENDA_GMAIL_BUSQUEDA_BARATA = true;
+const AGENDA_GMAIL_COMPLETA_CADA_HORAS = 4;
+/** La consulta barata mira desde la última búsqueda completa menos esto (un mail que Gmail indexa tarde también se ve). */
+const AGENDA_GMAIL_MARGEN_MS = 2 * 3600 * 1000;
+const AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA = true;
+const AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS = 200 * 1000;
+/** Con cuántos salteos seguidos de la agenda (por tiempo) la corrida siguiente arranca por la agenda (0 = nunca). */
+const AGENDA_PRIMERO_TRAS_SALTEOS = 1;
+/** Las corridas seguidas en que la agenda quedó salteada por tiempo, y si esa corrida la corrió primero (propiedad del script, JSON). */
+const PROP_AGENDA_SALTEADA = 'AGENDA_SALTEADA_SEGUIDAS';
+const CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS = 240 * 1000;
+const CONJUNTO_UNA_LECTURA_POR_CORRIDA = true;
+
+/*
  * --- El formato para leer (15/10; 51_FormatoLectura.js) ---
  * Las solapas de reporte y de control que el sistema reescribe: texto ajustado, arriba a la izquierda, encabezado en negrita
  * gris y congelado, anchos según el contenido (la columna que describe la reunión, ~350 px), ELEGIR / COMENTARIO resaltadas.

@@ -178,9 +178,10 @@ console.log('[3] REGISTRO_CORRIDAS: las columnas nuevas al final, las filas viej
   const enc = E.run('encabezadoCorridas_()');
   ok(JSON.stringify(enc.slice(0, encViejo.length)) === JSON.stringify(encViejo) && enc.indexOf('agenda_gmail_s') > encViejo.length &&
      // 16/10 (tarde): las del punto 5b, también al final (después de las del 16/10 de la mañana)
-     enc.slice(-12, -9).join('|') === 'agenda_geo_n|sin_cambios|no_tocaba' &&
-     enc.slice(-9, -1).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' &&
-     enc[enc.length - 1] === 'base_ordenada',   // 19/10 (prompt 08, punto 7)
+     // 20/10 (prompt 09, punto 3): después de base_ordenada, los tramos del plan y agenda_gmail | topes | conjunto_lecturas
+     enc.slice(enc.indexOf('base_ordenada') - 11, enc.indexOf('base_ordenada') - 8).join('|') === 'agenda_geo_n|sin_cambios|no_tocaba' &&
+     enc.slice(enc.indexOf('base_ordenada') - 8, enc.indexOf('base_ordenada')).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' &&
+     enc[enc.indexOf('base_ordenada') + 1] === 'plan_indices_s' && enc.slice(-3).join('|') === 'agenda_gmail|topes|conjunto_lecturas',   // 19/10 y 20/10
      'el encabezado: las columnas de siempre en su orden y las nuevas AL FINAL');
   // una corrida nueva, con los tramos de la agenda, una solapa sin cambios y los IDs que no tocaban
   E.run('corridaIniciar_(new Date(), false, false)');
