@@ -49,6 +49,9 @@
  * sin autorización hasta que el dueño aceptara.) No usar ese servicio en ningún archivo del proyecto.
  */
 
+/** 20/10 (prompt 09, 6c): ¿la agenda marca "Reprogramada" (AGENDA_REPROGRAMADA)? Los textos de las suspendidas lo dicen. */
+function _avReprogramada_() { return typeof AGENDA_REPROGRAMADA !== 'undefined' && !!AGENDA_REPROGRAMADA; }
+
 /** Los títulos de cada tema (el asunto del mail). */
 const AVISOS_TITULOS_ = {
   corridas_con_error: 'corridas seguidas cortadas o con error',
@@ -69,7 +72,10 @@ const AVISOS_TITULOS_ = {
 function _avDigests_() {
   return {
     suspendidas: { hoja: AVISOS_HOJA_SUSPENDIDAS, hora: AVISOS_SUSPENDIDAS_HORA,
-                   intro: 'La agenda suspendió estas reuniones (desaparecieron del mail siendo futuras):' },
+                   // 20/10 (prompt 09, 6c): con AGENDA_REPROGRAMADA, también las que quedaron "Reprogramada" (con la fecha nueva)
+                   intro: _avReprogramada_() ? 'La agenda suspendió estas reuniones, o las marcó "Reprogramada" cuando la misma figura tiene otra fecha ' +
+                                               'en el mismo lugar (el mail las canceló siendo futuras):'
+                                             : 'La agenda suspendió estas reuniones (desaparecieron del mail siendo futuras):' },
     agenda_info: { hoja: AVISOS_HOJA_AGENDA_INFO, hora: AVISOS_AGENDA_INFO_HORA,
                    intro: 'Lo nuevo de la agenda que el equipo tiene que saber (no hay que decidir nada acá: lo que se decide está en ' +
                           'AGENDA_DUPLICADOS, en el archivo de la base). Todo, también, en la solapa ' + AVISOS_SOLAPA_PENDIENTES + ' de la intermedia:' }
@@ -525,7 +531,8 @@ function _avLeerPendientes_() {
 }
 
 /** 16/10: los tipos de AGENDA_PENDIENTES que son un HECHO ya hecho (no cuentan como "cosas para revisar" en el resumen). */
-const AVISOS_TIPOS_PENDIENTES_HECHOS_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo'];
+const AVISOS_TIPOS_PENDIENTES_HECHOS_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo',
+                                         'cancelación aplicada (Reprogramada)'];   // 20/10 (prompt 09, 6c: AGENDA_REPROGRAMADA)
 
 /** El resumen del lunes: { asunto, cuerpo, problemas }. */
 function mailSemanal_(R) {
@@ -594,7 +601,8 @@ function mailSemanal_(R) {
   lista(dup);
   L.push('');
   // 6. suspendidas
-  L.push('6. REUNIONES QUE LA AGENDA SUSPENDIÓ EN LA SEMANA');
+  L.push(_avReprogramada_() ? '6. REUNIONES QUE LA AGENDA SUSPENDIÓ (O MARCÓ "REPROGRAMADA", CON LA FECHA NUEVA) EN LA SEMANA'
+                             : '6. REUNIONES QUE LA AGENDA SUSPENDIÓ EN LA SEMANA');
   if (R.suspendidas == null) L.push('   ninguna anotada (la solapa ' + AVISOS_HOJA_SUSPENDIDAS + ' no existe: se crea con la primera, con el mail prendido)');
   else { L.push('   ' + R.suspendidas.length); lista(R.suspendidas); }
   L.push('');

@@ -27,6 +27,8 @@
  *       c10_auditoria()                  la auditoría de la agenda (paso 66).
  *       c11_mediciones()                 los pasos 67, 104, 105 y 106 juntos.
  *       c12_revisarTodo()                los pasos de revisión, todos (si no alcanza el tiempo, dice FALTAN: volvé a correrla).
+ *       c13_reprogramadas()              (paso 110) desde el 15/07, qué cancelaciones del mail quedarían "Reprogramada" (con la
+ *                                        fecha nueva) en vez de "Suspendida". Mirarlo antes de prender AGENDA_REPROGRAMADA.
  *
  * ============================================================================================
  *  SI ALGO SALE MAL
@@ -80,3 +82,5 @@ function c10_auditoria() { return paso66_auditoriaAgenda(); }
 function c11_mediciones() { return mediciones_soloLectura(); }
 
 function c12_revisarTodo() { return revisarTodo(); }
+
+function c13_reprogramadas() { return paso110_reprogramadas_enSeco(); }

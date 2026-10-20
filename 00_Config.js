@@ -1865,6 +1865,22 @@ const AGENDA_MAIL_RARO_DIF = 3;
 // 15/10 (revisor): 'suspender' por defecto: prender sólo AGENDA_CANCELACION_AUTOMATICA nunca puede borrar filas. La regla 7 que
 // borra pide escribir 'regla7' a propósito. Mientras la automática esté apagada, esto no cambia nada.
 const AGENDA_CANCELACION_MODO = 'suspender';
+/**
+ * **"Reprogramada" en vez de "Suspendida"** (20/10, prompt 09, 6c; APAGADO hasta que el usuario vea el paso 110). Sólo cuenta
+ * con la cancelación automática en modo 'suspender'. Con `true`, cuando la agenda suspendería una reunión cancelada en el mail
+ * (desaparecida —paso 7— o en ROJO entero —paso 7b—, con todas las salvaguardas de J) y la MISMA figura tiene en el mail
+ * (la última versión válida de esa semana o de las siguientes) una reunión en el MISMO lugar —el mismo "Lugar (mail)", o el
+ * mismo barrio o la misma comuna por la regla de los tres niveles (`compararUbicacion_`; nunca por el eje)— en una fecha
+ * POSTERIOR, a AGENDA_REPROGRAMADA_DIAS días o menos (y que no esté ella misma en rojo), la fila queda "Reprogramada"
+ * (agenda_status_escrito = 'Reprogramada'). Si no se detecta, "Suspendida" como siempre. Y si la fecha nueva llega DESPUÉS
+ * (en un mail posterior) a una fila que el sistema ya suspendió (agenda_status_escrito = 'Suspendida'), pasa de "Suspendida"
+ * a "Reprogramada"; una "Suspendida" del equipo no se toca. Una "Reprogramada" del sistema nunca se reactiva sola ni se borra.
+ * REGISTRO_AGENDA_CAMBIOS lleva la nota "reprogramada al dd/MM/yyyy (fila N, agenda_uid …)". Con `false`, nada cambia.
+ * En seco: `medirReprogramadas({ desde: '2026-07-15' })` (diagnostico/39_reprogramadas.js, paso 110).
+ */
+const AGENDA_REPROGRAMADA = false;
+/** Hasta cuántos días después de la cancelada puede estar la reunión nueva de la misma figura y lugar (AGENDA_REPROGRAMADA). */
+const AGENDA_REPROGRAMADA_DIAS = 21;
 // ---------- 15/10 (noche): LOS COLORES DEL MAIL (41_AgendaColores.js; APAGADOS hasta ver los pasos 91 y 93) ----------
 /**
  * **Leer el color del mail de agenda** (decisión del usuario: CANCELADA EN EL MAIL = SUSPENDIDA). Con `true`: la agenda lee
@@ -1988,7 +2004,10 @@ const COLUMNAS_QUE_ESCRIBE_AGENDA = ['Figura', 'EVENTO', 'FECHA', 'HORA', 'Direc
 const AGENDA_TRANSICIONES_STATUS = [
   { desde: '', hacia: 'en agenda' },               // fila nueva o vinculada con STATUS vacío
   { desde: 'en agenda', hacia: 'Suspendida' },     // regla 7: desapareció siendo futura
-  { desde: 'Suspendida', hacia: 'en agenda' }      // regla 7: volvió (sólo si el "Suspendida" lo puso el sistema)
+  { desde: 'Suspendida', hacia: 'en agenda' },     // regla 7: volvió (sólo si el "Suspendida" lo puso el sistema)
+  // 20/10 (prompt 09, 6c): sólo las escribe el plan con AGENDA_REPROGRAMADA prendido (apagado, no hay escrituras con esos pares)
+  { desde: 'en agenda', hacia: 'Reprogramada' },   // cancelada en el mail y la misma figura, en el mismo lugar, en una fecha posterior
+  { desde: 'Suspendida', hacia: 'Reprogramada' }   // la fecha nueva llegó después (sólo si el "Suspendida" lo puso el sistema)
 ];
 /** REGISTRO_AGENDA (intermedia): una línea por corrida. REGISTRO_AGENDA_CAMBIOS: cada celda cambiada, antes y después. */
 const RDV_HOJA_REGISTRO_AGENDA = 'REGISTRO_AGENDA';
