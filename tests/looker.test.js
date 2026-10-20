@@ -245,5 +245,25 @@ ok(vm.runInContext('conLooker_(true, function () { return esColumnaDerivada_("ID
    vm.runInContext('LOOKER_EN_SISTEMA && esColumnaDerivada_("ID")', ctx),
    'la ID es derivada (la 12) sólo con LOOKER_EN_SISTEMA (prendido desde el 08/10; apagado: no)');
 
+// --- 4. 20/10: los EMPATES de Aux_Maximos no dependen del orden de las filas (el c03 dio NO LISTO sólo por esto) ---
+console.log('[4] un empate en Aux_Maximos: el representante es el primero en el orden de la base (FECHA, HORA, Figura, RDV_UID)');
+const hT = ['Figura', 'Barrio', 'EVENTO', 'Día de la semana', 'FECHA', 'HORA', 'STATUS REUNIÓN', 'Inscriptos', 'Asistentes', 'RDV_UID'];
+const fT = [['Zoe Vidal', 'Belgrano', 'Encuentro', 'jueves', new Date(2026, 3, 9, 12), '18:00', 'Realizada', 50, 20, 'u-2'],
+            ['Ana Pereyra', 'Palermo', 'Encuentro', 'jueves', new Date(2026, 3, 9, 12), '10:00', 'Realizada', 40, 20, 'u-1'],
+            ['Bruno Sosa', 'Palermo', 'Encuentro', 'jueves', new Date(2026, 3, 9, 12), '10:00', 'Realizada', 30, 20, 'u-3']];
+ctx.__t1 = [hT].concat(fT); ctx.__t2 = [hT].concat(fT.slice().reverse());
+ctx.__it1 = vm.runInContext('idsDerivados_(__t1)', ctx); ctx.__it2 = vm.runInContext('idsDerivados_(__t2)', ctx);
+const ordenar = function (a) { return a.filas.map(function (r) { return JSON.stringify(r.map(function (x) { return x instanceof Date ? x.getTime() : x; })); }).sort(); };
+const tN1 = vm.runInContext('armarAuxMaximos_(__t1, { modo: "corregido", ids: __it1 })', ctx);
+const tN2 = vm.runInContext('armarAuxMaximos_(__t2, { modo: "corregido", ids: __it2 })', ctx);
+const tV1 = vm.runInContext('armarAuxMaximos_(__t1, { modo: "corregido", ids: __it1, desempateLegado: true })', ctx);
+const tV2 = vm.runInContext('armarAuxMaximos_(__t2, { modo: "corregido", ids: __it2, desempateLegado: true })', ctx);
+ok(JSON.stringify(ordenar(tN1)) === JSON.stringify(ordenar(tN2)), 'con el desempate nuevo, las filas en otro orden dan el MISMO Aux_Maximos');
+ok(JSON.stringify(ordenar(tV1)) !== JSON.stringify(ordenar(tV2)), 'con el de antes (el primero que aparece), no: dependía del orden (el caso del c03)');
+const repDia = tN1.filas.filter(function (r) { return r[10] === 'MaxPorFechaStatus' && r[11] === 'Día de la semana'; })[0];
+ok(repDia && repDia[0] === 'Ana Pereyra' && repDia[5] === '10:00', 'el máximo del jueves (empate en 20): la de las 10:00 antes que la de las 18:00, y Ana antes que Bruno — ' + (repDia && repDia[0]));
+const repPal = tN2.filas.filter(function (r) { return r[10] === 'MaxPorFechaStatus' && r[11] === 'Barrio' && r[12] === 'Palermo'; })[0];
+ok(repPal && repPal[0] === 'Ana Pereyra', 'Palermo, misma hora: por la Figura (Ana antes que Bruno), aunque Bruno aparezca primero');
+
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

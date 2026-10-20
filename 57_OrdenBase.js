@@ -156,6 +156,14 @@ function ordenBase_enSeco(opciones) {
     if (!fuera.length) Logger.log('    lo mismo: nada de la próxima corrida depende del número de fila.');
     else motivos.push(fuera.length + ' diferencias entre la próxima corrida sobre la base de hoy y sobre la ordenada');
   } else if (!plan.mueve.length) Logger.log('--- la base ya está en orden: no hay nada que simular ---');
+  // 20/10: los empates de Aux_Maximos ya no dependen del orden de las filas; lo que cambia UNA vez, con la base de hoy (informativo)
+  if (lookerEnSistema_()) {
+    const cd = cambiosDesempateLooker_(bloque);
+    Logger.log('--- Looker: los empates de Aux_Maximos que cambian de representante UNA vez, por el desempate nuevo (FECHA, HORA, Figura, ' +
+               'RDV_UID / agenda_uid; no depende del orden de las filas): %s ---', cd.length);
+    cd.forEach(function (t) { Logger.log('    %s', t); });
+    if (!cd.length) Logger.log('    ninguno.');
+  }
   const listo = !motivos.length;
   // 20/10 (prompt 09): la huella para el paso 108 (c04), sólo LISTO y con algo que mover
   try {
@@ -165,6 +173,29 @@ function ordenBase_enSeco(opciones) {
   } catch (e) { Logger.log('  (la huella del seco no se pudo guardar: %s)', e); }
   Logger.log('>>> %s%s (paso 107: %s ms)', listo ? 'LISTO para prender BASE_ORDEN_POR_FECHA' : 'NO LISTO: ', listo ? '' : motivos.join(' | '), Date.now() - t0);
   return { listo: listo, motivos: motivos, movidas: plan.mueve.length, sinFecha: plan.sinFecha, plan: plan };
+}
+
+/**
+ * 20/10: los representantes de Aux_Maximos (máximos y la fila de un total) que cambian entre el desempate de antes (el primero
+ * que aparecía, según el orden de las filas) y el nuevo (`_antesEnOrdenLooker_`), sobre `bloque`. Una línea por cambio.
+ */
+function cambiosDesempateLooker_(bloque) {
+  const ids = idsDerivados_(bloque);
+  const viejo = armarAuxMaximos_(bloque, { modo: 'corregido', ids: ids, desempateLegado: true });
+  const nuevo = armarAuxMaximos_(bloque, { modo: 'corregido', ids: ids });
+  if (viejo.error || nuevo.error) return ['(no se pudo armar Aux_Maximos: ' + (viejo.error || nuevo.error) + ')'];
+  // la clave de cada fila: granularidad, nivel, clave, fecha, status (y la figura en MaxPorFiguraFecha / TotalPorFiguraFecha)
+  const clave = function (r) { return [r[10], r[11], r[12], _txtSim_(r[4]), r[6], r[10] === 'MaxPorFechaStatus' ? '' : r[0]].join('|'); };
+  const mapa = function (filas) { const m = new Map(); filas.forEach(function (r) { m.set(clave(r), r); }); return m; };
+  const mV = mapa(viejo.filas), mN = mapa(nuevo.filas), out = [];
+  mN.forEach(function (rN, k) {
+    const rV = mV.get(k);
+    if (!rV || JSON.stringify(rV.map(_txtSim_)) === JSON.stringify(rN.map(_txtSim_))) return;
+    const quien = function (r) { return r[0] + ' (' + (r[1] || 'sin barrio') + ', ' + (r[5] || 'sin hora') + ')'; };
+    out.push(fmtFecha_(rN[4]) + ' | ' + rN[10] + ' ' + rN[11] + ' "' + rN[12] + '" ' + rN[6] + ' | antes: ' + quien(rV) + ' → ahora: ' + quien(rN) +
+             (rN[13] != null ? ' (empate en ' + rN[13] + ' asistentes)' : ''));
+  });
+  return out.sort();
 }
 
 function _logPlanOrden_(plan, bloque) {

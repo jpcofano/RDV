@@ -425,6 +425,23 @@ r = E.run('deshacerAgenda(false, "20261019-110000-x")');
 ok(E.D.v[filaAl][E.C('HORA')] === '' && JSON.stringify(E.D.v.map(function (r, i) { return i === filaAl ? null : r[E.C('HORA')]; })) === JSON.stringify(obsOtras),
    'deshacer vuelve la celda en la fila de Alonso (por su identidad, aunque ahora tenga agenda_uid) y no toca otra');
 
+// ============================== [9] 20/10: un EMPATE de Aux_Maximos (el NO LISTO del c03 real) ==============================
+
+console.log('[9] un empate en Aux_Maximos (mismos asistentes, mismo barrio y fecha): el seco da LISTO y dice qué representante cambia una vez');
+E = montar({});
+[['Ezequiel Sabor', '18:00', 'rdv-e2'], ['Laura Alonso', '10:00', 'rdv-e1']].forEach(function (p) {   // Sabor primero en la base; Alonso, antes en el orden
+  const r = E.hdr.map(function () { return ''; });
+  r[E.C('Figura')] = p[0]; r[E.C('Barrio')] = 'Flores'; r[E.C('FECHA')] = new D(2026, 9, 2, 12); r[E.C('HORA')] = p[1]; r[E.C('EVENTO')] = 'Encuentro con Vecinos';
+  r[E.C('STATUS REUNIÓN')] = 'Realizada'; r[E.C('Asistentes')] = 20; r[E.C('RDV_UID')] = p[2]; r[E.C('Origen fila')] = 'equipo';
+  E.D.v.push(r); E.D.bg.push(r.map(function () { return null; }));
+});
+E.ctx.__sim = SIM;
+r = E.run('ordenBase_enSeco({ simulacion: __sim })');
+const L9 = E.logs.join('\n');
+ok(r && r.listo === true, 'LISTO: con el desempate nuevo, la próxima corrida da el mismo Aux_Maximos con la base ordenada — ' + JSON.stringify(r && r.motivos));
+ok(/cambian de representante UNA vez[^\n]*: 1 ---\n\s+02\/10\/2026 \| MaxPorFechaStatus Barrio "Flores" Realizada \| antes: Ezequiel Sabor \(Flores, 18:00\) → ahora: Laura Alonso \(Flores, 10:00\) \(empate en 20 asistentes\)/.test(L9),
+   'el seco lista el empate que cambia de representante una vez (Sabor → Alonso, la de las 10:00)');
+
 console.log('');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');
 process.exit(fallas ? 1 : 0);

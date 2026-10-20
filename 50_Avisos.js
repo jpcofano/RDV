@@ -60,7 +60,7 @@ const AVISOS_TITULOS_ = {
   mail_raro: 'llegó un mail de agenda raro',
   cancelacion_no_aplicada: 'una cancelación de la agenda NO se aplicó (la frenó una salvaguarda)',
   suspendidas: 'reuniones suspendidas hoy',
-  suspendida_con_datos: 'una reunión que el sistema suspendió recibió asistentes o inscriptos (no se pisó nada)',
+  suspendida_con_datos: 'una reunión que el sistema suspendió o dejó "Reprogramada" recibió asistentes o inscriptos (no se pisó nada)',
   agenda_info: 'lo nuevo de la agenda que el equipo tiene que saber',
   resumen_semanal: 'resumen semanal'
 };

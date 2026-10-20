@@ -276,7 +276,8 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   - **Cuándo vuelve:** si la reunión reaparece, vuelve a "en agenda". Una suspendida por rojo no se reactiva mientras siga en
     rojo; con los colores apagados no se reactiva sola (queda la nota `suspendida_rojo` en REGISTRO_AGENDA_CAMBIOS).
   - **Si después le llegan datos:** una suspendida por el sistema que recibe asistentes o inscriptos no se pisa. Se avisa
-    una vez por fila (`suspendida_con_datos`) y figura en la auditoría.
+    una vez por fila (`suspendida_con_datos`) y figura en la auditoría. Desde el 20/10, también una "Reprogramada" que puso el
+    sistema (`agenda_status_escrito`): la del 6c o la del c02.
   - **Los colores** (`41_AgendaColores.js`, `AGENDA_COLORES_MAIL`, PRENDIDO el 16/10, etapa 1): la agenda lee también el HTML del mail, como
     mucho `AGENDA_COLORES_MAIL_MAX_MS`. Las notas del encabezado ("SE CANCELA…", "CAMBIO DE DÍA…") no actúan solas: van al
     aviso y a la auditoría (paso 66) como confirmación del color. Amarillo y verde van sólo a la copia, con
@@ -351,7 +352,9 @@ cuando la del mail era la de Villa Santa Rita, reprogramada al 23/10, y la de Vi
   `agenda_*_escrito`); cualquier otra es un error y no se escribe nada;
 - **todo o nada, con lectura fresca**: si alguna celda ya no tiene lo que vio el seco, no se escribe ninguna;
 - **seco con huella**: el seco simula la próxima corrida completa con la fila corregida (fuera de esa fila tiene que hacer lo mismo,
-  y en esa fila no puede volver a escribir lo que se corrigió); el real exige la huella (2 h, sirve una vez);
+  y en esa fila no puede volver a escribir lo que se corrigió); el real exige la huella (2 h, sirve una vez). Los cambios de Looker
+  de esa fecha en un barrio / día / hora que la fila tenía o tiene (un máximo que pasa a otra reunión porque ésta deja de contar)
+  son "Looker: por la corrección": se listan aparte y no frenan; cualquier otro, sí;
 - `COLOR_SISTEMA` en lo escrito, sin fondo en lo vaciado; todo en REGISTRO_AGENDA (modo `CORREGIR`) y REGISTRO_AGENDA_CAMBIOS;
   **se deshace** con su propio paso (c08), que vuelve sólo las celdas que todavía tienen lo que se escribió. El paso 38 no la toca.
 
@@ -407,7 +410,10 @@ Solapas que importan:
   usuario (07/10): pasa a nuestro sistema, con la ID como derivada 12. FASE 1, el informe:
   [docs/script-looker.md](docs/script-looker.md). **Desde el 08/10 las arma el sistema** (`44_Looker.js`,
   `LOOKER_EN_SISTEMA = true`): la corrida de la hora las rehace después de las derivadas, con el mismo nombre, encabezados
-  y orden de columnas, y las tres correcciones aprobadas (pruebas A, B y C del paso 54, aprobadas). **El script atado
+  y orden de columnas, y las tres correcciones aprobadas (pruebas A, B y C del paso 54, aprobadas). **Los empates de `Aux_Maximos` no dependen del orden
+  de las filas** (20/10, después del c03): con los mismos asistentes, el representante de un máximo (y la fila que da Barrio / HORA /
+  Día a un total) es el primero en el orden de la base —FECHA, HORA, Figura, RDV_UID o agenda_uid— (`_antesEnOrdenLooker_`); el modo
+  compatible sigue como el script atado. **El script atado
   quedó vacío el 08/10** (21:22, `clasp push -f` desde `script-atado-base/`, al lado del repo, con su propio
   `.clasp.json`, cuando el usuario le dio permiso de edición a la cuenta de clasp): sólo las dos funciones vacías
   (`Migrado.js`) y el código viejo, todo comentado, en `LEGACY.js`; los siete archivos viejos, borrados. Sus activadores

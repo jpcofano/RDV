@@ -213,11 +213,31 @@ function verificarCorregirEnSeco_(bloque, plan, caso, opciones) {
     return [caso.barrioAntes, caso.barrioNuevo, ''].some(function (b) { return x.indexOf(idBaseDeFila_(caso.figura, b, fIds)) >= 0; }) ||
            (x.indexOf(JSON.stringify(caso.figura)) >= 0 && x.indexOf('"' + caso.fecha + ' ') >= 0);
   };
+  // 20/10 (después del c01): Aux_Maximos de ESA fecha en una dimensión que la fila tenía antes o tiene después (su barrio, su día,
+  // su hora): el máximo / total cambia PORQUE la fila corregida deja de contar (o cuenta distinto). Es "Looker: por la corrección"
+  const dimsFila = { 'Barrio': new Set(), 'Día de la semana': new Set(), 'HORA': new Set() };
+  [S0.bloqueFinal, S1.bloqueFinal].forEach(function (b) {
+    const h = b[0], r = b[X - 1];
+    const k = function (n) { return findIdxOr_(h, aliasColumna_(n), true); };
+    if (k('Barrio') != null) dimsFila['Barrio'].add(str(r[k('Barrio')]));
+    if (k('Día de la semana') != null) dimsFila['Día de la semana'].add(str(r[k('Día de la semana')]));
+    if (k('HORA') != null) dimsFila['HORA'].add(horaHHmm_(r[k('HORA')]));
+  });
+  const porLaCorreccion = function (x) {
+    if (esDeLaFila(x)) return true;
+    if (x.indexOf('X|') !== 0) return false;
+    let a = null;
+    try { a = JSON.parse(x.slice(2)); } catch (e) { return false; }
+    return String(a[4] || '').indexOf(caso.fecha) === 0 && dimsFila[a[11]] && dimsFila[a[11]].has(String(a[12]));
+  };
+  const lookerTodo = cmp.looker ? cmp.looker.soloEnB.map(function (x) { return 'aparece ' + x; }).concat(cmp.looker.soloEnA.map(function (x) { return 'deja ' + x; })) : [];
+  const lookerCorr = lookerTodo.filter(function (t) { return porLaCorreccion(t.replace(/^(aparece|deja) /, '')); });
+  Logger.log('--- Looker: por la corrección (la fecha %s, en el barrio / día / hora que la fila tenía o tiene; esperado): %s ---', caso.fecha, lookerCorr.length);
+  lookerCorr.forEach(function (t) { Logger.log('    %s', t.slice(0, 220)); });
   const fuera = cmp.soloEnB.map(function (c) { return 'aparece: ' + textoCambioSim_(c, S1.bloqueFinal); })
     .concat(cmp.soloEnA.map(function (c) { return 'deja de pasar: ' + textoCambioSim_(c, S0.bloqueFinal); }))
     .concat(cmp.borrar.soloEnB.map(function (k) { return 'la agenda borraría ' + k; }), cmp.borrar.soloEnA.map(function (k) { return 'la agenda ya no borraría ' + k; }))
-    .concat(cmp.looker ? cmp.looker.soloEnB.concat(cmp.looker.soloEnA).filter(function (x) { return !esDeLaFila(x); })
-                           .map(function (x) { return 'Looker: ' + x.slice(0, 160); }) : [])
+    .concat(lookerTodo.filter(function (t) { return !porLaCorreccion(t.replace(/^(aparece|deja) /, '')); }).map(function (t) { return 'Looker: ' + t.slice(0, 200); }))
     // un aviso / pregunta / ambigua NUEVA de la agenda (lo que deja de aparecer, sólo se muestra abajo)
     .concat(Object.keys(cmp.agenda || {}).reduce(function (a, k) { return a.concat(cmp.agenda[k].soloEnB.map(function (t) { return 'la agenda, ' + k + ' nuevo: ' + t; })); }, []));
   if (cmp.borrar.enExcluidas.length) motivos.push('la agenda borraría o fusionaría la fila ' + X);

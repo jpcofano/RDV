@@ -270,6 +270,14 @@ ok(iM.length === 1 && celda(E, X, 'STATUS REUNIÓN') === 'Suspendida', 'la v3 en
  ['Inscriptos', 176], ['RDV_UID', 'rdv-824'], ['form_origen', 'JORGE MACRI - Encuentro "1 a 1" - Jueves 15/10 Villa Santa Rita'],
  ['form_clave', 'jorge macri 1 a 1 jueves 15 10 villa santa rita|20261014'], ['form_score', 1], ['form_nivel', 'figura+fecha'],
  ['ID cuentas', '9999-OCTJMVSR']].forEach(function (p) { E.D.v[X][E.C(p[0])] = p[1]; });
+// otra reunión Realizada en Villa Devoto el 15/10 (la de Giménez del caso real): con la 824 corregida, el máximo de Looker de
+// "Barrio = Villa Devoto, 15/10, Realizada" pasa a ser ésta → "Looker: por la corrección", esperado (no NO LISTO)
+(function () {
+  const r = E.hdr.map(function () { return ''; });
+  [['Figura', 'Laura Alonso'], ['Barrio', 'Villa Devoto'], ['FECHA', new D(2026, 9, 15, 12)], ['HORA', '18:00'], ['EVENTO', 'Encuentro con Vecinos'],
+   ['STATUS REUNIÓN', 'Realizada'], ['Inscriptos', 60], ['Asistentes', 20], ['Origen fila', 'equipo']].forEach(function (p) { r[E.C(p[0])] = p[1]; });
+  E.D.v.push(r); E.D.bg.push(r.map(function () { return null; }));
+})();
 // la reprogramación: el mail de la semana del 19/10 trae a Macri el viernes 23/10 en Villa Santa Rita (la "837")
 AHORA = new Date(2026, 9, 16, 10, 0, 0).getTime();
 const ASUNTO_19 = 'Agenda Encuentros de vecinos con JM - Semana del 19/10 al 25/10';
@@ -299,6 +307,8 @@ ok(!cambios.some(function (c) { return /^(Inscriptos|form_|RDV_UID|agenda_uid|ID
 ok(/Asistentes: base "31" \| RDV CONJUNTO fila 3 "31" → igual/.test(L1), '(1) los asistentes son los de RDV CONJUNTO Villa Devoto');
 ok(/FUERA DE LO ESPERADO[\s\S]*nada: fuera de esa fila, la próxima corrida hace exactamente lo mismo/.test(L1), 'la simulación: nada fuera de la 824');
 ok(/la ID derivada: "Jorge Macri - Villa Santa Rita - 15\/10\/2026"/.test(L1), 'la ID derivada nueva');
+ok(/Looker: por la corrección[^\n]*: [1-9]/.test(L1) && /Laura Alonso","Villa Devoto"[^\n]*MaxPorFechaStatus","Barrio","Villa Devoto"/.test(L1),
+   'Looker: el máximo de Villa Devoto del 15/10 pasa a otra reunión → listado aparte, "por la corrección", y no cuenta como fuera de lo esperado');
 ok(/la agenda no la toca ni avisa/.test(L1), 'la agenda no la toca ni avisa');
 ok(E.props && JSON.parse(E.props.CORREGIR_REUNION_HUELLA_C01).h === s1.huella, 'guardó la huella');
 

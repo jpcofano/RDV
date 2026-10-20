@@ -1336,10 +1336,14 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   // STATUS sigue Suspendida); se avisa una vez (suspendida_con_datos) y lo lista la auditoría (paso 66) ---
   P.suspendidasConDatos = [];
   const iAsis = dest.D ? dest.D['Asistentes'] : null, iIns = dest.D ? dest.D['Inscriptos'] : null;
+  // 20/10 (prompt 09, el hueco del 6c): también una "Reprogramada" que puso el sistema (la agenda con AGENDA_REPROGRAMADA, o el c02)
   dest.filas.forEach(function (f) {
-    if (normStatus_(val(f, 'STATUS REUNIÓN')) !== 'suspendida' || normStatus_(val(f, 'agenda_status_escrito')) !== 'suspendida') return;
+    const stCd = normStatus_(val(f, 'STATUS REUNIÓN'));
+    if ((stCd !== 'suspendida' && stCd !== 'reprogramada') || normStatus_(val(f, 'agenda_status_escrito')) !== stCd) return;
     const as = iAsis == null ? '' : f.valores[iAsis], ins = iIns == null ? '' : f.valores[iIns];
-    if (_hayDatoAgenda_(as) || _hayDatoAgenda_(ins)) P.suspendidasConDatos.push({ f: f, asistentes: as, inscriptos: ins, uid: str(val(f, 'agenda_uid')) });
+    if (_hayDatoAgenda_(as) || _hayDatoAgenda_(ins)) {
+      P.suspendidasConDatos.push({ f: f, asistentes: as, inscriptos: ins, uid: str(val(f, 'agenda_uid')), status: stCd === 'reprogramada' ? 'Reprogramada' : 'Suspendida' });
+    }
   });
 
   marca('cancelaciones');
@@ -4262,7 +4266,7 @@ function _logAgendaSegura_(P) {
       });
     }
     (P.suspendidasConDatos || []).forEach(function (x) {
-      Logger.log('    SUSPENDIDA POR EL SISTEMA CON DATOS (no se pisa nada; se avisa una vez) | fila %s | %s | %s%s', x.f.fila, x.f.figura || '(sin figura)',
+      Logger.log('    %s POR EL SISTEMA CON DATOS (no se pisa nada; se avisa una vez) | fila %s | %s | %s%s', (x.status || 'Suspendida').toUpperCase(), x.f.fila, x.f.figura || '(sin figura)',
                  x.f.fecha ? fmtFecha_(x.f.fecha) : '', _datosFilaTextoAgenda_({ D: {} }, x.f) || ' | asistentes ' + str(x.asistentes) + ', inscriptos ' + str(x.inscriptos));
     });
   }
@@ -4399,9 +4403,10 @@ function _avisarSuspendidasConDatosAgenda_(P, av) {
     if (vistas[k]) return;
     vistas[k] = hoy;
     av('suspendida_con_datos', 'fila ' + x.f.fila + ' | ' + (x.f.figura || '(sin figura)') + ' | ' + (x.f.fecha ? fmtFecha_(x.f.fecha) : '(sin fecha)') +
-       ' | la suspendió el sistema (salió del mail o estaba cancelada en el mail) y después recibió ' +
+       (x.status === 'Reprogramada' ? ' | quedó "Reprogramada" por el sistema (la reunión pasó a otra fecha) y después recibió '
+                                    : ' | la suspendió el sistema (salió del mail o estaba cancelada en el mail) y después recibió ') +
        [_hayDatoAgenda_(x.asistentes) ? 'asistentes (' + str(x.asistentes) + ')' : '', _hayDatoAgenda_(x.inscriptos) ? 'inscriptos (' + str(x.inscriptos) + ')' : '']
-         .filter(Boolean).join(' e ') + '. No se pisó nada: el STATUS sigue "Suspendida". ¿Se hizo igual? Si se hizo, el equipo la pasa a Realizada.');
+         .filter(Boolean).join(' e ') + '. No se pisó nada: el STATUS sigue "' + (x.status || 'Suspendida') + '". ¿Se hizo igual? Si se hizo, el equipo la pasa a Realizada.');
     n++;
   });
   if (n && props) { try { props.setProperty(AGENDA_PROP_SUSP_CON_DATOS, JSON.stringify(vistas)); } catch (err) { /* el aviso nunca corta */ } }

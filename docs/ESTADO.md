@@ -1951,6 +1951,21 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 (noche) — c01 y c03 dieron NO LISTO sólo por Looker: arreglado
+
+1. **c01**: el único "fuera de lo esperado" era el máximo de Looker del 15/10 (Barrio = Villa Devoto, Realizada), que pasa a otra
+   reunión porque la 824 deja de contar. Ahora los cambios de Looker de la fecha de la fila, en un barrio / día / hora que la fila
+   tenía o tiene, se listan aparte ("Looker: por la corrección") y no frenan. Sigue NO LISTO por cualquier celda de la base fuera de
+   la fila o un dato de Looker de otra fecha.
+2. **c03**: las 14 diferencias eran 7 empates de Aux_Maximos (MaxPorFechaStatus) cuyo representante dependía del orden de las filas.
+   El desempate es ahora determinista (`_antesEnOrdenLooker_`: FECHA, HORA, Figura, RDV_UID / agenda_uid; después la ID y el barrio),
+   sólo en modo corregido. El c03 lista "los empates que cambian de representante UNA vez" (con la base de hoy, el de antes contra el
+   nuevo): es lo que va a cambiar Looker en la primera corrida con este código, ordene o no.
+3. **El aviso `suspendida_con_datos`** mira también las "Reprogramada" que puso el sistema (después del c02, la 824 tiene 176
+   inscriptos: avisa UNA vez).
+Tests: `looker.test.js` [4], `orden_base.test.js` [9], `corregir_macri_1510.test.js` (el máximo de Villa Devoto), `agenda_reprogramada.test.js` [1].
+**Volver a correr c01 (y, si da LISTO y el usuario da el OK, c02) y después c03 (y c04).**
+
 #### 20/10 — prompt 09: qué correr, los tiempos, "manda el mail" y la 824
 
 Prompt guardado en `docs/prompts/PROMPT-09-CORRER-Y-TIEMPOS.md`.

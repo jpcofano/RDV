@@ -350,6 +350,15 @@ const audM = audit.noOk.filter(function (t) { return /Jorge Macri/.test(t) && /1
 const logM = E.logs.filter(function (l) { return /y la fila está Reprogramada \(reprogramada al 23\/10\/2026 \(fila \d+/.test(l); });
 ok(!audM.length && logM.length >= 1 && !(audit.reuniones || []).some(function (x) { return x.fila === iM + 1 && x.difs.indexOf('STATUS REUNIÓN') >= 0; }),
    'la auditoría (paso 66): la Reprogramada refleja la cancelación ("OK: … y la fila está Reprogramada (reprogramada al 23/10/2026 …)") — ' + JSON.stringify(audM));
+// 20/10 (el hueco del 6c): la Reprogramada del sistema que después recibe asistentes → el aviso "suspendida_con_datos", una sola vez
+E.D.v[iM][E.C('Asistentes')] = 12;
+E.avisos = [];
+correr(E, false, [V1, V2R, W19(MACRI23)], ON);
+correr(E, false, [V1, V2R, W19(MACRI23)], ON);
+const avCD = (E.avisos || []).filter(function (a) { return a[0] === 'suspendida_con_datos'; });
+ok(avCD.length === 1 && /Reprogramada/.test(avCD[0][1]) && /asistentes \(12\)/.test(avCD[0][1]) && /el STATUS sigue "Reprogramada"/.test(avCD[0][1]) &&
+   celda(E, iM, 'STATUS REUNIÓN') === 'Reprogramada',
+   'una Reprogramada del sistema con asistentes: un solo aviso "suspendida_con_datos" en dos corridas, y no se pisa nada — ' + JSON.stringify(avCD));
 
 // ============================== 1b. APAGADO: Suspendida ==============================
 

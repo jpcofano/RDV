@@ -211,10 +211,16 @@ function _sinIdentificarGenero_(iIns, iM, iF) {
  * (MaxPorFechaStatus) y por figura (MaxPorFiguraFecha), y los totales por figura y status (TotalPorFiguraFecha).
  * `opciones.modo` / `opciones.ids` como en `armarDatosUnpivot_` (en modo corregido, la ID es la derivada 12: una fila sin
  * figura no entra). Devuelve `{ encabezado, filas }` o `{ error }`.
+ *
+ * 20/10 (prompt 09, después del c03): en modo corregido los EMPATES no dependen del orden de las filas. Con los mismos asistentes,
+ * el representante de un máximo (y la fila que da Barrio / HORA / Día a un total) es el primero según el orden de la base: FECHA,
+ * HORA, Figura y después RDV_UID o agenda_uid (`_antesEnOrdenLooker_`). En modo compatible, como el script atado: el primero
+ * que aparece. `opciones.desempateLegado` (sólo para medir): el corregido con el desempate de antes.
  */
 function armarAuxMaximos_(data, opciones) {
   opciones = opciones || {};
   const corregido = opciones.modo !== 'compatible';
+  const determinista = corregido && !opciones.desempateLegado;
   const STATUS_COL = 'STATUS REUNIÓN';
   const necesarias = ['Figura', 'Barrio', 'EVENTO', 'Día de la semana', 'FECHA', 'HORA', STATUS_COL, 'Inscriptos', 'Asistentes']
     .concat(corregido ? [] : ['ID']);
@@ -223,6 +229,7 @@ function armarAuxMaximos_(data, opciones) {
   const faltan = [];
   necesarias.forEach(function (n) { idx[n] = header.indexOf(_normLooker_(n)); if (idx[n] === -1) faltan.push(n); });
   if (faltan.length) return { error: 'faltan columnas: ' + faltan.join(', ') };
+  const iUid = header.indexOf(_normLooker_('RDV_UID')), iAgUid = header.indexOf(_normLooker_('agenda_uid'));
 
   const toStr = function (v) { return v == null ? '' : String(v).trim(); };
   const toNum = function (v) {
@@ -278,7 +285,11 @@ function armarAuxMaximos_(data, opciones) {
     if (!id || !fechaOnly) continue;
     if (!isRealizada(statusRaw, asistentes)) continue;
     const candidate = { Figura: figura, Evento: evento, FECHA: fechaOnly, HORA: horaStr, Barrio: barrio,
-                        'Día de la semana': diaNom, ID: id, Status: statusRaw, Asistentes: asistentes, Inscriptos: inscriptos };
+                        'Día de la semana': diaNom, ID: id, Status: statusRaw, Asistentes: asistentes, Inscriptos: inscriptos,
+                        _uid: (iUid >= 0 ? toStr(row[iUid]) : '') || (iAgUid >= 0 ? toStr(row[iAgUid]) : '') };
+    const gana = function (cur) {
+      return !cur || asistentes > cur.Asistentes || (determinista && asistentes === cur.Asistentes && _antesEnOrdenLooker_(candidate, cur));
+    };
     const fKey = fechaOnly.getTime();
     niveles.forEach(function (nivel) {
       const clave = getClave(nivel, row);
@@ -286,17 +297,18 @@ function armarAuxMaximos_(data, opciones) {
       {
         const fMap = ensureMap(ensureMap(maxPorFechaStatus[nivel], clave), fKey);
         const cur = fMap.get(statusRaw);
-        if (!cur || asistentes > cur.Asistentes) fMap.set(statusRaw, candidate);
+        if (gana(cur)) fMap.set(statusRaw, candidate);
       }
       {
         const fMap = ensureMap(ensureMap(maxPorFiguraFecha[nivel], clave), fKey);
         const cur = fMap.get(figura);
-        if (!cur || asistentes > cur.Asistentes) fMap.set(figura, candidate);
+        if (gana(cur)) fMap.set(figura, candidate);
       }
       {
         const sMap = ensureMap(ensureMap(ensureMap(totPorFiguraFecha[nivel], clave), fKey), figura);
         if (!sMap.has(statusRaw)) sMap.set(statusRaw, { TotAs: 0, TotInsc: 0, Count: 0, anyRow: candidate });
         const agg = sMap.get(statusRaw);
+        if (determinista && _antesEnOrdenLooker_(candidate, agg.anyRow)) agg.anyRow = candidate;
         agg.TotAs += asistentes;
         agg.TotInsc += inscriptos;
         agg.Count += 1;
@@ -350,6 +362,23 @@ function armarAuxMaximos_(data, opciones) {
     });
   });
   return { encabezado: ENCABEZADO_AUX_MAXIMOS_.slice(), filas: filas };
+}
+
+/**
+ * ¿`a` va antes que `b` en el orden de la base (FECHA, HORA, Figura) y, a igual, por RDV_UID o agenda_uid? Lo vacío, al final
+ * (como el orden de la hoja). Para los empates de Aux_Maximos: que el representante no dependa del orden de las filas.
+ */
+function _antesEnOrdenLooker_(a, b) {
+  const cmp = function (x, y) {
+    if (x === y) return 0;
+    if (x === '' || x == null) return 1;
+    if (y === '' || y == null) return -1;
+    return x < y ? -1 : 1;
+  };
+  const c = cmp(a.FECHA ? a.FECHA.getTime() : '', b.FECHA ? b.FECHA.getTime() : '') || cmp(a.HORA, b.HORA) ||
+            cmp(String(a.Figura || '').toLowerCase(), String(b.Figura || '').toLowerCase()) || cmp(a._uid || '', b._uid || '') ||
+            cmp(a.ID || '', b.ID || '') || cmp(a.Barrio || '', b.Barrio || '');   // sin uid: la ID derivada y el barrio
+  return c < 0;
 }
 
 // ===================== La escritura (en la corrida de la hora) =====================
