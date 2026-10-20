@@ -346,6 +346,12 @@ function _s1DesaparecidasAudCan_(C) {
     } else {
       veredicto = _veredictoAudCan_(C, filas);
       if (reprog && reprog.dudas) nota = 'sin reprogramación clara: ' + reprog.dudas;
+      // 20/10 (prompt 09, 6c): una fila "Reprogramada" refleja la cancelación; con la fecha nueva si el mail la tiene (la regla de la
+      // agenda, AGENDA_REPROGRAMADA: la misma figura, en el mismo lugar, después)
+      if (veredicto === 'REFLEJADA' && filas.length === 1 && normStatus_(_statusAudCan_(C, filas[0])) === 'reprogramada') {
+        const rp = _reprogramadaAudCan_(C, d, filas[0]);
+        if (rp) { dice = 'reprogramada'; nota = (nota ? nota + '; ' : '') + 'la fila está Reprogramada: ' + textoReprogramadaAgenda_(rp); }
+      }
       if (d.versionParcial) nota = (nota ? nota + '; ' : '') + 'OJO: la versión que la sacó es PARCIAL (menos del ' + Math.round(AGENDA_FRACCION_VERSION_PARCIAL * 100) + '% de las reuniones): la agenda no suspende';
     }
     Logger.log('  [%s] %s | %s, semana %s | %s; %s | futura al desaparecer: %s | ¿se movió?: %s', veredicto, _evTextoAudCan_(d), d.grupo, d.semana,
@@ -409,6 +415,24 @@ function _reprogramacionAudCan_(C, d) {
   const u = c[0].u;
   return { ev: u, como: ((u.grupo === d.grupo && u.semana === d.semana) ? 'misma semana' : 'otra semana: ' + u.semana) + ', nueva, ' +
                         [c[0].hora ? 'misma hora' : '', c[0].lugar ? 'mismo lugar' : ''].filter(Boolean).join(' y ') };
+}
+
+/**
+ * 20/10 (prompt 09, 6c): la reprogramación por la regla de la agenda (`reprogramacionDeAgenda_`: la misma figura, en el mismo lugar,
+ * en una fecha posterior a AGENDA_REPROGRAMADA_DIAS días o menos), con la fila de la fecha nueva si hay UNA. Sólo para decir la
+ * fecha nueva de una fila "Reprogramada". { fecha, fila, uid, … } o null.
+ */
+function _reprogramadaAudCan_(C, d, f) {
+  try {
+    return reprogramacionDeAgenda_(d, C.r.unicas, {
+      filaVieja: f,
+      filaDe: function (u) {
+        const fs = _filasDeEventoAudCan_(C, u);
+        if (fs.length !== 1) return null;
+        return { fila: fs[0].fila, f: fs[0], uid: str(_valAudCan_(C, fs[0], 'agenda_uid')) };
+      }
+    });
+  } catch (err) { return null; }
 }
 
 /**

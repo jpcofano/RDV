@@ -32,6 +32,9 @@
  *      registro). La que el sistema suspendió y después recibe asistentes o inscriptos: nada se pisa, se avisa (7c);
  *      16/10 (AGENDA_CANCELACION_CONJUNTO, apagado): la TERCERA fuente, el Estado "Cancelado" de RDV CONJUNTO (que sólo se lee),
  *      con el mismo cruce que los Asistentes y las mismas reglas (paso 7d, 53_CancelacionConjunto.js); no se reactiva sola;
+ *      20/10 (AGENDA_REPROGRAMADA, apagado; prompt 09, 6c): en los pasos 7 y 7b, si la misma figura tiene en el mail otra reunión en
+ *      el mismo lugar después (a AGENDA_REPROGRAMADA_DIAS o menos: `reprogramacionDeAgenda_`), "Reprogramada" en vez de "Suspendida";
+ *      y una Suspendida del sistema pasa a Reprogramada si la fecha nueva llega después; nunca se reactiva ni se borra;
  *   8. Seguridad en tu Barrio: la fila nace sin figura; la Figura sale de RDV CONJUNTO por fecha + barrio (o comuna)
  *      cuando aparece. Ambigua o sin fila todavía → AGENDA_FIGURA_A_COMPLETAR (la carga el equipo en la fila);
  *   9. corre dentro del activador de cada hora si AGENDA_ACTIVA, antes del cruce con los formularios;
@@ -339,6 +342,10 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   P.modos = { soloIdentificadas: soloIdentificadas, conciliacion: conciliar, invariante: invariante, validarMails: validarMails,
               cancelacionAutomatica: cancelAuto, suspenderSiempre: suspenderSiempre };
   if (coloresMail) { P.modos.coloresMail = true; P.modos.amarilloVerde = amarilloVerde; }
+  // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): "Reprogramada" en vez de "Suspendida", sólo con el modo "suspender" (la medición del
+  // paso 110 lo fuerza por `opciones.reprogramada`). Apagado, el plan es el de siempre (ni P.reprogramadas ni P.modos.reprogramada).
+  const reprogramar = suspenderSiempre && opc('reprogramada', AGENDA_REPROGRAMADA);
+  if (reprogramar) { P.modos.reprogramada = true; P.reprogramadas = []; }
   P.pendientes = []; P.conciliadas = []; P.invariante = []; P.bloqueadasInvariante = []; P.repetidasEnMail = [];
   P.suspendidasAuto = []; P.cancelNoAplicada = []; P.cancelacionesEvaluadas = []; P.noReactivadasRojo = [];
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones): lo que juntó la fusión antes del plan (40_Agenda.js correrAgendaEnBloqueo_) y si es en seco
@@ -931,6 +938,66 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     });
   }
 
+  // --- 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): ¿la cancelada `ev` (fila `f`) se reprogramó? La reunión nueva, con su fila y su
+  // agenda_uid (el de la fila, o el que le pone esta corrida: una fila creada o vinculada ahora). Apagado: null, sin mirar nada.
+  let filaNumR = null;
+  const reprogDe = function (ev, f) {
+    if (!reprogramar) return null;
+    if (!filaNumR) { filaNumR = new Map(); dest.filas.forEach(function (x) { filaNumR.set(x.fila, x); }); }
+    return reprogramacionDeAgenda_(ev, r.unicas, {
+      filaVieja: f,
+      filaDe: function (u) {
+        const x = P.filaDe.get(u.clave);
+        if (!x || !x.fila) return null;
+        const fu = x.nueva ? null : (x.f || filaNumR.get(x.fila) || null);
+        let uid = fu ? str(val(fu, 'agenda_uid')) : '';
+        P.acciones.forEach(function (a) {
+          if (uid) return;
+          if (a.tipo === 'crear' && a.ev && a.ev.clave === u.clave && a.uid) { uid = str(a.uid); return; }
+          a.escrituras.forEach(function (e) { if (!uid && e.fila === x.fila && e.col === col('agenda_uid')) uid = str(e.valor); });
+        });
+        return { fila: x.fila, uid: uid, f: fu, nueva: !!x.nueva };
+      }
+    });
+  };
+  // la medición del paso 110 (diagnostico/39_reprogramadas.js) la usa para TODA cancelación evaluada, también las que no escribe
+  if (reprogramar) P.reprogramacionDe = reprogDe;
+  /** ¿Alguna acción de esta corrida ya le escribe el STATUS a la fila? */
+  const statusYaCambia = function (fila) {
+    return P.acciones.some(function (a) { return a.escrituras.some(function (e) { return e.fila === fila && e.col === col('STATUS REUNIÓN'); }); });
+  };
+  /**
+   * 20/10 (6c): una fila que el SISTEMA ya suspendió (agenda_status_escrito = Suspendida) y cuya fecha nueva llegó DESPUÉS (en un
+   * mail posterior) pasa de "Suspendida" a "Reprogramada". Una "Suspendida" del equipo, un "Sigue" del equipo o una fila que esta
+   * corrida ya toca: no. Devuelve true si la pasó (y ya evaluó).
+   */
+  const pasarAReprogramada = function (ev, f, tiempo, evalua, x, porRojo) {
+    if (!reprogramar || normStatus_(val(f, 'STATUS REUNIÓN')) !== 'suspendida' || normStatus_(val(f, 'agenda_status_escrito')) !== 'suspendida') return false;
+    // (en el paso 7 la fila ya viene sin las usadas; en el 7b es la fila de la misma reunión, que ya está en `usadas`)
+    if (!tiempo || !tiempo.aTiempo || statusYaCambia(f.fila)) return false;
+    const el = elDe('cancelacion|' + idReunionAgenda_(ev));
+    if (el && esLaElegida(el, f, true) && el.eleccion === 'sigue') return false;
+    const rp = reprogDe(ev, f);
+    if (!rp) return false;
+    usadas.add(f.fila);
+    const texto = textoReprogramadaAgenda_(rp);
+    const salida = porRojo ? 'cancelada en el mail: ' + ev.canceladaEnMailMotivo : 'desapareció del mail (' + fmtFecha_(ev.mailQueLaSaco) + ')';
+    const accion = { tipo: 'reprogramar', f: f, ev: ev, reprogramada: rp, desdeSuspendida: true, porRojo: !!porRojo,
+                     detalle: 'la suspendió el sistema; ' + texto + ': Suspendida → Reprogramada (nunca se borra)',
+                     escrituras: [{ fila: f.fila, col: col('STATUS REUNIÓN'), valor: 'Reprogramada', esperado: val(f, 'STATUS REUNIÓN') },
+                                  { fila: f.fila, col: col('agenda_status_escrito'), valor: 'Reprogramada', esperado: val(f, 'agenda_status_escrito') }] };
+    P.acciones.push(accion);
+    const cambiosTexto = texto + ' (antes: Suspendida por el sistema)';
+    if (x) { x.status = 'Reprogramada'; x.reprogramadaAuto = true; x.cambiosTexto = cambiosTexto; }
+    else P.filaDe.set(ev.clave, { fila: f.fila, status: 'Reprogramada', f: f, reprogramadaAuto: true, cambiosTexto: cambiosTexto });
+    P.suspendidasAuto.push({ d: ev, f: f, salida: salida, accion: accion, porRojo: !!porRojo, mail: porRojo ? ev.mailFecha : undefined,
+                             reprogramada: rp, desdeSuspendida: true });
+    P.reprogramadas.push({ ev: ev, f: f, rp: rp, desdeSuspendida: true, porRojo: !!porRojo });
+    P.duplicados.push({ tipo: 'cancelacion_aplicada', ev: ev, candidatas: [{ f: f, diferencia: salida + '; ' + texto }] });
+    evalua('reprogramar', f, { tiempo: tiempo, reprogramada: rp, desdeSuspendida: true });
+    return true;
+  };
+
   // --- 7. suspender: desaparecidas futuras, sin reprogramar, fila "en agenda" ---
   r.desaparecidas.forEach(function (d) {
     if (!_enAlcance_(alcance, d.fecha) || atendidas.has(d.clave) || presentes.has(d.clave)) return;
@@ -975,8 +1042,12 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     let tiempo = null;
     if (suspenderSiempre) {
       tiempo = tiempoCancelacionAgenda_(d.mailQueLaSaco, d, val(f, 'HORA'));
-      // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa)
-      if (stF === 'suspendida' || stF === 'reprogramada') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
+      // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa); y (6c,
+      // AGENDA_REPROGRAMADA) una Suspendida DEL SISTEMA cuya fecha nueva llegó después pasa a Reprogramada
+      if (stF === 'suspendida' || stF === 'reprogramada') {
+        if (pasarAReprogramada(d, f, tiempo, evalua, null, false)) return;
+        evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return;
+      }
       if (!tiempo.aTiempo) { noAplicada('el mail que la saca es posterior a la reunión (' + tiempo.texto + '): no se toca', f, { tiempo: tiempo }); return; }
       if (stF !== 'en agenda') {
         noAplicada('la fila está "' + str(val(f, 'STATUS REUNIÓN')) + '"' + _datosFilaTextoAgenda_(dest, f) + ': el equipo le puso otro STATUS, no se toca', f, { tiempo: tiempo });
@@ -1000,11 +1071,25 @@ function planAgenda_(dest, r, A, alcance, opciones) {
         evalua('no: el equipo eligió "Sigue"', f, { tiempo: tiempo, statusDelSistema: statusDelSistema });
         return;
       }
+      // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): la misma figura, en el mismo lugar, en una fecha posterior → "Reprogramada"
+      const rp = reprogDe(d, f);
+      const nuevoSt = rp ? 'Reprogramada' : 'Suspendida';
       const escS = [
-        { fila: f.fila, col: col('STATUS REUNIÓN'), valor: 'Suspendida', esperado: val(f, 'STATUS REUNIÓN') },
-        { fila: f.fila, col: col('agenda_status_escrito'), valor: 'Suspendida', esperado: val(f, 'agenda_status_escrito') }
+        { fila: f.fila, col: col('STATUS REUNIÓN'), valor: nuevoSt, esperado: val(f, 'STATUS REUNIÓN') },
+        { fila: f.fila, col: col('agenda_status_escrito'), valor: nuevoSt, esperado: val(f, 'agenda_status_escrito') }
       ];
       if (esVacio_(val(f, 'agenda_uid'))) escS.push({ fila: f.fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
+      if (rp) {
+        const texto = textoReprogramadaAgenda_(rp);
+        const accionR = { tipo: 'reprogramar', f: f, ev: d, escrituras: escS, reprogramada: rp, detalle: salida + '; ' + texto + ' (Reprogramada: nunca se borra)' };
+        P.acciones.push(accionR);
+        P.filaDe.set(d.clave, { fila: f.fila, status: 'Reprogramada', f: f, reprogramadaAuto: true, cambiosTexto: texto });
+        P.suspendidasAuto.push({ d: d, f: f, salida: salida, accion: accionR, reprogramada: rp });
+        P.reprogramadas.push({ ev: d, f: f, rp: rp });
+        P.duplicados.push({ tipo: 'cancelacion_aplicada', ev: d, candidatas: [{ f: f, diferencia: salida + '; ' + texto }] });
+        evalua('suspender', f, { tiempo: tiempo, statusDelSistema: statusDelSistema, reprogramada: rp });
+        return;
+      }
       const accion = { tipo: 'suspender', f: f, ev: d, escrituras: escS, detalle: salida + ' (suspendida automáticamente: nunca se borra)' };
       P.acciones.push(accion);
       const cambiosTexto = 'suspendida: salió del mail del ' + fmtFecha_(d.mailQueLaSaco);
@@ -1081,8 +1166,12 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (ev.colorMail && ev.colorMail.mailRaro) { noAplicada('el mail en rojo tiene formato raro (' + ev.colorMail.mailRaro + ')', f); return; }
     const tiempo = tiempoCancelacionAgenda_(ev.mailFecha, ev, val(f, 'HORA'));
     const st = normStatus_(val(f, 'STATUS REUNIÓN'));
-    // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa)
-    if (st === 'suspendida' || st === 'reprogramada') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
+    // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa); y (6c,
+    // AGENDA_REPROGRAMADA) una Suspendida DEL SISTEMA cuya fecha nueva llegó después pasa a Reprogramada
+    if (st === 'suspendida' || st === 'reprogramada') {
+      if (pasarAReprogramada(ev, f, tiempo, evalua, x, true)) return;
+      evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return;
+    }
     if (!tiempo.aTiempo) { noAplicada('el mail en rojo es posterior a la reunión (' + tiempo.texto + '): no se toca', f, { tiempo: tiempo }); return; }
     if (st !== 'en agenda') {
       noAplicada('la fila está "' + str(val(f, 'STATUS REUNIÓN')) + '"' + _datosFilaTextoAgenda_(dest, f) + ': el equipo le puso otro STATUS, no se toca', f, { tiempo: tiempo });
@@ -1096,14 +1185,29 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       evalua('no: el equipo eligió "Sigue"', f, { tiempo: tiempo, statusDelSistema: statusDelSistema });
       return;
     }
+    // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): la misma figura, en el mismo lugar, en una fecha posterior → "Reprogramada"
+    const rp = reprogDe(ev, f);
+    const nuevoSt = rp ? 'Reprogramada' : 'Suspendida';
     const escS = [
-      { fila: f.fila, col: col('STATUS REUNIÓN'), valor: 'Suspendida', esperado: val(f, 'STATUS REUNIÓN') },
-      { fila: f.fila, col: col('agenda_status_escrito'), valor: 'Suspendida', esperado: val(f, 'agenda_status_escrito') }
+      { fila: f.fila, col: col('STATUS REUNIÓN'), valor: nuevoSt, esperado: val(f, 'STATUS REUNIÓN') },
+      { fila: f.fila, col: col('agenda_status_escrito'), valor: nuevoSt, esperado: val(f, 'agenda_status_escrito') }
     ];
     // el agenda_uid, si la fila no tiene y ninguna otra acción de esta corrida se lo pone (una fila del equipo que se vincula ahora)
     const yaUid = P.acciones.some(function (a) { return a.escrituras.some(function (e) { return e.fila === f.fila && e.col === col('agenda_uid'); }); });
     if (esVacio_(val(f, 'agenda_uid')) && !yaUid) escS.push({ fila: f.fila, col: col('agenda_uid'), valor: uidAgenda_('vinculada'), esperado: '' });
     const salida = 'cancelada en el mail: ' + ev.canceladaEnMailMotivo;
+    if (rp) {
+      const texto = textoReprogramadaAgenda_(rp);
+      const accionR = { tipo: 'reprogramar', f: f, ev: ev, escrituras: escS, reprogramada: rp, porRojo: true, motivoRojo: ev.canceladaEnMailMotivo,
+                        detalle: salida + '; ' + texto + ' (Reprogramada: nunca se borra)' };
+      P.acciones.push(accionR);
+      x.status = 'Reprogramada'; x.reprogramadaAuto = true; x.cambiosTexto = texto;
+      P.suspendidasAuto.push({ d: ev, f: f, salida: salida, accion: accionR, porRojo: true, mail: ev.mailFecha, reprogramada: rp });
+      P.reprogramadas.push({ ev: ev, f: f, rp: rp, porRojo: true });
+      P.duplicados.push({ tipo: 'cancelacion_aplicada', ev: ev, candidatas: [{ f: f, diferencia: salida + '; ' + texto }] });
+      evalua('suspender', f, { tiempo: tiempo, statusDelSistema: statusDelSistema, reprogramada: rp });
+      return;
+    }
     const accion = { tipo: 'suspender', f: f, ev: ev, escrituras: escS, detalle: salida + ' (suspendida automáticamente: nunca se borra)',
                      porRojo: true, motivoRojo: ev.canceladaEnMailMotivo };
     P.acciones.push(accion);
@@ -1295,7 +1399,11 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     // 15/10 (noche): cancelada en el mail en rojo: "Cambios" lo dice (la suspendió esta corrida, o ya estaba Suspendida)
     if (ev.canceladaEnMail) {
       const yaS = x && x.f && normStatus_(val(x.f, 'STATUS REUNIÓN')) === 'suspendida';
+      // 20/10 (6c, AGENDA_REPROGRAMADA): una que ya reprogramó el sistema en una corrida anterior lo sigue diciendo, con la fecha nueva
+      const yaR = reprogramar && x && x.f && normStatus_(val(x.f, 'STATUS REUNIÓN')) === 'reprogramada' &&
+                  normStatus_(val(x.f, 'agenda_status_escrito')) === 'reprogramada' ? (reprogDe(ev, x.f) || true) : null;
       if (x && x.cambiosTexto) item.cambios = x.cambiosTexto;
+      else if (yaR) item.cambios = yaR === true ? 'reprogramada: ' + ev.canceladaEnMailMotivo : textoReprogramadaAgenda_(yaR);
       else if (yaS) item.cambios = 'suspendida: ' + ev.canceladaEnMailMotivo;
       else item.cambios = 'cancelada en el mail (' + ev.canceladaEnMailMotivo + ')' + (ev.cambios ? '; ' + ev.cambios : '');
     }
@@ -1308,13 +1416,19 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     else if (x && x.cancelacionPendiente) P.copia.push({ ev: d, x: x, estado: 'desaparecida: ¿se canceló? (AGENDA_DUPLICADOS)', fechaOriginal: d.fechaOriginal || null });
     else if (x && x.sigue) P.copia.push({ ev: d, x: x, estado: 'desaparecida, pero sigue (lo eligió el equipo)', fechaOriginal: d.fechaOriginal || null });
     else if (x && x.suspendidaAuto) P.copia.push({ ev: d, x: x, estado: 'desaparecida: Suspendida', cambios: x.cambiosTexto, fechaOriginal: d.fechaOriginal || null });
+    // 20/10 (6c, AGENDA_REPROGRAMADA): la reprogramó esta corrida (con la fecha nueva)
+    else if (x && x.reprogramadaAuto) P.copia.push({ ev: d, x: x, estado: 'desaparecida: Reprogramada', cambios: x.cambiosTexto, fechaOriginal: d.fechaOriginal || null });
     else {
       const xd = filaDeCopia(d);
       // 15/10 (J): una que ya suspendió el sistema en una corrida anterior lo sigue diciendo en "Cambios"
       const yaSusp = suspenderSiempre && xd && xd.f && normStatus_(val(xd.f, 'STATUS REUNIÓN')) === 'suspendida' &&
                      normStatus_(val(xd.f, 'agenda_status_escrito')) === 'suspendida';
+      // 20/10 (6c): y una que ya reprogramó, con la fecha nueva
+      const yaReprog = reprogramar && xd && xd.f && normStatus_(val(xd.f, 'STATUS REUNIÓN')) === 'reprogramada' &&
+                       normStatus_(val(xd.f, 'agenda_status_escrito')) === 'reprogramada' ? (reprogDe(d, xd.f) || true) : null;
       P.copia.push({ ev: d, x: xd, estado: 'desaparecida', fechaOriginal: d.fechaOriginal || null,
-                     cambios: yaSusp ? 'suspendida: salió del mail del ' + fmtFecha_(d.mailQueLaSaco) : undefined });
+                     cambios: yaReprog ? (yaReprog === true ? 'reprogramada: salió del mail del ' + fmtFecha_(d.mailQueLaSaco) : textoReprogramadaAgenda_(yaReprog))
+                                       : (yaSusp ? 'suspendida: salió del mail del ' + fmtFecha_(d.mailQueLaSaco) : undefined) });
     }
   });
   P.copia.forEach(function (c) { c.barrio = barrioDe(c.ev, 'mostrar'); });
@@ -1416,7 +1530,72 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     P.resumen.suspendidasPorConjunto = P.suspendidasAuto.filter(function (x) { return x.porConjunto; }).length;
   }
   if (P.modos.avisoHechasSinFila) P.resumen.hechasSinFila = (P.hechasSinFila.lista || []).length;
+  // 20/10 (6c, AGENDA_REPROGRAMADA): sólo prendido (apagado, el resumen es el de siempre)
+  if (reprogramar) {
+    P.resumen.reprogramar = n('reprogramar');
+    P.resumen.reprogramadasDesdeSuspendida = P.reprogramadas.filter(function (x) { return x.desdeSuspendida; }).length;
+  }
   return P;
+}
+
+/**
+ * 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): ¿la reunión cancelada en el mail `d` (desapareció, o está en ROJO entero) se
+ * REPROGRAMÓ? Sí, si la MISMA figura (`figuraFila`) tiene en `unicas` (la última versión válida de cada semana del mail) una
+ * reunión en el MISMO lugar (`mismoLugarReprogramadaAgenda_`) en una fecha POSTERIOR, a `opciones.dias`
+ * (AGENDA_REPROGRAMADA_DIAS) días o menos, que no esté ella misma cancelada en rojo. Una reunión sin figura (una Seguridad sin
+ * figura) no se detecta. `opciones.filaDe(u)`: { fila, uid, f } de la reunión nueva en la base (o null: todavía sin fila);
+ * `opciones.filaVieja`: la fila de `d` (si la reunión nueva tiene ESA fila, no es una reprogramación: es la misma fila, movida).
+ * De varias, la más cercana; a igual fecha, la de la misma hora; después, por hora. Devuelve { ev, fecha, fila, uid, como, dias }
+ * o null. Sólo lectura.
+ */
+function reprogramacionDeAgenda_(d, unicas, opciones) {
+  opciones = opciones || {};
+  if (!d || !d.fecha || !str(d.figuraFila)) return null;
+  const dias = opciones.dias != null ? opciones.dias : AGENDA_REPROGRAMADA_DIAS;
+  const fig = normalizeText_(d.figuraFila);
+  const fv = opciones.filaVieja || null;
+  const cand = [];
+  (unicas || []).forEach(function (u) {
+    if (!u || u === d || !u.fecha || u.canceladaEnMail || (d.clave && u.clave === d.clave)) return;
+    if (normalizeText_(u.figuraFila) !== fig || ymd_(u.fecha) <= ymd_(d.fecha)) return;
+    const dd = diasEntre_(u.fecha, d.fecha);
+    if (dd > dias) return;
+    const fu = opciones.filaDe ? opciones.filaDe(u) : null;
+    if (fu && fv && fu.fila === fv.fila) return;
+    const como = mismoLugarReprogramadaAgenda_(d, u, fv ? fv.barrio : '', fu && fu.f ? fu.f.barrio : '');
+    if (!como) return;
+    cand.push({ u: u, dd: dd, como: como, fu: fu, hora: !!d.hora && u.hora === d.hora });
+  });
+  if (!cand.length) return null;
+  cand.sort(function (a, b) {
+    return (a.dd - b.dd) || ((b.hora ? 1 : 0) - (a.hora ? 1 : 0)) || String(a.u.hora || '').localeCompare(String(b.u.hora || '')) ||
+           String(a.u.clave || '').localeCompare(String(b.u.clave || ''));
+  });
+  const c = cand[0];
+  return { ev: c.u, fecha: c.u.fecha, hora: c.u.hora || '', fila: c.fu ? c.fu.fila : null, uid: c.fu ? str(c.fu.uid) : '', como: c.como, dias: c.dd,
+           semana: c.u.semana || '' };
+}
+
+/**
+ * 20/10 (6c): ¿dos reuniones del mail son en el MISMO lugar? El mismo "Lugar (mail)" (el barrio, la comuna o el eje que dice el
+ * Evento), o la regla de los tres niveles (`compararUbicacion_`) que COINCIDE en el barrio o en la comuna —nunca por el eje: un
+ * eje tiene varias comunas—. Si el mail no dice el barrio, vale el de la fila (`barrioA` / `barrioB`). Devuelve cómo coinciden
+ * ('el mismo "Lugar (mail)"', 'el mismo barrio', 'la misma comuna') o ''.
+ */
+function mismoLugarReprogramadaAgenda_(a, b, barrioA, barrioB) {
+  const la = normalizeText_(str(a && a.lugar)), lb = normalizeText_(str(b && b.lugar));
+  if (la && la === lb) return 'el mismo "Lugar (mail)"';
+  const c = compararUbicacion_(ubicacionDeEvento_(a, barrioA), ubicacionDeEvento_(b, barrioB));
+  if (c.coincide === true && c.nivel === 'barrio') return 'el mismo barrio';
+  if (c.coincide === true && c.nivel === 'comuna') return 'la misma comuna';
+  return '';
+}
+
+/** 20/10 (6c): "reprogramada al dd/MM/yyyy (fila N, agenda_uid …)": la nota de REGISTRO_AGENDA_CAMBIOS, "Cambios" y los avisos. */
+function textoReprogramadaAgenda_(rp) {
+  if (!rp) return '';
+  return 'reprogramada al ' + fmtFecha_(rp.fecha) + ' (' + (rp.fila ? 'fila ' + rp.fila : 'todavía sin fila en la base') +
+         (rp.uid ? ', agenda_uid ' + rp.uid : '') + ')';
 }
 
 /** Un dato cargado (asistentes, inscriptos): no vacío y no 0. */
@@ -2045,6 +2224,10 @@ function aplicarPlanAgenda_(sh, dest, plan, corrida) {
     // 16/10 (AGENDA_CANCELACION_CONJUNTO): la suspendió un "Cancelado" de RDV CONJUNTO: la agenda no la reactiva sola
     // (16/10, revisor: en "columna", la FECHA de la fila al suspenderla: el bloqueo vale sólo mientras siga en esa fecha)
     return [corrida, 'suspendida_conjunto', a.f.fila, '', a.f.fecha ? ymd_(a.f.fecha) : '', a.motivoConjunto || '', idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
+  })).concat(plan.acciones.filter(function (a) { return a.tipo === 'reprogramar' && a.reprogramada; }).map(function (a) {
+    // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): "reprogramada al dd/MM/yyyy (fila N, agenda_uid …)": la fila nueva, por su agenda_uid
+    return [corrida, 'reprogramada', a.f.fila, '', '', textoReprogramadaAgenda_(a.reprogramada) + (a.desdeSuspendida ? ' (antes: Suspendida por el sistema)' : ''),
+            idReunionAgenda_(a.ev), '', uidDe[a.f.fila] || ''];
   })).concat((plan.figuraPorDireccion || []).map(function (x) {
     // la figura de una Seguridad salió de la DIRECCIÓN (07/10): queda registrado, con el barrio de RDV CONJUNTO si difiere
     return [corrida, 'figura_por_direccion', x.f.fila, '', '', x.res.barrioConjunto ? 'barrio RDV CONJUNTO: ' + x.res.barrioConjunto : '',
@@ -3681,7 +3864,8 @@ function _dosFilasAgenda_(P, dest, A, despues, elecciones, ignorados, fusionPrev
 // ===================== 16/10: AGENDA_PENDIENTES — lo que el equipo tiene que SABER (no decidir) =====================
 
 /** Los tipos de AGENDA_PENDIENTES que son un HECHO de una corrida (se listan AGENDA_PENDIENTES_DIAS_EVENTOS días); los demás son un estado (se recalculan). */
-const TIPOS_EVENTO_PENDIENTES_AGENDA_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo'];
+const TIPOS_EVENTO_PENDIENTES_AGENDA_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo',
+                                         'cancelación aplicada (Reprogramada)'];   // 20/10 (6c, AGENDA_REPROGRAMADA)
 const ENC_PENDIENTES_AGENDA_ = ['tipo', 'reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar', 'fila', 'qué pasa', 'qué sigue', 'desde', 'id'];
 
 /**
@@ -3744,6 +3928,16 @@ function infoAgenda_(P) {
     (P.suspendidasAuto || []).forEach(function (x) {
       if (!hechas.has(x.accion)) return;
       const uid = P.A && P.A.agenda_uid != null ? str(x.f.valores[P.A.agenda_uid]) : '';
+      // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): la que quedó "Reprogramada", con la fecha nueva y la fila nueva
+      if (x.reprogramada) {
+        out.push({ tipo: 'cancelación aplicada (Reprogramada)', reunion: textoEv(x.d), semana: x.d.semana || '', grupo: x.d.grupo || '', fecha: x.d.fecha || '',
+                   hora: x.d.hora || '', lugar: x.d.lugar || '', fila: x.f.fila,
+                   que: 'la fila ' + x.f.fila + ' pasó a Reprogramada' + (x.desdeSuspendida ? ' (la había suspendido el sistema)' : '') + ': ' + x.salida + '; ' +
+                        textoReprogramadaAgenda_(x.reprogramada) + ' (nunca se borra)',
+                   sigue: 'nada: la reunión nueva es la del ' + fmtFecha_(x.reprogramada.fecha) + '; si en realidad se hizo, el equipo la pasa a Realizada',
+                   id: 'reprogramada|' + (uid || 'fila ' + x.f.fila) + '|' + (x.f.fecha ? ymd_(x.f.fecha) : ''), avisar: false, evento: true });
+        return;
+      }
       out.push({ tipo: 'cancelación aplicada (Suspendida)', reunion: textoEv(x.d), semana: x.d.semana || '', grupo: x.d.grupo || '', fecha: x.d.fecha || '',
                  hora: x.d.hora || '', lugar: x.d.lugar || '', fila: x.f.fila, que: 'la fila ' + x.f.fila + ' pasó a Suspendida: ' + x.salida + ' (nunca se borra)',
                  sigue: 'si vuelve al mail, el sistema la reactiva; si se hizo igual, el equipo la pasa a Realizada',
@@ -3922,6 +4116,9 @@ function _logAgendaSegura_(P) {
     Logger.log('  CANCELACIÓN AUTOMÁTICA (modo "suspender", nunca se borra): suspendidas %s | NO aplicadas (una salvaguarda falló) %s',
                (P.suspendidasAuto || []).length, (P.cancelNoAplicada || []).length);
     (P.suspendidasAuto || []).forEach(function (x) {
+      // 20/10 (6c, AGENDA_REPROGRAMADA)
+      if (x.reprogramada) { Logger.log('    REPROGRAMADA | fila %s | %s %s | %s | %s; %s%s', x.f.fila, fmtFecha_(x.d.fecha), x.d.hora, x.d.figuraFila || x.d.tipo, x.salida,
+                                       textoReprogramadaAgenda_(x.reprogramada), x.desdeSuspendida ? ' (antes: Suspendida por el sistema)' : ''); return; }
       Logger.log('    SUSPENDIDA | fila %s | %s %s | %s | %s', x.f.fila, fmtFecha_(x.d.fecha), x.d.hora, x.d.figuraFila || x.d.tipo, x.salida);
     });
     (P.cancelNoAplicada || []).forEach(function (x) {
@@ -4004,6 +4201,12 @@ function _avisosAgendaSegura_(P, r) {
     (P.suspendidasAuto || []).forEach(function (x) {
       if (!hechas.has(x.accion)) return;
       // 15/10 (noche): la cancelada en ROJO lo dice, con las notas del mail que la nombran (confirman el color)
+      // 20/10 (prompt 09, 6c; AGENDA_REPROGRAMADA): la que quedó "Reprogramada" lo dice, con la fecha nueva
+      if (x.reprogramada) {
+        av('suspendidas', _textoReunionAgenda_(x.d) + ' | fila ' + x.f.fila + ' → Reprogramada (' + (x.desdeSuspendida ? 'estaba Suspendida por el sistema; ' : '') +
+           x.salida + '; ' + textoReprogramadaAgenda_(x.reprogramada) + ')' + notasTextoAgenda_(x.d));
+        return;
+      }
       av('suspendidas', _textoReunionAgenda_(x.d) + ' | fila ' + x.f.fila + ' → Suspendida (' +
          (x.porRojo ? 'cancelada en el mail: ' + x.d.canceladaEnMailMotivo :
           (x.porConjunto ? 'Cancelado en ' + x.d.conjuntoTexto : 'salió del mail del ' + fmtFecha_(x.d.mailQueLaSaco))) + ')' + notasTextoAgenda_(x.d));

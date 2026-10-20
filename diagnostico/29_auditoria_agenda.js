@@ -430,13 +430,37 @@ function _cancelaElMailAudAg_(C, ev, res) {
   const f = C.porFila.get(res.fila);
   const st = f ? str(_valAudAg_(C, f, 'STATUS REUNIÓN')) : '';
   // 20/10 (prompt 09, 6c): "Reprogramada" también refleja la cancelación
-  if (normStatus_(st) === 'suspendida' || normStatus_(st) === 'reprogramada') { res.notas.push('OK: ' + porque + ' y la fila está ' + str(st)); if (!res.difs.length && res.resultado === 'DISTINTO') res.resultado = 'OK'; return; }
+  if (normStatus_(st) === 'suspendida' || normStatus_(st) === 'reprogramada') {
+    // 20/10 (6c): una "Reprogramada", con la fecha nueva si el mail la tiene (la misma figura, en el mismo lugar, después)
+    const rp = normStatus_(st) === 'reprogramada' ? _reprogramadaAudAg_(C, evC, f) : null;
+    res.notas.push('OK: ' + porque + ' y la fila está ' + str(st) + (rp ? ' (' + textoReprogramadaAgenda_(rp) + ')' : ''));
+    if (!res.difs.length && res.resultado === 'DISTINTO') res.resultado = 'OK';
+    return;
+  }
   const asis = f && C.dest.D && C.dest.D['Asistentes'] != null ? f.valores[C.dest.D['Asistentes']] : '';
   res.difs.push({ campo: 'STATUS REUNIÓN', mail: 'Suspendida (' + porque.replace(/ \| .*$/, '') + ')', base: st,
                   quien: normStatus_(st) === 'en agenda' ? 'la fila sigue "en agenda" aunque el mail la cancela' :
                          'el mail la cancela y la base dice "' + st + '"' + (_hayDatoAgenda_(asis) ? ' con ' + str(asis) + ' asistentes' : '') + ' (no se toca: a mirar)',
                   corto: normStatus_(st) === 'en agenda' ? 'el mail la cancela' : 'el mail la cancela, la base no' });
   if (res.resultado === 'OK') res.resultado = 'DISTINTO';
+}
+
+/**
+ * 20/10 (prompt 09, 6c): la reprogramación de una reunión cancelada en el mail (`reprogramacionDeAgenda_`, la misma regla que la
+ * agenda con AGENDA_REPROGRAMADA): { fecha, fila, uid, … } o null. Sólo para mostrar la fecha nueva de una fila "Reprogramada".
+ */
+function _reprogramadaAudAg_(C, ev, f) {
+  try {
+    return reprogramacionDeAgenda_(ev, (C.rColor || C.r).unicas, {
+      filaVieja: f,
+      filaDe: function (u) {
+        const x = C.plan && C.plan.filaDe ? C.plan.filaDe.get(u.clave) : null;
+        if (!x || !x.fila || x.nueva) return null;
+        const fu = C.porFila.get(x.fila) || null;
+        return { fila: x.fila, f: fu, uid: fu ? str(_valAudAg_(C, fu, 'agenda_uid')) : '' };
+      }
+    });
+  } catch (err) { return null; }
 }
 
 /** 16/10 (punto 4): ¿esta diferencia es una decisión del equipo? (ver arriba, en la comparación de cada reunión) */

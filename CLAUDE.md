@@ -284,6 +284,12 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
     `suspendidas` y el resumen semanal.
   - **Lo que no toca:** un STATUS que no sea "en agenda" y un "Sigue" elegido. Si una salvaguarda frena la suspensión, se avisa
     `cancelacion_no_aplicada`.
+  - **"Reprogramada" en vez de "Suspendida"** (20/10, prompt 09 6c; `AGENDA_REPROGRAMADA`, APAGADO hasta que el usuario vea el
+    paso 110): si la misma figura tiene en el mail una reunión en el mismo lugar ("Lugar (mail)", barrio o comuna; nunca el eje) en
+    una fecha posterior a `AGENDA_REPROGRAMADA_DIAS` (21) días o menos, la cancelada queda "Reprogramada", con las mismas
+    salvaguardas; una "Suspendida" del sistema pasa a "Reprogramada" si la fecha nueva llega después (la del equipo no se toca).
+    Transiciones en agenda → Reprogramada y Suspendida → Reprogramada; ninguna desde Reprogramada (no se reactiva ni se borra).
+    REGISTRO_AGENDA_CAMBIOS: "reprogramada al dd/MM/yyyy (fila N, agenda_uid …)" (docs/ESTADO.md, "20/10 — prompt 09, 6c").
   - Con el modo `'regla7'` (el de hoy), todo como antes.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
@@ -1822,7 +1828,7 @@ Son los únicos que aparecen como literal en todo el repo
 | `en agenda` | agendada, todavía no pasó | es el **único origen** de la transición |
 | `Realizada` | ocurrió | es el **único destino** de la transición |
 | `Suspendida` | no se hizo | **no**, salvo la AGENDA (06/10, regla 7 del usuario): "en agenda" → "Suspendida" si la reunión desapareció del mail siendo futura, y de vuelta a "en agenda" si reaparece (sólo si el "Suspendida" lo puso ella; `agenda_status_escrito`) |
-| `Reprogramada` | se movió de fecha | **no.** Decisión de una persona |
+| `Reprogramada` | se movió de fecha | **no.** Decisión de una persona; salvo la AGENDA con `AGENDA_REPROGRAMADA` (20/10, APAGADO): "en agenda" o una "Suspendida" que puso ella → "Reprogramada" cuando el mail la cancela y la misma figura tiene otra fecha en el mismo lugar (sección 0, J) |
 | `Se modifico el barrio` | cambió la ubicación | **no.** Decisión de una persona |
 
 **Hay un solo valor que significa realizada** (`Realizada`), así que no hay ambigüedad de

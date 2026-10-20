@@ -20,6 +20,9 @@
  *  >>> 20/10: mediciones_soloLectura()  SÓLO LECTURA: los pasos 67, 104, 105 y 106 juntos.
  *      Decisiones del 20/10: el orden de la base va al PRINCIPIO de la corrida; las Suspendidas sin formulario no van a las fichas
  *      ni a SIN_MATCH (SUSPENDIDAS_FUERA_DE_FICHAS); Macri 15/10: los pasos 101-103 quedan como están hasta que confirme el equipo.
+ *  >>> 20/10 (prompt 09, 6c): paso110_reprogramadas_enSeco()  SÓLO LECTURA (al final del archivo): desde el 15/07, qué cancelaciones
+ *      del mail habrían quedado "Reprogramada" (con la fecha nueva) en vez de "Suspendida", contra el STATUS de hoy. La regla
+ *      (AGENDA_REPROGRAMADA), APAGADA hasta que el usuario vea esto.
  *  >>> 19/10 (prompt 08): separar Macri 15/10 (la 824) — docs/ESTADO.md, "19/10 — prompt 08".
  *        paso101_separarMacri1510_enSeco()   SÓLO LECTURA (+ la huella): el plan y la próxima corrida SIMULADA. Tiene que dar LISTO.
  *        paso102_separarMacri1510()          ESCRIBE (exige la huella del 101). Con la dirección: 101b → 102b.
@@ -1952,4 +1955,19 @@ function paso106_barrioAproximado_enSeco() {
              'NO escribe nada (no llama a Maps ni a Gmail; sólo lee la cache AGENDA_GEOCODE)',
              'el log: (i) las que ganarían barrio, (ii) la prueba contra el equipo, (iii) lo que no se mide, y el RESUMEN');
   return medirBarrioAproximado();
+}
+
+/**
+ * PASO 110 — SÓLO LECTURA (20/10; prompt 09, 6c): la regla "Reprogramada" en vez de "Suspendida" (AGENDA_REPROGRAMADA, APAGADA),
+ * medida desde el 15/07 con el mismo código que la agenda (la cancelación automática en modo "suspender", los colores y la regla
+ * prendidos POR OPCIONES; 00_Config.js no se toca): cada cancelación del mail con fila (desaparecida o en ROJO entero), si quedaría
+ * "Reprogramada" (con la fecha nueva, la fila nueva y su agenda_uid) o "Suspendida", y contra el STATUS de hoy (coincide o no; una
+ * "Suspendida" del equipo no se toca: sólo se cuenta). No escribe nada.
+ */
+function paso110_reprogramadas_enSeco() {
+  _anunciar_('paso 110 — "Reprogramada" en vez de "Suspendida", desde el 15/07 (EN SECO, SÓLO LECTURA)',
+             "medirReprogramadas({ desde: '2026-07-15' })  [diagnostico/39_reprogramadas.js]",
+             'NO escribe nada (ni la base, ni la intermedia, ni la cache del geocode; Gmail sólo se lee)',
+             'el log: por cada cancelación del mail, "Reprogramada" (al dd/MM/yyyy, fila N) o "Suspendida", el STATUS de hoy (coincide o no) y el RESUMEN');
+  return medirReprogramadas({ desde: '2026-07-15' });
 }

@@ -492,7 +492,8 @@ function _tieneFormulaDerivada_(sh, col) {
  *      `esperado` es lo que había escrito el sistema (`agenda_*_escrita`): si alguien del equipo la cambió, no
  *      coincide y no se toca. Es la regla del prompt ("sólo si la celda todavía tiene lo que escribió el sistema");
  *   3. **STATUS sólo por `AGENDA_TRANSICIONES_STATUS`**: '' → en agenda, en agenda → Suspendida, Suspendida → en
- *      agenda. Cualquier otro par es un error y no se escribe nada;
+ *      agenda; y (20/10, AGENDA_REPROGRAMADA) en agenda → Reprogramada, Suspendida → Reprogramada. Cualquier otro par es un
+ *      error y no se escribe nada;
  *   4. lo escrito con valor se pinta `COLOR_SISTEMA`; una celda que se VACÍA (el barrio del sistema cuando la
  *      dirección nueva ya no cumple la regla) queda sin color;
  *   5. las filas nuevas van AL FINAL (filas vacías después de la última con datos): nunca se inserta en el medio.

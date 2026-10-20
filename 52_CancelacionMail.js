@@ -78,7 +78,8 @@ function _cancelarFilaAgenda_(fila, enSeco, opciones) {
   const P = planAgenda_(dest, r, A, alcance, {
     enSeco: true, historial: opciones.historial || leerHistorialAgenda_(), elecciones: opciones.elecciones || leerEleccionesAgenda_(),
     conjunto: opciones.conjunto, geocodificar: opciones.geocodificar || _geoSoloCacheCancelMail_(), hoy: opciones.hoy,
-    cancelacionAutomatica: true, cancelacionModo: 'suspender', coloresMail: true });
+    // 20/10 (prompt 09, 6c): los pasos 91 / 92 SUSPENDEN una fila; "Reprogramada" (AGENDA_REPROGRAMADA) la decide la corrida de la hora
+    cancelacionAutomatica: true, cancelacionModo: 'suspender', coloresMail: true, reprogramada: false });
   const st = str(val('STATUS REUNIÓN')), ste = str(val('agenda_status_escrito'));
   const delSistema = !esVacio_(ste) && normStatus_(ste) === normStatus_(st);
   const out = { fila: fila, status: st, statusEscrito: ste, statusDelSistema: delSistema, validacionStatus: vs, evaluaciones: [], explicacion: [],

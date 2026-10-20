@@ -1951,6 +1951,42 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — prompt 09, 6c: "Reprogramada" en vez de "Suspendida" — escrito y APAGADO (`AGENDA_REPROGRAMADA`)
+
+Prompt: docs/prompts/PROMPT-09-CORRER-Y-TIEMPOS.md, punto 6c. **Qué hace (con el interruptor prendido, y sólo con la cancelación
+automática en modo "suspender"):**
+
+- Cuando la agenda suspendería una reunión **cancelada en el mail** (desapareció —paso 7 de `planAgenda_`— o está en ROJO entero
+  —paso 7b—, con todas las salvaguardas de J: el mail anterior a la reunión, sólo "en agenda", "Sigue", formato raro, 60%) y la
+  **misma figura** tiene en el mail (la última versión válida de esa semana o de las siguientes) una reunión en el **mismo lugar** —el
+  mismo "Lugar (mail)", o el mismo barrio o la misma comuna por la regla de los tres niveles; nunca por el eje— en una fecha
+  **posterior**, a `AGENDA_REPROGRAMADA_DIAS` (21) días o menos, y que no esté ella misma en rojo, la fila queda **"Reprogramada"**
+  (`agenda_status_escrito` = Reprogramada). Si no se detecta, "Suspendida" como siempre. La regla: `reprogramacionDeAgenda_` y
+  `mismoLugarReprogramadaAgenda_` (40_Agenda.js); de varias candidatas, la más cercana.
+- Si la fecha nueva llega **después** (en un mail posterior) a una fila que **el sistema** ya suspendió, pasa de "Suspendida" a
+  "Reprogramada" (acción `reprogramar`). Una "Suspendida" del equipo no se toca (sólo la cuenta el paso 110).
+- STATUS sólo por la excepción de la agenda: dos transiciones nuevas en `AGENDA_TRANSICIONES_STATUS` (en agenda → Reprogramada,
+  Suspendida → Reprogramada). Ninguna DESDE Reprogramada: una "Reprogramada" del sistema nunca se reactiva sola y nunca se borra.
+  Verificado que nada más cambia por eso: con el interruptor apagado el plan no produce esos pares; la fusión (54_FusionAgenda.js)
+  sólo copiaría una Reprogramada que escribió el sistema; deshacer (paso 38) no mira transiciones.
+- Queda registrado: REGISTRO_AGENDA_CAMBIOS (nota `reprogramada`: "reprogramada al dd/MM/yyyy (fila N, agenda_uid …)", la fila
+  nueva por su agenda_uid; "(antes: Suspendida por el sistema)" si venía de una suspensión), "Cambios" del archivo "Agenda" (con la
+  fecha nueva; "desaparecida: Reprogramada"), AGENDA_PENDIENTES ("cancelación aplicada (Reprogramada)"), el aviso `suspendidas` y el
+  resumen del lunes (50_Avisos.js: "→ Reprogramada (…; reprogramada al …)"), y las auditorías (paso 66 y paso 68: la fila
+  Reprogramada refleja la cancelación, con la fecha nueva). Los pasos 91 / 92 siguen suspendiendo (`reprogramada: false`).
+- **Apagado = idéntico**: `tests/agenda_reprogramada.test.js` [7] corre los mismos escenarios con el código de antes (commit 9e6cebe,
+  leído con git) y compara plan, resumen, avisos, base con fondos, REGISTRO_AGENDA_CAMBIOS, copia y AGENDA_PENDIENTES.
+
+**Cómo medirlo: `paso110_reprogramadas_enSeco()`** (99_Correr.js; `medirReprogramadas({ desde: '2026-07-15' })`,
+diagnostico/39_reprogramadas.js). SÓLO LECTURA (Gmail con el HTML, la base, la cache del geocode; no escribe nada). La misma lectura
+que el paso 93 con la regla prendida por opciones: por cada cancelación del mail con fila, "Reprogramada" (al dd/MM/yyyy, fila N,
+agenda_uid) o "Suspendida", y contra el STATUS de hoy: COINCIDE / NO COINCIDE (lo del equipo no se toca) / pasaría de Suspendida
+a Reprogramada / la marcaría hoy / otro STATUS / rechazada por el tiempo / salvaguarda. **Predicción:** Macri 15/10 (la 824, rojo)
+→ "Reprogramada" al 23/10 (fila 837); como hoy la 824 está Realizada, sale en "otro STATUS: no se tocaría" (hasta que el c02 la
+corrija a Reprogramada: entonces COINCIDE). Clara Muzzio 09/09 → 18/09 (la 778): "Reprogramada" según la regla, pero el equipo la
+tiene Suspendida → NO COINCIDE (sólo se cuenta). El resto de las Suspendidas del equipo sin otra fecha de la misma figura en el
+mismo lugar: COINCIDEN. **Para prender:** que el usuario vea el paso 110 → `AGENDA_REPROGRAMADA = true` + clasp push.
+
 #### 20/10 — las decisiones del usuario sobre el prompt 08
 
 1. **El orden de la base, al PRINCIPIO de la corrida** (como propuso el revisor): después del guardián, antes de la agenda y del
