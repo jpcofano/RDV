@@ -3857,6 +3857,10 @@ origen", que llevan a trabajos completamente distintos.
   corrida en `REGISTRO_CORRIDAS`** (intermedia): inicio, total y cada parte en segundos, las salteadas por tiempo y el error
   completo; la corrida en curso queda en una propiedad, así una corrida que muere por el límite (no se puede atrapar) la
   registra la siguiente como CORTADA, con la parte en la que murió.
+  **20/10 (prompt 09, punto 3): los TOPES antes de escribir.** Además de la guarda de inicio, la agenda (`AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS`,
+  200 s: antes de la fusión y antes de escribir la base) y la escritura del cruce (`CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS`, 240 s) no escriben
+  NADA si la corrida ya va por su tope: quedan salteadas y la corrida siguiente arranca por ellas (si quedaron las dos, se alternan).
+  Nunca una escritura a medias. Detalle y cómo medirlo (paso 67): docs/ESTADO.md, "20/10 — prompt 09, punto 3".
 - **Una corrida por vez** (`LockService`, `ESPERA_BLOQUEO_MS`): si otra corrida tiene el bloqueo,
   ésta no hace nada y lo loguea (y, desde el 15/10, lo anota en `REGISTRO_CORRIDAS`: "no arrancó"). **Cada corrida deja una
   línea en `REGISTRO_UPSERT`** (intermedia):

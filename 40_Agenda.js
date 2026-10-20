@@ -95,18 +95,33 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
     Logger.log('  AVISO: %s. En seco se calcula igual, como si estuvieran vacías.', msg);
   }
   const alcance = alcanceAgenda_();
+  // 20/10 (prompt 09, 3d; AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS): el TOPE DURO. Si la corrida de la hora ya va por el tope antes de escribir,
+  // la agenda no escribe NADA en esta corrida (ni la base, ni AGENDA_DUPLICADOS, ni la copia, ni REGISTRO_AGENDA): queda salteada por
+  // tiempo y la corrida siguiente arranca por ella. Aquí, antes de la fusión (la primera escritura posible): si ya no hay tiempo, no
+  // se sigue (la agenda tampoco llegaría a escribir más adelante).
+  const topeAgenda = function (antesDe) {
+    return !enSeco && typeof corridaTopeAntesDeEscribir_ === 'function' &&
+           corridaTopeAntesDeEscribir_('agenda', opciones.topeAntesDeEscribirMs !== undefined ? opciones.topeAntesDeEscribirMs : AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS,
+                                       'la agenda (' + antesDe + ')');
+  };
+  if (topeAgenda('antes de la fusión y del plan')) return { salteadaPorTiempo: true, donde: 'antes de la fusión' };
+  // 20/10 (3b): REGISTRO_AGENDA_CAMBIOS se lee UNA vez: la fusión (si la necesita) y el plan usan la misma lectura, salvo que la fusión
+  // haya escrito (entonces el plan lo vuelve a leer, con lo que ella anotó)
+  let histAgenda = null;
+  const leerHistAgenda = function () { return histAgenda || (histAgenda = leerHistorialAgenda_()); };
   // 16/10 (AGENDA_DUPLICADOS sólo decisiones; 54_FusionAgenda.js): "una reunión en dos filas" ANTES del plan — lo que eligió el
   // equipo ("Quedarse con la fila X") y, con AGENDA_FUSION_AUTOMATICA, lo que juntan solas las reglas del paso 97. Con el bloqueo
   // que ya tiene esta corrida. Si escribió la base, se relee (las filas de abajo de una borrada subieron una).
   if (typeof fusionAntesDelPlanAgenda_ === 'function' && !A.faltan.length) {
     try {
-      const fusionPrevia = fusionAntesDelPlanAgenda_(sh, dest, A, Object.assign({ alcance: alcance }, opciones), enSeco);
+      const fusionPrevia = fusionAntesDelPlanAgenda_(sh, dest, A, Object.assign({ alcance: alcance }, opciones.historial ? {} : { leerHistorialAgenda: leerHistAgenda }, opciones), enSeco);
       // las mismas elecciones para el plan (no se leen dos veces: la fusión no cambia AGENDA_DUPLICADOS ni ELECCIONES_AGENDA)
       opciones = Object.assign({}, opciones, { fusionPrevia: fusionPrevia }, !opciones.elecciones && fusionPrevia.elecciones ? { elecciones: fusionPrevia.elecciones } : {});
-      if (fusionPrevia.releer) _releerDestinoTrasFusionAgenda_(dest);
+      if (fusionPrevia.releer) { _releerDestinoTrasFusionAgenda_(dest); histAgenda = null; }
     } catch (err) {
       Logger.log('>>> "una reunión en dos filas" (fusión antes del plan) falló: %s (la agenda sigue; se relee la base por las dudas)', err);
       if (!enSeco) _releerDestinoTrasFusionAgenda_(dest);
+      histAgenda = null;
     }
   }
   // 16/10: los barrios de Comunas (el parser los usa) se leen acá, en "base", y no adentro del parse (que así mide sólo el parser)
@@ -175,11 +190,23 @@ function correrAgendaEnBloqueo_(enSeco, opciones) {
                'sólo las reuniones de hoy a %s días; las demás quedan para la próxima (sin crear ni tocar su barrio).',
                Math.round(llevaMs / 1000), Math.round(AGENDA_GEO_LIMITE_TRAS_PARSE_MS / 1000), AGENDA_GEO_DIAS_SI_TARDE);
   }
+  // 20/10 (3b): el historial que ya leyó la fusión (si no escribió); y el plan mide sus tramos (REGISTRO_CORRIDAS plan_*_s)
+  if (histAgenda && !opcPlan.historial) opcPlan.historial = histAgenda;
+  opcPlan.medirTramos = true;
   const plan = planAgenda_(dest, r, A, alcance, opcPlan);
   plan.hdrNombres = dest.hdr;
   logPlanAgenda_(plan, dest);
   _logGeoAgenda_(plan);
   tramo('plan');
+  // 20/10 (3d): el TOPE DURO, justo antes de escribir la base. Si actúa, no se escribe NADA de la agenda en esta corrida: sólo la cache
+  // de la geocodificación (lo que ya se le pidió a Maps no se vuelve a pagar). La corrida siguiente arranca por la agenda.
+  if (topeAgenda('antes de escribir la base')) {
+    try { _agregarCacheGeocode_(plan.geocodeNuevas || []); plan.geocodeNuevas = []; }
+    catch (err) { Logger.log('[agenda] la cache %s no se pudo escribir: %s', AGENDA_SOLAPA_GEOCODE, err); }
+    Logger.log('agenda: %s ms — SALTEADA POR EL TOPE (no escribió nada)%s', Date.now() - t0,
+               typeof agendaTiemposTexto_ === 'function' ? ' — ' + agendaTiemposTexto_() : '');
+    return Object.assign({}, plan.resumen, { salteadaPorTiempo: true, donde: 'antes de escribir la base' });
+  }
   if (!enSeco) {
     // REGISTRO_AGENDA es obligatorio: sin él no se puede deshacer. Si no se puede escribir, no se escribe el destino.
     const corrida = _idCorridaAgenda_();
@@ -345,6 +372,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   P.enSeco = !!opciones.enSeco; P.fusionPrevia = opciones.fusionPrevia || null;
   P.dosFilas = []; P.dosFilasDecididas = []; P.eleccionesAMano = [];
   P.creacionGeoDiferida = [];   // 16/10 (AGENDA_GEO_AHORRO): sin crear en esta corrida porque el barrio quedó pendiente
+  // 20/10 (prompt 09, 3b): el plan por dentro (REGISTRO_CORRIDAS plan_*_s; 49_Corridas.js SUBTIEMPOS_PLAN_), sólo en la corrida de la agenda
+  const marca = opciones.medirTramos && typeof agendaPlanTramo_ === 'function' ? agendaPlanTramo_ : function () {};
+  if (opciones.medirTramos && typeof agendaPlanIniciar_ === 'function') agendaPlanIniciar_();
 
   // Índices del destino
   const porFigFecha = new Map(), porFecha = new Map(), usadas = new Set();
@@ -426,6 +456,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   // Barrio desde la dirección (regla de confianza con el margen), con cache entre corridas.
   // 16/10 (AGENDA_GEO_AHORRO): con las reuniones del mail (el orden de la geocodificación) y la base (las direcciones ya resueltas)
   const barrioDe = _barrioAgenda_(opciones, P, { r: r, dest: dest, A: A, hoy: hoyP });
+  marca('indices');
 
   // 07/10: el historial de la agenda (qué filas creó, para saber cuáles BORRÓ el equipo) y las elecciones de
   // AGENDA_DUPLICADOS. Si el historial no se puede leer, en la corrida real NO se crea nada (podría recrear una borrada).
@@ -438,6 +469,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   P.borradaPorEquipo = borradaPorEquipo;
   const elecciones = opciones.elecciones || leerEleccionesAgenda_();
   P.elecciones = elecciones;
+  marca('historial');
   P.eleccionesAplicadas = [];
   // 15/10 (AGENDA_ELECCIONES_SIEMPRE, caso Macri 01/10): las decisiones se aplican aunque la fila elegida ya no esté entre las
   // candidatas, con la identidad tolerante al corrimiento; y (AGENDA_CERRAR_CANCELADAS_MAIL) las canceladas en el mail se cierran.
@@ -481,6 +513,29 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     return esVacio_(val(x.f, 'agenda_uid')) && (!ev || (cuentaBase[baseIdReunionAgenda_(idReunionAgenda_(ev))] || 0) === 1);
   };
   const comunaDeEv = function (ev) { return ev.comuna != null ? ev.comuna : (ev.barrio ? _comunaBarrioAg_(ev.barrio) : null); };
+  // 20/10 (prompt 09, 3b): las filas del EQUIPO (sin agenda_uid) con fecha, por día, en el orden de la base. casiDuplicados recorría
+  // la base ENTERA por cada reunión que se crea y por cada fila de la agenda ("después de crear"); ahora sólo las de los días que
+  // pueden entrar (±AGENDA_DUP_DIAS, más un día de margen por el redondeo de diasEntre_), con el MISMO filtro de siempre y en el mismo
+  // orden: el resultado no cambia.
+  let equipoPorDia = null;
+  const filasEquipoCerca = function (fecha) {
+    if (!fecha || typeof fecha.getTime !== 'function') return dest.filas;
+    if (!equipoPorDia) {
+      equipoPorDia = new Map();
+      dest.filas.forEach(function (f, i) {
+        if (!f.fecha || !esVacio_(val(f, 'agenda_uid'))) return;
+        const k = ymd_(f.fecha);
+        if (!equipoPorDia.has(k)) equipoPorDia.set(k, []);
+        equipoPorDia.get(k).push(i);
+      });
+    }
+    const dias = new Set();
+    for (let d = -(AGENDA_DUP_DIAS + 1); d <= AGENDA_DUP_DIAS + 1; d++) dias.add(ymd_(new Date(fecha.getTime() + d * 86400000)));
+    const idx = [];
+    dias.forEach(function (k) { (equipoPorDia.get(k) || []).forEach(function (i) { idx.push(i); }); });
+    idx.sort(function (a, b) { return a - b; });
+    return idx.map(function (i) { return dest.filas[i]; });
+  };
   /** Filas del equipo (sin agenda_uid) parecidas a una reunión (punto 7): la misma figura a ±AGENDA_DUP_DIAS días, o la
    *  misma fecha y comuna con otra figura o sin figura (y que no sea la fila de otra reunión del mail). */
   const casiDuplicados = function (ev, incluirMismaFecha, barrioEv) {
@@ -496,7 +551,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       if (tres) return compararUbicacion_(uEv, ubicacionDeFila_(f)).coincide === true;
       return com != null && f.barrio && _comunaBarrioAg_(f.barrio) === com;
     };
-    dest.filas.forEach(function (f) {
+    filasEquipoCerca(ev.fecha).forEach(function (f) {
       if (!f.fecha || !esVacio_(val(f, 'agenda_uid')) || usadas.has(f.fila)) return;
       const d = Math.abs(diasEntre_(f.fecha, ev.fecha));
       const mismaFig = f.figura && figs.indexOf(normalizeText_(f.figura)) >= 0;
@@ -542,6 +597,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     // 16/10: cada par va a AGENDA_DUPLICADOS para ELEGIR (_dosFilasAgenda_, más abajo); la semana frenada, a AGENDA_PENDIENTES
     P.invariante.forEach(function (x) { semanasBloqueadas.add(lunesYmdAgenda_(x.fecha)); });
   }
+  marca('invariante');
   const planeadas = {}, diferidas = {}, sueltas = [];
   // Presentes: las claves de TODAS las últimas versiones (también las repetidas en otro grupo y la clave de su mail).
   const presentes = new Set();
@@ -582,6 +638,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     _accionActualizar_(P, f, u, A, barrioDe, { fechaYaMovida: true });
   });
 
+  marca('reprogramadas');
   // --- 1-5. cada reunión del alcance: vincular, actualizar o crear ---
   enAlcance.forEach(function (ev) {
     if (atendidas.has(ev.clave)) return;
@@ -705,7 +762,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   });
 
   // --- 15/10 (H2): la conciliación por semana de lo que quedó suelto ---
+  marca('reuniones');
   if (sueltas.length) _conciliarSemanaAgenda_();
+  marca('conciliacion');
 
   /** Crear (al final) o preguntar: lo que hace la agenda con una reunión que no tiene fila (regla 4 y prompt 07). */
   function crearOPreguntar(ev, kPlan, idR, bEv) {
@@ -810,6 +869,9 @@ function planAgenda_(dest, r, A, alcance, opciones) {
    * ninguna, lo de siempre (crear, o "ambigua").
    */
   function _conciliarSemanaAgenda_() {
+    // 20/10 (prompt 09, 3b): sólo las filas de la agenda (con agenda_uid) pueden ser compatibles (`libre`); se buscaban en la base ENTERA
+    // por cada reunión suelta y en cada vuelta. El mismo orden de la base: el resultado no cambia.
+    const filasAgendaConc = dest.filas.filter(function (f) { return !esVacio_(val(f, 'agenda_uid')); });
     const tomadas = new Set();
     P.filaDe.forEach(function (x) { if (x && x.fila) tomadas.add(x.fila); });
     const gruposEv = function (ev) {
@@ -882,7 +944,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
       cambio = false;
       for (let i = 0; i < quedan.length && !cambio; i++) {
         const s = quedan[i];
-        const cands = dest.filas.filter(function (f) { return compatible(s.ev, f); });
+        const cands = filasAgendaConc.filter(function (f) { return compatible(s.ev, f); });
         if (!cands.length) continue;
         const pts = cands.map(function (f) { return puntaje(s.ev, f); });
         const mejor = Math.max.apply(null, pts);
@@ -902,7 +964,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
     quedan.forEach(function (s) {
       const ev = s.ev;
-      const libres = dest.filas.filter(function (f) { return compatible(ev, f); });
+      const libres = filasAgendaConc.filter(function (f) { return compatible(ev, f); });
       if (libres.length) {
         const idR = s.idR || idReunionAgenda_(ev);
         const el = elDe(idR);
@@ -1176,6 +1238,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (_hayDatoAgenda_(as) || _hayDatoAgenda_(ins)) P.suspendidasConDatos.push({ f: f, asistentes: as, inscriptos: ins, uid: str(val(f, 'agenda_uid')) });
   });
 
+  marca('cancelaciones');
   // --- 8. Seguridad en tu Barrio: la Figura desde RDV CONJUNTO, en las filas de la agenda que todavía no la tienen ---
   // 07/10 (DIAS_FUTUROS_CRUCE, la tanda del 07/10): también las de los próximos días (RDV CONJUNTO ya trae las programadas).
   const finSeguridad = finActivas_();
@@ -1205,6 +1268,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     });
   }
 
+  marca('seguridad');
   // --- 8 (prompt 07). Duplicados DESPUÉS de crear: una fila del equipo igual o casi igual a una creada por la agenda ---
   // 16/10: ya no son informativos: cada par (la de la agenda + la del equipo) es "una reunión en dos filas" y pide una decisión
   // (_dosFilasAgenda_, abajo), salvo que el equipo ya la haya tomado
@@ -1224,6 +1288,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   });
   // 16/10: "una reunión en dos filas" — los pares del H3 y de "después de crear" que el equipo tiene que decidir (AGENDA_DUPLICADOS)
   _dosFilasAgenda_(P, dest, A, despuesPares, elecciones, paresIgnorados, P.fusionPrevia);
+  marca('dos_filas');
 
   // --- A (prompt 07). "Tocado por el equipo" (en las filas de la agenda) y "Origen fila" = equipo (en las demás) ---
   dest.filas.forEach(function (f) {
@@ -1243,12 +1308,14 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     }
   });
 
+  marca('tocado');
   // --- 2. las viejas del mail sin fila (informativa) ---
   r.unicas.forEach(function (ev) {
     if (!ev.fecha || ymd_(ev.fecha) >= ymd_(alcance.desde)) return;
     if (!candidatas(ev).length) P.viejasSinFila.push(ev);
   });
 
+  marca('viejas');
   // --- 17. lo que va a la copia: las reuniones desde el inicio de la copia, vigentes, reprogramadas y desaparecidas ---
   const desdeCopia = AGENDA_COPIA_DESDE ? toDate_(AGENDA_COPIA_DESDE) : alcance.desde;
   const enCopia = function (ev) { return ev.fecha && ymd_(ev.fecha) >= ymd_(desdeCopia) && (!alcance.hasta || AGENDA_COPIA_DESDE || ymd_(ev.fecha) <= ymd_(alcance.hasta)); };
@@ -1334,6 +1401,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
   }
   // 15/10 (noche, punto 5, AGENDA_COLORES_AMARILLO_VERDE): AMARILLO → "Cambios" y naranja en "Agenda (mail)"; VERDE → "nueva"
   if (amarilloVerde) P.copia.forEach(_marcaAmarilloVerdeAgenda_);
+  marca('copia');
 
   // 15/10 (AGENDA_ELECCIONES_SIEMPRE): las elecciones que el plan NO miró (su reunión salió del alcance o del mail, o la pregunta
   // ya no corresponde) quedan CERRADAS: no vuelven a aparecer y se anotan una vez en REGISTRO_AGENDA_CAMBIOS.
@@ -1416,6 +1484,7 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     P.resumen.suspendidasPorConjunto = P.suspendidasAuto.filter(function (x) { return x.porConjunto; }).length;
   }
   if (P.modos.avisoHechasSinFila) P.resumen.hechasSinFila = (P.hechasSinFila.lista || []).length;
+  marca('cierre');
   return P;
 }
 
@@ -1488,9 +1557,16 @@ function tipoAgendaDeTexto_(texto) {
 function grupoDeAgendaMail_(agendaMail) {
   const asunto = str(agendaMail).replace(/\s*\|\s*\d{1,2}\/\d{1,2}\/\d{4}(?:\s+\d{1,2}:\d{2})?\s*$/, '');
   if (!asunto) return '';
+  // 20/10 (prompt 09, 3b): lo ya calculado en esta ejecución (la conciliación lo pide por cada fila de la agenda, en cada vuelta)
+  if (!_memoGrupoAgenda_) _memoGrupoAgenda_ = new Map();
+  if (_memoGrupoAgenda_.has(asunto)) return _memoGrupoAgenda_.get(asunto);
   const sem = _semanaAgenda_(asunto, '', new Date());
-  return sem && sem.grupo && sem.grupo !== '(sin grupo)' ? sem.grupo : '';
+  const g = sem && sem.grupo && sem.grupo !== '(sin grupo)' ? sem.grupo : '';
+  if (_memoGrupoAgenda_.size > 5000) _memoGrupoAgenda_.clear();
+  _memoGrupoAgenda_.set(asunto, g);
+  return g;
 }
+var _memoGrupoAgenda_ = null;
 
 /**
  * **¿La fila es la de esta reunión SIN figura?** (15/10, AGENDA_SEGURIDAD_POR_COMUNA): una Seguridad en tu Barrio se
@@ -1890,9 +1966,14 @@ function barrioDelLugarMailAgenda_(ev, res) {
 /** RDV CONJUNTO por fecha: yyyyMMdd → [{ fila, nombre, ubic }]. */
 function leerConjuntoPorFecha_() {
   const porFecha = new Map();
-  const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
-  if (!sh || sh.getLastRow() < 2) return porFecha;
-  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  // 20/10 (prompt 09, 3b; CONJUNTO_UNA_LECTURA_POR_CORRIDA): en la corrida de la hora, la misma lectura que los asistentes del cruce
+  let vals;
+  if (typeof valoresConjuntoCorrida_ === 'function') vals = valoresConjuntoCorrida_('la figura de Seguridad (agenda)');
+  else {
+    const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
+    vals = sh && sh.getLastRow() >= 2 ? sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues() : null;
+  }
+  if (!vals || vals.length < 2) return porFecha;
   const hdr = vals[0];
   const iFig = findIdxOr_(hdr, ['figura', 'persona', 'nombre'], true);
   const iBar = findIdxOr_(hdr, ['barrion', 'barrio'], true);

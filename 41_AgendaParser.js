@@ -1058,15 +1058,28 @@ function leerMailsAgendaGmail_(desde, opciones) {
   const est = { hilosCache: 0, hilosBajados: 0, mensajesCache: 0, mensajesBajados: 0, htmlCache: 0 };
   const dias = Math.max(1, Math.ceil((Date.now() - desde.getTime()) / 86400000) + 1);
   const desdeMs = desde.getTime();
+  // 20/10 (prompt 09, 3a; AGENDA_GMAIL_BUSQUEDA_BARATA): con la cache, primero "¿hay algo nuevo desde la última búsqueda completa?".
+  // Si no, la lista sale de la cache (la misma que daría la completa). `opciones.busquedaCompleta`: forzar la completa (un test, un paso).
+  const tBusqueda = Date.now();
+  let motivoCompleta = '';
+  if (C && !(opciones && opciones.busquedaCompleta) && typeof AGENDA_GMAIL_BUSQUEDA_BARATA !== 'undefined' && AGENDA_GMAIL_BUSQUEDA_BARATA) {
+    const barata = _mailsAgendaSinNovedad_(C, desde, conHtml, opciones);
+    if (barata.out) {
+      barata.out.fuente = 'Gmail: etiqueta "' + AGENDA_ETIQUETA_GMAIL + '" o asunto (' + AGENDA_ASUNTOS_GMAIL.join(' / ') + '), ' + dias + ' días';
+      return barata.out;
+    }
+    motivoCompleta = barata.motivo;
+  } else if (C) motivoCompleta = opciones && opciones.busquedaCompleta ? 'pedida' : 'la consulta barata está apagada';
+  const hilosUltimo = {};   // id de hilo → la fecha de su último mensaje (para la consulta barata de la corrida siguiente)
   const conColores = function (m) {
     if (!conHtml || !C) return;
     const d = cacheAgendaGet_(C, claveColoresAgenda_(m.id));
     if (d) { m.colDerivado = derivadoColoresDeCache_(d); est.htmlCache++; }
   };
   /** 16/10: el hilo entero desde la cache, si su último mensaje es el guardado y están todos sus mensajes (y sus colores). */
-  const hiloDeCache = function (h, idHilo) {
+  const hiloDeCache = function (h, idHilo, ultimoMs) {
     const e = cacheAgendaGet_(C, 'agh|' + idHilo);
-    if (!e || e.last !== h.getLastMessageDate().getTime()) return false;
+    if (!e || e.last !== ultimoMs) return false;
     const gs = [];
     for (let i = 0; i < e.ids.length; i++) {
       const g = cacheAgendaGet_(C, 'agm|' + e.ids[i]);
@@ -1089,12 +1102,14 @@ function leerMailsAgendaGmail_(desde, opciones) {
   };
   const agregar = function (hilos, origen) {
     hilos.forEach(function (h) {
-      if (h.getLastMessageDate() < desde) return;
+      const ultimo = h.getLastMessageDate();
+      if (ultimo < desde) return;
       const idHilo = h.getId();
       if (origen === 'etiqueta') enEtiqueta[idHilo] = true;
       if (hilosVistos[idHilo]) return;   // el mismo hilo por la etiqueta y por el asunto: sus mensajes ya están
       hilosVistos[idHilo] = true;
-      if (C && hiloDeCache(h, idHilo)) { est.hilosCache++; return; }
+      hilosUltimo[idHilo] = ultimo.getTime();
+      if (C && hiloDeCache(h, idHilo, ultimo.getTime())) { est.hilosCache++; return; }
       if (C) est.hilosBajados++;
       const ids = [];
       h.getMessages().forEach(function (msg) {
@@ -1119,7 +1134,7 @@ function leerMailsAgendaGmail_(desde, opciones) {
         lista.push(m);
         if (mensajes && !m.colDerivado) mensajes[id] = msg;
       });
-      if (C) cacheAgendaPut_(C, 'agh|' + idHilo, { last: h.getLastMessageDate().getTime(), ids: ids });
+      if (C) cacheAgendaPut_(C, 'agh|' + idHilo, { last: ultimo.getTime(), ids: ids });
     });
   };
   const errores = [];
@@ -1154,11 +1169,102 @@ function leerMailsAgendaGmail_(desde, opciones) {
                 lista: lista, errores: errores };
   if (mensajes) out.html = _leerHtmlMailsAgenda_(lista, mensajes, opciones.topeMs === undefined ? AGENDA_COLORES_MAIL_MAX_MS : opciones.topeMs, C);
   if (C) {
+    est.busqueda = 'completa' + (motivoCompleta ? ': ' + motivoCompleta : '');
     out.cache = est;
-    Logger.log('[agenda] cache de los mails: hilos de la cache %s, bajados %s | mensajes de la cache %s, leídos %s | colores de la cache %s',
-               est.hilosCache, est.hilosBajados, est.mensajesCache, est.mensajesBajados, est.htmlCache);
+    Logger.log('[agenda] cache de los mails: hilos de la cache %s, bajados %s | mensajes de la cache %s, leídos %s | colores de la cache %s | búsqueda %s',
+               est.hilosCache, est.hilosBajados, est.mensajesCache, est.mensajesBajados, est.htmlCache, est.busqueda);
+    // 20/10 (3a): lo que trajo esta búsqueda completa, para la consulta barata de las corridas siguientes. Con errores, no: la próxima
+    // vuelve a buscar entera
+    if (!errores.length) {
+      cacheAgendaPut_(C, CLAVE_LISTADO_MAILS_AGENDA_, { t: tBusqueda, desde: desdeMs, conf: _confBusquedaAgenda_(), hilos: hilosUltimo,
+        m: lista.map(function (m) { return { id: m.id, h: m.hilo, e: m.etiqueta ? 1 : 0 }; }) });
+    }
   }
   return out;
+}
+
+/** 20/10 (3a): la clave de la cache con lo que trajo la última búsqueda completa de los mails de agenda. */
+const CLAVE_LISTADO_MAILS_AGENDA_ = 'ag|listado';
+
+/** 20/10 (3a): la etiqueta y los asuntos de la búsqueda (si cambian, lo guardado no vale). */
+function _confBusquedaAgenda_() {
+  return JSON.stringify([AGENDA_ETIQUETA_GMAIL, AGENDA_ASUNTOS_GMAIL]);
+}
+
+/**
+ * 20/10 (prompt 09, 3a; AGENDA_GMAIL_BUSQUEDA_BARATA): **¿hay algo nuevo en Gmail desde la última búsqueda completa?** Si no, la
+ * lista de mails sale de la cache (`C`) y es EXACTAMENTE la que daría la búsqueda completa: los mismos mensajes, con su fecha,
+ * asunto, texto, hilo, etiqueta y colores, en el mismo orden, filtrados por el `desde` de hoy. Devuelve `{ out }` (como
+ * leerMailsAgendaGmail_, con `out.cache.busqueda = 'barata'`) o `{ motivo }` (por qué hace falta la completa).
+ *
+ * La consulta barata: los hilos más recientes de la etiqueta (getThreads(0, N): vienen del más nuevo al más viejo) y, por cada asunto,
+ * `subject:("…") after:<segundos>`, desde la última completa menos AGENDA_GMAIL_MARGEN_MS. Un hilo que no estaba, o cuyo último
+ * mensaje cambió, es algo nuevo. Si una página vuelve llena, se busca entera (podría haber más).
+ */
+function _mailsAgendaSinNovedad_(C, desde, conHtml, opciones) {
+  const L = cacheAgendaGet_(C, CLAVE_LISTADO_MAILS_AGENDA_);
+  if (!L || !L.hilos || !L.m) return { motivo: 'sin la lista de la búsqueda anterior en la cache' };
+  const desdeMs = desde.getTime();
+  if (L.conf !== _confBusquedaAgenda_()) return { motivo: 'cambió la etiqueta o los asuntos' };
+  if (desdeMs < L.desde) return { motivo: 'el alcance empieza antes que el de la búsqueda anterior' };
+  const cada = (typeof AGENDA_GMAIL_COMPLETA_CADA_HORAS !== 'undefined' ? AGENDA_GMAIL_COMPLETA_CADA_HORAS : 4) * 3600000;
+  if (Date.now() - L.t >= cada) return { motivo: 'cada ' + Math.round(cada / 3600000) + ' horas' };
+  // 1. lo de la cache: cada mensaje (y sus colores) tiene que estar; si falta algo, la completa (que lo baja)
+  const lista = [], est = { hilosCache: 0, hilosBajados: 0, mensajesCache: 0, mensajesBajados: 0, htmlCache: 0, busqueda: 'barata' };
+  for (let i = 0; i < L.m.length; i++) {
+    const x = L.m[i];
+    const g = cacheAgendaGet_(C, 'agm|' + x.id);
+    if (!g || g.c == null) return { motivo: 'falta un mensaje en la cache' };
+    if (g.f < desdeMs) continue;
+    const m = { fecha: new Date(g.f), asunto: g.a, cuerpo: g.c, truncado: false, id: x.id, hilo: x.h };
+    if (conHtml) {
+      const d = cacheAgendaGet_(C, claveColoresAgenda_(x.id));
+      if (!d) return { motivo: 'faltan los colores de un mensaje en la cache' };
+      m.colDerivado = derivadoColoresDeCache_(d); est.htmlCache++;
+    }
+    m.etiqueta = !!x.e;
+    lista.push(m);
+    est.mensajesCache++;
+  }
+  // 2. la consulta barata
+  const margen = typeof AGENDA_GMAIL_MARGEN_MS !== 'undefined' ? AGENDA_GMAIL_MARGEN_MS : 2 * 3600000;
+  const umbral = L.t - margen;
+  const PAGINA = 20;
+  // un hilo cuyo último mensaje es anterior al alcance tampoco lo toma la búsqueda completa; los demás, contra lo guardado (aunque sean
+  // anteriores al umbral: un mail que Gmail mostró tarde, o una etiqueta puesta después)
+  const nuevo = function (h) {
+    const id = h.getId(), u = h.getLastMessageDate();
+    if (u.getTime() < desdeMs) return '';
+    return L.hilos[id] === u.getTime() ? '' : (id in L.hilos ? 'un mensaje nuevo en un hilo' : 'un hilo nuevo');
+  };
+  try {
+    const etiqueta = GmailApp.getUserLabelByName(AGENDA_ETIQUETA_GMAIL);
+    if (etiqueta) {
+      const hilos = etiqueta.getThreads(0, PAGINA);
+      for (let i = 0; i < hilos.length; i++) { const n = nuevo(hilos[i]); if (n) return { motivo: n + ' (etiqueta)' }; }
+      if (hilos.length >= PAGINA && hilos[hilos.length - 1].getLastMessageDate().getTime() >= umbral) return { motivo: 'muchos hilos recientes en la etiqueta' };
+    }
+    const seg = Math.floor(umbral / 1000);
+    for (let k = 0; k < AGENDA_ASUNTOS_GMAIL.length; k++) {
+      const hilos = GmailApp.search('subject:("' + AGENDA_ASUNTOS_GMAIL[k] + '") after:' + seg, 0, PAGINA);
+      for (let i = 0; i < hilos.length; i++) { const n = nuevo(hilos[i]); if (n) return { motivo: n + ' (asunto)' }; }
+      if (hilos.length >= PAGINA) return { motivo: 'muchos hilos recientes por el asunto' };
+    }
+  } catch (e) { return { motivo: 'la consulta barata falló (' + e + ')' }; }
+  // 3. nada nuevo: los hilos y los mensajes de la lista siguen en la cache (las mismas claves que usaría la búsqueda completa)
+  Object.keys(L.hilos).forEach(function (id) {
+    if (L.hilos[id] < desdeMs) return;
+    est.hilosCache++;
+    const e = cacheAgendaGet_(C, 'agh|' + id);
+    if (e && e.ids) e.ids.forEach(function (mid) { cacheAgendaGet_(C, 'agm|' + mid); });
+  });
+  lista.sort(function (x, y) { return x.fecha - y.fecha; });
+  const out = { fuente: '', lista: lista, errores: [] };
+  if (conHtml) out.html = _leerHtmlMailsAgenda_(lista, {}, opciones && opciones.topeMs !== undefined ? opciones.topeMs : AGENDA_COLORES_MAIL_MAX_MS, C);
+  out.cache = est;
+  Logger.log('[agenda] cache de los mails: búsqueda BARATA (nada nuevo en Gmail desde la completa de las %s): %s mensajes de la cache, colores %s',
+             Utilities.formatDate(new Date(L.t), RDV_TZ, 'dd/MM HH:mm'), est.mensajesCache, est.htmlCache);
+  return { out: out };
 }
 
 /**

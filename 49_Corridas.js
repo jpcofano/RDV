@@ -31,6 +31,16 @@ const PARTES_CORRIDA_ = ['guardian', 'agenda', 'cruce', 'asistentes', 'escritura
  */
 const SUBTIEMPOS_AGENDA_ = ['base', 'gmail', 'html', 'parse', 'plan', 'geo', 'escritura', 'solapas', 'copia', 'registro'];
 var _tiemposAgenda_ = null;
+/**
+ * 20/10 (prompt 09, 3b): el PLAN de la agenda por dentro (planAgenda_, con `opciones.medirTramos`; cada `agendaPlanTramo_(k)` cierra el
+ * tramo k): los índices de la base y el barrio; el historial y las elecciones (REGISTRO_AGENDA_CAMBIOS, ELECCIONES_AGENDA, AGENDA_DUPLICADOS);
+ * el invariante (H3); las reprogramaciones de la semana (6); el loop de las reuniones (1-5); la conciliación (H2); las cancelaciones (7,
+ * 7b, 7d, 7c); la figura de Seguridad (8, lee RDV CONJUNTO); "después de crear" y "una reunión en dos filas"; "Tocado por el equipo" y
+ * "Origen fila"; las viejas sin fila (2); la copia (17); el cierre (elecciones cerradas, "hechas sin fila", el resumen). La
+ * geocodificación cae adentro del tramo que la pidió (sobre todo "reuniones" y "copia"); "geo" la sigue midiendo aparte.
+ */
+const SUBTIEMPOS_PLAN_ = ['indices', 'historial', 'invariante', 'reprogramadas', 'reuniones', 'conciliacion', 'cancelaciones', 'seguridad',
+  'dos_filas', 'tocado', 'viejas', 'copia', 'cierre'];
 
 /** La corrida en curso (en memoria, dentro de una ejecución). */
 var _corrida_ = null;
@@ -49,6 +59,7 @@ function corridaIniciar_(t0, enSeco, historial) {
   _corrida_ = { id: Utilities.formatDate(inicio, RDV_TZ, 'yyyyMMdd-HHmmss'), t0: inicio.getTime(),
                 modo: (enSeco ? 'EN SECO' : 'real') + (historial ? ' (historial)' : ''),
                 partes: {}, salteadas: [], errores: [], actual: '', agenda: null, sinCambios: [], noTocaba: {} };
+  if (typeof _conjuntoCorrida_ !== 'undefined') _conjuntoCorrida_ = null;   // 20/10: RDV CONJUNTO se vuelve a leer en cada corrida
   let cortada = null;   // la corrida anterior que no terminó (para los avisos, 50_Avisos.js)
   try {
     const props = PropertiesService.getScriptProperties();
@@ -100,7 +111,59 @@ function corridaSinCambios_(nombre) {
 }
 
 /** 16/10: los tiempos de la agenda por dentro (SUBTIEMPOS_AGENDA_). Lo llama correrAgendaEnBloqueo_ al empezar. */
-function agendaTiemposIniciar_() { _tiemposAgenda_ = { ms: {}, geoN: 0, ultima: _ahoraMs_() }; }
+function agendaTiemposIniciar_() { _tiemposAgenda_ = { ms: {}, geoN: 0, ultima: _ahoraMs_(), plan: null, planUltima: 0 }; }
+
+/** 20/10 (3b): empieza a medir el plan por dentro (SUBTIEMPOS_PLAN_). Lo llama planAgenda_ (sólo con `opciones.medirTramos`). */
+function agendaPlanIniciar_() {
+  const T = _tiemposAgenda_;
+  if (!T) return;
+  T.plan = {}; T.planUltima = _ahoraMs_();
+}
+
+/** 20/10 (3b): cierra el tramo `k` del plan. Queda en la corrida en curso: si la ejecución muere en el plan, la CORTADA dice dónde. */
+function agendaPlanTramo_(k) {
+  const T = _tiemposAgenda_;
+  if (!T || !T.plan) return;
+  const ahora = _ahoraMs_();
+  T.plan[k] = (T.plan[k] || 0) + Math.max(0, ahora - T.planUltima);
+  T.planUltima = ahora;
+  if (_corrida_) {
+    _corrida_.agenda = { ms: T.ms, geoN: T.geoN, plan: T.plan };
+    if (_corrida_.actual === 'agenda' || /^agenda \(/.test(_corrida_.actual)) _corrida_.actual = 'agenda (plan, después de ' + k + ')';
+    _guardarCorridaEnCurso_();
+  }
+}
+
+/**
+ * 20/10 (prompt 09, 3d y 3e): el TOPE DURO antes de escribir (la agenda: AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS; el cruce:
+ * CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS). Si la corrida ya lleva `limMs`, devuelve true: quien llama NO escribe nada en esta corrida. Queda
+ * como parte salteada por tiempo y en la columna "topes" de REGISTRO_CORRIDAS (el paso 67 cuenta cuántas veces actuó cada tope). Fuera
+ * de la corrida de la hora (un paso a mano) o sin la guarda de tiempo, nunca actúa.
+ */
+function corridaTopeAntesDeEscribir_(parte, limMs, que) {
+  if (!_corrida_ || !GUARDA_TIEMPO_ACTIVA || limMs == null) return false;
+  const lleva = corridaTranscurridoMs_();
+  if (lleva < limMs) return false;
+  Logger.log('>>> TOPE ANTES DE ESCRIBIR: la corrida ya lleva %s s (tope para escribir "%s": %s s): %s NO escribe NADA en esta corrida; ' +
+             'queda para la próxima.', Math.round(lleva / 1000), parte, Math.round(limMs / 1000), que || parte);
+  if (_corrida_.salteadas.indexOf(parte) < 0) _corrida_.salteadas.push(parte);
+  (_corrida_.topes = _corrida_.topes || []).push(parte + ' (' + Math.round(lleva / 1000) + ' s)');
+  _guardarCorridaEnCurso_();
+  return true;
+}
+
+/** 20/10: ¿la parte quedó salteada por tiempo en esta corrida (la guarda de inicio o el tope antes de escribir)? */
+function corridaParteSalteada_(parte) {
+  return !!(_corrida_ && _corrida_.salteadas.indexOf(parte) >= 0);
+}
+
+/** 20/10: una lectura de RDV CONJUNTO en esta corrida (`reuso`: la de otra parte, CONJUNTO_UNA_LECTURA_POR_CORRIDA). Para el paso 67. */
+function corridaLecturaConjunto_(que, ms, reuso) {
+  if (!_corrida_) return;
+  const c = _corrida_.conjunto = _corrida_.conjunto || { lecturas: 0, reusos: 0, ms: 0, detalle: [] };
+  if (reuso) c.reusos++; else { c.lecturas++; c.ms += ms || 0; }
+  if (c.detalle.length < 8) c.detalle.push(que + (reuso ? ' (reusada)' : ' ' + ((ms || 0) / 1000).toFixed(1) + ' s'));
+}
 
 /**
  * Cierra el tramo `k` de la agenda (desde el tramo anterior), menos `menosMs` (lo que ya se anotó aparte: el HTML dentro de
@@ -116,6 +179,7 @@ function agendaTiempo_(k, menosMs) {
   if (_corrida_) {
     _corrida_.agenda = { ms: T.ms, geoN: T.geoN };
     if (_corrida_.actual === 'agenda' || /^agenda \(/.test(_corrida_.actual)) _corrida_.actual = 'agenda (después de ' + k + ')';
+    if (T.plan) _corrida_.agenda.plan = T.plan;
     _guardarCorridaEnCurso_();
   }
 }
@@ -156,6 +220,9 @@ function agendaMailsAnotar_(gmail, parse, cache, html) {
                             mensajesCache: gmail ? gmail.mensajesCache : null, mensajesBajados: gmail ? gmail.mensajesBajados : null,
                             htmlCache: html ? html.deCache || 0 : null, htmlLeidos: html ? html.leidos : null,
                             parseCache: parse ? parse.deCache : null, parseados: parse ? parse.parseados : null,
+                            // 20/10 (3a, 3c): la búsqueda de Gmail (barata / completa y por qué) y si la cache se escribió
+                            busqueda: gmail && gmail.busqueda ? String(gmail.busqueda) : '',
+                            cacheEscrita: cache && cache.escrita !== undefined ? !!cache.escrita : null,
                             errores: cache && cache.errores && cache.errores.length ? cache.errores.join(' | ').slice(0, 300) : '' };
   _guardarCorridaEnCurso_();
 }
@@ -171,7 +238,9 @@ function _textoMailsCorrida_(m) {
   if (!m) return '';
   const p = function (a, b) { return a == null ? '—' : a + '/' + ((a || 0) + (b || 0)); };
   return 'hilos ' + p(m.hilosCache, m.hilosBajados) + ' · mensajes ' + p(m.mensajesCache, m.mensajesBajados) +
-         ' · colores ' + p(m.htmlCache, m.htmlLeidos) + ' · parse ' + p(m.parseCache, m.parseados) + (m.errores ? ' · ' + m.errores : '');
+         ' · colores ' + p(m.htmlCache, m.htmlLeidos) + ' · parse ' + p(m.parseCache, m.parseados) +
+         (m.cacheEscrita === false ? ' · cache sin cambios (no se escribió)' : m.cacheEscrita === true ? ' · cache escrita' : '') +
+         (m.errores ? ' · ' + m.errores : '');
 }
 
 /**
@@ -218,6 +287,7 @@ function corridaCerrar_(err) {
   try { if (typeof avisosAlCerrarCorrida_ === 'function') avisosAlCerrarCorrida_(c, estado); }
   catch (e) { Logger.log('>>> AVISOS: %s', e); }
   _corrida_ = null;
+  if (typeof _conjuntoCorrida_ !== 'undefined') _conjuntoCorrida_ = null;
 }
 
 /** Una corrida que no arrancó porque otra tiene el bloqueo. */
@@ -241,7 +311,8 @@ function _guardarCorridaEnCurso_() {
       errores: _corrida_.errores.map(function (e) { return e.slice(0, 600); }), actual: _corrida_.actual,
       agenda: _corrida_.agenda, sinCambios: _corrida_.sinCambios, noTocaba: _corrida_.noTocaba,
       agendaGeo: _corrida_.agendaGeo || null, agendaMails: _corrida_.agendaMails || null, base: _corrida_.base || null,
-      orden: _corrida_.orden || '', baseOrdenada: _corrida_.baseOrdenada || '' }));
+      orden: _corrida_.orden || '', baseOrdenada: _corrida_.baseOrdenada || '', topes: _corrida_.topes || [],
+      conjunto: _corrida_.conjunto || null }));
   } catch (e) { /* el registro nunca corta la corrida */ }
 }
 
@@ -257,8 +328,13 @@ function encabezadoCorridas_() {
     // 16/10 (tarde, punto 5b): también AL FINAL (las filas de antes no las tienen)
     .concat(COLUMNAS_CORRIDA_5B_)
     // 19/10 (prompt 08, punto 7): también AL FINAL
-    .concat(['base_ordenada']);
+    .concat(['base_ordenada'])
+    // 20/10 (prompt 09, punto 3): también AL FINAL — el plan de la agenda por dentro, la búsqueda de Gmail, los topes y RDV CONJUNTO
+    .concat(SUBTIEMPOS_PLAN_.map(function (k) { return 'plan_' + k + '_s'; }))
+    .concat(COLUMNAS_CORRIDA_0910_);
 }
+/** 20/10: la búsqueda de Gmail ("barata" / "completa: por qué"), los topes que actuaron y las lecturas de RDV CONJUNTO. */
+const COLUMNAS_CORRIDA_0910_ = ['agenda_gmail', 'topes', 'conjunto_lecturas'];
 /** 16/10 (tarde): la escritura de la cache de los mails, la geocodificación y los mails por dentro, y las lecturas de la base. */
 const COLUMNAS_CORRIDA_5B_ = ['agenda_cache_s', 'agenda_geo_detalle', 'agenda_mails_cache', 'base_lecturas', 'base_reusos', 'base_lecturas_s', 'base_detalle',
   'orden'];
@@ -309,7 +385,12 @@ function _escribirFilaCorrida_(c, estado, totalMs) {
                _textoGeoCorrida_(c.agendaGeo), _textoMailsCorrida_(c.agendaMails),
                c.base ? c.base.lecturas : '', c.base ? c.base.reusos : '', c.base ? Math.round(c.base.ms / 100) / 10 : '',
                c.base ? c.base.detalle.join(' · ') : '', c.orden || ''])
-      .concat([c.baseOrdenada || '']);
+      .concat([c.baseOrdenada || ''])
+      .concat(SUBTIEMPOS_PLAN_.map(function (k) {
+        return c.agenda && c.agenda.plan && k in c.agenda.plan ? Math.round(c.agenda.plan[k] / 100) / 10 : '';
+      }))
+      .concat([c.agendaMails && c.agendaMails.busqueda ? c.agendaMails.busqueda : '', (c.topes || []).join(', '),
+               c.conjunto ? 'lecturas ' + c.conjunto.lecturas + ' · reusos ' + c.conjunto.reusos + ' · ' + c.conjunto.detalle.join(' · ') : '']);
     sh.appendRow(fila);
     SpreadsheetApp.flush();
   } catch (err) { Logger.log('>>> REGISTRO_CORRIDAS: no se pudo escribir la línea de la corrida: %s', err); }
@@ -474,5 +555,65 @@ function tiemposDeCorridas(n) {
     Logger.log('  --- sin cambios (no se reescribieron): %s ---',
                Object.keys(sc).map(function (n) { return n + ' ' + sc[n]; }).join(' | ') || 'ninguna todavía');
   }
+  tiemposPrompt09_(filas, col, med, num, seg, out);
   return out;
+}
+
+/**
+ * 20/10 (prompt 09, punto 3): lo nuevo del paso 67 — el PLAN de la agenda por dentro (mediana y máximo de cada tramo), la búsqueda
+ * de Gmail (barata / completa, cuántas veces y cuánto tardó el tramo "gmail" en cada caso, y por qué fue completa), si la cache de los
+ * mails se escribió, cuántas veces actuó cada TOPE antes de escribir (agenda, escritura del cruce) y las lecturas de RDV CONJUNTO. Sólo
+ * de las corridas que lo tienen (las de antes no tienen esas columnas).
+ */
+function tiemposPrompt09_(filas, col, med, num, seg, out) {
+  const conPlan = filas.filter(function (r) { return SUBTIEMPOS_PLAN_.some(function (k) { const j = col('plan_' + k + '_s'); return j >= 0 && num(r[j]) != null; }); });
+  out.planTramos = {};
+  if (conPlan.length) {
+    Logger.log('  --- el PLAN de la agenda por dentro (%s corridas; la geocodificación cae dentro del tramo que la pidió) ---', conPlan.length);
+    SUBTIEMPOS_PLAN_.forEach(function (k) {
+      const j = col('plan_' + k + '_s');
+      const xs = conPlan.map(function (r) { return num(r[j]); }).filter(function (v) { return v != null; });
+      if (!xs.length) return;
+      out.planTramos[k] = { mediana: med(xs), max: Math.max.apply(null, xs) };
+      Logger.log('    plan/%s mediana %s · máximo %s', (k + '              ').slice(0, 14), seg(med(xs)), seg(Math.max.apply(null, xs)));
+    });
+  } else Logger.log('  (el plan por dentro: todavía ninguna corrida con los tramos; aparecen desde la próxima)');
+  const iG = col('agenda_gmail'), iGs = col('agenda_gmail_s');
+  out.gmail = null;
+  const conG = iG < 0 ? [] : filas.filter(function (r) { return String(r[iG] || ''); });
+  if (conG.length) {
+    const barata = conG.filter(function (r) { return /^barata/.test(String(r[iG])); });
+    const completa = conG.filter(function (r) { return /^completa/.test(String(r[iG])); });
+    const tramo = function (rs) { const xs = rs.map(function (r) { return iGs < 0 ? null : num(r[iGs]); }).filter(function (v) { return v != null; });
+      return xs.length ? seg(med(xs)) + ' (máx ' + seg(Math.max.apply(null, xs)) + ')' : '—'; };
+    const motivos = {};
+    completa.forEach(function (r) { const m = String(r[iG]).replace(/^completa:?\s*/, '') || '(sin motivo)'; motivos[m] = (motivos[m] || 0) + 1; });
+    out.gmail = { barata: barata.length, completa: completa.length, motivos: motivos };
+    Logger.log('  --- Gmail: búsqueda BARATA %s veces (tramo gmail %s) | COMPLETA %s veces (tramo gmail %s) ---', barata.length, tramo(barata),
+               completa.length, tramo(completa));
+    if (completa.length) Logger.log('    por qué completa: %s', Object.keys(motivos).map(function (m) { return m + ' ' + motivos[m]; }).join(' | '));
+  } else Logger.log('  (Gmail barata / completa: todavía ninguna corrida con la columna; aparece desde la próxima)');
+  const iMc = col('agenda_mails_cache');
+  if (iMc >= 0) {
+    const sin = filas.filter(function (r) { return /cache sin cambios/.test(String(r[iMc] || '')); }).length;
+    const con = filas.filter(function (r) { return /cache escrita/.test(String(r[iMc] || '')); }).length;
+    if (sin || con) Logger.log('    la cache de los mails: sin cambios (no se escribió) %s veces · escrita %s veces', sin, con);
+    out.cacheEscrita = { no: sin, si: con };
+  }
+  const iT = col('topes');
+  out.topes = { agenda: 0, escritura: 0 };
+  if (iT >= 0) {
+    filas.forEach(function (r) {
+      const t = String(r[iT] || '');
+      if (/(^|, )agenda \(/.test(t)) out.topes.agenda++;
+      if (/(^|, )escritura \(/.test(t)) out.topes.escritura++;
+    });
+  }
+  Logger.log('  --- TOPES antes de escribir: la agenda no escribió por el tope %s veces (AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS) | el cruce no escribió ' +
+             'por el tope %s veces (CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS) ---', out.topes.agenda, out.topes.escritura);
+  const iC = col('conjunto_lecturas');
+  if (iC >= 0) {
+    const ult = filas.filter(function (r) { return String(r[iC] || ''); }).slice(-1)[0];
+    if (ult) Logger.log('    RDV CONJUNTO (la última corrida): %s', ult[iC]);
+  }
 }

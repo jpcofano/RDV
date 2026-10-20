@@ -405,7 +405,14 @@ function fusionAntesDelPlanAgenda_(sh, dest, A, opciones, enSeco) {
     pendientes.push({ d: d, clave: clave, x: x, y: y });
   });
   if (!pendientes.length && !auto) return res;
-  const hist = opciones.historialFusion || _creacionesFusionAgenda_();
+  // 20/10 (prompt 09, 3b): en la corrida de la agenda, la MISMA lectura de REGISTRO_AGENDA_CAMBIOS que usa el plan
+  // (`opciones.leerHistorialAgenda`: leerHistorialAgenda_, que arma `creacionPorUid` igual que _creacionesFusionAgenda_)
+  let hist = opciones.historialFusion || null;
+  if (!hist && typeof opciones.leerHistorialAgenda === 'function') {
+    const h = opciones.leerHistorialAgenda();
+    hist = { porUid: h.creacionPorUid || new Map(), error: h.error || '' };
+  }
+  if (!hist) hist = _creacionesFusionAgenda_();
   if (hist.error) {
     res.error = 'REGISTRO_AGENDA_CAMBIOS no se pudo leer (' + hist.error + '): sin el registro no se puede deshacer, no se junta nada';
     Logger.log('>>> (fusión) %s', res.error);

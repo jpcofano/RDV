@@ -12,6 +12,14 @@
  *       nadie escribió; si la agenda escribió, o el equipo ordenó / cambió una fila, se vuelve a leer; la escritura del cruce no
  *       escribe en una fila que ya no es la del plan;
  *   [4] la guarda de tiempo DENTRO de la agenda: con más de 150 s al terminar el parse, sólo se geocodifica hoy a 3 días.
+ * 20/10 (prompt 09, punto 3):
+ *   [7] Gmail: la consulta BARATA da EXACTAMENTE la misma lista que la búsqueda completa; la completa corre con un mensaje o un hilo
+ *       nuevo, cada 4 horas, si el alcance empieza antes o si falta algo en la cache;
+ *   [8] la cache de los mails se escribe sólo si cambió algo (y las renovaciones van juntas);
+ *   [9] el TOPE DURO de la agenda: pasado el tope (antes de la fusión, o antes de escribir la base), no escribe NADA;
+ *   [10] la corrida siguiente arranca por la agenda (y se alterna con el cruce si quedaron salteados los dos); el tope antes de la
+ *       escritura del cruce (cruce 171 s + asistentes 94 s: no escribe nada);
+ *   [11] RDV CONJUNTO, una lectura por corrida.
  *
  *     node tests/agenda_tiempos.test.js
  *
@@ -556,7 +564,9 @@ console.log('[4] la guarda de tiempo DENTRO de la agenda: con más de 90 s al te
   E.run('corridaCerrar_(null)');
   const reg = E.ssI.hojas['REGISTRO_CORRIDAS'];
   const enc = reg.v[0], ult = reg.v[reg.v.length - 1];
-  ok(enc.slice(-9, -1).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' && enc[enc.length - 1] === 'base_ordenada' &&
+  const kBo = enc.indexOf('base_ordenada');   // 20/10: después de base_ordenada, las del prompt 09 (los tramos del plan, Gmail, los topes)
+  ok(enc.slice(kBo - 8, kBo).join('|') === 'agenda_cache_s|agenda_geo_detalle|agenda_mails_cache|base_lecturas|base_reusos|base_lecturas_s|base_detalle|orden' && kBo > 0 &&
+     enc.slice(-3).join('|') === 'agenda_gmail|topes|conjunto_lecturas' &&
      /GUARDA DE TIEMPO/.test(ult[enc.indexOf('agenda_geo_detalle')]) && ult[enc.indexOf('agenda_geo_n')] === 2,
      'REGISTRO_CORRIDAS: las columnas del punto 5b al final (con "orden"), y la línea con la geocodificación (2 llamadas, la guarda)');
   const t = E.run('tiemposDeCorridas(10)');
@@ -616,6 +626,247 @@ console.log('[6] la cache vence a las 24 h; la huella es de TODO el código; la 
   ok(E.run('destinoSigueIgual_(__d)') === false, 'el equipo ordenó mientras se leía la lista → se vuelve a leer antes de cruzar');
   E.D.v.splice(2, 1);
   ok(E.run('destinoSigueIgual_(__d)') === false, 'y si borró una fila, también');
+}
+
+// ============================== [7] Gmail: la consulta barata (20/10, prompt 09, 3a) ==============================
+
+console.log('[7] Gmail: la consulta BARATA da EXACTAMENTE la misma lista que la búsqueda completa; la completa, cuando hace falta');
+{
+  const svc = cacheServicio();
+  const hilos = HILOS();
+  const G = gmail(hilos);
+  const E = montar({}, { gmail: G, cache: svc });
+  E.ctx.__svc = svc;
+  const leer = function (extra, desde) {
+    E.ctx.__x = extra || {}; E.ctx.__desde = desde || new D(2026, 8, 20, 12);
+    return E.run('(function () { var S = cacheAgendaAbrir_(__svc); var m = leerMailsAgendaGmail_(__desde, Object.assign({ html: true, cache: S }, __x)); ' +
+                 'var st = cacheAgendaCerrar_(S); return { lista: aJsonAgenda_(m.lista), ids: m.lista.map(function (x) { return x.id; }).join(","), ' +
+                 'busqueda: m.cache.busqueda, html: JSON.stringify([m.html.leidos, m.html.omitidos, m.html.fallas, m.html.deCache]), fuente: m.fuente, ' +
+                 'errores: m.errores.length, escrita: st.escrita, renovadas: st.renovadas, nuevas: st.nuevas }; })()');
+  };
+  const c1 = leer();
+  ok(/^completa: sin la lista/.test(c1.busqueda), 'la primera vez, la búsqueda completa (' + c1.busqueda + ')');
+  const g0 = G.getMessages, p0 = G.getPlainBody, b0 = G.getBody;
+  const b1 = leer();
+  ok(b1.busqueda === 'barata', 'la siguiente, sin nada nuevo en Gmail: la consulta BARATA (' + b1.busqueda + ')');
+  ok(G.getMessages === g0 && G.getPlainBody === p0 && G.getBody === b0, 'la barata no baja nada (getMessages, getPlainBody, getBody: 0)');
+  const f1 = leer({ busquedaCompleta: true });
+  // (la primera, con la cache vacía, además trae el HTML crudo de cada mail —lo bajó—; los colores que salen de él son los mismos)
+  ok(/^completa: pedida/.test(f1.busqueda) && b1.lista === f1.lista && b1.html === f1.html && b1.fuente === f1.fuente && b1.errores === 0,
+     'la lista de la barata es EXACTAMENTE la de la búsqueda completa (cada mail: fecha, asunto, texto, hilo, etiqueta, colores; el mismo orden; ' + b1.ids + ')');
+  // el alcance se corre (pasan los días): la barata filtra igual que la completa
+  const tarde = new D(2026, 9, 13, 12);
+  const b2 = leer({}, tarde), f2 = leer({ busquedaCompleta: true }, tarde);
+  ok(b2.busqueda === 'barata' && b2.lista === f2.lista && b2.ids !== b1.ids, 'con el alcance más adelante, la barata da lo mismo que la completa (' + b2.ids + ')');
+  // el alcance empieza ANTES que el de la búsqueda guardada: la completa
+  const b3 = leer({}, new D(2026, 8, 1, 12));
+  ok(/^completa: el alcance empieza antes/.test(b3.busqueda), 'el alcance empieza antes que el de la búsqueda guardada → completa (' + b3.busqueda + ')');
+  leer();   // vuelve a guardar la búsqueda con el alcance de siempre
+  // un mensaje nuevo en un hilo: la completa (que baja sólo ese hilo) y la lista lo trae
+  const W3 = mail(new D(2026, 9, 16, 11), ASUNTO('19/10', '25/10'), [bloque(21, 'Jorge Macri', 'Palermo', '10:30', 'Serrano 1500, Club')]);
+  hilos[1].msgs.push(W3);
+  const g1 = G.getMessages;
+  const n1 = leer();
+  ok(/^completa: un mensaje nuevo en un hilo/.test(n1.busqueda) && n1.ids.split(',').indexOf(W3.id) >= 0 && G.getMessages === g1 + 1,
+     'un mensaje nuevo en un hilo → completa (' + n1.busqueda + '), baja sólo ese hilo y la lista lo trae');
+  const n2 = leer(), nf = leer({ busquedaCompleta: true });
+  ok(n2.busqueda === 'barata' && n2.lista === nf.lista, 'la corrida siguiente vuelve a la barata, con el mensaje nuevo (igual a la completa)');
+  // un hilo nuevo
+  hilos.push({ id: 'h3', msgs: [mail(new D(2026, 9, 16, 11, 30), ASUNTO('26/10', '01/11'), [bloque(27, 'Gabino Tapia', 'Núñez', '10:00', 'Cabildo 2000, Club')])] });
+  const n3 = leer();
+  ok(/^completa: un hilo nuevo/.test(n3.busqueda), 'un hilo nuevo → completa (' + n3.busqueda + ')');
+  // cada AGENDA_GMAIL_COMPLETA_CADA_HORAS horas, la completa igual
+  const hoy0 = HOY.getTime();
+  HOY.setTime(hoy0 + 5 * 3600000);
+  const n4 = leer();
+  HOY.setTime(hoy0);
+  ok(/^completa: cada 4 horas/.test(n4.busqueda), 'a las 5 horas de la última completa → completa (' + n4.busqueda + ')');
+  // falta un mensaje en la cache: la completa
+  leer();
+  const kMsg = Object.keys(svc.datos).filter(function (k) { return /^agm\|/.test(k); })[0];
+  delete svc.datos[kMsg];
+  const n5 = leer();
+  ok(/^completa: falta un mensaje en la cache/.test(n5.busqueda), 'si falta un mensaje en la cache → completa (' + n5.busqueda + ')');
+  // REGISTRO_CORRIDAS: la columna agenda_gmail dice cuál fue
+  E.run('corridaIniciar_(new Date(), false, false); agendaMailsAnotar_({ busqueda: "barata" }, null, { escrita: false }, null); corridaCerrar_(null);');
+  const reg = E.ssI.hojas['REGISTRO_CORRIDAS'], enc = reg.v[0], ult = reg.v[reg.v.length - 1];
+  ok(ult[enc.indexOf('agenda_gmail')] === 'barata' && /cache sin cambios/.test(ult[enc.indexOf('agenda_mails_cache')]),
+     'REGISTRO_CORRIDAS: agenda_gmail = "barata" y agenda_mails_cache dice "cache sin cambios"');
+}
+
+// ============================== [8] la cache de los mails: se escribe sólo si cambió algo (3c) ==============================
+
+console.log('[8] la cache de los mails se escribe SÓLO si cambió algo (y las renovaciones van juntas)');
+{
+  const svc = cacheServicio();
+  const G = gmail(HILOS());
+  const E = montar({}, { gmail: G, cache: svc });
+  E.ctx.__svc = svc;
+  const una = function () {
+    return E.run('(function () { var S = cacheAgendaAbrir_(__svc); leerMailsAgendaGmail_(new Date(2026, 8, 20, 12), { html: true, cache: S }); return cacheAgendaCerrar_(S); })()');
+  };
+  const s1 = una();
+  ok(s1.escrita === true && s1.nuevas > 0, 'la primera: se escribe (' + s1.nuevas + ' nuevas)');
+  const p1 = svc.puts;
+  const s2 = una();
+  ok(s2.escrita === false && svc.puts === p1, 'la siguiente, sin nada nuevo ni viejo: NO se llama a la cache para escribir (putAll ' + (svc.puts - p1) + ')');
+  // el manifiesto viejo (sólo la lista de claves): se reescribe una vez con el formato nuevo
+  const man = JSON.parse(svc.datos['ag|manifiesto']);
+  svc.datos['ag|manifiesto'] = JSON.stringify(man.k);
+  const s3 = una(), s4 = una();
+  ok(s3.escrita === true && s4.escrita === false && Array.isArray(JSON.parse(svc.datos['ag|manifiesto']).k), 'un manifiesto del formato viejo se reescribe una vez; después, nada');
+  // las renovaciones: si una entrada tiene más de 3 h, se renuevan JUNTAS todas las de más de 1,5 h (no un poco en cada corrida)
+  const r = E.run('(function () { var S = cacheAgendaAbrir_(__svc); var ks = Array.from(S.mem.keys()).filter(function (k) { return /^agm\\|/.test(k); }); ' +
+                  'var ahora = Date.now(); S.edad.set(ks[0], ahora - 3.5 * 3600000); S.edad.set(ks[1], ahora - 2 * 3600000); ks.forEach(function (k) { cacheAgendaGet_(S, k); }); ' +
+                  'Array.from(S.mem.keys()).forEach(function (k) { cacheAgendaGet_(S, k); }); var st = cacheAgendaCerrar_(S); return { renovadas: st.renovadas, escrita: st.escrita }; })()');
+  ok(r.escrita === true && r.renovadas === 2, 'una de 3,5 h y otra de 2 h: se renuevan las dos juntas (' + r.renovadas + '); las de menos de 1,5 h, no');
+  // apagado: como antes (el manifiesto se escribe siempre)
+  const Eo = montar({ AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA: 'false' }, { gmail: gmail(HILOS()), cache: svc });
+  Eo.ctx.__svc = svc;
+  const p2 = svc.puts;
+  Eo.run('(function () { var S = cacheAgendaAbrir_(__svc); leerMailsAgendaGmail_(new Date(2026, 8, 20, 12), { html: true, cache: S }); return cacheAgendaCerrar_(S); })()');
+  ok(svc.puts > p2, 'con AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA = false, como antes: se escribe en cada corrida');
+}
+
+// ============================== [9] el TOPE DURO de la agenda (3d) ==============================
+
+console.log('[9] el tope duro de la agenda: pasado el tope, la agenda NO escribe NADA (ni la base, ni AGENDA_DUPLICADOS, ni la copia)');
+{
+  const noGeo = 'function (q) { return { consulta: q, estado: "ZERO_RESULTS" }; }';
+  const foto = function (E) {
+    const copia = E.planilla(E.run('AGENDA_COPIA_SS'));
+    return { base: JSON.stringify(E.D.v), dups: !!E.ssD.hojas['AGENDA_DUPLICADOS'], copia: Object.keys(copia.hojas).length,
+             reg: !!E.ssI.hojas['REGISTRO_AGENDA'], cambios: !!E.ssI.hojas['REGISTRO_AGENDA_CAMBIOS'] };
+  };
+  // (a) antes de la fusión: la corrida ya lleva 210 s
+  const E = montar();
+  E.ctx.__m = [V1, W1];
+  const antes = foto(E);
+  const r = E.run('corridaIniciar_(new Date(Date.now() - 210000), false, false); correrAgendaEnBloqueo_(false, { mails: __m, geocodificar: ' + noGeo + ' })');
+  const logsA = E.logs.slice();
+  const d = foto(E);
+  ok(r && r.salteadaPorTiempo && r.donde === 'antes de la fusión', 'con 210 s (tope 200 s): la agenda no sigue (' + JSON.stringify(r) + ')');
+  ok(d.base === antes.base && !d.dups && d.copia === 0 && !d.reg && !d.cambios, 'no escribió NADA: ni la base, ni AGENDA_DUPLICADOS, ni la copia, ni REGISTRO_AGENDA');
+  const c = E.run('_corrida_');
+  ok(c.salteadas.indexOf('agenda') >= 0 && c.topes.length === 1 && /^agenda \(210 s\)$/.test(c.topes[0]),
+     'queda salteada por tiempo y en "topes" (' + c.topes.join(', ') + ')');
+  ok(logsA.some(function (l) { return /TOPE ANTES DE ESCRIBIR: la corrida ya lleva 210 s \(tope para escribir "agenda": 200 s\)/.test(l); }), 'el log lo dice');
+  E.run('corridaCerrar_(null)');
+  const reg = E.ssI.hojas['REGISTRO_CORRIDAS'], enc = reg.v[0], ult = reg.v[reg.v.length - 1];
+  ok(ult[enc.indexOf('topes')] === 'agenda (210 s)' && /agenda/.test(ult[enc.indexOf('salteadas_por_tiempo')]), 'REGISTRO_CORRIDAS: topes = "agenda (210 s)"');
+  // (b) antes de escribir la base: el plan (la geocodificación) la lleva de 150 a 215 s
+  const E2 = montar();
+  E2.ctx.__m = [V1, W1];
+  E2.ctx.__hoy = HOY;
+  const antes2 = foto(E2);
+  const hoy0 = HOY.getTime();
+  const r2 = E2.run('corridaIniciar_(new Date(Date.now() - 150000), false, false); correrAgendaEnBloqueo_(false, { mails: __m, geocodificar: function (q) { ' +
+                    '__hoy.setTime(__hoy.getTime() + 13000); return { consulta: q, estado: "ZERO_RESULTS" }; } })');
+  const lleva = Math.round((HOY.getTime() - hoy0) / 1000) + 150;
+  HOY.setTime(hoy0);
+  const d2 = foto(E2);
+  ok(r2 && r2.salteadaPorTiempo && r2.donde === 'antes de escribir la base' && r2.crear > 0,
+     'el plan terminó pasado el tope (' + lleva + ' s): con ' + (r2 && r2.crear) + ' filas para crear, no se escribe nada');
+  ok(d2.base === antes2.base && !d2.dups && d2.copia === 0 && !d2.reg && !d2.cambios, 'ni la base, ni AGENDA_DUPLICADOS, ni la copia, ni REGISTRO_AGENDA');
+  // (c) a tiempo: la misma agenda escribe
+  const E3 = montar();
+  E3.ctx.__m = [V1, W1];
+  const antes3 = foto(E3);
+  const r3 = E3.run('corridaIniciar_(new Date(Date.now() - 10000), false, false); correrAgendaEnBloqueo_(false, { mails: __m, geocodificar: ' + noGeo + ' })');
+  ok(r3 && !r3.salteadaPorTiempo && foto(E3).base !== antes3.base && E3.run('_corrida_.topes') === undefined, 'a los 10 s, la misma agenda escribe (no actúa el tope)');
+  // (3b) el plan por dentro: los 13 tramos quedan en la corrida y en REGISTRO_CORRIDAS (plan_*_s, al final)
+  ok(E3.run('Object.keys(_corrida_.agenda.plan).join(",") === SUBTIEMPOS_PLAN_.join(",")'), 'los tramos del plan quedan en la corrida: ' + E3.run('SUBTIEMPOS_PLAN_.join(", ")'));
+  E3.run('corridaCerrar_(null)');
+  const reg3 = E3.ssI.hojas['REGISTRO_CORRIDAS'], enc3 = reg3.v[0], ult3 = reg3.v[reg3.v.length - 1];
+  ok(E3.run('SUBTIEMPOS_PLAN_').every(function (k) { return typeof ult3[enc3.indexOf('plan_' + k + '_s')] === 'number'; }),
+     'y en REGISTRO_CORRIDAS, una columna por tramo (plan_indices_s … plan_cierre_s)');
+  // (d) en seco o fuera de la corrida de la hora, nunca
+  const E4 = montar();
+  E4.ctx.__m = [V1, W1];
+  const r4 = E4.run('correrAgendaEnBloqueo_(false, { mails: __m, geocodificar: ' + noGeo + ' })');
+  ok(r4 && !r4.salteadaPorTiempo, 'fuera de la corrida de la hora (un paso a mano), el tope no actúa');
+}
+
+// ============================== [10] el orden de la corrida y el tope de la escritura del cruce (3d, 3e) ==============================
+
+console.log('[10] la corrida siguiente arranca por la agenda; el tope antes de la escritura del cruce');
+{
+  const E = montar({ IDS_EN_LA_HORA: 'false', LOOKER_EN_SISTEMA: 'false' });
+  const ctx = E.ctx;
+  ctx.__orden = []; ctx.__hoy = HOY; ctx.__escena = {};
+  // las partes, simuladas (sólo el orden y el tiempo): la agenda, el cruce, los asistentes y la escritura
+  vm.runInContext(`
+    correrAgendaEnBloqueo_ = function () {
+      __orden.push('agenda');
+      if (__escena.agendaTarda) __hoy.setTime(__hoy.getTime() + __escena.agendaTarda);
+      if (__escena.agendaTope) corridaTopeAntesDeEscribir_('agenda', AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS, 'la agenda (prueba)');
+      return {};
+    };
+    calcularPlan_ = function () { __orden.push('cruce'); if (__escena.cruceTarda) __hoy.setTime(__hoy.getTime() + __escena.cruceTarda);
+      return { res: {}, dest: { filas: [] }, decisiones: [], cands: [], comunas: new Map(), elecciones: new Map(), eleccionesAp: [] }; };
+    logResumen_ = function () {}; _logColumnasB_ = function () {}; _logCruceAsistentes_ = function () {};
+    cruzarAsistentes_ = function () { __orden.push('asistentes'); if (__escena.asisTarda) __hoy.setTime(__hoy.getTime() + __escena.asisTarda); return {}; };
+    aplicarDecisiones_ = function () { __orden.push('escritura'); return { celdas: 0, trazas: 0, uids: 0, realizadas: 0, filasHechas: 0, filasPendientes: 0, tandas: 0,
+      msEscritura: 0, tandaMax: 0, porColumna: {}, completa: true }; };
+    guardarElecciones_ = function () { __orden.push('elecciones'); }; marcarEleccionesEnReportes_ = function () {};
+    escribirReportes_ = function () { __orden.push('reportes'); }; _registrarCorrida_ = function () {};
+  `, ctx);
+  const corrida = function (escena) {
+    ctx.__escena = escena || {}; ctx.__orden = [];
+    const hoy0 = HOY.getTime();
+    E.run('_correrUpsertConBloqueo_(false, new Date(), false, null)');
+    HOY.setTime(hoy0);
+    const reg = E.ssI.hojas['REGISTRO_CORRIDAS'], enc = reg.v[0], ult = reg.v[reg.v.length - 1];
+    return { orden: ctx.__orden.join(' > '), col: function (k) { return ult[enc.indexOf(k)]; }, prop: JSON.parse(E.props[E.run('PROP_AGENDA_SALTEADA')] || '{}'),
+             cruceSalt: E.props[E.run('PROP_CRUCE_SALTEADO')] };
+  };
+  const c0 = corrida();
+  ok(c0.orden === 'agenda > cruce > asistentes > escritura > elecciones > reportes' && c0.prop.n === 0, 'una corrida normal: agenda, cruce, asistentes, escritura (' + c0.orden + ')');
+  // la agenda tarda y actúa su tope; el cruce, que empieza tarde, se saltea por la guarda de inicio (150 s): quedan salteados los dos
+  const c1 = corrida({ agendaTarda: 210000, agendaTope: true });
+  ok(c1.orden === 'agenda' && c1.prop.n === 1 && c1.prop.agendaPrimero === true && c1.cruceSalt === '1' && c1.col('topes') === 'agenda (210 s)',
+     'la agenda no escribió por el tope y el cruce quedó salteado (' + c1.orden + '; ' + JSON.stringify(c1.prop) + ')');
+  // la siguiente: los dos quedaron salteados y la agenda ya había ido primero → el cruce primero (se alternan)
+  const c2 = corrida();
+  ok(/^cruce > asistentes > escritura/.test(c2.orden) && /> agenda$/.test(c2.orden) && /^cruce antes de la agenda/.test(c2.col('orden')),
+     'los dos salteados y la agenda ya había ido primero: ahora el cruce primero (' + c2.orden + ')');
+  ok(c2.prop.n === 0, 'la agenda corrió (después del cruce, a tiempo): el contador de la agenda vuelve a 0');
+  // (e) el tope antes de la escritura del cruce: cruce 171 s + asistentes 94 s → la escritura empezaría a los ~265 s
+  const c6 = corrida({ cruceTarda: 171000, asisTarda: 94000 });
+  ok(c6.orden === 'agenda > cruce > asistentes' && c6.col('escritura_s') === 'salteada' && /^escritura \(265 s\)$/.test(c6.col('topes')) && c6.cruceSalt === '1',
+     'cruce 171 s + asistentes 94 s: NO se escribe nada del cruce (ni elecciones ni fichas), topes = "' + c6.col('topes') + '", y la próxima corre el cruce primero');
+  // la siguiente: el cruce primero (escribe a los 160 s) y la agenda, después del cruce, ya no alcanza (la guarda de 120 s)
+  const c7 = corrida({ cruceTarda: 100000, asisTarda: 60000 });
+  ok(c7.orden === 'cruce > asistentes > escritura > elecciones > reportes' && !c7.col('topes') && c7.prop.n === 1 && c7.prop.agendaPrimero === false,
+     'la siguiente: el cruce primero y a los 160 s la escritura se hace; la agenda queda salteada (' + c7.orden + '; ' + JSON.stringify(c7.prop) + ')');
+  // la agenda salteada (el cruce corrió): la siguiente arranca por la agenda
+  const c8 = corrida();
+  ok(/^agenda > cruce/.test(c8.orden) && /^agenda primero/.test(c8.col('orden')) && c8.prop.n === 0,
+     'la siguiente arranca por la agenda ("' + c8.col('orden') + '") y el contador vuelve a 0');
+  // el cruce salteado (y no la agenda): la siguiente corre el cruce primero, como siempre (CRUCE_PRIMERO_TRAS_SALTEOS)
+  E.props[E.run('PROP_CRUCE_SALTEADO')] = '1';
+  const c5 = corrida();
+  ok(/^cruce > /.test(c5.orden), 'sólo el cruce salteado: el cruce primero, como siempre (' + c5.orden + ')');
+  ok(E.run('CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS') === 240000 && E.run('AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS') === 200000, 'los topes: la agenda 200 s, la escritura del cruce 240 s');
+}
+
+// ============================== [11] RDV CONJUNTO, una lectura por corrida (3b) ==============================
+
+console.log('[11] RDV CONJUNTO se lee UNA vez por corrida (la figura de Seguridad de la agenda y los asistentes del cruce)');
+{
+  const E = montar();
+  E.ssD.hojas['RDV CONJUNTO'].v.push(['Clara Muzzio', 'Recoleta', new D(2026, 8, 10, 12), 30, 5, 3]);
+  const cj = E.ssD.hojas['RDV CONJUNTO'];
+  const fuera = E.run('(function () { var a = leerConjuntoPorFecha_(); var b = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); return [a.size, b.porFila.size]; })()');
+  const l0 = cj.lecturas;
+  ok(l0 === 2, 'fuera de la corrida de la hora, como antes: dos lecturas (' + l0 + ')');
+  const dentro = E.run('(function () { corridaIniciar_(new Date(), false, false); var a = leerConjuntoPorFecha_(); var b = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); ' +
+                       'var c = cruzarAsistentes_(leerDestino_(), leerComunasMap_()); return [a.size, b.porFila.size]; })()');
+  ok(cj.lecturas === l0 + 1 && JSON.stringify(dentro) === JSON.stringify(fuera), 'dentro de la corrida: UNA lectura para las tres, y el mismo resultado (' + JSON.stringify(dentro) + ')');
+  const c = E.run('_corrida_.conjunto');
+  ok(c && c.lecturas === 1 && c.reusos === 2, 'la corrida lo cuenta (lecturas 1, reusos 2) para el paso 67 (conjunto_lecturas)');
+  E.run('corridaCerrar_(null); corridaIniciar_(new Date(), false, false); leerConjuntoPorFecha_();');
+  ok(cj.lecturas === l0 + 2, 'la corrida siguiente vuelve a leer');
 }
 
 console.log('\n%s chequeos. %s', chequeos, fallas ? fallas + ' FALLA(S)' : 'TODO OK');

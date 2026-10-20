@@ -1672,9 +1672,21 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   const props = PropertiesService.getScriptProperties();
   let salteosCruce = 0;
   try { salteosCruce = Number(props.getProperty(PROP_CRUCE_SALTEADO) || 0) || 0; } catch (e) { salteosCruce = 0; }
-  const cruceAntes = !historial && AGENDA_ACTIVA && CRUCE_PRIMERO_TRAS_SALTEOS > 0 && salteosCruce >= CRUCE_PRIMERO_TRAS_SALTEOS;
-  if (typeof corridaOrden_ === 'function') corridaOrden_(cruceAntes ? 'cruce antes de la agenda (el cruce quedó salteado en ' + salteosCruce + ' corrida(s) seguida(s))' : 'agenda, cruce');
+  let cruceAntes = !historial && AGENDA_ACTIVA && CRUCE_PRIMERO_TRAS_SALTEOS > 0 && salteosCruce >= CRUCE_PRIMERO_TRAS_SALTEOS;
+  // 20/10 (prompt 09, 3d; AGENDA_PRIMERO_TRAS_SALTEOS): el simétrico. Si la AGENDA quedó salteada por tiempo en la corrida anterior (el
+  // tope antes de escribir, o la guarda de "agenda después del cruce"), ésta arranca por la agenda. Si en la anterior quedaron salteados
+  // LOS DOS y la agenda ya había ido primero, va primero el cruce (se alternan: ninguno se queda sin correr para siempre).
+  const salteoAgenda = _leerSalteoAgenda_(props);
+  const agendaPrimero = !historial && AGENDA_ACTIVA && typeof AGENDA_PRIMERO_TRAS_SALTEOS !== 'undefined' && AGENDA_PRIMERO_TRAS_SALTEOS > 0 &&
+                        salteoAgenda.n >= AGENDA_PRIMERO_TRAS_SALTEOS && !(cruceAntes && salteoAgenda.agendaPrimero);
+  if (agendaPrimero) cruceAntes = false;
+  if (typeof corridaOrden_ === 'function') {
+    corridaOrden_(cruceAntes ? 'cruce antes de la agenda (el cruce quedó salteado en ' + salteosCruce + ' corrida(s) seguida(s))' +
+                               (salteoAgenda.n ? '; la agenda también, pero la anterior ya la corrió primero' : '')
+                             : agendaPrimero ? 'agenda primero (la agenda quedó salteada por tiempo en ' + salteoAgenda.n + ' corrida(s) seguida(s))' : 'agenda, cruce');
+  }
   if (cruceAntes) Logger.log('>>> ORDEN: el cruce quedó salteado por tiempo en %s corrida(s) seguida(s): esta corrida corre el cruce ANTES de la agenda.', salteosCruce);
+  if (agendaPrimero) Logger.log('>>> ORDEN: la agenda quedó salteada por tiempo en %s corrida(s) seguida(s): esta corrida arranca por la agenda.', salteoAgenda.n);
   let plan = null, cruceSalteado = false;
   let idListo = false, porQueNoId = 'las derivadas no se recalcularon (DERIVADAS_POR_SCRIPT)';
   const fallaron = [];
@@ -1752,6 +1764,15 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
     if (errAs) plan = null;
   }
 
+  // 20/10 (prompt 09, 3e; CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS): el TOPE antes de la escritura del cruce. El corte propio entre tandas
+  // (UPSERT_CORTE_PROPIO_MS) no estima la PRIMERA tanda: con la escritura empezando a los ~265 s (cruce 171 + asistentes 94), una
+  // primera tanda lenta pasaba de los 360 s (la CORTADA del 18/10 06:28). Si no alcanza, el cruce no escribe nada en esta corrida (ni
+  // las elecciones ni las fichas, como cuando no alcanzan los asistentes) y la próxima lo corre primero.
+  if (plan && !enSeco && !historial && typeof corridaTopeAntesDeEscribir_ === 'function' &&
+      corridaTopeAntesDeEscribir_('escritura', CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS, 'la escritura del cruce (y sin ella las elecciones y las fichas)')) {
+    plan = null;
+    cruceSalteado = true;
+  }
   if (plan && !enSeco) {
     // La escritura en lote: se corta sola entre tandas (UPSERT_CORTE_PROPIO_MS); nunca a la mitad de una tanda.
     const tE = _ahoraMs_(); let errE = null; corridaEmpieza_('escritura');
@@ -1867,6 +1888,13 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   try {
     if (!historial) props.setProperty(PROP_CRUCE_SALTEADO, String(cruceSalteado ? salteosCruce + 1 : 0));
   } catch (e) { Logger.log('  (no se pudo anotar el salteo del cruce: %s)', e); }
+  // 20/10 (3d): el de la agenda (por tiempo: el tope antes de escribir o la guarda de "después del cruce"). Un error no cuenta.
+  if (!historial && AGENDA_ACTIVA) {
+    const agendaSalteada = typeof corridaParteSalteada_ === 'function' && corridaParteSalteada_('agenda');
+    try {
+      props.setProperty(PROP_AGENDA_SALTEADA, JSON.stringify(agendaSalteada ? { n: salteoAgenda.n + 1, agendaPrimero: !cruceAntes } : { n: 0 }));
+    } catch (e) { Logger.log('  (no se pudo anotar el salteo de la agenda: %s)', e); }
+  }
 
   // (3) Los IDs de los encuentros (08/10, IDS_EN_LA_HORA; 45_IdsCuentas.js): después de la agenda, que crea y mueve filas;
   // sólo filas activas, por la regla general (sólo celda vacía). No en el paso 22: el historial de los IDs es el paso 57.
@@ -1956,6 +1984,15 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   }
   if (errorCritico) throw errorCritico;
   return plan ? plan.res : null;
+}
+
+/** 20/10 (prompt 09, 3d): las corridas seguidas con la agenda salteada por tiempo y si la última la corrió primero (PROP_AGENDA_SALTEADA). */
+function _leerSalteoAgenda_(props) {
+  try {
+    const v = typeof PROP_AGENDA_SALTEADA !== 'undefined' ? props.getProperty(PROP_AGENDA_SALTEADA) : null;
+    const o = v ? JSON.parse(v) : null;
+    return { n: o && Number(o.n) > 0 ? Number(o.n) : 0, agendaPrimero: !!(o && o.agendaPrimero) };
+  } catch (e) { return { n: 0, agendaPrimero: false }; }
 }
 
 /**
@@ -4989,6 +5026,12 @@ function cruzarAsistentes_(dest, comunas, opciones) {
   const usarDir = opciones && opciones.conDireccion !== undefined ? opciones.conDireccion : CRUCE_CONJUNTO_POR_DIRECCION;
   // 19/10 (55_SimularCorrida.js): `opciones.valoresConjunto`, RDV CONJUNTO ya leído (la simulación lo cruza dos veces y lo lee una)
   let vals = opciones && opciones.valoresConjunto ? opciones.valoresConjunto : null;
+  // 20/10 (prompt 09, 3b; CONJUNTO_UNA_LECTURA_POR_CORRIDA): en la corrida de la hora, una sola lectura de RDV CONJUNTO (la agenda ya
+  // pudo haberla leído para la figura de Seguridad o el aviso de "hechas sin fila")
+  if (!vals && typeof valoresConjuntoCorrida_ === 'function') {
+    vals = valoresConjuntoCorrida_('cruzarAsistentes_');
+    if (!vals) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }
+  }
   if (!vals) {
     const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
     if (!sh) { r.error = 'No existe "' + RDV_HOJA_ASISTENTES_SRC + '".'; return r; }

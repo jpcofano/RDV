@@ -1951,6 +1951,35 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — prompt 09, punto 3: que la agenda (y el cruce) nunca mueran adentro — PRENDIDO
+
+Medido el 19/10 (paso 67): 2 de 4 CORTADAS murieron dentro de la agenda; gmail 22 s de mediana (hasta 170) con todo en la cache; el
+plan 141 s con 0 llamadas a Maps; escribir la cache de los mails hasta 41 s; una murió en "escritura" (cruce 230 + asistentes 94 s).
+
+- **(a) Gmail** (`AGENDA_GMAIL_BUSQUEDA_BARATA`, `AGENDA_GMAIL_COMPLETA_CADA_HORAS = 4`, `AGENDA_GMAIL_MARGEN_MS = 2 h`): antes de la
+  búsqueda completa, una consulta barata (los 20 hilos más recientes de la etiqueta y `subject:(…) after:`), comparando el último
+  mensaje de cada hilo con lo guardado. Sin novedades, la lista sale de la cache (`ag|listado` + cada mensaje): la MISMA que la
+  completa (test [7]). La completa corre con algo nuevo, si falta algo en la cache, cada 4 h, si el alcance empieza antes o si la
+  anterior tuvo errores. REGISTRO_CORRIDAS `agenda_gmail`: "barata" o "completa: por qué".
+- **(b) El plan**, en 13 tramos (`plan_indices_s` … `plan_cierre_s`, AL FINAL de REGISTRO_CORRIDAS). Lo que encontré, sin poder medirlo
+  en el real: lo cuadrático era la conciliación (H2: cada reunión suelta recorría la base entera, y en cada vuelta; ahora sólo las filas
+  de la agenda), `casiDuplicados` (la base entera por cada reunión a crear y por cada fila "después de crear"; ahora por día), y cientos
+  de miles de `Utilities.formatDate` (`ymd_`) y `_semanaAgenda_` (`grupoDeAgendaMail_`): ahora con memoria (`ymd_`, `fmtFecha_`,
+  `normalizeText_`, `grupoDeAgendaMail_`). REGISTRO_AGENDA_CAMBIOS se lee una vez (la fusión y el plan) y RDV CONJUNTO una vez por
+  corrida (`CONJUNTO_UNA_LECTURA_POR_CORRIDA`: la figura de Seguridad, "hechas sin fila" y los asistentes del cruce; columna
+  `conjunto_lecturas`). Probado: el plan, la base, la copia, AGENDA_DUPLICADOS y el registro dan IGUAL que antes (las suites de agenda y
+  una comparación del código viejo contra el nuevo en un escenario grande, con conciliación).
+- **(c) La cache de los mails** se escribe sólo si cambió algo (`AGENDA_CACHE_ESCRIBIR_SOLO_SI_CAMBIA`); lo que no se escribe tampoco se
+  comprime; las renovaciones van juntas. `agenda_mails_cache` dice "cache sin cambios" o "cache escrita".
+- **(d) El tope de la agenda** (`AGENDA_TOPE_ANTES_DE_ESCRIBIR_MS = 200 s`): antes de la fusión y antes de escribir la base; si actúa, la
+  agenda no escribe NADA (sólo guarda la geocodificación ya pagada), queda salteada y la corrida siguiente arranca por ella
+  (`AGENDA_PRIMERO_TRAS_SALTEOS = 1`, `PROP_AGENDA_SALTEADA`; si quedaron salteados la agenda y el cruce, se alternan).
+- **(e) El cruce** (`CRUCE_TOPE_ANTES_DE_ESCRIBIR_MS = 240 s`): el corte entre tandas no estimaba la primera tanda; ahora, pasado el tope
+  al terminar los asistentes, el cruce no escribe nada (ni elecciones ni fichas) y la próxima lo corre primero.
+- **Para medir**: el paso 67 (`mediciones_soloLectura`) muestra el plan por dentro, Gmail barata / completa (veces y tiempo del tramo
+  gmail en cada caso, y por qué fue completa), si la cache se escribió, cuántas veces actuó cada tope y las lecturas de RDV CONJUNTO.
+  Tests: `tests/agenda_tiempos.test.js` [7]-[11] y `tests/corridas_registro.test.js` [4].
+
 #### 20/10 — las decisiones del usuario sobre el prompt 08
 
 1. **El orden de la base, al PRINCIPIO de la corrida** (como propuso el revisor): después del guardián, antes de la agenda y del

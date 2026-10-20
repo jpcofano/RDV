@@ -278,3 +278,32 @@ function baseCorridaTomar_(que, parte, sh) {
   Logger.log('  (%s: reusa la base que leyó %s; la identidad de las filas no cambió)', parte || que, B.que);
   return que === 'dest' ? B.dest : B.bloque;
 }
+
+// ===================== 20/10 (prompt 09, punto 3b): RDV CONJUNTO, una lectura por corrida =====================
+
+/** RDV CONJUNTO leído en esta corrida: { id de la corrida, valores }. null = no hay (se lee). */
+var _conjuntoCorrida_ = null;
+
+/**
+ * Los valores de RDV CONJUNTO (la solapa entera, con el encabezado), o null si la solapa no existe. Dentro de la corrida de la hora
+ * (CONJUNTO_UNA_LECTURA_POR_CORRIDA) la lectura se comparte: la figura de Seguridad de la agenda (leerConjuntoPorFecha_), el aviso de
+ * "hechas sin fila", la cancelación por RDV CONJUNTO y los asistentes del cruce (cruzarAsistentes_) leen UNA vez. RDV CONJUNTO no lo
+ * escribe nada del sistema (CLAUDE.md, 3.4): lo que cambie el equipo en el medio de la corrida lo ve la próxima, como siempre. Fuera de
+ * la corrida de la hora (un paso a mano), se lee cada vez, como antes. Nadie modifica la matriz que devuelve (sólo se lee).
+ */
+function valoresConjuntoCorrida_(que) {
+  const idC = typeof _corrida_ !== 'undefined' && _corrida_ ? _corrida_.id + '|' + _corrida_.t0 : null;
+  const compartir = !!idC && typeof CONJUNTO_UNA_LECTURA_POR_CORRIDA !== 'undefined' && CONJUNTO_UNA_LECTURA_POR_CORRIDA;
+  if (compartir && _conjuntoCorrida_ && _conjuntoCorrida_.id === idC) {
+    if (typeof corridaLecturaConjunto_ === 'function') corridaLecturaConjunto_(que || '?', 0, true);
+    return _conjuntoCorrida_.valores;
+  }
+  const t = Date.now();
+  const sh = ssDestino_().getSheetByName(RDV_HOJA_ASISTENTES_SRC);
+  if (!sh) return null;
+  const n = sh.getLastRow();
+  const valores = n ? sh.getRange(1, 1, n, sh.getLastColumn()).getValues() : [];
+  if (typeof corridaLecturaConjunto_ === 'function') corridaLecturaConjunto_(que || '?', Date.now() - t, false);
+  _conjuntoCorrida_ = compartir ? { id: idC, valores: valores } : null;
+  return valores;
+}

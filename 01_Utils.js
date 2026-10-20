@@ -49,12 +49,26 @@ function esVacio_(v) {
  * Se usa para las claves, así que cualquier cambio acá cambia todos los matcheos.
  */
 function normalizeText_(s) {
-  return String(s == null ? '' : s)
+  // 20/10 (prompt 09, 3b): lo ya normalizado en esta ejecución (el plan de la agenda normaliza las mismas figuras y barrios miles de
+  // veces). Es una función pura del texto: el resultado no cambia. Los textos largos (un mail entero) no se guardan.
+  const t = String(s == null ? '' : s);
+  if (t.length <= 300) {
+    if (!_memoNormalize_) _memoNormalize_ = new Map();
+    const m = _memoNormalize_.get(t);
+    if (m !== undefined) return m;
+  }
+  const v = t
     .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')   // espacios invisibles
     .replace(/[\u2012\u2013\u2014\u2212]/g, '-')          // guiones tipográficos
     .normalize('NFD').replace(/[\u0300-\u036F]/g, '')
     .toLowerCase().replace(/\s+/g, ' ').trim();
+  if (t.length <= 300) {
+    if (_memoNormalize_.size >= 50000) _memoNormalize_.clear();
+    _memoNormalize_.set(t, v);
+  }
+  return v;
 }
+var _memoNormalize_ = null;
 
 /** Normalización para **encabezados**: además saca comillas y saltos de línea. */
 function normalizeHeader_(s) {
@@ -134,14 +148,37 @@ function alMediodia_(y, mo, d) {
   return f;
 }
 
+/**
+ * 20/10 (prompt 09, punto 3b): `ymd_` y `fmtFecha_` recuerdan lo ya formateado, por el instante (getTime). Utilities.formatDate es
+ * una llamada al servicio (lenta en Apps Script) y el plan de la agenda la hacía cientos de miles de veces (la conciliación, el
+ * alcance de cada fila…). El resultado es el mismo: depende sólo del instante y de RDV_TZ. Se vacía si pasa de _MEMO_FECHAS_MAX_.
+ */
+var _memoYmd_ = null, _memoFmt_ = null;
+const _MEMO_FECHAS_MAX_ = 20000;
+function _fechaMemo_(memo, fecha, formato) {
+  const t = fecha && typeof fecha.getTime === 'function' ? fecha.getTime() : NaN;
+  if (typeof t !== 'number' || isNaN(t)) return Utilities.formatDate(fecha, RDV_TZ, formato);
+  let v = memo.get(t);
+  if (v === undefined) {
+    if (memo.size >= _MEMO_FECHAS_MAX_) memo.clear();
+    v = Utilities.formatDate(fecha, RDV_TZ, formato);
+    memo.set(t, v);
+  }
+  return v;
+}
+
 /** `yyyyMMdd`, para claves. */
 function ymd_(fecha) {
-  return fecha ? Utilities.formatDate(fecha, RDV_TZ, 'yyyyMMdd') : '';
+  if (!fecha) return '';
+  if (!_memoYmd_) _memoYmd_ = new Map();
+  return _fechaMemo_(_memoYmd_, fecha, 'yyyyMMdd');
 }
 
 /** `dd/MM/yyyy`, para mostrar. */
 function fmtFecha_(fecha) {
-  return fecha ? Utilities.formatDate(fecha, RDV_TZ, 'dd/MM/yyyy') : '';
+  if (!fecha) return '';
+  if (!_memoFmt_) _memoFmt_ = new Map();
+  return _fechaMemo_(_memoFmt_, fecha, 'dd/MM/yyyy');
 }
 
 /** Días enteros entre dos fechas, con signo. */
