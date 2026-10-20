@@ -317,7 +317,7 @@ ok(r.cuentas.OK === 2 && r.cuentas['DECIDIDO POR EL EQUIPO'] === 1 && !r.cuentas
 
 console.log('[4] al revés: filas de la base que no están en el mail');
 ok(r.cuentas['FILA SIN MAIL'] === 2, 'dos filas (' + r.cuentas['FILA SIN MAIL'] + ')');
-ok(r.noOk.some(function (t) { return /CARGADA A MANO.*fila 14 \| Elena Inventada \| 15\/10\/2026/.test(t); }), 'la 14 (Elena 15/10): cargada a mano');
+ok(r.noOk.some(function (t) { return /FUERA DEL MAIL: revisar \(cargada a mano.*fila 14 \| Elena Inventada \| 15\/10\/2026/.test(t); }), 'la 14 (Elena 15/10): fuera del mail, revisar (cargada a mano)');
 ok(r.noOk.some(function (t) { return /DUPLICADA de la reunión 20\/10\/2026 18:00 Diego Ficticio \(la fila de la agenda es la 9.*cargada a mano.*fila 10 \| Diego Ficticio/.test(t); }), 'la 10: DUPLICADA de la reunión de la fila 9, cargada a mano');
 
 console.log('[5] las copias');

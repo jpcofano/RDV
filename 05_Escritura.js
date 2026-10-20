@@ -739,6 +739,54 @@ function reponerFormatoFilas_(sh, filas) {
 }
 
 /**
+ * **La corrección AUTORIZADA de una fila** (20/10, prompt 09, punto 6b; 58_CorregirReunion.js; CLAUDE.md §0, "la quinta excepción").
+ * Una corrección puntual que el usuario autorizó por escrito (la 824: el Barrio que cargó el equipo, STATUS Realizada → Reprogramada,
+ * vaciar los asistentes y oradores de otra reunión), que ninguna de las otras reglas puede hacer. Sólo las columnas de
+ * `CORREGIR_COLUMNAS_PERMITIDAS` (cualquier otra: error, no escribe nada); lectura fresca de la fila y TODO o NADA: si una celda ya no
+ * tiene lo que el plan esperaba, no se escribe ninguna. Lo escrito, en COLOR_SISTEMA; lo vaciado, sin fondo. `cambios` =
+ * [{ col (1-based), valor, esperado }]. Devuelve { hechas: [{ col, valor, antes, fondoAntes }], error }.
+ */
+function corregirFilaAutorizada_(sh, hdr, fila, cambios) {
+  const permitidas = CORREGIR_COLUMNAS_PERMITIDAS.map(normalizeHeader_);
+  for (let i = 0; i < cambios.length; i++) {
+    if (permitidas.indexOf(normalizeHeader_(hdr[cambios[i].col - 1])) < 0) {
+      throw new Error('corregirFilaAutorizada_: la columna "' + hdr[cambios[i].col - 1] + '" no se corrige por acá. No se escribió nada.');
+    }
+  }
+  if (!cambios.length) return { hechas: [], error: '' };
+  const rg = sh.getRange(fila, 1, 1, hdr.length);
+  const actual = rg.getValues()[0], fondos = rg.getBackgrounds()[0];   // lectura fresca
+  const distintas = cambios.filter(function (c) { return valorAgendaComparable_(actual[c.col - 1], hdr[c.col - 1]) !== valorAgendaComparable_(c.esperado, hdr[c.col - 1]); });
+  if (distintas.length) return { hechas: [], error: 'la fila ' + fila + ' cambió: ' + distintas.map(function (c) { return hdr[c.col - 1]; }).join(', ') + ' (no se escribió nada)' };
+  _selloEscrituraSistema_();
+  const hechas = [];
+  cambios.forEach(function (c) {
+    const r = sh.getRange(fila, c.col);
+    const vacio = c.valor === '' || c.valor == null;
+    r.setValue(vacio ? '' : c.valor);
+    r.setBackground(vacio ? null : COLOR_SISTEMA);
+    hechas.push({ col: c.col, valor: c.valor, antes: actual[c.col - 1], fondoAntes: fondos[c.col - 1] || null });
+  });
+  return { hechas: hechas, error: '' };
+}
+
+/** Deshacer una corrección autorizada: cada celda vuelve a lo que tenía (con su fondo) SÓLO si todavía tiene lo que se escribió. */
+function deshacerCorreccionAutorizada_(sh, hdr, fila, cambios) {
+  const permitidas = CORREGIR_COLUMNAS_PERMITIDAS.map(normalizeHeader_);
+  const hechas = [], saltadas = [];
+  if (cambios.length) _selloEscrituraSistema_();
+  cambios.forEach(function (c) {
+    if (permitidas.indexOf(normalizeHeader_(hdr[c.col - 1])) < 0) throw new Error('deshacerCorreccionAutorizada_: "' + hdr[c.col - 1] + '" no es de la corrección.');
+    const r = sh.getRange(fila, c.col);
+    if (valorAgendaComparable_(r.getValue(), hdr[c.col - 1]) !== valorAgendaComparable_(c.despues, hdr[c.col - 1])) { saltadas.push(c); return; }
+    r.setValue(c.antes === undefined ? '' : c.antes);
+    r.setBackground(c.fondoAntes || null);
+    hechas.push(c);
+  });
+  return { hechas: hechas, saltadas: saltadas };
+}
+
+/**
  * Saca del destino filas que CREÓ la agenda (deshacer). Si son las últimas filas con datos (un bloque al final),
  * se borran: no hay nada abajo que se corra (CLAUDE.md §6 prohíbe borrar filas por eso). Si no, se vacían (contenido
  * y fondo) y quedan como filas vacías, que `leerDestino_` ignora. `filas` 1-based; `ultimaConDatos` la última fila

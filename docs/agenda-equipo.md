@@ -145,6 +145,18 @@ les queda para cargar a ustedes.
 - Inscriptos, canales, asistentes, temas, síntesis, observaciones: nada de eso lo toca la agenda.
 - Una reunión que no está "en agenda" (ya Realizada, Reprogramada, o Suspendida por ustedes): no se actualiza.
 
+## Manda el mail (20/10)
+
+La base tiene **las reuniones del mail de agenda**. Lo que no está en el mail **no va**: el sistema no crea filas desde RDV CONJUNTO
+ni desde los formularios.
+
+- Una reunión que se hizo y no está en el mail (por ejemplo, fuera de nuestros canales) no se carga. Si alguien la cargó a mano, la
+  auditoría la muestra como **"fuera del mail: revisar"**: nunca se borra ni se cambia sola.
+- En AGENDA_PENDIENTES (base intermedia), una reunión "se hizo y no está en la base" se marca **"no va (fuera de nuestros canales)"**
+  y no vuelve a avisar.
+- Una reunión del mail que se pasa a otro día queda **"Reprogramada"**; la nueva fecha es otra fila, la del mail de esa semana.
+  Caso: **Macri 15/10, Villa Santa Rita**, reprogramada al 23/10 (la de Villa Devoto de ese día no va).
+
 ## Lo que cargan ustedes
 
 1. **El Barrio, cuando queda vacío.** El sistema lo saca de la dirección **sólo si está seguro**: la dirección se ubicó

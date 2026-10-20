@@ -1732,6 +1732,18 @@ const CONJUNTO_REPETIDA_POR_UBICACION = true;   // 16/10: PRENDIDO (etapa 1, dec
 const AGENDA_CREAR_SOLO_IDENTIFICADAS = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 const AGENDA_CREAR_SIN_DEFINIR_DIAS = 2;
 const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
+/**
+ * 20/10 (prompt 09, 6a: "manda el mail"): desde cuándo las filas de la base son de la época de la agenda (la semana en que empezó a
+ * crear y vincular filas). La auditoría (paso 66) marca "fuera del mail: revisar" sólo las filas desde esta fecha; las de antes, no.
+ */
+const AGENDA_ERA_DESDE = '2026-10-05';
+/**
+ * 20/10 (prompt 09, 6b; 58_CorregirReunion.js): las ÚNICAS columnas que puede escribir una corrección autorizada por el usuario
+ * (`corregirFilaAutorizada_`, la quinta excepción de CLAUDE.md §0): una fila que vuelve a ser la reunión del mail. Cualquier otra es un
+ * error y no se escribe nada.
+ */
+const CORREGIR_COLUMNAS_PERMITIDAS = ['Barrio', 'agenda_barrio_escrito', 'STATUS REUNIÓN', 'agenda_status_escrito', 'Asistentes',
+  'Oradores anotados', 'Oradores que hablaron', 'Tocado por el equipo'];
 /** 20/10 (prompt 09, punto 4): las "se hizo y no está en la base" que el administrador marcó "no va (fuera de nuestros canales)" (intermedia). */
 const AGENDA_SOLAPA_HECHAS_NO_VAN = 'HECHAS_NO_VAN';
 /**

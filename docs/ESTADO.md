@@ -1951,6 +1951,35 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — prompt 09: qué correr, los tiempos, "manda el mail" y la 824
+
+Prompt guardado en `docs/prompts/PROMPT-09-CORRER-Y-TIEMPOS.md`.
+
+1. **`00_Correr.js`** (nuevo, primero en el editor): sólo lo que hay que correr, `c01`..`c12`. Arriba, en orden: c01 → c02 (corregir la
+   824), c03 → c04 (ordenar la base: el **c04 / paso 108 exige ahora la huella del c03 / paso 107** LISTO, de menos de 2 horas, la misma
+   base; sirve una vez), c05 (la GUÍA / LEER). Cuando quieras: c10 (paso 66), c11 (`mediciones_soloLectura`), c12 (`revisarTodo`).
+   Si algo sale mal: c08 (deshacer la corrección), c09 (deshacer el orden). Los `pasoNN_` siguen en 99_Correr.js.
+2. **El orden**: primero la 824 (c01 → c02), después ordenar (c03 → c04). Después del c04 y de una corrida de la hora que salga bien,
+   el usuario avisa y se prende `BASE_ORDEN_POR_FECHA`.
+4. **`AGENDA_AVISO_HECHAS_SIN_FILA` PRENDIDO**, con la marca **"no va (fuera de nuestros canales)"** en la columna `no va` de
+   AGENDA_PENDIENTES: se guarda por clave (`hecha_sin_fila|figura|yyyyMMdd|barrio`) en `HECHAS_NO_VAN` (intermedia) y esa reunión no
+   vuelve a avisar ni a salir en el resumen.
+5. **`AGENDA_BARRIO_APROXIMADO` PRENDIDO** (la comuna o el barrio del mail, obligatorios). La entrada "Int. Bullrich 55" (`ok_parcial`)
+   de la cache nunca se usó (la regla aproximada sólo mira `aproximada`, y `_reglaBarrio_` rechaza `ok_parcial`); igual queda
+   marcada para no leerse (`GEOCODE_CACHE_DESCARTADAS`).
+6a. **"Manda el mail"**: nada se crea desde RDV CONJUNTO. La auditoría (paso 66, sección 3) marca **"FUERA DEL MAIL: revisar"** las filas
+   desde `AGENDA_ERA_DESDE` (05/10) que no son de ninguna reunión del mail, cargadas a mano (el 19/10 una Realizada del equipo se daba
+   por OK: ya no). Sólo se muestra; las filas de antes no se marcan. En CLAUDE.md (§0, la agenda), docs/agenda-equipo.md y la GUÍA.
+6b. **La 824 vuelve a ser la reunión del mail** (`58_CorregirReunion.js`, c01 / c02 / c08): Barrio Villa Santa Rita, STATUS
+   "Reprogramada" (con `agenda_barrio_escrito` / `agenda_status_escrito`), Asistentes y Oradores vacíos (eran de RDV CONJUNTO 849,
+   Villa Devoto); se queda el formulario de Villa Santa Rita (176), RDV_UID, agenda_uid, las columnas del mail y el ID; la ID derivada
+   pasa a "Jorge Macri - Villa Santa Rita - 15/10/2026"; REGISTRO_AGENDA_CAMBIOS: "reprogramada al 23/10/2026 (fila 837, agenda_uid …)".
+   Por la **quinta excepción** (`corregirFilaAutorizada_`, CLAUDE.md §0). El seco verifica que lo que se vacía sea de la 849, simula la
+   próxima corrida completa sobre la base de hoy y la corregida (fuera de la 824: nada; en la 824: el cruce NO vuelve a escribir
+   asistentes ni oradores —con `CONJUNTO_REPETIDA_POR_UBICACION` toma la 843 "Cancelado" o nada—, la agenda no la toca ni avisa) y
+   guarda la huella; el c02 la exige. El paso 38 no la deshace (c08 sí). Test: `tests/corregir_macri_1510.test.js`.
+   **Los pasos 101-103 (separar) quedaron DESCARTADOS**: obsoletos en 99_Correr.js, no correr.
+
 #### 20/10 — las decisiones del usuario sobre el prompt 08
 
 1. **El orden de la base, al PRINCIPIO de la corrida** (como propuso el revisor): después del guardián, antes de la agenda y del

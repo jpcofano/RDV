@@ -325,6 +325,7 @@ ok(/lo mismo: nada de la próxima corrida depende del número de fila/.test(E.lo
 
 console.log('[3] el real (paso 108): ordena entera cada fila, guarda el orden de antes; la segunda vez no hace nada');
 const id0 = fotoPorId(E);
+ok(E.props && JSON.parse(E.props.ORDEN_BASE_HUELLA_107).h === plan.huellaActual, 'el seco LISTO guarda la huella para el paso 108');
 r = E.run('ordenarBaseAhora()');
 ok(r && !r.error && r.movidas === plan.mueve.length && E.sorts === 1, 'ordenó (' + JSON.stringify(r) + ')');
 ok(fechas(E).join(' | ') === '1/10 18:00 | 3/10 10:00 | 8/10 18:00 | 8/10 19:00 | 10/10 18:00 | 15/10 09:15 | 15/10 18:30 | (sin)', 'el orden: ' + fechas(E).join(' | '));
@@ -335,6 +336,7 @@ const prev = E.ssI.hojas['ORDEN_BASE_PREVIO'];
 ok(prev && prev.v.length === 9 && prev.v[1][0] === r.corrida, 'ORDEN_BASE_PREVIO: el orden de antes (8 filas), con el id de la corrida');
 r = E.run('ordenarBaseAhora()');
 ok(r && r.nada === 'ya en orden' && E.sorts === 1, 'la segunda vez: ya está en orden, no toca nada');
+ok(!E.props.ORDEN_BASE_HUELLA_107, 'la huella del 107 sirve una vez');
 
 // ============================== [4] deshacer (paso 109) ==============================
 
@@ -355,11 +357,23 @@ console.log('[5] si la hoja no moviera los fondos con su fila, se reponen; con f
 E = montar({}, { noMueveFondos: true });
 const idA = fotoPorId(E);
 r = E.run('ordenarBaseAhora()');
+ok(r && /primero hay que correr el paso 107/.test(r.error || '') && !E.sorts, 'el paso 108 sin el 107: no ordena — ' + (r && r.error));
+E.run('ordenBase_enSeco({ simular: false })');
+const huellaV = E.props.ORDEN_BASE_HUELLA_107;
+E.props.ORDEN_BASE_HUELLA_107 = JSON.stringify({ h: JSON.parse(huellaV).h, t: E.ctx.Date.now() - 3 * 3600000 });
+r = E.run('ordenarBaseAhora()');
+ok(r && /más de 2 horas/.test(r.error || '') && !E.sorts, 'con la huella vencida: no ordena');
+E.props.ORDEN_BASE_HUELLA_107 = JSON.stringify({ h: 'otra', t: E.ctx.Date.now() });
+r = E.run('ordenarBaseAhora()');
+ok(r && /la base cambió/.test(r.error || '') && !E.sorts, 'con otra base: no ordena');
+E.props.ORDEN_BASE_HUELLA_107 = huellaV;
+r = E.run('ordenarBaseAhora()');
 const idB = fotoPorId(E);
 ok(r && r.repuestos > 0 && Object.keys(idA).every(function (k) { return JSON.stringify(idA[k]) === JSON.stringify(idB[k]); }),
    'la hoja dejó los fondos quietos: se repusieron, cada uno a su fila (' + (r && r.repuestos) + ' filas)');
 E = montar({});
 E.D.formulas = [[3, 2]];
+E.run('ordenBase_enSeco({ simular: false })');
 r = E.run('ordenarBaseAhora()');
 ok(r && /fórmulas/.test(r.error || '') && !E.sorts, 'con una fórmula en la base: no ordena — ' + (r && r.error));
 

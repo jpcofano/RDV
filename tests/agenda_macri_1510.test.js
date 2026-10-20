@@ -458,8 +458,10 @@ E.ctx.__aud = { mails: MAILS, geocodificar: geocodificador(), semanas: [{ nombre
 const aud = E.run('auditoriaAgenda(__aud)');
 const reu = (aud.reuniones || []).filter(function (x) { return x.figura === 'Jorge Macri'; })[0];
 ok(reu && reu.resultado === 'OK' && reu.fila === N + 1, '(g) la reunión del mail del 15/10 → la fila nueva, OK — ' + JSON.stringify(reu));
-ok(aud.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] === 1 && !aud.noOk.some(function (t) { return /^\[[235]\]/.test(t) && /Jorge Macri/.test(t); }),
-   '(g) la 824: "fila del equipo fuera del mail: OK", nada de Macri en "no OK" (secciones 2, 3 y 5; las copias son de la semana en curso) — ' +
+// 20/10 (prompt 09, 6a: "manda el mail"): la fila del equipo fuera del mail ya no es OK: "fuera del mail: revisar" (sólo se muestra)
+ok(aud.noOk.some(function (t) { return /^\[3\] .*FUERA DEL MAIL: revisar/.test(t) && /Jorge Macri/.test(t); }) &&
+   !aud.noOk.some(function (t) { return /^\[[25]\]/.test(t) && /Jorge Macri/.test(t); }),
+   '(g) la 824 separada: "fuera del mail: revisar" (sección 3); nada de Macri en las secciones 2 y 5 — ' +
    JSON.stringify(aud.noOk.filter(function (t) { return /Macri/.test(t); })));
 
 // ============================== [6] el paso 103 ==============================

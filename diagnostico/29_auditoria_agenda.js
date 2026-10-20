@@ -553,8 +553,13 @@ function _s3FilasSinMailAudAg_(C) {
   C.plan.ambiguas.forEach(function (a) { (a.filas || []).forEach(function (f) { ambiguas.add(f.fila); }); });
   const desap = new Map();
   C.r.desaparecidas.forEach(function (d) { const x = C.plan.filaDe.get(d.clave); if (x && x.fila) desap.set(x.fila, { d: d, x: x }); });
-  const filas = C.dest.filas.filter(function (f) { return C.enSemanas(f.fecha) && !asignadas.has(f.fila) && !ambiguas.has(f.fila); });
-  Logger.log('--- 3. filas de la base en las dos semanas que NO son de ninguna reunión del mail: %s ---', filas.length);
+  // 20/10 (prompt 09, 6a: "manda el mail"): sólo las filas de la época de la agenda (desde AGENDA_ERA_DESDE); las de antes no se marcan
+  const era = toDate_(AGENDA_ERA_DESDE);
+  const filas = C.dest.filas.filter(function (f) {
+    return C.enSemanas(f.fecha) && (!era || ymd_(f.fecha) >= ymd_(era)) && !asignadas.has(f.fila) && !ambiguas.has(f.fila);
+  });
+  Logger.log('--- 3. filas de la base en las dos semanas que NO son de ninguna reunión del mail: %s ("manda el mail": lo que no está en el mail ' +
+             'no va; se muestra, nunca se borra ni se cambia solo) ---', filas.length);
   let n = 0;
   filas.forEach(function (f) {
     const uid = str(_valAudAg_(C, f, 'agenda_uid')), origen = str(_valAudAg_(C, f, 'Origen fila'));
@@ -569,15 +574,9 @@ function _s3FilasSinMailAudAg_(C) {
              dd.x.borrada ? ': la agenda la borraría' : st === 'suspendida' ? ': ya está Suspendida' : '');
     } else if (st === 'suspendida') que = 'SUSPENDIDA (¿cancelada?)';
     else if (st === 'reprogramada') que = 'REPROGRAMADA';
-    else if (!uid && normalizeText_(origen) === normalizeText_(ORIGEN_EQUIPO) && st === 'realizada') {
-      // 19/10 (punto 2 del prompt 08, caso 824 = Macri 15/10 en Villa Devoto): una fila que cargó el equipo, REALIZADA, y no es de
-      // ninguna reunión del mail (ni duplicada de una) es legítima —una reunión que se hizo sin estar en el mail—: OK, no se lista.
-      // Una del equipo "en agenda" fuera del mail sigue "a revisar" (puede ser una reunión del mail que no se vinculó)
-      Logger.log('  FILA DEL EQUIPO FUERA DEL MAIL: OK (sin agenda_uid; Origen fila: %s) | %s', origen, _filaTextoAudAg_(C, f));
-      C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] = (C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] || 0) + 1;
-      return;
-    }
-    else if (!uid) que = 'CARGADA A MANO (sin agenda_uid; Origen fila: ' + (origen || 'vacío') + ')';
+    // 20/10 (prompt 09, 6a: "manda el mail"): una fila cargada a mano que no es de ninguna reunión del mail es "fuera del mail: revisar"
+    // (el 19/10 una Realizada del equipo se daba por OK: ya no). Sólo se muestra: nunca se borra ni se cambia sola
+    else if (!uid) que = 'FUERA DEL MAIL: revisar (cargada a mano, sin agenda_uid; Origen fila: ' + (origen || 'vacío') + (st ? '; ' + str(_valAudAg_(C, f, 'STATUS REUNIÓN')) : '') + ')';
     else que = 'de la agenda (' + (/^c-/.test(uid) ? 'la creó' : 'la vinculó') + '), pero la reunión ya no está en el mail' +
                (C.plan.yaCargadas.some(function (y) { return y.f.fila === f.fila; }) ? ' (es "ya cargada" de otra fecha)' : '');
     n++;
@@ -985,9 +984,9 @@ function _resumenAudAg_(C) {
   Logger.log('=== RESUMEN de la auditoría de la agenda ===');
   Logger.log('  reuniones del mail (dos semanas): OK %s | DISTINTO %s | FALTA EN LA BASE %s | DUPLICADA %s', C.cuentas.OK, C.cuentas.DISTINTO,
              C.cuentas['FALTA EN LA BASE'], C.cuentas.DUPLICADA);
-  Logger.log('  filas de la base sin reunión en el mail: %s (y del equipo fuera del mail, OK: %s) | ambiguas: %s | creadas (14 días) con algo ' +
+  Logger.log('  filas de la base sin reunión en el mail (fuera del mail: revisar): %s | ambiguas: %s | creadas (14 días) con algo ' +
              'para revisar: %s | AGENDA_DUPLICADOS pendientes: %s | Seguridad sin figura: %s', _cAudAg_(C, 'FILA SIN MAIL'),
-             C.cuentas['FILA DEL EQUIPO FUERA DEL MAIL'] || 0, _cAudAg_(C, 'AMBIGUAS'), _cAudAg_(C, 'CREADAS CON PROBLEMAS'),
+             _cAudAg_(C, 'AMBIGUAS'), _cAudAg_(C, 'CREADAS CON PROBLEMAS'),
              _cAudAg_(C, 'DUPLICADOS PENDIENTES'), _cAudAg_(C, 'FIGURA A COMPLETAR'));
   Object.keys(C.extra.copias || {}).forEach(function (k) {
     const x = C.extra.copias[k];

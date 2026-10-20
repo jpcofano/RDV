@@ -28,6 +28,11 @@ const AYUDA_GUIA_ = [
   ['item', 'Crea las reuniones que llegan en el mail de agenda.'],
   ['item', 'Completa inscriptos, canales, sexo y edades (formularios), asistentes y oradores (RDV CONJUNTO).'],
   ['item', 'Calcula Día, Comuna, Zona, % de asistencia y las demás columnas calculadas.'],
+  // 20/10 (prompt 09, 6a): "manda el mail"
+  ['seccion', 'MANDA EL MAIL'],
+  ['item', 'La base tiene las reuniones del mail de agenda. Lo que no está en el mail no va: el sistema no crea filas desde RDV CONJUNTO ni desde los formularios.'],
+  ['item', 'Una reunión que se hizo y no está en el mail (por ejemplo, fuera de nuestros canales) no se carga. Si alguien la cargó a mano, la auditoría la muestra como "fuera del mail: revisar" (nunca se borra ni se cambia sola).'],
+  ['item', 'Una reunión del mail que se pasa a otro día: su fila queda "Reprogramada" y la nueva fecha es otra fila (la del mail de esa semana). Ejemplo: Macri 15/10 Villa Santa Rita, reprogramada al 23/10.'],
   ['seccion', 'QUÉ SIGNIFICAN LOS COLORES'],
   ['item', 'Azul claro: lo escribió el sistema.', 'sistema'],
   ['item', 'Verde: coincide con la reunión (en las fichas).', 'verde'],

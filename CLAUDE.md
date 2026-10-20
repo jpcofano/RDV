@@ -245,15 +245,16 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
     como el equipo carga una reunión cancelada y la que se hizo en su lugar: no frena la semana, no pide decisión, no va a
     AGENDA_DUPLICADOS (ni el H3, que ya no contaba las Suspendidas, ni "después de crear", ni la auditoría del paso 66). Dos
     filas no suspendidas de la misma reunión se siguen detectando como antes.
-  - **Separar "dos reuniones en una fila"** (19/10, prompt 08, punto 2; `56_SepararReunion.js`, pasos 101 / 102 / 103): la
+  - ~~**Separar "dos reuniones en una fila"**~~ **DESCARTADO el 20/10 (prompt 09)**: el equipo confirmó que la reunión de Villa Devoto
+    no va ("manda el mail"); la 824 se corrige con c01 / c02 (la quinta excepción). Lo que sigue queda como registro. (19/10, prompt 08, punto 2; `56_SepararReunion.js`, pasos 101 / 102 / 103): la
     824 (Macri 15/10) tenía la identidad del mail (Villa Santa Rita, suspendida en rojo) y los datos de la reunión que se hizo
     (Villa Devoto, que nunca estuvo en el mail). La fila conserva todos sus datos y se le saca la identidad del mail (agenda_uid,
     agenda_*, las columnas del mail; "Origen fila" = equipo); la reunión del mail pasa a una fila NUEVA AL FINAL (Suspendida,
     por las transiciones de la agenda). Todo por esta excepción; el seco **simula la próxima corrida de la hora completa**
     (`55_SimularCorrida.js`) sobre la base de hoy y la separada y frena si algo cambia fuera de las dos filas; el real exige su
     huella; el deshacer encuentra las filas por su identidad. Es una corrida "SEPARAR" en REGISTRO_AGENDA: el paso 38 no la
-    deshace. La auditoría (paso 66) muestra una fila del equipo, Realizada y fuera del mail, como "fila del equipo fuera del
-    mail: OK".
+    deshace. ~~La auditoría (paso 66) muestra una fila del equipo, Realizada y fuera del mail, como "fila del equipo fuera del
+    mail: OK".~~ Desde el 20/10 es "fuera del mail: revisar" ("manda el mail", abajo).
   - **AGENDA_PENDIENTES es para quien administra el sistema** (19/10, prompt 08, punto 1): sólo en la intermedia; le llega en
     el mail diario (`agenda_info`) y en el resumen del lunes. La GUÍA y AGENDA_DUPLICADOS no mandan al equipo a buscarla.
   - **H4, mails raros** (`AGENDA_VALIDAR_MAILS`). La validación se calcula siempre, pero sólo descarta con el interruptor
@@ -285,6 +286,12 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
   - **Lo que no toca:** un STATUS que no sea "en agenda" y un "Sigue" elegido. Si una salvaguarda frena la suspensión, se avisa
     `cancelacion_no_aplicada`.
   - Con el modo `'regla7'` (el de hoy), todo como antes.
+
+- **Manda el mail** (20/10, decisión del usuario, prompt 09): la base tiene las reuniones del mail; **lo que no está en el mail no va**.
+  Nada se crea desde RDV CONJUNTO ni desde los formularios. Una fila de la época de la agenda (desde `AGENDA_ERA_DESDE`, 05/10) que no
+  es de ninguna reunión del mail y la cargó una persona es **"fuera del mail: revisar"** en la auditoría (paso 66): sólo se muestra,
+  nunca se borra ni se cambia sola; las de antes no se marcan. Una reunión hecha fuera de nuestros canales se marca "no va (fuera de
+  nuestros canales)" en AGENDA_PENDIENTES (`HECHAS_NO_VAN`) y no vuelve a avisar.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
@@ -326,6 +333,23 @@ protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`
   ID mal puesto o el "no" de la decisión 14 se vuelven atrás. Esas correcciones pasan por quien opera el sistema.
 
 `setSiDelSistema_` sigue siendo verificable con un grep: el guardián nunca pasa por él.
+
+### La quinta excepción: corregir una fila con el OK del usuario (20/10)
+
+Hay correcciones que el usuario decide sobre **una fila puntual** y que ninguna regla puede hacer, porque pisan lo que cargó el
+equipo. La primera: la 824 (Macri 15/10), que el equipo había pasado a la reunión de Villa Devoto (Realizada, con sus asistentes)
+cuando la del mail era la de Villa Santa Rita, reprogramada al 23/10, y la de Villa Devoto no va ("manda el mail"). Vive en
+`05_Escritura.js` (`corregirFilaAutorizada_`) y la usa sólo `58_CorregirReunion.js`:
+
+- **sólo las columnas de `CORREGIR_COLUMNAS_PERMITIDAS`** (Barrio, STATUS, Asistentes, los dos Oradores, Tocado por el equipo y sus
+  `agenda_*_escrito`); cualquier otra es un error y no se escribe nada;
+- **todo o nada, con lectura fresca**: si alguna celda ya no tiene lo que vio el seco, no se escribe ninguna;
+- **seco con huella**: el seco simula la próxima corrida completa con la fila corregida (fuera de esa fila tiene que hacer lo mismo,
+  y en esa fila no puede volver a escribir lo que se corrigió); el real exige la huella (2 h, sirve una vez);
+- `COLOR_SISTEMA` en lo escrito, sin fondo en lo vaciado; todo en REGISTRO_AGENDA (modo `CORREGIR`) y REGISTRO_AGENDA_CAMBIOS;
+  **se deshace** con su propio paso (c08), que vuelve sólo las celdas que todavía tienen lo que se escribió. El paso 38 no la toca.
+
+`setSiDelSistema_` sigue siendo verificable con un grep: la corrección nunca pasa por él.
 
 ### Tres consecuencias que no son negociables
 
@@ -3005,6 +3029,9 @@ diagnostico/32_medir_agenda_segura.js  la AGENDA SEGURA (H1-H4) y la cancelació
                    la cancelación automática contra lo que hizo el equipo (paso 78)                               ← 15/10
 diagnostico/34_colores_mail.js  las marcas de COLOR del mail (paso 90, SÓLO LECTURA): qué quieren decir el verde, el
                    amarillo y el rojo, las notas "Actualizo", "Hora: A CONFIRMAR" y "(NO PARTICIPA)"           ← 15/10
+58_CorregirReunion.js  la quinta excepción (§0): corregir UNA fila con el OK del usuario (la 824, Macri 15/10): c01 en seco con la
+                   próxima corrida simulada y la huella, c02 real, c08 deshacer                                   ← 20/10
+00_Correr.js       LO QUE HAY QUE CORRER (c01..c12), primero en el editor; los pasoNN_ siguen en 99_Correr.js. Sin lógica  ← 20/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
 99_Pipeline.js     orquestador + onOpen() con menú. Hoy: sólo el activador del upsert (cada 1

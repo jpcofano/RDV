@@ -28,6 +28,10 @@
 
 const ORDEN_PROP_HUELLA = 'ORDEN_BASE_HUELLA';    // la secuencia de filas que dejó el último orden del sistema
 const ORDEN_PROP_CORRIDA = 'ORDEN_BASE_CORRIDA';  // el id del último orden (el paso 109 lo deshace)
+// 20/10 (prompt 09): el paso 108 (c04) exige la huella del 107 (c03) LISTO: el mismo orden de la base que se vio en seco, hace menos de
+// ORDEN_HUELLA_SECO_HORAS. Sirve una vez. La corrida de la hora (BASE_ORDEN_POR_FECHA) no la pide.
+const ORDEN_PROP_HUELLA_SECO = 'ORDEN_BASE_HUELLA_107';
+const ORDEN_HUELLA_SECO_HORAS = 2;
 
 // ===================== El plan (en memoria) =====================
 
@@ -153,6 +157,12 @@ function ordenBase_enSeco(opciones) {
     else motivos.push(fuera.length + ' diferencias entre la próxima corrida sobre la base de hoy y sobre la ordenada');
   } else if (!plan.mueve.length) Logger.log('--- la base ya está en orden: no hay nada que simular ---');
   const listo = !motivos.length;
+  // 20/10 (prompt 09): la huella para el paso 108 (c04), sólo LISTO y con algo que mover
+  try {
+    const pr = PropertiesService.getScriptProperties();
+    if (listo && plan.mueve.length) { pr.setProperty(ORDEN_PROP_HUELLA_SECO, JSON.stringify({ h: plan.huellaActual, t: Date.now() })); Logger.log('  la huella para el paso 108: %s (vence a las %s horas)', plan.huellaActual, ORDEN_HUELLA_SECO_HORAS); }
+    else pr.deleteProperty(ORDEN_PROP_HUELLA_SECO);
+  } catch (e) { Logger.log('  (la huella del seco no se pudo guardar: %s)', e); }
   Logger.log('>>> %s%s (paso 107: %s ms)', listo ? 'LISTO para prender BASE_ORDEN_POR_FECHA' : 'NO LISTO: ', listo ? '' : motivos.join(' | '), Date.now() - t0);
   return { listo: listo, motivos: motivos, movidas: plan.mueve.length, sinFecha: plan.sinFecha, plan: plan };
 }
@@ -177,7 +187,7 @@ function _logPlanOrden_(plan, bloque) {
 function ordenarBaseAhora() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(ESPERA_BLOQUEO_MS)) { Logger.log('>>> Hay otra corrida en curso: no se ordena nada.'); return { error: 'hay otra corrida en curso' }; }
-  try { return ordenarBase_({ aMano: true }); }
+  try { return ordenarBase_({ aMano: true, exigirSeco: true }); }
   finally { lock.releaseLock(); }
 }
 
@@ -205,6 +215,16 @@ function ordenarBase_(opciones) {
   if (!plan.mueve.length) { Logger.log('  base ordenada: ya está en orden (%s filas): no se toca.', plan.ultima - 1); return { nada: 'ya en orden', movidas: 0 }; }
   let props = null, ultimaHuella = '';
   try { props = PropertiesService.getScriptProperties(); ultimaHuella = props.getProperty(ORDEN_PROP_HUELLA) || ''; } catch (e) { ultimaHuella = ''; }
+  // 20/10 (prompt 09): a mano (paso 108), sólo con la huella del paso 107 LISTO, la misma base, sin vencer; sirve una vez
+  if (opciones.exigirSeco) {
+    let g = null;
+    try { g = JSON.parse(props.getProperty(ORDEN_PROP_HUELLA_SECO) || 'null'); } catch (e) { g = null; }
+    const no = !g || !g.h ? 'primero hay que correr el paso 107 (c03, en seco) y que dé LISTO'
+      : Date.now() - (g.t || 0) > ORDEN_HUELLA_SECO_HORAS * 3600000 ? 'la huella del paso 107 tiene más de ' + ORDEN_HUELLA_SECO_HORAS + ' horas: volver a correrlo'
+      : g.h !== plan.huellaActual ? 'la base cambió desde el paso 107: volver a correrlo' : '';
+    if (no) { Logger.log('>>> NO SE ORDENA: %s.', no); return { error: no }; }
+    try { props.deleteProperty(ORDEN_PROP_HUELLA_SECO); } catch (e) { /* sirve una vez */ }
+  }
   if (!opciones.aMano && ultimaHuella && ultimaHuella === plan.huellaActual) {
     Logger.log('  base ordenada: está como la dejó el último orden (la hoja ordena distinto que el cálculo en %s filas, un empate raro): no se toca.', plan.mueve.length);
     return { nada: 'como la dejó el último orden', movidas: 0 };

@@ -17,16 +17,17 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 20/10 (prompt 09): LO QUE HAY QUE CORRER ESTÁ EN 00_Correr.js (c01..c12): corregir la 824 (c01 → c02), ordenar la base
+ *      (c03 → c04), la GUÍA (c05); y lo de sólo lectura (c10 auditoría, c11 mediciones, c12 revisarTodo). Los pasos 101-103
+ *      (separar la 824) quedaron DESCARTADOS: el equipo confirmó que la reunión de Villa Devoto no va ("manda el mail").
  *  >>> 20/10: mediciones_soloLectura()  SÓLO LECTURA: los pasos 67, 104, 105 y 106 juntos.
  *      Decisiones del 20/10: el orden de la base va al PRINCIPIO de la corrida; las Suspendidas sin formulario no van a las fichas
  *      ni a SIN_MATCH (SUSPENDIDAS_FUERA_DE_FICHAS); Macri 15/10: los pasos 101-103 quedan como están hasta que confirme el equipo.
- *  >>> 19/10 (prompt 08): separar Macri 15/10 (la 824) — docs/ESTADO.md, "19/10 — prompt 08".
- *        paso101_separarMacri1510_enSeco()   SÓLO LECTURA (+ la huella): el plan y la próxima corrida SIMULADA. Tiene que dar LISTO.
- *        paso102_separarMacri1510()          ESCRIBE (exige la huella del 101). Con la dirección: 101b → 102b.
- *        paso103_deshacerSepararMacri1510()  deshace (el _enSeco dice qué haría). Después: paso66b_auditoriaSemanaPasada().
- *      Ordenar la base por FECHA (BASE_ORDEN_POR_FECHA, APAGADO), DESPUÉS del 102:
+ *  >>> 19/10 (prompt 08): separar Macri 15/10 (la 824) — OBSOLETO (20/10, prompt 09: DESCARTADO; en su lugar, c01/c02 de 00_Correr.js).
+ *        paso101/101b/102/102b/103: NO CORRER. Quedan sólo como registro (56_SepararReunion.js).
+ *      Ordenar la base por FECHA (BASE_ORDEN_POR_FECHA, APAGADO), después de corregir la 824 (= c03 / c04 de 00_Correr.js):
  *        paso107_ordenBase_enSeco()          SÓLO LECTURA: qué se movería y la próxima corrida simulada con la base ordenada.
- *        paso108_ordenarBaseAhora()          ESCRIBE (una vez, a mano). Después: BASE_ORDEN_POR_FECHA = true + clasp push.
+ *        paso108_ordenarBaseAhora()          ESCRIBE (una vez, a mano; exige la huella del 107). Después: BASE_ORDEN_POR_FECHA = true + clasp push.
  *        paso109_deshacerOrdenBase()         vuelve al orden de antes del último orden.
  *
  *  >>> 19/10: paso104_hechasSinFila()  SÓLO LECTURA: reuniones de RDV CONJUNTO "Realizada" (o con asistentes) que no están en la
@@ -1481,6 +1482,9 @@ function mediciones_soloLectura() {
 }
 
 /**
+ * OBSOLETO (20/10, prompt 09): los pasos 101-103 quedaron DESCARTADOS (la reunión de Villa Devoto no va: "manda el mail"). NO CORRER.
+ * La 824 se corrige con c01 / c02 (00_Correr.js, 58_CorregirReunion.js). Quedan como registro.
+ *
  * PASO 101 — EN SECO (19/10, prompt 08, punto 2): separar Macri 15/10. La 824 (Villa Devoto, Realizada) conserva TODOS sus datos y
  * pierde la identidad del mail; la reunión del mail (Villa Santa Rita, Suspendida) pasa a una fila NUEVA, AL FINAL. Muestra el plan,
  * de qué reunión son el formulario / los inscriptos / el ID / los asistentes de la 824, y SIMULA la próxima corrida de la hora

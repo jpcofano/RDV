@@ -2326,6 +2326,11 @@ function _deshacerAgenda_(enSeco, corrida) {
     Logger.log('>>> La corrida %s es una SEPARACIÓN (paso 102): se deshace con el paso 103 (deshacerSepararReunionAgenda), no con éste.', id);
     return { deshecho: 0, error: 'es una separación: paso 103' };
   }
+  // 20/10 (58_CorregirReunion.js): una corrección autorizada (c02) se deshace con deshacerCorregirReunion
+  if (typeof CORREGIR_MODO_REGISTRO !== 'undefined' && regV.some(function (r) { return str(r[0]) === id && str(r[2]) === CORREGIR_MODO_REGISTRO; })) {
+    Logger.log('>>> La corrida %s es una CORRECCIÓN (c02): se deshace con deshacerCorregirReunion, no con éste.', id);
+    return { deshecho: 0, error: 'es una corrección: deshacerCorregirReunion' };
+  }
   const anchoCam = Math.max(9, cam.getLastColumn());
   const camV = cam.getRange(2, 1, cam.getLastRow() - 1, anchoCam).getValues().filter(function (r) { return str(r[0]) === id; });
   Logger.log('  corrida %s: %s líneas de cambios', id, camV.length);
