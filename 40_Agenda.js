@@ -3682,7 +3682,9 @@ function _dosFilasAgenda_(P, dest, A, despues, elecciones, ignorados, fusionPrev
 
 /** Los tipos de AGENDA_PENDIENTES que son un HECHO de una corrida (se listan AGENDA_PENDIENTES_DIAS_EVENTOS días); los demás son un estado (se recalculan). */
 const TIPOS_EVENTO_PENDIENTES_AGENDA_ = ['cancelación aplicada (Suspendida)', 'juntada sola (fusión automática)', 'juntada por decisión del equipo'];
-const ENC_PENDIENTES_AGENDA_ = ['tipo', 'reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar', 'fila', 'qué pasa', 'qué sigue', 'desde', 'id'];
+const ENC_PENDIENTES_AGENDA_ = ['tipo', 'reunión', 'semana', 'grupo', 'fecha', 'hora', 'lugar', 'fila', 'qué pasa', 'qué sigue', 'desde', 'id', 'no va'];
+/** 20/10 (prompt 09, punto 4): la opción de "no va" en una línea "se hizo y no está en la base" de AGENDA_PENDIENTES. */
+const OPCION_NO_VA_HECHA_ = 'no va (fuera de nuestros canales)';
 
 /**
  * Lo que el equipo tiene que SABER de la agenda en esta corrida (no decidir: eso va a AGENDA_DUPLICADOS). Una entrada por cosa:
@@ -3728,14 +3730,17 @@ function infoAgenda_(P) {
   });
   // 19/10 (AGENDA_AVISO_HECHAS_SIN_FILA, 53_HechasSinFila.js): una reunión que se hizo (RDV CONJUNTO) y no está en la base. Es un
   // ESTADO (se recalcula: cuando el equipo carga la fila, la línea se va); va al aviso diario una sola vez (por su id)
+  // 20/10 (prompt 09, punto 4): las que el administrador marcó "no va (fuera de nuestros canales)" no se listan ni se avisan más
+  const noVan = leerHechasNoVan_();
   ((P.hechasSinFila && P.hechasSinFila.lista) || []).forEach(function (h) {
+    if (noVan.has(h.id)) return;
     out.push({ tipo: 'se hizo y no está en la base', reunion: fmtFecha_(h.fecha) + ' | ' + (h.figura || '(sin figura)') + ' | ' + (h.barrio || '—') +
                                                           (h.direccion ? ' | ' + h.direccion : ''),
                semana: '', grupo: '', fecha: h.fecha, hora: '', lugar: h.barrio || '', fila: h.candidatas.map(function (c) { return c.fila; }).join(', '),
                que: h.texto,
-               sigue: 'cargar la reunión en la base a mano (el sistema no crea la fila): ' + (h.figura || '(figura)') + ', ' + fmtFecha_(h.fecha) + ', ' +
-                      (h.barrio || 'barrio a confirmar') + (h.direccion ? ', ' + h.direccion : '') + ', STATUS "Realizada"' +
-                      (h.asistentes > 0 ? ' (los ' + h.asistentes + ' asistentes los completa el sistema cuando la fila exista)' : ''),
+               // 20/10 (prompt 09, 6a: "manda el mail"): lo que no está en el mail no va a la base; el sistema nunca crea la fila
+               sigue: 'si salió por nuestros canales, falta en el mail de agenda: avisar (la fila la crea la agenda cuando llegue); si NO salió ' +
+                      'por nuestros canales, marcar "' + OPCION_NO_VA_HECHA_ + '" en la columna "no va" de esta línea (no se avisa más)',
                id: h.id, avisar: true });
   });
   if (real) {
@@ -3817,12 +3822,46 @@ function matrizPendientesAgenda_(P, previas) {
  * `P.infoAgenda` queda calculado (lo usa el aviso diario).
  */
 function _escribirPendientesAgenda_(P) {
-  P.infoAgenda = infoAgenda_(P);
+  // 20/10 (prompt 09, punto 4): primero lo que marcó el administrador en "no va" (se guarda por su id en HECHAS_NO_VAN), después la lista
   const previas = _leerPendientesPreviasAgenda_();
-  const m = matrizPendientesAgenda_(P, previas.filas);
+  const iNoVa = ENC_PENDIENTES_AGENDA_.indexOf('no va');
+  const marcadas = previas.filas.filter(function (x) { return /^hecha_sin_fila\|/.test(x.id) && !esVacio_(x.fila[iNoVa]); });
+  if (marcadas.length) {
+    try { guardarHechasNoVan_(marcadas); }
+    catch (err) { Logger.log('  >>> %s no se pudo escribir: %s (la marca "no va" se vuelve a leer en la próxima corrida)', AGENDA_SOLAPA_HECHAS_NO_VAN, err); }
+  }
+  P.infoAgenda = infoAgenda_(P);
+  const m = matrizPendientesAgenda_(P, previas.filas.filter(function (x) { return marcadas.indexOf(x) < 0; }));
   if (!(P.modos && P.modos.soloIdentificadas) && m.length < 2 && !previas.existe) return false;
   escribirHoja_(AGENDA_SOLAPA_PENDIENTES, m);
+  // el desplegable de "no va", sólo en las líneas "se hizo y no está en la base"
+  try {
+    const sh = ssIntermedia_().getSheetByName(AGENDA_SOLAPA_PENDIENTES);
+    const regla = SpreadsheetApp.newDataValidation().requireValueInList([OPCION_NO_VA_HECHA_], true).setAllowInvalid(true).build();
+    m.forEach(function (r, i) { if (i > 0 && /^hecha_sin_fila\|/.test(str(r[ENC_PENDIENTES_AGENDA_.indexOf('id')]))) sh.getRange(i + 1, iNoVa + 1).setDataValidation(regla); });
+  } catch (err) { Logger.log('  (el desplegable de "no va" no se pudo poner: %s; se puede escribir a mano)', err); }
   return true;
+}
+
+/** 20/10 (prompt 09, punto 4): los ids de las "se hizo y no está en la base" marcadas "no va" (HECHAS_NO_VAN, intermedia). Sólo lectura. */
+function leerHechasNoVan_() {
+  const out = new Set();
+  try {
+    const sh = ssIntermedia_().getSheetByName(AGENDA_SOLAPA_HECHAS_NO_VAN);
+    if (!sh || sh.getLastRow() < 2) return out;
+    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) { if (str(r[0])) out.add(str(r[0])); });
+  } catch (err) { Logger.log('  (%s no se pudo leer: %s)', AGENDA_SOLAPA_HECHAS_NO_VAN, err); }
+  return out;
+}
+
+/** Agrega a HECHAS_NO_VAN (intermedia) las marcadas que todavía no están: id | marcada | reunión | qué decía. Nunca toca la base. */
+function guardarHechasNoVan_(marcadas) {
+  const ss = ssIntermedia_();
+  let sh = ss.getSheetByName(AGENDA_SOLAPA_HECHAS_NO_VAN);
+  if (!sh) { sh = ss.insertSheet(AGENDA_SOLAPA_HECHAS_NO_VAN); sh.appendRow(['id', 'marcada', 'reunión', 'no va']); }
+  const ya = leerHechasNoVan_();
+  const iR = ENC_PENDIENTES_AGENDA_.indexOf('reunión'), iN = ENC_PENDIENTES_AGENDA_.indexOf('no va');
+  marcadas.forEach(function (x) { if (!ya.has(x.id)) { sh.appendRow([x.id, new Date(), str(x.fila[iR]), str(x.fila[iN])]); ya.add(x.id); } });
 }
 
 /** Las líneas que ya tiene AGENDA_PENDIENTES (por su encabezado; las de antes del 16/10, sin "id", no se conservan). Sólo lectura. */

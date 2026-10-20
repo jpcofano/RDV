@@ -337,7 +337,7 @@ ok(JSON.stringify(hoja(E, 'AGENDA_DUPLICADOS', true).opciones) === JSON.stringif
 const fr = pend(E, 'semana frenada: una reunión en dos filas');
 ok(fr.length === 2 && fr.every(function (x) { return /no crea ninguna reunión nueva/.test(x[8]) && /AGENDA_DUPLICADOS/.test(x[9]) && /^semana_frenada\|/.test(x[11]) && x[10] instanceof Date; }),
    'AGENDA_PENDIENTES (intermedia): las dos "semana frenada", con qué pasa / qué sigue / desde / id');
-ok(hoja(E, 'AGENDA_PENDIENTES').v[0].join('|') === 'tipo|reunión|semana|grupo|fecha|hora|lugar|fila|qué pasa|qué sigue|desde|id', 'AGENDA_PENDIENTES: las columnas nuevas, "tipo" primero');
+ok(hoja(E, 'AGENDA_PENDIENTES').v[0].join('|') === 'tipo|reunión|semana|grupo|fecha|hora|lugar|fila|qué pasa|qué sigue|desde|id|no va', 'AGENDA_PENDIENTES: las columnas nuevas, "tipo" primero (20/10: y "no va" al final)');
 ok(paso66(E) === 2, 'paso 66 (_pendientesDuplicadosAudAg_): las 2 líneas esperan una decisión');
 ok(infoAvisos(E).length === 2 && infoAvisos(E).every(function (x) { return /^SEMANA FRENADA/.test(x[1]); }) && E.mails.length === 0,
    'el aviso diario agenda_info: anotado en AVISOS_AGENDA_INFO (2), sin mail todavía (es a las 20)');

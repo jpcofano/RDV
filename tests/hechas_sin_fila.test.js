@@ -328,7 +328,7 @@ let res = correr(E);
 let lineas = hechasEnPendientes(E);
 ok(res.hechasSinFila === 2 && lineas.length === 2, 'dos líneas "se hizo y no está en la base" (Macri 15/10 y Tapia 16/10): ' + lineas.length);
 const lm = lineas.filter(function (l) { return /Jorge Macri/.test(l[1]); })[0] || [];
-ok(/Villa Devoto/.test(lm[1]) && /Calle Inventada 4025/.test(lm[1]) && /31 asistentes/.test(lm[8]) && /cargar la reunión en la base a mano/.test(lm[9]) &&
+ok(/Villa Devoto/.test(lm[1]) && /Calle Inventada 4025/.test(lm[1]) && /31 asistentes/.test(lm[8]) && lm[9].indexOf('marcar "no va (fuera de nuestros canales)"') >= 0 &&
    lm[11] === 'hecha_sin_fila|jorge macri|20261015|villa devoto', 'la de Macri: reunión, qué pasa, qué sigue e id — ' + JSON.stringify(lm));
 const info = (E.avisos || []).filter(function (a) { return a[0] === 'agenda_info' && /SE HIZO Y NO ESTÁ EN LA BASE/.test(a[1]); });
 ok(info.length === 2, 'aviso diario agenda_info: uno por reunión (' + info.length + ')');
@@ -341,6 +341,20 @@ ok(foto(conj(E)) === fotoCj, 'RDV CONJUNTO NO se escribió');
 E.D.v.push(E.hdr.map(function () { return ''; })); VD_REAL(E.D.v[E.D.v.length - 1], E.C); E.D.bg.push(E.hdr.map(function () { return null; }));
 res = correr(E);
 ok(hechasEnPendientes(E).length === 1 && /Gabino Tapia/.test(hechasEnPendientes(E)[0][1]), 'el equipo cargó Villa Devoto: queda sólo la de Tapia');
+// 20/10 (prompt 09, punto 4): el administrador marca la de Tapia "no va (fuera de nuestros canales)": se guarda por su id y no vuelve
+{
+  const hp = E.ssI.hojas['AGENDA_PENDIENTES'];
+  const iNo = hp.v[0].indexOf('no va'), iId = hp.v[0].indexOf('id');
+  ok(iNo >= 0, 'AGENDA_PENDIENTES tiene la columna "no va"');
+  for (let i = 1; i < hp.v.length; i++) if (/^hecha_sin_fila\|gabino tapia/.test(hp.v[i][iId])) hp.v[i][iNo] = 'no va (fuera de nuestros canales)';
+  E.avisos = [];
+  correr(E);
+  const nv = E.ssI.hojas['HECHAS_NO_VAN'];
+  ok(nv && nv.v.some(function (r) { return /^hecha_sin_fila\|gabino tapia/.test(r[0]); }), 'HECHAS_NO_VAN guardó la marca (por su id: figura, fecha y lugar)');
+  ok(hechasEnPendientes(E).length === 0 && !(E.avisos || []).some(function (a) { return /Gabino Tapia/.test(a[1] || ''); }), 'la línea de Tapia ya no está y no se avisa');
+  correr(E);
+  ok(hechasEnPendientes(E).length === 0, 'y en la corrida siguiente tampoco vuelve');
+}
 // una corrida que CREA la fila de esa figura ese día no avisa (la próxima la vuelve a mirar)
 {
   const X = montar([], ON, [cj('Muzzio Clara', 'Recoleta', 14, '', 40, 'Realizada')]);
@@ -371,7 +385,7 @@ ok(off1.r.hechasSinFila === undefined && !off1.X.logs.some(function (l) { return
 ok(off1.lect === 0 && on1.lect >= 1, 'apagado: RDV CONJUNTO no se lee (' + off1.lect + ' lecturas); prendido, sí (' + on1.lect + ')');
 ok(on1.acc === off1.acc && on1.base === off1.base, 'prendido: las MISMAS acciones y la misma base que apagado (sólo avisa)');
 ok(hechasEnPendientes(off1.X).length === 0 && hechasEnPendientes(on1.X).length === 2, 'y sólo prendido aparecen las dos líneas');
-ok(/const AGENDA_AVISO_HECHAS_SIN_FILA = false;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')), '00_Config.js: AGENDA_AVISO_HECHAS_SIN_FILA = false');
+ok(/const AGENDA_AVISO_HECHAS_SIN_FILA = true;/.test(fs.readFileSync(path.join(RAIZ, '00_Config.js'), 'utf8')), '00_Config.js: AGENDA_AVISO_HECHAS_SIN_FILA = true (prendido el 20/10)');
 
 // ============================== la medición en seco (paso 104) ==============================
 

@@ -1354,6 +1354,8 @@ function _leerCacheGeocode_() {
   const ahorro = typeof AGENDA_GEO_AHORRO !== 'undefined' && AGENDA_GEO_AHORRO;
   sh.getRange(2, 1, sh.getLastRow() - 1, GEOCODE_ENCABEZADO.length).getValues().forEach(function (v) {
     if (!str(v[0]) || (v[1] === 'ERROR' && !ahorro)) return;
+    // 20/10 (prompt 09, punto 5): las entradas descartadas a mano (GEOCODE_CACHE_DESCARTADAS) no se leen
+    if (typeof GEOCODE_CACHE_DESCARTADAS !== 'undefined' && GEOCODE_CACHE_DESCARTADAS.some(function (re) { return re.test(str(v[0])); })) return;
     const g = { consulta: str(v[0]), estado: str(v[1]), lat: v[2], lng: v[3], tipo: str(v[4]),
                 parcial: String(v[5]).toUpperCase() === 'TRUE', barrioGoogle: str(v[6]), formateada: str(v[7]),
                 detalle: str(v[8]), componentes: str(v[10]), fecha: v[9], fechaMs: _msFechaGeo_(v[9]) };

@@ -1630,7 +1630,13 @@ const BARRIO_MARGEN_M = 100;
  * la medición la fuerza por `opciones` y usa el mismo código. Con `false`, todo igual que antes.
  * En seco: `medirBarrioAproximado()` (diagnostico/38_barrio_aproximado.js, paso 106). APAGADO hasta ver la medición.
  */
-const AGENDA_BARRIO_APROXIMADO = false;
+const AGENDA_BARRIO_APROXIMADO = true;   // 20/10: PRENDIDO (prompt 09, punto 5: el paso 106 dio ganarían 0, contradicen al equipo 0)
+/**
+ * 20/10 (prompt 09, punto 5): consultas de la cache AGENDA_GEOCODE que NO se leen nunca más (una entrada peligrosa: "Int. Bullrich 55",
+ * sin "Av.", dio ROOFTOP parcial en "Monasterio 301", Parque Patricios). Hoy ya se rechazaba (ok_parcial no cumple ninguna regla);
+ * con esto ni se lee. La consulta que se usa es la expandida ("Intendente Bullrich 55"), que no está acá.
+ */
+const GEOCODE_CACHE_DESCARTADAS = [/^\s*int\.?\s+bullrich\s+55\b/i];
 /** El margen de borde de la regla de la geocodificación aproximada (19/10): MÁS de estos metros de cualquier otro barrio. */
 const BARRIO_APROXIMADO_MARGEN_M = 500;
 /**
@@ -1726,6 +1732,8 @@ const CONJUNTO_REPETIDA_POR_UBICACION = true;   // 16/10: PRENDIDO (etapa 1, dec
 const AGENDA_CREAR_SOLO_IDENTIFICADAS = true;   // 16/10: PRENDIDO (etapa 1, decisión del usuario después de revisarTodo)
 const AGENDA_CREAR_SIN_DEFINIR_DIAS = 2;
 const AGENDA_SOLAPA_PENDIENTES = 'AGENDA_PENDIENTES';
+/** 20/10 (prompt 09, punto 4): las "se hizo y no está en la base" que el administrador marcó "no va (fuera de nuestros canales)" (intermedia). */
+const AGENDA_SOLAPA_HECHAS_NO_VAN = 'HECHAS_NO_VAN';
 /**
  * **H2. Conciliación por semana** (15/10). Con `true`, las reuniones del mail que no encontraron fila (o encontraron 2+ filas
  * de la agenda) se emparejan UNA A UNA con las filas de la agenda de esa semana y ese grupo que quedaron sin reunión
@@ -1925,7 +1933,7 @@ const AGENDA_PROP_SUSP_CON_DATOS = 'AGENDA_AVISADAS_SUSP_CON_DATOS';
  * **NUNCA crea la fila ni escribe la base**: la carga el equipo. Con `false`, la corrida es la de siempre (ni siquiera lee RDV
  * CONJUNTO para esto). En seco: `medirHechasSinFila('2026-07-15')` (diagnostico/37_hechas_sin_fila.js, paso 104).
  */
-const AGENDA_AVISO_HECHAS_SIN_FILA = false;
+const AGENDA_AVISO_HECHAS_SIN_FILA = true;   // 20/10: PRENDIDO (prompt 09, punto 4; el paso 104 dio 3 desde el 15/07, todas fuera del alcance)
 /**
  * **La base ordenada por FECHA** (19/10, prompt 08, punto 7; 57_OrdenBase.js). Al PRINCIPIO de cada corrida de la hora (20/10, decisión
  * del usuario: antes de la agenda y del cruce, así los reportes de la corrida ya ven la base ordenada; dentro del bloqueo, sin guarda de
