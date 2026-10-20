@@ -4,7 +4,7 @@
  * el MISMO lugar en una fecha posterior (a AGENDA_REPROGRAMADA_DIAS días o menos) queda "Reprogramada"; si la fecha nueva llega
  * después de que el sistema la suspendió, pasa de "Suspendida" a "Reprogramada"; una "Suspendida" del equipo no se toca (sólo se
  * cuenta, paso 110); otra figura, otro lugar, una fecha anterior o a más de 21 días: "Suspendida"; y APAGADO = el plan y la base
- * IDÉNTICOS al código de antes (el commit 9e6cebe, leído con git). Destino SIMULADO y mails SINTÉTICOS (el mock es el de
+ * IDÉNTICOS al código de antes (el commit fda608e, leído con git). Destino SIMULADO y mails SINTÉTICOS (el mock es el de
  * tests/agenda_rojo_cancela.test.js). "Hoy" es el jueves 15/10/2026.
  *
  *     node tests/agenda_reprogramada.test.js
@@ -22,8 +22,8 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '52_CancelacionMail.js', 'diagnostico/17_peso_intermedia.js', 'diagnostico/08_verificar_escritura.js',
                   'diagnostico/29_auditoria_agenda.js', 'diagnostico/31_auditoria_cancelaciones.js', 'diagnostico/35_cancelaciones_mail.js',
                   'diagnostico/39_reprogramadas.js'];
-/** El código de ANTES de la regla (el commit 9e6cebe): para comparar "apagado = idéntico a hoy". null = sin git (se saltea). */
-const BASE_GIT = '9e6cebe';
+/** El código de ANTES de la regla (el commit fda608e): para comparar "apagado = idéntico a hoy". null = sin git (se saltea). */
+const BASE_GIT = 'fda608e';   // 20/10: el commit de migracion justo antes de juntar el 6c (los puntos 4, 5, 6a y 6b ya adentro)
 function fuenteDeGit(f) {
   try { return require('child_process').execSync('git show ' + BASE_GIT + ':' + f, { cwd: RAIZ, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); }
   catch (e) { return null; }
