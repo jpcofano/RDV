@@ -975,7 +975,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     let tiempo = null;
     if (suspenderSiempre) {
       tiempo = tiempoCancelacionAgenda_(d.mailQueLaSaco, d, val(f, 'HORA'));
-      if (stF === 'suspendida') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
+      // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa)
+      if (stF === 'suspendida' || stF === 'reprogramada') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
       if (!tiempo.aTiempo) { noAplicada('el mail que la saca es posterior a la reunión (' + tiempo.texto + '): no se toca', f, { tiempo: tiempo }); return; }
       if (stF !== 'en agenda') {
         noAplicada('la fila está "' + str(val(f, 'STATUS REUNIÓN')) + '"' + _datosFilaTextoAgenda_(dest, f) + ': el equipo le puso otro STATUS, no se toca', f, { tiempo: tiempo });
@@ -1080,7 +1081,8 @@ function planAgenda_(dest, r, A, alcance, opciones) {
     if (ev.colorMail && ev.colorMail.mailRaro) { noAplicada('el mail en rojo tiene formato raro (' + ev.colorMail.mailRaro + ')', f); return; }
     const tiempo = tiempoCancelacionAgenda_(ev.mailFecha, ev, val(f, 'HORA'));
     const st = normStatus_(val(f, 'STATUS REUNIÓN'));
-    if (st === 'suspendida') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
+    // 20/10 (prompt 09, 6b/6c): "Reprogramada" también es una cancelación ya reflejada (no se toca ni se avisa)
+    if (st === 'suspendida' || st === 'reprogramada') { evalua('no: la fila ya está "' + str(val(f, 'STATUS REUNIÓN')) + '"', f, { tiempo: tiempo }); return; }
     if (!tiempo.aTiempo) { noAplicada('el mail en rojo es posterior a la reunión (' + tiempo.texto + '): no se toca', f, { tiempo: tiempo }); return; }
     if (st !== 'en agenda') {
       noAplicada('la fila está "' + str(val(f, 'STATUS REUNIÓN')) + '"' + _datosFilaTextoAgenda_(dest, f) + ': el equipo le puso otro STATUS, no se toca', f, { tiempo: tiempo });

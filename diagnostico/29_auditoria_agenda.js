@@ -429,7 +429,8 @@ function _cancelaElMailAudAg_(C, ev, res) {
   }
   const f = C.porFila.get(res.fila);
   const st = f ? str(_valAudAg_(C, f, 'STATUS REUNIÓN')) : '';
-  if (normStatus_(st) === 'suspendida') { res.notas.push('OK: ' + porque + ' y la fila está Suspendida'); if (!res.difs.length && res.resultado === 'DISTINTO') res.resultado = 'OK'; return; }
+  // 20/10 (prompt 09, 6c): "Reprogramada" también refleja la cancelación
+  if (normStatus_(st) === 'suspendida' || normStatus_(st) === 'reprogramada') { res.notas.push('OK: ' + porque + ' y la fila está ' + str(st)); if (!res.difs.length && res.resultado === 'DISTINTO') res.resultado = 'OK'; return; }
   const asis = f && C.dest.D && C.dest.D['Asistentes'] != null ? f.valores[C.dest.D['Asistentes']] : '';
   res.difs.push({ campo: 'STATUS REUNIÓN', mail: 'Suspendida (' + porque.replace(/ \| .*$/, '') + ')', base: st,
                   quien: normStatus_(st) === 'en agenda' ? 'la fila sigue "en agenda" aunque el mail la cancela' :
