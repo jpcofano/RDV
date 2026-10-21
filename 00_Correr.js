@@ -1,31 +1,38 @@
 /**
- * 00_Correr.js — LO QUE TENÉS QUE CORRER (20/10, prompt 09). Es lo primero del editor: sólo lo que hay que correr a mano, en orden.
- * Todo lo demás (los pasoNN_ de la migración, las mediciones viejas) sigue en 99_Correr.js.
+ * 00_Correr.js — LO QUE TENÉS QUE CORRER (20/10, prompts 09 y 10). Es lo primero del editor: sólo lo que hay que correr a mano, en
+ * orden. Lo que ya se corrió sale de acá. Todo lo demás (los pasoNN_ de la migración, las mediciones viejas) sigue en 99_Correr.js.
  *
  * Como 99_Correr.js: cada función llama a la que hace el trabajo y anuncia qué va a pasar. **Nada de lógica propia.**
+ *
+ * Ya corridos (20/10): c01 → c02 (la 824 corregida) y c03 → c04 (la base ordenada). Salieron de acá.
  *
  * ============================================================================================
  *  LO QUE TENÉS QUE CORRER — en este orden
  * ============================================================================================
  *
- *  1. Corregir la 824 (Macri 15/10): vuelve a ser la reunión del mail (Villa Santa Rita, Reprogramada al 23/10, sin los asistentes
- *     ni los oradores de la reunión de Villa Devoto, que no va: "manda el mail").
- *       c01_corregirMacri1510_enSeco()   SÓLO LECTURA. El plan y la próxima corrida SIMULADA. Tiene que dar LISTO (guarda la huella).
- *       c02_corregirMacri1510()          ESCRIBE la 824. Exige la huella del c01 (de menos de 2 horas). Sólo con tu OK.
+ *  1. ESPERAN TU OK (no hay que correr nada):
+ *       BASE_ORDEN_POR_FECHA    lo prendo cuando me confirmes que la corrida de la hora después del c04 salió bien.
+ *       AGENDA_REPROGRAMADA     mirá c13_reprogramadas() (sólo lectura) y dame el OK: lo prendo.
  *
- *  2. Ordenar la base por FECHA (después del 1):
- *       c03_ordenBase_enSeco()           SÓLO LECTURA. Qué se movería y la próxima corrida simulada. Tiene que dar LISTO (guarda la huella).
- *       c04_ordenBase_ahora()            ESCRIBE (mueve las filas). Exige la huella del c03. Sólo con tu OK.
- *     Después del c04 y de una corrida de la hora que salga bien: avisame y prendo BASE_ORDEN_POR_FECHA.
- *
- *  3. c05_ayuda()                        ESCRIBE sólo las solapas "GUÍA" (base) y "LEER" (archivo "Agenda"), con las reglas nuevas
- *                                        ("manda el mail", "no va (fuera de nuestros canales)", la 824).
+ *  2. LA AGENDA, ETAPA 2 (en este orden; los interruptores, APAGADOS hasta tu OK):
+ *     2a. "Agenda (mail)" con el formato de "Agenda Directa":
+ *       c40_agendaDirecta_enSeco()      SÓLO LECTURA (paso 72): cómo quedaría "Agenda (mail)" con el formato de "Agenda Directa".
+ *       c41_copiarDirecta_enSeco()      SÓLO LECTURA (paso 73): qué copiaría de lo que el equipo cargó en "Agenda Directa".
+ *       c42_copiarDirecta()             ESCRIBE, UNA VEZ (paso 74): AGENDA_EQUIPO (intermedia, sin pisar nada) y oculta
+ *                                       "Sugerencia - Equipo Directa" (no la borra). "Agenda Directa" sólo se lee.
+ *       → avisame y prendo AGENDA_MAIL_FORMATO_DIRECTA.
+ *     2b. Los avisos por mail: dame el OK, prendo AVISOS_MAIL_ACTIVO y corrés
+ *       c43_probarMailAvisos()          manda UN mail de prueba a jpcofano2@gmail.com (paso 80). Sin el interruptor no manda nada.
+ *     2c. La auditoría de los lunes:
+ *       c44_auditoriaSemanal_enSeco()   SÓLO LECTURA (paso 81): cómo quedaría la solapa del lunes y el resumen.
+ *       → dame el OK, prendo AUDITORIA_SEMANAL_ACTIVA y corrés
+ *       c45_instalarAuditoriaSemanal()  crea UN activador (lunes 8:00) (paso 82). Se niega con el interruptor apagado; no duplica.
  *
  * ============================================================================================
  *  CUANDO QUIERAS — sólo lectura
  * ============================================================================================
  *       c10_auditoria()                  la auditoría de la agenda (paso 66).
- *       c11_mediciones()                 los pasos 67, 104, 105 y 106 juntos.
+ *       c11_mediciones()                 los pasos 67, 104, 105 y 106 juntos (el 67: cuánto tarda cada parte de la corrida).
  *       c12_revisarTodo()                los pasos de revisión, todos (si no alcanza el tiempo, dice FALTAN: volvé a correrla).
  *       c13_reprogramadas()              (paso 110) desde el 15/07, qué cancelaciones del mail quedarían "Reprogramada" (con la
  *                                        fecha nueva) en vez de "Suspendida". Mirarlo antes de prender AGENDA_REPROGRAMADA.
@@ -35,52 +42,31 @@
  * ============================================================================================
  *       c08_deshacerCorregirMacri1510()  vuelve la 824 a como estaba antes del c02 (sólo lo que todavía tiene lo que se escribió).
  *       c09_deshacerOrdenBase()          vuelve la base al orden de antes del c04.
- *
- *  Los pasos 101-103 (separar la 824 en dos filas) quedaron DESCARTADOS el 20/10: el equipo confirmó que la de Villa Devoto no va.
+ *       c46_borrarAuditoriaSemanal()     borra el activador de los lunes (paso 83).
  */
 
-function c01_corregirMacri1510_enSeco() {
-  _anunciar_('c01 — corregir la 824, Macri 15/10 (EN SECO)', 'corregirReunion_enSeco()  [58_CorregirReunion.js]',
-             'NO escribe la base (sólo guarda la huella, si está LISTO)',
-             'el log: el plan, (1) los asistentes son los de RDV CONJUNTO Villa Devoto, (2) el formulario, la simulación de la próxima ' +
-             'corrida (FUERA DE LO ESPERADO tiene que decir "nada"), (4) la agenda, (5) RDV CONJUNTO, LISTO / NO LISTO');
-  return corregirReunion_enSeco();
-}
+// ===================== 2. La agenda, etapa 2 =====================
 
-function c02_corregirMacri1510() {
-  _anunciar_('c02 — corregir la 824, Macri 15/10 (ESCRIBE)', 'corregirReunion()  [58_CorregirReunion.js]',
-             'SÍ: sólo la 824 (Barrio, STATUS, Asistentes, Oradores, Tocado por el equipo y sus agenda_*_escrito) y las derivadas; ' +
-             'REGISTRO_AGENDA (CORREGIR) y REGISTRO_AGENDA_CAMBIOS', 'el log; deshacer: c08_deshacerCorregirMacri1510()');
-  return corregirReunion();
-}
+function c40_agendaDirecta_enSeco() { return paso72_agendaDirecta_enSeco(); }
+function c41_copiarDirecta_enSeco() { return paso73_copiarAgendaDirecta_enSeco(); }
+function c42_copiarDirecta() { return paso74_copiarAgendaDirecta(); }
+function c43_probarMailAvisos() { return paso80_probarMailAvisos(); }
+function c44_auditoriaSemanal_enSeco() { return paso81_auditoriaSemanal_enSeco(); }
+function c45_instalarAuditoriaSemanal() { return paso82_instalarAuditoriaSemanal(); }
 
-function c03_ordenBase_enSeco() {
-  _anunciar_('c03 — ordenar la base por FECHA (EN SECO; paso 107)', 'ordenBase_enSeco()  [57_OrdenBase.js]',
-             'NO escribe la base (sólo guarda la huella, si está LISTO)', 'el log: qué se movería, la simulación, LISTO / NO LISTO');
-  return ordenBase_enSeco();
-}
+// ===================== Cuando quieras (sólo lectura) =====================
 
-function c04_ordenBase_ahora() {
-  _anunciar_('c04 — ordenar la base por FECHA (ESCRIBE; paso 108)', 'ordenarBaseAhora()  [57_OrdenBase.js]',
-             'SÍ: mueve las filas de la base (cada una entera, con su formato); guarda el orden de antes en ORDEN_BASE_PREVIO',
-             'el log; deshacer: c09_deshacerOrdenBase()');
-  return ordenarBaseAhora();
-}
+function c10_auditoria() { return paso66_auditoriaAgenda(); }
+function c11_mediciones() { return mediciones_soloLectura(); }
+function c12_revisarTodo() { return revisarTodo(); }
+function c13_reprogramadas() { return paso110_reprogramadas_enSeco(); }
 
-function c05_ayuda() { return paso48_ayuda(); }
+// ===================== Si algo sale mal =====================
 
 function c08_deshacerCorregirMacri1510() {
   _anunciar_('c08 — deshacer la corrección de la 824 (ESCRIBE)', 'deshacerCorregirReunion(false)  [58_CorregirReunion.js]',
              'SÍ: vuelve las celdas de la 824 que todavía tienen lo que escribió el c02', 'el log');
   return deshacerCorregirReunion(false);
 }
-
 function c09_deshacerOrdenBase() { return paso109_deshacerOrdenBase(); }
-
-function c10_auditoria() { return paso66_auditoriaAgenda(); }
-
-function c11_mediciones() { return mediciones_soloLectura(); }
-
-function c12_revisarTodo() { return revisarTodo(); }
-
-function c13_reprogramadas() { return paso110_reprogramadas_enSeco(); }
+function c46_borrarAuditoriaSemanal() { return paso83_borrarAuditoriaSemanal(); }
