@@ -1951,6 +1951,52 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — prompt 10, punto 2: "lo viejo se deja como está" — escrito y APAGADO (`REVISION_DESDE_FECHA_CORTE`)
+
+Prompt: docs/prompts/PROMPT-10-GUARDIAN-Y-CIERRE.md, punto 2. **Decisión del usuario: "lo viejo se deja como está; trabajamos hacia
+adelante."** En CLAUDE.md, decisión 13 (el recuadro).
+
+**Lo que NO se corrige ni se toca** (queda como está en los datos; no hay paso que lo arregle):
+- las **22 filas viejas de edades** (dic/2025–ene/2026);
+- los **IDS_SIN_CRUZAR históricos**;
+- las **fichas viejas de REVISAR_MATCH: 778, 787 y 813**;
+- las **3 reuniones viejas "hechas sin fila"**: Muzzio 29/07 y 14/08, Sánchez Zinny 12/08 (ya estaban fuera del alcance de la agenda,
+  hoy − 30: la corrida de la hora no las avisaba; sólo el paso 104, que mide desde el 15/07).
+
+**Hacia adelante** (`59_CorteRevision.js`; `REVISION_DESDE_FECHA_CORTE = false`, `FECHA_CORTE_REVISION = '2026-10-06'`, el inicio de la
+agenda): con el interruptor prendido, las solapas de revisión muestran sólo lo de la fecha de corte en adelante. **Sólo la vista**: el
+plan, los cruces, las escrituras de la base, las elecciones guardadas (ELECCIONES_MATCH: se leen, se aplican y se guardan igual), los
+conteos del log y REGISTRO_UPSERT no cambian; nada se borra. La fecha de cada solapa (siempre la de la reunión):
+
+| solapa | qué fecha |
+|---|---|
+| REVISAR_MATCH, fichas pendientes | la FECHA de la fila (la vista previa del paso 21, que pide filas a mano, no se filtra) |
+| REVISAR_MATCH, RESUELTAS | la fecha de la reunión de la elección (la elección sigue en ELECCIONES_MATCH) |
+| SIN_MATCH, HISTORICO_SIN_RESOLVER | la FECHA de la fila |
+| EMPAREJAR_MANUAL | la columna "Fecha": la FECHA de la fila; en "formularios sin ningún candidato", la del formulario (nombre o cierre). Los títulos "(N)" se recuentan |
+| IDS_SIN_CRUZAR | la Fecha de la lista (la planeada: el ID todavía no tiene fila) |
+| "se hizo y no está en la base" (AGENDA_PENDIENTES y el aviso diario 'agenda_info') | la fecha de RDV CONJUNTO |
+
+Sin fecha legible (vacía, o un texto sin año como "1/10"), se muestra. Con la fecha de corte mal escrita, no se esconde nada.
+
+**El seco: `paso111_corteRevision_enSeco()`** (99_Correr.js → `medirCorteRevision()`, `diagnostico/40_corte_revision.js`), SÓLO
+LECTURA, con el interruptor apagado (simula prendido con las mismas funciones): por solapa, cuántas líneas hay hoy, cuántas quedan y
+cuáles dejan de aparecer (las primeras 25, con su fecha, y cuántas por mes), y la **VERIFICACIÓN** de que no desaparece nada del 06/10 en
+adelante ni nada sin fecha (si pasara: "OJO: DESAPARECERÍA ALGO…", en mayúsculas, y no se prende). REVISAR_MATCH, SIN_MATCH y
+EMPAREJAR_MANUAL salen del plan de la próxima corrida; HISTORICO_SIN_RESOLVER e IDS_SIN_CRUZAR, de la solapa como está hoy; "hechas sin
+fila", del cálculo de la agenda (y aparte, como el paso 104, desde el 15/07).
+
+**Qué mirar en el seco** (sin predicción de números: no los medimos): que en las fichas pendientes salgan las de antes del 06/10 (entre
+ellas la 778, la 787 y la 813, si siguen pendientes) y queden todas las del 06/10 en adelante; que en EMPAREJAR_MANUAL y SIN_MATCH lo
+que sale sea de septiembre y del 01–05/10; que HISTORICO_SIN_RESOLVER quede vacía (todo lo que tiene es de más de 30 días: anterior al
+20/09); qué IDs de IDS_SIN_CRUZAR salen (los de Fecha de la lista anterior al 06/10); y la línea VERIFICACIÓN: OK.
+
+Tests: `tests/corte_revision.test.js` (apagado = el código de d5662f3, leído con git, en todo lo que escriben las solapas y en el
+plan; prendido, lo de antes del corte no aparece y lo del corte en adelante es igual que apagado; la base escrita, idéntica; la fecha
+mal escrita; el seco no escribe nada y grita con un filtro roto a propósito).
+
+**Qué falta:** el usuario corre el paso 111 y, si está bien, `REVISION_DESDE_FECHA_CORTE = true` + clasp push.
+
 #### 20/10 (noche) — c01 y c03 dieron NO LISTO sólo por Looker: arreglado
 
 1. **c01**: el único "fuera de lo esperado" era el máximo de Looker del 15/10 (Barrio = Villa Devoto, Realizada), que pasa a otra

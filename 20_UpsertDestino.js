@@ -3735,6 +3735,15 @@ function _barra_(n, total) {
  */
 function escribirReportes_(plan, fallaron, soloEstos) {
   const quiere = function (n) { return !soloEstos || soloEstos.indexOf(n) !== -1; };
+  // 20/10 (prompt 10, punto 2; REVISION_DESDE_FECHA_CORTE, 59_CorteRevision.js): con el corte prendido, lo de antes de
+  // FECHA_CORTE_REVISION no se muestra (sólo la vista: el plan no cambia). Apagado, `rc` trae los mismos arreglos del plan.
+  const rc = typeof reportesConCorte_ === 'function' ? reportesConCorte_(plan)
+    : { corte: null, revisar: plan.filasRevisar, sinMatch: plan.filasSinMatch, emparejar: plan.emp ? plan.emp.matriz : null };
+  if (rc.corte) {
+    Logger.log('[upsert] "lo viejo se deja como está": las solapas de revisión muestran sólo desde el %s (REVISION_DESDE_FECHA_CORTE) — ' +
+               'no se muestran: SIN_MATCH %s | EMPAREJAR_MANUAL %s%s (las fichas, en 26_Fichas.js)', fmtCorteRevision_(rc.corte),
+               rc.ocultas.sinMatch, rc.ocultas.emparejar, REVISAR_COMO_FICHAS ? '' : ' | REVISAR_MATCH ' + rc.ocultas.revisar);
+  }
 
   if (quiere(RDV_HOJA_REVISAR) && REVISAR_COMO_FICHAS && REVISAR_FORMATO_NUEVO) {
     // El formato aprobado el 06/10 (27_RevisarFormato.js): las mismas fichas, columnas A..M fijas y la
@@ -3767,13 +3776,13 @@ function escribirReportes_(plan, fallaron, soloEstos) {
       escribirReporte_(RDV_HOJA_REVISAR,
         ['clave', 'figura', 'barrio', 'fecha', 'form_origen', 'score', 'segundo', 'margen',
          'motivo', 'senales', 'en_ventana'].concat(_encabezadoOpciones_(OPCIONES_REVISION)),
-        plan.filasRevisar);
+        rc.revisar);
     });
   }
   if (quiere(RDV_HOJA_EMPAREJAR)) {
     _intentar_(fallaron, RDV_HOJA_EMPAREJAR, function () {
-      escribirHoja_(RDV_HOJA_EMPAREJAR, plan.emp.matriz);
-      Logger.log('[upsert] %s: %s filas', RDV_HOJA_EMPAREJAR, plan.emp.matriz.length - 1);
+      escribirHoja_(RDV_HOJA_EMPAREJAR, rc.emparejar);
+      Logger.log('[upsert] %s: %s filas', RDV_HOJA_EMPAREJAR, rc.emparejar.length - 1);
     });
   }
   // 13/10: los formularios sin fila, en el archivo de la base (48_FormulariosSinFila.js), con FORMULARIOS_SIN_FILA_ACTIVA
@@ -3788,7 +3797,7 @@ function escribirReportes_(plan, fallaron, soloEstos) {
     _intentar_(fallaron, RDV_HOJA_SIN_MATCH, function () {
       escribirReporte_(RDV_HOJA_SIN_MATCH,
         ['clave', 'figura', 'barrio', 'fecha', 'motivo', 'mejor_descartado', 'score', 'evento',
-         'en_ventana'], plan.filasSinMatch);
+         'en_ventana'], rc.sinMatch);
     });
   }
 }

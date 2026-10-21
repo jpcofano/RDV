@@ -4006,8 +4006,12 @@ function infoAgenda_(P) {
   // ESTADO (se recalcula: cuando el equipo carga la fila, la línea se va); va al aviso diario una sola vez (por su id)
   // 20/10 (prompt 09, punto 4): las que el administrador marcó "no va (fuera de nuestros canales)" no se listan ni se avisan más
   const noVan = leerHechasNoVan_();
+  // 20/10 (prompt 10, punto 2; REVISION_DESDE_FECHA_CORTE, 59_CorteRevision.js): con el corte prendido, no se listan ni se avisan las de
+  // antes de FECHA_CORTE_REVISION (por la fecha de RDV CONJUNTO). El cálculo y P.resumen no cambian. Apagado: todas.
+  const corteH = typeof corteRevisionYmd_ === 'function' ? corteRevisionYmd_() : null;
   ((P.hechasSinFila && P.hechasSinFila.lista) || []).forEach(function (h) {
     if (noVan.has(h.id)) return;
+    if (corteH && antesDelCorte_(h.fecha, corteH)) return;
     out.push({ tipo: 'se hizo y no está en la base', reunion: fmtFecha_(h.fecha) + ' | ' + (h.figura || '(sin figura)') + ' | ' + (h.barrio || '—') +
                                                           (h.direccion ? ' | ' + h.direccion : ''),
                semana: '', grupo: '', fecha: h.fecha, hora: '', lugar: h.barrio || '', fila: h.candidatas.map(function (c) { return c.fila; }).join(', '),

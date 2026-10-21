@@ -188,9 +188,13 @@ function _reordenarFichas_(salida, formato) {
  */
 function _listaFichas_(plan, ctx, opts) {
   if (opts.filas) return opts.filas.map(function (n) { return ctx.porNum[n]; }).filter(Boolean);
+  // 20/10 (prompt 10, punto 2; REVISION_DESDE_FECHA_CORTE): con el corte prendido, sin las reuniones de antes de FECHA_CORTE_REVISION
+  // (por la FECHA de la fila). `opts.corte` ('yyyyMMdd' o null) lo fuerza el seco. Apagado: como siempre.
+  const corte = 'corte' in opts ? opts.corte : (typeof corteRevisionYmd_ === 'function' ? corteRevisionYmd_() : null);
   const lista = plan.dest.filas.filter(function (f) {
     const pf = plan.porFila[f.fila];
-    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && esFilaActiva_(f.fecha);
+    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && esFilaActiva_(f.fecha) &&
+           !(corte && antesDelCorte_(f.fecha, corte));
   });
   lista.sort(function (a, b) {
     const ta = a.fecha ? a.fecha.getTime() : 0, tb = b.fecha ? b.fecha.getTime() : 0;
@@ -320,8 +324,13 @@ function _eleccionDeFicha_(ctx, f) {
   return { e: e, comentario: (e && e.comentario) || (nota && nota.comentario) || '' };
 }
 
-/** Las resueltas: aplicadas, válidas y "ninguno" (la última por fila). */
-function _resueltas_(ctx) {
+/**
+ * Las resueltas: aplicadas, válidas y "ninguno" (la última por fila). Con el corte prendido (REVISION_DESDE_FECHA_CORTE), sin las de
+ * reuniones de antes de FECHA_CORTE_REVISION (por la fecha de la reunión de la elección): sólo dejan de mostrarse, ELECCIONES_MATCH
+ * no cambia. `corte` ('yyyyMMdd' o null) lo fuerza el seco; sin él, el que rige.
+ */
+function _resueltas_(ctx, corte) {
+  if (corte === undefined) corte = typeof corteRevisionYmd_ === 'function' ? corteRevisionYmd_() : null;
   const porFila = {};
   (ctx.plan.elecciones ? ctx.plan.elecciones.todas : []).forEach(function (e) {
     const ok = e.estado === 'aplicado' || e.estado === 'ninguno' || e.resultadoPlan === 'valida';
@@ -337,7 +346,8 @@ function _resueltas_(ctx) {
       }) || null;
     }
     return e;
-  }).sort(function (a, b) { return (b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0); });
+  }).filter(function (e) { return !(corte && antesDelCorte_(e.fecha, corte)); })
+    .sort(function (a, b) { return (b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0); });
 }
 
 /** Los formularios de la figura de `f` descartados por la regla 3, a ±DIAS_CONTEXTO_FICHA días de su fecha. */
@@ -1012,9 +1022,12 @@ function escribirHistoricoSinResolver_(plan) {
   const enc = ['fila', 'figura', 'fecha', 'barrio', 'veredicto', 'motivo', 'mejor_opcion', 'confianza', 'puntaje',
                'form_clave', 'en_ventana'];
   const porMotivo = {};
+  // 20/10 (prompt 10, punto 2; REVISION_DESDE_FECHA_CORTE): con el corte prendido, sin las reuniones de antes de FECHA_CORTE_REVISION
+  const corte = typeof corteRevisionYmd_ === 'function' ? corteRevisionYmd_() : null;
   const filas = plan.dest.filas.filter(function (f) {
     const pf = plan.porFila[f.fila];
-    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && !esFilaActiva_(f.fecha);
+    return pf && (pf.veredicto === 'REVISAR_MATCH' || pf.veredicto === 'SIN_MATCH') && !esFilaActiva_(f.fecha) &&
+           !(corte && antesDelCorte_(f.fecha, corte));
   }).sort(function (a, b) {
     return ((b.fecha ? b.fecha.getTime() : 0) - (a.fecha ? a.fecha.getTime() : 0)) || (a.fila - b.fila);
   }).map(function (f) {

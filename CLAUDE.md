@@ -2850,6 +2850,24 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     cerradas (información: después del paso 22 tienen que dar 0), y el paso 20 con rango
     (`PASO20_DESDE = 2`) usa el plan de todo el historial.
 
+    > **"Lo viejo se deja como está; trabajamos hacia adelante"** (decisión del usuario, 20/10, prompt 10, punto 2).
+    > **Lo que no se corrige ni se toca**: las **22 filas viejas de edades** (dic/2025–ene/2026), los **IDS_SIN_CRUZAR
+    > históricos**, las **fichas viejas de REVISAR_MATCH (778, 787 y 813)** y las **3 reuniones viejas "hechas sin fila"**
+    > (Muzzio 29/07 y 14/08, Sánchez Zinny 12/08). Quedan como están en los datos; nadie las arregla a mano por el sistema.
+    >
+    > **Hacia adelante (`59_CorteRevision.js`; `REVISION_DESDE_FECHA_CORTE`, APAGADO hasta que el usuario vea el seco;
+    > `FECHA_CORTE_REVISION = '2026-10-06'`, el inicio de la agenda):** las solapas de revisión muestran sólo lo de la
+    > fecha de corte en adelante. **Es sólo la vista**: el plan, los cruces, las escrituras de la base, las elecciones
+    > (ELECCIONES_MATCH se lee, se aplica y se guarda igual), los conteos del log y REGISTRO_UPSERT no cambian; nada se
+    > borra. La fecha que cuenta es la de la **reunión**: la FECHA de la fila en las fichas de REVISAR_MATCH (y en sus
+    > RESUELTAS, la de la reunión de la elección), SIN_MATCH, HISTORICO_SIN_RESOLVER y EMPAREJAR_MANUAL (en su bloque
+    > "formularios sin ningún candidato", la del formulario: su nombre o su cierre); en IDS_SIN_CRUZAR, la Fecha de la lista
+    > (la planeada); en "se hizo y no está en la base" (AGENDA_PENDIENTES y el aviso diario), la de RDV CONJUNTO. Sin fecha
+    > legible, se muestra; con la fecha de corte mal escrita, no se esconde nada. El seco: `medirCorteRevision()`
+    > (`diagnostico/40_corte_revision.js`, paso 111, sólo lectura: qué deja de aparecer en cada solapa y la verificación de
+    > que no desaparece nada del corte en adelante). Test: `tests/corte_revision.test.js`. No es `DIAS_ACTIVOS`: aquélla
+    > decide sobre qué filas trabaja el sistema; ésta, qué se muestra para revisar.
+
 14. **Los IDs de los encuentros: "ID cuentas" y "Fecha envío campañas"** (decisión del usuario, 08/10; `45_IdsCuentas.js`).
     La lista del equipo de campañas (planilla 6) se cruza con las filas de la base y el ID se escribe por la **regla
     general** (sólo celda vacía, `COLOR_SISTEMA`); la traza de cada escritura, en `REGISTRO_IDS`; lo que no se cruza, con el
@@ -3043,6 +3061,9 @@ diagnostico/34_colores_mail.js  las marcas de COLOR del mail (paso 90, SÓLO LEC
                    amarillo y el rojo, las notas "Actualizo", "Hora: A CONFIRMAR" y "(NO PARTICIPA)"           ← 15/10
 58_CorregirReunion.js  la quinta excepción (§0): corregir UNA fila con el OK del usuario (la 824, Macri 15/10): c01 en seco con la
                    próxima corrida simulada y la huella, c02 real, c08 deshacer                                   ← 20/10
+59_CorteRevision.js  "lo viejo se deja como está" (decisión 13, el recuadro): las solapas de revisión, sólo desde
+                   FECHA_CORTE_REVISION (sólo la vista; nada del plan ni de la base cambia). APAGADO
+                   (REVISION_DESDE_FECHA_CORTE); el seco: diagnostico/40_corte_revision.js (paso 111, sólo lectura)  ← 20/10
 00_Correr.js       LO QUE HAY QUE CORRER (c01..c12), primero en el editor; los pasoNN_ siguen en 99_Correr.js. Sin lógica  ← 20/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito

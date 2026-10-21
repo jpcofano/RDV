@@ -1227,7 +1227,13 @@ function registrarIds_(res, hechas, corrida) {
 function escribirSinCruzarIds_(res, corrida) {
   const enc = IDS_ENCABEZADO_SIN_CRUZAR_.slice();
   enc[0] = 'motivo (' + corrida + ', ' + Utilities.formatDate(new Date(), RDV_TZ, 'dd/MM HH:mm') + ')';
-  escribirReporte_(IDS_SOLAPA_SIN_CRUZAR, enc, res.sinCruzar.map(function (x) { return x.linea; }));
+  // 20/10 (prompt 10, punto 2; REVISION_DESDE_FECHA_CORTE, 59_CorteRevision.js): con el corte prendido, sin los IDs cuya Fecha de la
+  // lista es anterior a FECHA_CORTE_REVISION (sólo la vista: el cruce, los conteos y lo escrito no cambian). Apagado: todas.
+  const corte = typeof corteRevisionYmd_ === 'function' ? corteRevisionYmd_() : null;
+  const lista = corte ? filtrarSinCruzarIdsPorCorte_(res.sinCruzar, corte) : { quedan: res.sinCruzar, salen: [] };
+  if (corte) Logger.log('  IDS_SIN_CRUZAR: desde el %s (REVISION_DESDE_FECHA_CORTE): %s líneas | no se muestran %s (Fecha de la lista anterior)',
+                        fmtCorteRevision_(corte), lista.quedan.length, lista.salen.length);
+  escribirReporte_(IDS_SOLAPA_SIN_CRUZAR, enc, lista.quedan.map(function (x) { return x.linea; }));
 }
 
 /** El log de la lista: dónde está el encabezado, qué columnas, cuántos IDs, el huso horario. */
