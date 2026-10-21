@@ -42,14 +42,16 @@ function revisarTodo_(opciones) {
   opciones = opciones || {};
   const t0 = _revisarAhora_();
   const pasos = opciones.pasos || revisarTodoPasos_();
+  // 21/10: la misma mecánica para otras listas (c19_cierre_soloLectura): su propiedad, su nombre y su forma de resumir cada paso
+  const PROP = opciones.prop || REVISAR_TODO_PROP, NOMBRE = opciones.nombre || 'revisarTodo';
   const props = PropertiesService.getScriptProperties();
   let prog = null;
-  try { prog = JSON.parse(props.getProperty(REVISAR_TODO_PROP) || 'null'); } catch (e) { prog = null; }
+  try { prog = JSON.parse(props.getProperty(PROP) || 'null'); } catch (e) { prog = null; }
   const nueva = !prog;
   prog = prog || { inicio: new Date(t0).toISOString(), hechos: {}, resumen: {}, intentos: {}, enCurso: null, ejecuciones: 0 };
   prog.ejecuciones++;
-  const guardar = function () { props.setProperty(REVISAR_TODO_PROP, JSON.stringify(prog)); };
-  Logger.log('=== revisarTodo — %s (ejecución %s): pasos de SÓLO LECTURA, en orden: %s ===', nueva ? 'DE CERO' : 'SIGUE DONDE QUEDÓ',
+  const guardar = function () { props.setProperty(PROP, JSON.stringify(prog)); };
+  Logger.log('=== %s — %s (ejecución %s): pasos de SÓLO LECTURA, en orden: %s ===', NOMBRE, nueva ? 'DE CERO' : 'SIGUE DONDE QUEDÓ',
              prog.ejecuciones, pasos.map(function (p) { return p.n; }).join(', '));
   // la ejecución anterior murió en el medio de un paso (el límite de 6 min no se puede atrapar)
   if (prog.enCurso != null) {
@@ -72,19 +74,20 @@ function revisarTodo_(opciones) {
     if (quedan < REVISAR_TODO_MARGEN_MS || (quedan < necesita && _revisarAhora_() - t0 > 5000)) {
       const faltan = pasos.filter(function (x) { return !prog.hechos[String(x.n)]; }).map(function (x) { return x.n; });
       guardar();
-      Logger.log('*** FALTAN: %s — volvé a correr revisarTodo() (quedaban %s s; el paso %s necesita %s s) ***',
-                 faltan.join(', '), Math.round(quedan / 1000), p.n, Math.round(necesita / 1000));
+      Logger.log('*** FALTAN: %s — volvé a correr %s() (quedaban %s s; el paso %s necesita %s s) ***',
+                 faltan.join(', '), NOMBRE, Math.round(quedan / 1000), p.n, Math.round(necesita / 1000));
       return { terminado: false, faltan: faltan, resumen: prog.resumen };
     }
     prog.enCurso = p.n;
     guardar();
     const tp = _revisarAhora_();
     Logger.log('');
-    Logger.log('##### revisarTodo: paso %s — %s #####', p.n, p.que);
+    Logger.log('##### %s: paso %s — %s #####', NOMBRE, p.n, p.que);
     let linea;
     try {
       const r = p.fn();
-      linea = 'OK (' + Math.round((_revisarAhora_() - tp) / 1000) + ' s)' + _resumenCortoRevisar_(r);
+      linea = p.resumir ? p.resumir(r) + ' (' + Math.round((_revisarAhora_() - tp) / 1000) + ' s)'
+                        : 'OK (' + Math.round((_revisarAhora_() - tp) / 1000) + ' s)' + _resumenCortoRevisar_(r);
     } catch (err) {
       linea = 'FALLÓ (' + Math.round((_revisarAhora_() - tp) / 1000) + ' s): ' + String(err && err.message || err).split('\n')[0].slice(0, 300);
       Logger.log('>>> el paso %s falló: %s (se sigue con el próximo)', p.n, err && err.stack || err);
@@ -97,7 +100,7 @@ function revisarTodo_(opciones) {
   Logger.log('');
   Logger.log('*** TERMINADO (%s ejecución/es, desde %s) — RESUMEN ***', prog.ejecuciones, prog.inicio);
   pasos.forEach(function (p) { Logger.log('  paso %s (%s): %s', p.n, p.que, prog.resumen[String(p.n)] || '—'); });
-  props.deleteProperty(REVISAR_TODO_PROP);
+  props.deleteProperty(PROP);
   return { terminado: true, faltan: [], resumen: prog.resumen };
 }
 
@@ -126,4 +129,67 @@ function _resumenCortoRevisar_(r) {
     });
     return partes.length ? ' | ' + partes.slice(0, 12).join(' · ').slice(0, 300) : '';
   } catch (e) { return ''; }
+}
+
+// ===================== 21/10: c19_cierre_soloLectura() (00_Correr.js) =====================
+
+/**
+ * Los pasos de SÓLO LECTURA del cierre, en orden: c13 (paso 110), c20 (paso 111), c30 (paso 116), c40 (paso 72) y c44 (paso 81), con la
+ * misma mecánica que revisarTodo (FALTAN / sigue donde quedó / TERMINADO + RESUMEN) y una línea por paso: LISTO o NO LISTO y qué mirar.
+ * Ninguno deja una huella que haga falta después (la del c22 va con el c21, aparte): al volver a correr, todo se recalcula de cero.
+ */
+function cierreSoloLecturaPasos_() {
+  const num = function (v) { return typeof v === 'number' ? v : 0; };
+  return [
+    { n: 'c13', que: 'Reprogramada en vez de Suspendida, desde el 15/07 (paso 110)', fn: function () { return c13_reprogramadas(); }, minS: 120,
+      resumir: function (r) {
+        const c = r && r.cuenta;
+        if (!c) return 'NO LISTO: el paso no devolvió la cuenta' + (r && r.error ? ' (' + r.error + ')' : '');
+        return 'LISTO para decidir AGENDA_REPROGRAMADA: Reprogramada ' + num(c.reprogramada) + ' | Suspendida ' + num(c.suspendida) +
+               ' | coinciden ' + num(c.coincide) + ' | NO coinciden ' + num(c.noCoincide) + (num(c.noCoincide) ? ' (mirar en el log cuáles)' : '') +
+               ' | pasarían de Suspendida a Reprogramada ' + num(c.pasaria) + ' | las marcaría hoy ' + num(c.marcariaHoy);
+      } },
+    { n: 'c20', que: 'el guardián en seco (paso 111)', fn: function () { return c20_guardian_enSeco(); }, minS: 60,
+      resumir: function (r) {
+        if (!r || !r.clases) return 'NO LISTO: el paso no devolvió las clases';
+        const mal = [];
+        if (r.clases.sinClase && r.clases.sinClase.length) mal.push(r.clases.sinClase.length + ' columnas SIN CLASE (' + r.clases.sinClase.slice(0, 5).join(', ') + ')');
+        if (r.copiaNueva && r.copiaNueva.desalineada) mal.push('con una copia nueva da DESALINEADA');
+        if (r.copiaNueva && r.copiaNueva.cambios) mal.push('con una copia nueva da ' + r.copiaNueva.cambios + ' cambios (mirar el punto 3)');
+        if (r.copiaNueva && r.copiaNueva.clavesRepetidas) mal.push(r.copiaNueva.clavesRepetidas + ' claves repetidas (mirar el punto 3)');
+        if (!r.prueba) mal.push('la prueba del orden parcial no se pudo hacer');
+        else if (!r.prueba.frena) mal.push('la prueba del orden parcial NO FRENA');
+        return (mal.length ? 'NO LISTO: ' + mal.join(' | ') : 'LISTO: ninguna columna sin clase, la copia nueva da 0, la prueba frena') +
+               (r.ocultarProteger ? ' | ocultaría ' + r.ocultarProteger.ocultar + ', protegería ' + r.ocultarProteger.proteger : '') +
+               ' → sigue c21, c22, c23';
+      } },
+    { n: 'c30', que: 'lo viejo se deja como está (paso 116)', fn: function () { return c30_corteRevision_enSeco(); }, minS: 150,
+      resumir: function (r) {
+        if (!r) return 'NO LISTO: el paso no devolvió nada';
+        if (r.error) return 'NO LISTO: el seco se cortó (' + String(r.error).slice(0, 150) + ')';
+        const sol = (r.solapas || []).map(function (s) { return s.nombre + ' −' + s.salen; }).join(', ');
+        return (r.problemas && r.problemas.length ? 'NO LISTO: DESAPARECERÍA ALGO del corte en adelante o sin fecha (' + r.problemas.length + '; mirar el log)'
+                                                   : 'LISTO (VERIFICACIÓN OK)') + (sol ? ' | dejan de aparecer: ' + sol : '') +
+               ' → para prender REVISION_DESDE_FECHA_CORTE';
+      } },
+    { n: 'c40', que: '"Agenda (mail)" con el formato de "Agenda Directa" (paso 72)', fn: function () { return c40_agendaDirecta_enSeco(); }, minS: 30,
+      resumir: function (r) {
+        if (!r) return 'NO LISTO: el paso no devolvió nada';
+        return (r.fuente === 'directa' ? 'LISTO: "Agenda Directa" encontrada y coincide' : 'NO LISTO: se usaría el respaldo (' + (r.motivo || 'sin motivo') + ')') +
+               ' | ' + (r.columnas || []).length + ' columnas, ' + num(r.renglones) + ' renglones → sigue c41, c42';
+      } },
+    { n: 'c44', que: 'la auditoría de los lunes, en seco (paso 81)', fn: function () { return c44_auditoriaSemanal_enSeco(); }, minS: 200,
+      resumir: function (r) {
+        if (!r) return 'NO LISTO: el paso no devolvió nada';
+        if (r.falla) return 'NO LISTO: la auditoría falló (' + String(r.falla).slice(0, 150) + ')';
+        const noOk = r.res && r.res.noOk ? r.res.noOk.length : 0;
+        return 'LISTO: la solapa y el mail se arman' + (r.ok ? ' | la auditoría da todo OK' : ' | la auditoría tiene ' + (noOk || 'cosas') + ' para mirar (la línea roja de arriba)') +
+               (r.cancelNota ? ' | cancelaciones: ' + r.cancelNota : '') + ' → para prender AUDITORIA_SEMANAL_ACTIVA';
+      } }
+  ];
+}
+
+/** c19: la corrida (sigue donde quedó la anterior). Devuelve lo de revisarTodo_. */
+function cierreSoloLectura_(opciones) {
+  return revisarTodo_(Object.assign({ pasos: cierreSoloLecturaPasos_(), prop: CIERRE_PROP, nombre: 'c19_cierre_soloLectura' }, opciones || {}));
 }

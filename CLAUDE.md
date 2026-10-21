@@ -309,13 +309,13 @@ protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`
 
 - **tres clases de columnas, por encabezado** (`00_Config.js`; el paso 111 las muestra contra la base real, con las que no están
   en ninguna lista):
-  - **A, del sistema, puras** (`GUARDIAN_CLASE_A`: traza, las 16 de la agenda, "ID cuentas", "Fecha envío campañas"; y las 12
+  - **A, del sistema, puras** (`GUARDIAN_CLASE_A`: traza, las 16 de la agenda, "Fecha envío campañas"; y las 12
     derivadas, `GUARDIAN_CLASE_A_DERIVADAS`): **protección con advertencia** y **encabezado gris**; las **técnicas**
     (`GUARDIAN_OCULTAR`, las 6 de traza y las 8 `agenda_*`) se **ocultan**. El guardián compara las de `GUARDIAN_CLASE_A`
     contra su copia; las derivadas no (las recalcula cada corrida);
   - **B, datos que escribe el sistema y el equipo puede corregir** (`GUARDIAN_CLASE_B`: Figura, FECHA, HORA, Barrio, Dirección,
-    EVENTO, STATUS REUNIÓN, Inscriptos, canales, sexo, edades, Sin identificar, Asistentes, Oradores): **el guardián no las
-    restaura nunca**; la corrección del equipo vale (la agenda la anota en "Tocado por el equipo");
+    EVENTO, STATUS REUNIÓN, Inscriptos, canales, sexo, edades, Sin identificar, Asistentes, Oradores y —21/10, decisión del usuario—
+    **"ID cuentas"**, para que el "no" del equipo (decisión 14) se respete): **el guardián no las restaura nunca**; la corrección del equipo vale (la agenda la anota en "Tocado por el equipo");
   - **C, del equipo** (`GUARDIAN_CLASE_C`): ni el guardián ni el sistema las tocan;
 - ocultar y proteger: pasos 113 (en seco, con huella) → 114 (real; las protecciones del equipo no se tocan; anota lo que hizo)
   → 115 (deshacer: sólo lo suyo). **Las columnas A que nacen después** (13/10): al final de cada corrida con el guardián
@@ -354,8 +354,8 @@ protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`
   manda si el equipo cambió figura o fecha; la huella en una sola fila libre: si esa fila tiene las columnas A de **otra**
   reunión (su clave, o los valores de otra entrada) → desalineación; si no (la misma fila, movida entera) → en su lugar; con otro
   desempate o en varias filas → ambigua (desalineación);
-- **consecuencia**: con el guardián en `'restaurar'`, el equipo ya no puede corregir a mano una columna A (se vuelve atrás): un
-  ID mal puesto o el "no" de la decisión 14. Esas correcciones pasan por quien opera el sistema. En `'avisar'`, se avisan.
+- **consecuencia**: con el guardián en `'restaurar'`, el equipo ya no puede corregir a mano una columna A (se vuelve atrás). Esas
+  correcciones pasan por quien opera el sistema. En `'avisar'`, se avisan. "ID cuentas" es B (21/10): el "no" de la decisión 14 sigue andando.
 
 Los pasos (99_Correr.js): **111** en seco (las clases, qué avisaría con una copia nueva —tiene que dar 0— y contra la de hoy, la
 prueba del orden parcial en memoria) → **112** la copia nueva (escribe sólo `SISTEMA_COPIA`, idempotente) → **113 / 114**
@@ -2952,8 +2952,8 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
       son lo que escribió el sistema) y el paso 57 los vuelve a cruzar;
     - **un ID borrado vuelve**: la celda queda vacía y la corrida siguiente lo escribe de nuevo. Para que una fila NO reciba
       un ID, el equipo escribe **"no"** (o cualquier texto) en su "ID cuentas": una celda con valor no se toca (se lista
-      como `fila_con_otro_id`, "no es un ID: lo puso el equipo"). **Con el guardián prendido (sección 0) esto deja de
-      andar**: lo que el equipo escribe en "ID cuentas" se restaura;
+      como `fila_con_otro_id`, "no es un ID: lo puso el equipo"). **Con el guardián prendido sigue andando** (21/10: "ID
+      cuentas" es de la clase B, el guardián no la restaura);
     - **la fecha de envío**: como fecha (`dd/MM/yyyy`); vacía si la lista dice "#N/A", "-" o algo que no es fecha; si su
       **año no cierra** con el del encuentro (el mismo, o diciembre para uno de enero) o un ID repetido trae dos distintas,
       vacía y se lista (`fecha_envio_descartada`). El ID se escribe igual. Se escribe **sólo al lado de un ID que quedó
@@ -3072,7 +3072,7 @@ diagnostico/35_elecciones_agenda.js  por qué AGENDA_DUPLICADOS no aplica una de
                    bases (la de hoy y "como quedaría") fila por fila por su identidad. La usan los pasos 101 y 107  ← 19/10
 56_SepararReunion.js  separar "dos reuniones en una fila" (Macri 15/10, la 824): paso 101 en seco (con la simulación; LISTO →
                    huella), 102 real (la exige), 103 deshace por identidad                                       ← 19/10
-57_OrdenBase.js    la base ordenada por FECHA, HORA y Figura, al PRINCIPIO de la corrida de la hora (BASE_ORDEN_POR_FECHA, APAGADO):
+57_OrdenBase.js    la base ordenada por FECHA, HORA y Figura, al PRINCIPIO de la corrida de la hora (BASE_ORDEN_POR_FECHA, PRENDIDO el 21/10):
                    paso 107 en seco (con la simulación: la próxima corrida tiene que hacer lo mismo con la base ordenada), 108
                    ordena a mano, 109 deshace (ORDEN_BASE_PREVIO, intermedia); REGISTRO_CORRIDAS "base_ordenada"         ← 19/10
 52_RevisarTodo.js  revisarTodo() (99_Correr.js): los pasos de revisión de SÓLO LECTURA en orden (68-73, 75, 76, 78, 81; no el 74,

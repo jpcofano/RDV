@@ -348,7 +348,9 @@ ok(r && !r.error && JSON.stringify({ v: E.D.v.map(function (x) { return x.slice(
    JSON.stringify({ v: JSON.parse(antes).v.map(function (x) { return x.slice(0, E.hdr.length); }), bg: JSON.parse(antes).bg.map(function (x) { return x.slice(0, E.hdr.length); }) }) &&
    !E.D.aux && E.D.v[0].length === E.hdr.length,
    'la base vuelve exacta al orden de antes y la columna auxiliar ya no está — ' + JSON.stringify(r));
-r = E.run('ordenarBaseEnLaHora_()');
+// 21/10: BASE_ORDEN_POR_FECHA está PRENDIDO en 00_Config.js; apagado (a propósito, en otro entorno) no hace nada
+ok(E.run('BASE_ORDEN_POR_FECHA') === true, '00_Config.js: BASE_ORDEN_POR_FECHA prendido (21/10)');
+r = montar({ BASE_ORDEN_POR_FECHA: 'false' }).run('ordenarBaseEnLaHora_()');
 ok(r && r.apagado === true, 'la corrida de la hora con BASE_ORDEN_POR_FECHA apagado: no hace nada');
 
 // ============================== [5] una hoja que no mueve los fondos; con fórmulas ==============================

@@ -10,9 +10,14 @@
  *  LO QUE TENÉS QUE CORRER — en este orden
  * ============================================================================================
  *
- *  1. ESPERAN TU OK (no hay que correr nada):
- *       BASE_ORDEN_POR_FECHA    lo prendo cuando me confirmes que la corrida de la hora después del c04 salió bien.
- *       AGENDA_REPROGRAMADA     mirá c13_reprogramadas() (sólo lectura) y dame el OK: lo prendo.
+ *  0. TODO LO DE SÓLO LECTURA DEL CIERRE, DE UNA:
+ *       c19_cierre_soloLectura()        SÓLO LECTURA: corre en orden c13, c20, c30, c40 y c44. Si no le alcanza el tiempo dice
+ *                                       "FALTAN …": volvé a correrla y sigue donde quedó. Al final, "TERMINADO" y un RESUMEN con una
+ *                                       línea por paso (LISTO / NO LISTO y qué mirar). Cada vez que termina, la próxima empieza de cero.
+ *
+ *  1. ESPERA TU OK (no hay que correr nada):
+ *       AGENDA_REPROGRAMADA     mirá c13_reprogramadas() (sólo lectura; o el c19) y dame el OK: lo prendo.
+ *       (BASE_ORDEN_POR_FECHA: PRENDIDO el 21/10, después del c04 y de la corrida de la hora que salió bien.)
  *
  *  2. EL GUARDIÁN (las columnas del sistema; GUARDIAN_ACTIVO, APAGADO). Primero aprobás la lista A / B / C:
  *       c20_guardian_enSeco()           SÓLO LECTURA (paso 111): las clases A / B / C de cada columna de la base (y las SIN CLASE),
@@ -63,6 +68,15 @@
  *       c46_borrarAuditoriaSemanal()     borra el activador de los lunes (paso 83).
  *       c25_deshacerOcultarProteger()    vuelve a mostrar lo ocultado y saca sólo las protecciones que puso el c23 (paso 115).
  */
+
+// ===================== 0. Todo lo de sólo lectura del cierre =====================
+
+function c19_cierre_soloLectura() {
+  _anunciar_('c19 — el cierre, todo lo de SÓLO LECTURA (c13, c20, c30, c40, c44)', 'cierreSoloLectura_()  [52_RevisarTodo.js]',
+             'NO escribe nada (sólo su progreso, en una propiedad del script)',
+             'el log de cada paso y, al final, "TERMINADO" + RESUMEN, o "FALTAN: …" si hay que volver a correrla');
+  return cierreSoloLectura_();
+}
 
 // ===================== 2. El guardián =====================
 

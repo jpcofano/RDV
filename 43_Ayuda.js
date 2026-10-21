@@ -47,7 +47,7 @@ const AYUDA_GUIA_ = [
   ['seccion', 'COLUMNAS: CUÁLES PUEDE TOCAR EL EQUIPO'],
   ['item', 'Del equipo (el sistema nunca las toca): %C%.'],
   ['item', 'Datos que completa el sistema y el equipo puede corregir: %B%. Lo que corrijan, el sistema no lo vuelve a tocar.'],
-  ['item', 'Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, ID cuentas, Fecha envío campañas.'],
+  ['item', 'Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, Fecha envío campañas.'],
   ['item', 'Las columnas del sistema tienen el encabezado gris y están protegidas: si se intenta escribir en una, Sheets avisa antes (las técnicas están ocultas).', null, 'guardian'],
   ['item', 'Si igual se cambia una columna del sistema, el sistema no la corrige: le avisa a quien lo administra.', null, 'guardianAvisar'],
   ['item', 'Si igual se cambia una columna del sistema, el sistema la vuelve a poner como estaba en la hora siguiente (y le avisa a quien lo administra).', null, 'guardianRestaurar'],

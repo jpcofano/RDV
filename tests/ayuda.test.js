@@ -154,9 +154,9 @@ ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde &
    'QUÉ SIGNIFICAN LOS COLORES: cada línea con su color (los de las fichas y #CFE2F3)');
 const iEleg = filas.findIndex(function (t) { return /ELEGIR/.test(t); });
 ok(iEleg > 0 && JSON.stringify(fmt(g, iEleg + 1).negritas) === '["ELEGIR"]', 'ELEGIR en negrita');
-ok(filas.indexOf(' • Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, ID cuentas, Fecha envío campañas.') > 0 &&
+ok(filas.indexOf(' • Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, Fecha envío campañas.') > 0 &&
    filas.indexOf(' • Del equipo (el sistema nunca las toca): One Page Entregado, Observaciones, Temas mas comentados, Semaforo politico, Síntesis cualitativa:.') > 0 &&
-   filas.some(function (t) { return /^ • Datos que completa el sistema y el equipo puede corregir: Figura, Barrio, EVENTO, FECHA, HORA, Dirección, STATUS REUNIÓN, Inscriptos, .*Sin identificar\. /.test(t); }) &&
+   filas.some(function (t) { return /^ • Datos que completa el sistema y el equipo puede corregir: Figura, Barrio, EVENTO, FECHA, HORA, Dirección, STATUS REUNIÓN, Inscriptos, .*Sin identificar, ID cuentas\. /.test(t); }) &&
    filas.some(function (t) { return /Nunca ordenar ni pegar corrido sólo algunas columnas/.test(t); }) &&
    !filas.some(function (t) { return /encabezado gris|no la corrige|vuelve a poner|no escribe nada en la base hasta/.test(t); }) &&
    filas.indexOf(' • "Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.') === n - 2 &&

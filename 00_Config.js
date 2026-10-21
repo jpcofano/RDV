@@ -322,6 +322,8 @@ const REVISAR_TODO_PROP = 'REVISAR_TODO_PROGRESO';
 const REVISAR_TODO_LIMITE_MS = 6 * 60 * 1000;
 const REVISAR_TODO_MARGEN_MS = 60 * 1000;
 const REVISAR_TODO_INTENTOS = 2;
+/** 21/10: el progreso de c19_cierre_soloLectura() (00_Correr.js): la misma mecánica que revisarTodo, otra propiedad. */
+const CIERRE_PROP = 'CIERRE_SOLO_LECTURA_PROGRESO';
 /**
  * Las reuniones que la agenda suspende (tema 'suspendidas'): no van una por mail. Se anotan en la solapa
  * AVISOS_SUSPENDIDAS (intermedia) y salen juntas en UN mail por día ("reuniones suspendidas hoy"), en la primera corrida
@@ -595,13 +597,13 @@ const GUARDIAN_MODO = 'avisar';
  *
  * A — DEL SISTEMA, PURAS: las escribe sólo el sistema. Protegidas con advertencia, encabezado gris; las técnicas (GUARDIAN_OCULTAR),
  * ocultas. El guardián las compara contra su copia (y en modo 'restaurar', las vuelve atrás). Son COLUMNAS_TRAZA + COLUMNAS_AGENDA +
- * COLUMNAS_IDS (un test lo controla). Ojo: con el guardián en 'restaurar', el "no" que el equipo escribía en "ID cuentas" (decisión
- * 14) también se vuelve atrás.
+ * "Fecha envío campañas" (un test lo controla). "ID cuentas" NO (21/10, decisión del usuario): va en la B, porque el equipo escribe
+ * "no" para que una fila no reciba ID (decisión 14) y con el modo 'restaurar' se perdería.
  */
 const GUARDIAN_CLASE_A = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave',
   'No participa', 'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita', 'agenda_direccion_escrita',
   'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito', 'Origen fila', 'Tocado por el equipo',
-  'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con', 'ID cuentas', 'Fecha envío campañas'];
+  'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con', 'Fecha envío campañas'];
 /** A — las DERIVADAS (las once + la ID): protegidas y grises como las A, pero el guardián no las compara: las recalcula cada corrida. */
 const GUARDIAN_CLASE_A_DERIVADAS = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion', 'Comuna', 'Poblacion',
   'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'ID'];
@@ -612,7 +614,8 @@ const GUARDIAN_CLASE_A_DERIVADAS = ['Día de la semana', '% de Asistencia', 'Dir
  */
 const GUARDIAN_CLASE_B = ['Figura', 'Barrio', 'EVENTO', 'FECHA', 'HORA', 'Dirección', 'STATUS REUNIÓN', 'Inscriptos', 'Mail',
   'Call Center', 'IVR', 'RRSS', 'Difusión', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron', 'Masculinos', 'Femeninos',
-  '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
+  '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar',
+  'ID cuentas'];   // 21/10: el "no" del equipo (decisión 14) se respeta
 /** C — DEL EQUIPO: ni el guardián ni el sistema las tocan. */
 const GUARDIAN_CLASE_C = ['One Page Entregado', 'Observaciones', 'Temas mas comentados', 'Semaforo politico', 'Síntesis cualitativa:'];
 /** La copia de las columnas del sistema, una fila por fila de la base (intermedia; se reescribe al final de cada corrida). */
@@ -2070,7 +2073,7 @@ const AGENDA_AVISO_HECHAS_SIN_FILA = true;   // 20/10: PRENDIDO (prompt 09, punt
  * con formatos, notas y colores), sólo las filas con datos; antes guarda el orden anterior (ORDEN_SOLAPA_PREVIO, intermedia) para
  * deshacerlo (paso 109) y después verifica que cada fila siguió con lo suyo. **APAGADO** hasta ver el seco: paso 107.
  */
-const BASE_ORDEN_POR_FECHA = false;
+const BASE_ORDEN_POR_FECHA = true;   // PRENDIDO el 21/10 (el usuario: el c04 y la corrida de la hora siguiente salieron bien)
 /** El orden anterior a cada orden del sistema (intermedia): corrida | hora | posición | clave del contenido | identidad. */
 const ORDEN_SOLAPA_PREVIO = 'ORDEN_BASE_PREVIO';
 /** El encabezado de la columna AUXILIAR que usa el deshacer del orden (al final; se borra al terminar). */

@@ -1955,6 +1955,18 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 21/10 — el orden prendido, "ID cuentas" en la B y el c19
+
+1. **`BASE_ORDEN_POR_FECHA = true`** (21/10): el usuario corrió c03 → c04 y la corrida de la hora siguiente salió bien (c10 del 21/10
+   12:43: 8 reuniones OK, 0 fuera del mail, 0 duplicadas, AGENDA_DUPLICADOS vacía, copias OK, la 824 Reprogramada).
+2. **La lista del guardián, aprobada con un cambio: "ID cuentas" pasa a la B** (el "no" del equipo, decisión 14, no se restaura).
+   "Fecha envío campañas" queda en la A; No participa, Conjunta con y las cuatro "(mail)", en la A (las escribe sólo la agenda: manda
+   el mail). Ahora: A 23 (más las 12 derivadas), B 25, C 5. El c23 protegería 35 columnas A.
+3. **`c19_cierre_soloLectura()`** (00_Correr.js → `cierreSoloLectura_`, 52_RevisarTodo.js): corre en orden c13, c20, c30, c40 y c44,
+   todos de sólo lectura, con la mecánica de revisarTodo (otra propiedad: `CIERRE_PROP`): "FALTAN …" si no alcanza el tiempo y la
+   siguiente sigue donde quedó; al final "TERMINADO" y una línea por paso (LISTO / NO LISTO y qué mirar). Ninguno deja una huella
+   que haga falta después (la del c22 va con el c21); cada vez que termina, la siguiente empieza de cero. Test: `revisar_todo` [8].
+
 #### 20/10 — prompt 10, punto 3: el cierre de la Agenda, preparado (y qué espera cada interruptor)
 
 Prompt: docs/prompts/PROMPT-10-GUARDIAN-Y-CIERRE.md. Antes del prompt el usuario corrió c01 → c02 (la 824 corregida) y c03 → c04 (la
@@ -1963,7 +1975,7 @@ base ordenada): salieron de `00_Correr.js`. `00_Correr.js` queda en este orden: 
 
 | interruptor | estado | qué OK necesita |
 |---|---|---|
-| `BASE_ORDEN_POR_FECHA` | apagado | el usuario confirma que la corrida de la hora después del c04 salió bien |
+| `BASE_ORDEN_POR_FECHA` | **PRENDIDO el 21/10** | (confirmado: la corrida de la hora después del c04 salió bien) |
 | `AGENDA_REPROGRAMADA` | apagado | el usuario mira c13 (paso 110) y da el OK |
 | `GUARDIAN_ACTIVO` (+ `GUARDIAN_MODO = 'avisar'`) | apagado | el usuario aprueba la lista A/B/C (c20) y corre c21 → c22 → c23 |
 | `GUARDIAN_MODO = 'restaurar'` | 'avisar' | unos días con el guardián prendido sin avisos falsos |

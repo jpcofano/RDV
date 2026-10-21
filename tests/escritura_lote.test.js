@@ -381,8 +381,11 @@ function crearEntorno(opts) {
   // AGENDA_ACTIVA: los escenarios del upsert no simulan Gmail; sólo [24] la prende (07/10).
   // CONJUNTO_REPETIDA_POR_UBICACION (16/10, prendida en la etapa 1): los escenarios de RDV CONJUNTO de antes prueban el cruce
   // columna por columna; con la regla, dos filas que no se pueden decidir no escriben ninguna (lo prueba agenda_seguridad_1510 [9]).
+  // BASE_ORDEN_POR_FECHA (prendido el 21/10): estos escenarios no cargan 57_OrdenBase.js; el orden en la hora lo prueba [33] (y
+  // orden_base.test.js).
   const config = Object.assign({ DIAS_ACTIVOS: 'null', DERIVADAS_POR_SCRIPT: 'false',
-                                 REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false' },
+                                 REVISAR_FORMATO_NUEVO: 'false', AGENDA_ACTIVA: 'false', CONJUNTO_REPETIDA_POR_UBICACION: 'false',
+                                 BASE_ORDEN_POR_FECHA: 'false' },
                                opts.config || {});
   // 16/10: `opts.extra`: más archivos (49_Aceleraciones.js, en la guarda de tiempo)
   ARCHIVOS.concat(opts.extra || []).forEach(function (f) {

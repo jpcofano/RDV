@@ -129,6 +129,49 @@ ok(/function revisarTodo\(\) \{[\s\S]*?return revisarTodo_\(\);/.test(correr) &&
 ok(!/setValue|setValues|appendRow|insertSheet|deleteRow|\.clear\(|sendEmail|newTrigger|setBackground/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')),
    '52_RevisarTodo.js no escribe planillas, ni manda mails, ni crea activadores');
 
+console.log('[8] 21/10: c19_cierre_soloLectura (00_Correr.js): c13, c20, c30, c40, c44 con la misma mecánica y LISTO / NO LISTO por paso');
+{
+  const E8 = entorno();
+  const orden = [];
+  const res = {
+    c13: { cuenta: { reprogramada: 2, suspendida: 5, coincide: 6, noCoincide: 1, pasaria: 0, marcariaHoy: 0 } },
+    c20: { clases: { sinClase: [] }, copiaNueva: { desalineada: false, cambios: 0, clavesRepetidas: 0 }, prueba: { frena: true }, ocultarProteger: { ocultar: 14, proteger: 35 } },
+    c30: { solapas: [{ nombre: 'SIN_MATCH', salen: 4 }], problemas: [] },
+    c40: { fuente: 'respaldo', motivo: 'no está la solapa', columnas: ['Info'], renglones: 3 },
+    c44: { ok: false, res: { noOk: ['a', 'b'] }, cancelNota: '' }
+  };
+  [['c13', 'c13_reprogramadas'], ['c20', 'c20_guardian_enSeco'], ['c30', 'c30_corteRevision_enSeco'], ['c40', 'c40_agendaDirecta_enSeco'],
+   ['c44', 'c44_auditoriaSemanal_enSeco']].forEach(function (x) {
+    E8.ctx[x[1]] = function () { orden.push(x[0]); E8.t += (E8.dur[x[0]] || 10) * 1000; return res[x[0]]; };
+  });
+  E8.dur = { c30: 300 };   // el c30 tarda: quedan menos de 60 s, c40 y c44 no entran en esta ejecución
+  E8.t += 3600 * 1000;
+  let r8 = E8.run('cierreSoloLectura_()');
+  ok(!r8.terminado && orden.join(',') === 'c13,c20,c30' && r8.faltan.join(',') === 'c40,c44' &&
+     E8.logs.some(function (l) { return /FALTAN: c40, c44 — volvé a correr c19_cierre_soloLectura\(\)/.test(l); }) && E8.props.CIERRE_SOLO_LECTURA_PROGRESO && !E8.props.REVISAR_TODO_PROGRESO,
+     'sin tiempo: "FALTAN: c40, c44 — volvé a correr c19_cierre_soloLectura()", con su propia propiedad (no la de revisarTodo)');
+  orden.length = 0; E8.dur = {}; E8.t += 3600 * 1000;
+  r8 = E8.run('cierreSoloLectura_()');
+  ok(r8.terminado && orden.join(',') === 'c40,c44' && !E8.props.CIERRE_SOLO_LECTURA_PROGRESO, 'la siguiente sigue donde quedó (c40, c44), TERMINADO y borra el progreso');
+  ok(/^LISTO para decidir AGENDA_REPROGRAMADA: Reprogramada 2 \| Suspendida 5 \| coinciden 6 \| NO coinciden 1 \(mirar en el log cuáles\)/.test(r8.resumen.c13),
+     'c13: LISTO para decidir, con los números — ' + r8.resumen.c13);
+  ok(/^LISTO: ninguna columna sin clase, la copia nueva da 0, la prueba frena/.test(r8.resumen.c20), 'c20: LISTO — ' + r8.resumen.c20);
+  ok(/^LISTO \(VERIFICACIÓN OK\) \| dejan de aparecer: SIN_MATCH −4/.test(r8.resumen.c30), 'c30: LISTO — ' + r8.resumen.c30);
+  ok(/^NO LISTO: se usaría el respaldo \(no está la solapa\)/.test(r8.resumen.c40), 'c40: NO LISTO con el motivo — ' + r8.resumen.c40);
+  ok(/^LISTO: la solapa y el mail se arman \| la auditoría tiene 2 para mirar/.test(r8.resumen.c44), 'c44: lo que hay que mirar — ' + r8.resumen.c44);
+  ok(E8.logs.some(function (l) { return /paso c40 \(.*\): NO LISTO: se usaría el respaldo/.test(l); }), 'el RESUMEN del log: una línea por paso');
+  // NO LISTO del guardián y del corte
+  res.c20 = { clases: { sinClase: ['Columna Nueva'] }, copiaNueva: { desalineada: false, cambios: 3, clavesRepetidas: 0 }, prueba: { frena: false } };
+  res.c30 = { solapas: [], problemas: ['x'] };
+  orden.length = 0; E8.t += 3600 * 1000;
+  r8 = E8.run('cierreSoloLectura_()');
+  ok(r8.terminado && orden.join(',') === 'c13,c20,c30,c40,c44', 'al volver a correr después de TERMINADO, empieza de cero (todo se recalcula)');
+  ok(/^NO LISTO: 1 columnas SIN CLASE \(Columna Nueva\) \| con una copia nueva da 3 cambios .* \| la prueba del orden parcial NO FRENA/.test(r8.resumen.c20), 'c20: NO LISTO con los motivos — ' + r8.resumen.c20);
+  ok(/^NO LISTO: DESAPARECERÍA ALGO/.test(r8.resumen.c30), 'c30: NO LISTO si desaparecería algo — ' + r8.resumen.c30);
+  const c00 = fs.readFileSync(path.join(RAIZ, '00_Correr.js'), 'utf8');
+  ok(/function c19_cierre_soloLectura\(\) \{[\s\S]*?return cierreSoloLectura_\(\);/.test(c00), 'c19_cierre_soloLectura() en 00_Correr.js, sin lógica propia');
+}
+
 console.log('\n' + chequeos + ' chequeos.');
 if (fallas) { console.log(fallas + ' FALLA(S)'); process.exit(1); }
 console.log('Todo en verde.');

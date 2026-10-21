@@ -67,7 +67,7 @@ function base(E, n) {
     const o = { Figura: FIG[i % 6], Barrio: BAR[i % 7], EVENTO: 'Encuentro con Vecinos', FECHA: fecha, HORA: new F(1899, 11, 30, 17 + (i % 3), 0, 0), Inscriptos: 100 + i };
     if (i % 3 !== 2) { o.RDV_UID = 'uid-' + i; o.form_origen = 'Formulario ' + i; o.form_score = 0.9; }
     if (i % 2 === 0) { o.agenda_uid = 'c-' + i; o.agenda_fecha_escrita = fecha; o['Origen fila'] = 'agenda'; }
-    if (i % 5 === 0) o['ID cuentas'] = (1000 + i) + '-ABC';
+    if (i % 5 === 0) { o['ID cuentas'] = (1000 + i) + '-ABC'; o['Fecha envío campañas'] = 'F' + (1000 + i); }
     filas.push(filaBase(o, HDR));
   }
   return [HDR].concat(filas);
@@ -136,10 +136,15 @@ console.log('[1] planGuardian_');
   ok(p.cambios.length === 0 && !desal(E, p), 'el orden de FILAS ENTERAS (Datos → Ordenar hoja, o el orden del sistema): nada');
   const ent2 = ent.map(function (r) { return r.slice(); });
   const kSin = ent2.findIndex(function (r) { return r[col('ID cuentas')] === '1005-ABC'; });   // i = 5: SIN clave, con ID
-  ent2[kSin][col('ID cuentas')] = '9999-OTRO';
+  ent2[kSin][col('Fecha envío campañas')] = '9999-OTRO';
   p = plan(E, B, ent2);
-  ok(!desal(E, p) && p.cambios.length === 1 && p.cambios[0].tipo === 'restaurada' && p.cambios[0].valor === '1005-ABC',
+  ok(!desal(E, p) && p.cambios.length === 1 && p.cambios[0].tipo === 'restaurada' && p.cambios[0].valor === 'F1005',
      'filas enteras ordenadas + una fila SIN clave editada en una A: es un cambio (no una desalineación)');
+  // 21/10: "ID cuentas" es de la clase B (el "no" del equipo): un cambio ahí NO es un cambio para el guardián
+  const ent3 = ent.map(function (r) { return r.slice(); });
+  ent3[kSin][col('ID cuentas')] = 'no';
+  p = plan(E, B, ent3);
+  ok(!desal(E, p) && p.cambios.length === 0, '"ID cuentas" (clase B): el "no" del equipo no se avisa ni se restaura');
 
   const sin30 = B.filter(function (r, i) { return i !== 31; });   // fila 32 (i = 30: con RDV_UID, agenda e ID)
   p = plan(E, B, sin30);
@@ -330,8 +335,8 @@ function conProtecciones(E) {
   const B = basePlanilla(30);
   const E = entorno({ bloqueBase: B });
   const pr = conProtecciones(E);
-  // una protección del EQUIPO sobre una columna A ("ID cuentas") y la de las derivadas del paso 26 ("Comuna")
-  pr.protecciones.push({ c: col('ID cuentas') + 1, desc: 'protegida por alguien del equipo', adv: true });
+  // una protección del EQUIPO sobre una columna A ("Fecha envío campañas") y la de las derivadas del paso 26 ("Comuna")
+  pr.protecciones.push({ c: col('Fecha envío campañas') + 1, desc: 'protegida por alguien del equipo', adv: true });
   pr.protecciones.push({ c: col('Comuna') + 1, desc: E.cfg('DESC_PROTECCION_DERIVADAS'), adv: true });
   E.base().fondos['1:' + (col('Origen fila') + 1)] = '#FF0000';   // un encabezado A que el equipo había pintado
   const foto = function () { return JSON.stringify({ v: E.base().valores, f: E.base().fondos }); };
@@ -342,9 +347,9 @@ function conProtecciones(E) {
   ok(foto() === f0 && !E.intermedia('SISTEMA_COPIA') && !E.intermedia('REGISTRO_PROTECCION') && !E.intermedia('AGENDA_PENDIENTES') && !E.avisos.length &&
      pr.ocultas.length === 0 && pr.protecciones.length === 2 && Object.keys(E.props).length === 0,
      'paso 111: no escribe NADA (ni la base, ni la intermedia, ni propiedades, ni avisos)');
-  ok(s.clases.sinClase.length === 0 && s.clases.columnas.filter(function (c) { return c.clase === 'A'; }).length === 24 &&
-     s.clases.columnas.filter(function (c) { return c.clase === 'A derivada'; }).length === 12 && s.clases.columnas.filter(function (c) { return c.clase === 'B'; }).length === 24 &&
-     s.clases.columnas.filter(function (c) { return c.clase === 'C'; }).length === 5, 'paso 111: las clases de las 65 columnas (A 24, derivadas 12, B 24, C 5, sin clase 0)');
+  ok(s.clases.sinClase.length === 0 && s.clases.columnas.filter(function (c) { return c.clase === 'A'; }).length === 23 &&
+     s.clases.columnas.filter(function (c) { return c.clase === 'A derivada'; }).length === 12 && s.clases.columnas.filter(function (c) { return c.clase === 'B'; }).length === 25 &&
+     s.clases.columnas.filter(function (c) { return c.clase === 'C'; }).length === 5, 'paso 111: las clases de las 65 columnas (A 23, derivadas 12, B 25 —con ID cuentas, 21/10—, C 5, sin clase 0)');
   ok(!s.copiaNueva.desalineada && s.copiaNueva.cambios === 0 && s.copiaNueva.clavesRepetidas === 0, 'paso 111: con una copia nueva, 0 (nada que avisar)');
   ok(s.prueba.frena && s.prueba.filas > 5, 'paso 111: la prueba en memoria del orden parcial FRENA (' + s.prueba.filas + ' filas)');
   ok(/1\. LAS CLASES/.test(E.log()) && /C\. DEL EQUIPO \(5\)/.test(E.log()) && /SIN CLASE \(0\)/.test(E.log()), 'paso 111: el log con la lista');
@@ -363,12 +368,12 @@ function conProtecciones(E) {
   let r = E.run('ocultarProteger()');
   ok(r.error && /paso 113/.test(r.error) && pr.ocultas.length === 0 && pr.protecciones.length === 2, 'paso 114 sin el 113: no hace nada');
   const s113 = E.run('ocultarProteger_enSeco()');
-  ok(s113.ocultar === 14 && s113.proteger === 35 && s113.gris === 36 && s113.delEquipo === 1 && foto() === f0 && pr.protecciones.length === 2,
+  ok(s113.ocultar === 14 && s113.proteger === 34 && s113.gris === 35 && s113.delEquipo === 1 && foto() === f0 && pr.protecciones.length === 2,
      'paso 113: ocultaría 14, protegería 35 (la de las derivadas ya está), gris en 36; 1 protección del equipo; no escribe nada');
   r = E.run('ocultarProteger()');
-  ok(!r.error && r.ocultas === 14 && r.protegidas === 35, 'paso 114: oculta 14 y protege 35 (con la huella del 113)');
+  ok(!r.error && r.ocultas === 14 && r.protegidas === 34, 'paso 114: oculta 14 y protege 34 (con la huella del 113)');
   const nuestras = pr.protecciones.filter(function (p) { return p.desc === E.cfg('DESC_PROTECCION_SISTEMA'); });
-  ok(nuestras.length === 35 && nuestras.every(function (p) { return p.adv; }), '   todas con ADVERTENCIA (no bloquean ordenar ni borrar)');
+  ok(nuestras.length === 34 && nuestras.every(function (p) { return p.adv; }), '   todas con ADVERTENCIA (no bloquean ordenar ni borrar)');
   ok(pr.protecciones.some(function (p) { return p.desc === 'protegida por alguien del equipo'; }) && pr.protecciones.some(function (p) { return p.desc === E.cfg('DESC_PROTECCION_DERIVADAS'); }),
      '   la del equipo y la de las derivadas, intactas');
   igual(pr.ocultas.map(function (c) { return HDR[c - 1]; }).sort(), E.cfg('GUARDIAN_OCULTAR').slice().sort(), '   las ocultas son exactamente las técnicas (traza y agenda_*)');
@@ -377,9 +382,9 @@ function conProtecciones(E) {
   ok(JSON.stringify(E.base().valores) === JSON.stringify(JSON.parse(f0).v), '   ningún valor cambia');
   const fondosDatos = function (fo) { return JSON.stringify(Object.keys(fo).filter(function (k) { return !/^1:/.test(k); }).sort().map(function (k) { return [k, fo[k]]; })); };
   ok(fondosDatos(E.base().fondos) === fondosDatos(JSON.parse(f0).f), '   ningún fondo de datos cambia (sólo el encabezado)');
-  ok(Object.keys(E.base().fondos).filter(function (k) { return /^1:/.test(k) && E.base().fondos[k] === E.cfg('GUARDIAN_GRIS_ENCABEZADO'); }).length === 36, '   el encabezado gris en las 36');
+  ok(Object.keys(E.base().fondos).filter(function (k) { return /^1:/.test(k) && E.base().fondos[k] === E.cfg('GUARDIAN_GRIS_ENCABEZADO'); }).length === 35, '   el encabezado gris en las 35');
   r = E.run('ocultarProteger()');
-  ok(r.error && pr.protecciones.filter(function (p) { return p.desc === E.cfg('DESC_PROTECCION_SISTEMA'); }).length === 35, '   la huella sirve una vez');
+  ok(r.error && pr.protecciones.filter(function (p) { return p.desc === E.cfg('DESC_PROTECCION_SISTEMA'); }).length === 34, '   la huella sirve una vez');
   const s2 = E.run('ocultarProteger_enSeco()');
   ok(s2.ocultar === 0 && s2.proteger === 0 && s2.gris === 0 && !s2.huella, '   el 113 otra vez: nada que hacer');
 
@@ -387,18 +392,18 @@ function conProtecciones(E) {
   pr.protecciones.push({ c: col('Observaciones') + 1, desc: 'del equipo, real', adv: false, bloquea: true });
   let bloqueada = false;
   try { E.run('ssDestino_().getSheetByName(RDV_HOJA_DESTINO).getRange(2, ' + (col('Observaciones') + 1) + ', 1, 1).setValues([["x"]])'); } catch (e) { bloqueada = /protegida/.test(e.message); }
-  E.base().valores[2][col('ID cuentas')] = '';
+  E.base().valores[2][col('Fecha envío campañas')] = '';
   E.base().valores[2][col('form_nivel')] = '';
   const hechas = E.run('setSiDelSistemaLote_(ssDestino_().getSheetByName(RDV_HOJA_DESTINO), ssDestino_().getSheetByName(RDV_HOJA_DESTINO).getRange(1,1,1,' + HDR.length + ').getValues()[0], ' +
-                       '[{ fila: 3, col: ' + (col('ID cuentas') + 1) + ', valor: "7777-NUEVO" }, { fila: 3, col: ' + (col('form_nivel') + 1) + ', valor: "figura+fecha" }])');
-  ok(bloqueada && hechas.length === 2 && E.base().valores[2][col('ID cuentas')] === '7777-NUEVO', 'con las protecciones (de advertencia) puestas, el sistema sigue escribiendo columnas A (una protección REAL sí bloquearía)');
+                       '[{ fila: 3, col: ' + (col('Fecha envío campañas') + 1) + ', valor: "7777-NUEVO" }, { fila: 3, col: ' + (col('form_nivel') + 1) + ', valor: "figura+fecha" }])');
+  ok(bloqueada && hechas.length === 2 && E.base().valores[2][col('Fecha envío campañas')] === '7777-NUEVO', 'con las protecciones (de advertencia) puestas, el sistema sigue escribiendo columnas A (una protección REAL sí bloquearía)');
   pr.protecciones.pop();
 
   // 115
   const d0 = E.run('deshacerOcultarProteger(false)');
-  ok(d0.enSeco && d0.mostradas === 14 && d0.desprotegidas === 35 && pr.ocultas.length === 14, 'paso 115 en seco: mostraría 14, sacaría 35; no toca nada');
+  ok(d0.enSeco && d0.mostradas === 14 && d0.desprotegidas === 34 && pr.ocultas.length === 14, 'paso 115 en seco: mostraría 14, sacaría 34; no toca nada');
   const d1 = E.run('deshacerOcultarProteger(true)');
-  ok(d1.mostradas === 14 && d1.desprotegidas === 35 && pr.ocultas.length === 0 && pr.protecciones.length === 2 &&
+  ok(d1.mostradas === 14 && d1.desprotegidas === 34 && pr.ocultas.length === 0 && pr.protecciones.length === 2 &&
      pr.protecciones.some(function (p) { return p.desc === 'protegida por alguien del equipo'; }), 'paso 115: muestra todo, saca SÓLO las del sistema (quedan la del equipo y la de las derivadas)');
   ok(E.base().fondos['1:' + (col('Origen fila') + 1)] === '#FF0000' && !Object.keys(E.base().fondos).some(function (k) { return /^1:/.test(k) && E.base().fondos[k] === E.cfg('GUARDIAN_GRIS_ENCABEZADO'); }),
      '   el encabezado vuelve a su color de antes (el rojo del equipo, también)');
@@ -497,7 +502,7 @@ console.log('[8] las columnas A que NACEN después del paso 114: protegidas, gri
   E.run('ocultarProteger_enSeco()');
   E.run('ocultarProteger()');
   ok(E.run('asegurarColumnasNuevasGuardian_()').nuevas.length === 0, 'después del paso 114: ninguna nueva');
-  const cID = col('ID cuentas') + 1, cUid = col('agenda_uid') + 1, cScore = col('form_score') + 1;
+  const cID = col('Fecha envío campañas') + 1, cUid = col('agenda_uid') + 1, cScore = col('form_score') + 1;
   [cID, cUid].forEach(function (c) { for (let i = pr.protecciones.length - 1; i >= 0; i--) if (pr.protecciones[i].c === c) pr.protecciones.splice(i, 1); });
   [cUid, cScore].forEach(function (c) { const k = pr.ocultas.indexOf(c); if (k >= 0) pr.ocultas.splice(k, 1); });
   [cID, cUid].forEach(function (c) { delete E.base().fondos['1:' + c]; });
@@ -505,7 +510,7 @@ console.log('[8] las columnas A que NACEN después del paso 114: protegidas, gri
   ok(r.nuevas.length === 2 && pr.protecciones.filter(function (p) { return (p.c === cID || p.c === cUid) && p.adv; }).length === 2,
      'las dos nuevas, protegidas con ADVERTENCIA: ' + r.nuevas.join(', '));
   ok(pr.ocultas.indexOf(cUid) >= 0 && pr.ocultas.indexOf(cID) < 0 && pr.ocultas.indexOf(cScore) < 0,
-     '   la técnica (agenda_uid) se oculta; ID cuentas a la vista; form_score, que el equipo mostró, NO se vuelve a ocultar');
+     '   la técnica (agenda_uid) se oculta; Fecha envío campañas a la vista; form_score, que el equipo mostró, NO se vuelve a ocultar');
   ok(E.base().fondos['1:' + cID] === E.cfg('GUARDIAN_GRIS_ENCABEZADO') && E.run('asegurarColumnasNuevasGuardian_()').nuevas.length === 0, '   el encabezado gris; otra vez: nada');
   const d = E.run('deshacerOcultarProteger(true)');
   ok(pr.ocultas.length === 0 && pr.protecciones.length === 0 && d.desprotegidas > 30, '   el paso 115 también deshace lo de las columnas nuevas');
@@ -520,7 +525,8 @@ console.log('[9] las clases de 00_Config.js');
   const E = entorno();
   const A = E.cfg('GUARDIAN_CLASE_A'), AD = E.cfg('GUARDIAN_CLASE_A_DERIVADAS'), Bc = E.cfg('GUARDIAN_CLASE_B'), C = E.cfg('GUARDIAN_CLASE_C');
   const ord = function (l) { return Array.prototype.slice.call(l).sort(); };
-  igual(ord(A), ord([].concat(E.cfg('COLUMNAS_TRAZA'), E.cfg('COLUMNAS_AGENDA'), E.cfg('COLUMNAS_IDS'))), 'A = COLUMNAS_TRAZA + COLUMNAS_AGENDA + COLUMNAS_IDS');
+  igual(ord(A), ord([].concat(E.cfg('COLUMNAS_TRAZA'), E.cfg('COLUMNAS_AGENDA'), [E.cfg('COLUMNA_FECHA_ENVIO')])), 'A = COLUMNAS_TRAZA + COLUMNAS_AGENDA + "Fecha envío campañas"');
+  ok(Array.prototype.indexOf.call(Bc, 'ID cuentas') >= 0 && Array.prototype.indexOf.call(A, 'ID cuentas') < 0, '21/10: "ID cuentas" en la B (decisión del usuario), no en la A');
   igual(ord(AD), ord(E.run('columnasDerivadas_()')), 'A derivadas = las once + la ID (columnasDerivadas_ con LOOKER_EN_SISTEMA)');
   const todas = [].concat(A, AD, Bc, C);
   igual(ord(todas), ord(HDR), 'las cuatro listas cubren el encabezado de la base, cada columna UNA vez (' + todas.length + ')');
@@ -528,7 +534,7 @@ console.log('[9] las clases de 00_Config.js');
   ok(['Masculinos', 'Femeninos', '18-24', '66+', 'Sin identificar', 'Asistentes', 'Oradores anotados', 'STATUS REUNIÓN'].every(function (n) { return Bc.indexOf(n) >= 0; }) &&
      E.cfg('COLUMNAS_QUE_ESCRIBE_AGENDA').filter(function (n) { return A.indexOf(n) < 0; }).every(function (n) { return Bc.indexOf(n) >= 0; }),
      'B: sexo, edades, Sin identificar, Asistentes, Oradores, STATUS y lo que escribe la agenda fuera de las A');
-  ok(E.run('esColumnaGuardada_("ID de cuentas")') && !E.run('esColumnaGuardada_("Figura")') && !E.run('esColumnaGuardada_("Comuna")'), 'esColumnaGuardada_: las A (con los alias de los IDs); no las B ni las derivadas');
+  ok(!E.run('esColumnaGuardada_("ID de cuentas")') && E.run('esColumnaGuardada_("Fecha envío campañas")') && !E.run('esColumnaGuardada_("Figura")') && !E.run('esColumnaGuardada_("Comuna")'), 'esColumnaGuardada_: las A ("Fecha envío campañas"); no las B (tampoco "ID cuentas", 21/10) ni las derivadas');
 }
 
 console.log('\n' + chequeos + ' chequeos.');
