@@ -20,6 +20,8 @@
  *  >>> 20/10 (prompt 09): LO QUE HAY QUE CORRER ESTÁ EN 00_Correr.js (c01..c12): corregir la 824 (c01 → c02), ordenar la base
  *      (c03 → c04), la GUÍA (c05); y lo de sólo lectura (c10 auditoría, c11 mediciones, c12 revisarTodo). Los pasos 101-103
  *      (separar la 824) quedaron DESCARTADOS: el equipo confirmó que la reunión de Villa Devoto no va ("manda el mail").
+ *  >>> 20/10 (prompt 10, punto 2): paso111_corteRevision_enSeco()  SÓLO LECTURA (al final del archivo): con el corte de las
+ *      solapas de revisión (REVISION_DESDE_FECHA_CORTE, APAGADO; FECHA_CORTE_REVISION = 06/10), qué dejaría de aparecer en cada una.
  *  >>> 20/10: mediciones_soloLectura()  SÓLO LECTURA: los pasos 67, 104, 105 y 106 juntos.
  *      Decisiones del 20/10: el orden de la base va al PRINCIPIO de la corrida; las Suspendidas sin formulario no van a las fichas
  *      ni a SIN_MATCH (SUSPENDIDAS_FUERA_DE_FICHAS); Macri 15/10: los pasos 101-103 quedan como están hasta que confirme el equipo.
@@ -1974,4 +1976,18 @@ function paso110_reprogramadas_enSeco() {
              'NO escribe nada (ni la base, ni la intermedia, ni la cache del geocode; Gmail sólo se lee)',
              'el log: por cada cancelación del mail, "Reprogramada" (al dd/MM/yyyy, fila N) o "Suspendida", el STATUS de hoy (coincide o no) y el RESUMEN');
   return medirReprogramadas({ desde: '2026-07-15' });
+}
+
+/**
+ * PASO 111 — SÓLO LECTURA (20/10; prompt 10, punto 2: "lo viejo se deja como está"): con el corte REVISION_DESDE_FECHA_CORTE prendido
+ * (APAGADO; este paso lo SIMULA), qué dejaría de aparecer en cada solapa de revisión —REVISAR_MATCH (fichas y RESUELTAS), SIN_MATCH,
+ * EMPAREJAR_MANUAL, HISTORICO_SIN_RESOLVER, IDS_SIN_CRUZAR y "se hizo y no está en la base"— por ser de antes de FECHA_CORTE_REVISION
+ * (06/10), las primeras con su fecha, y la verificación de que no desaparece nada del corte en adelante. No escribe nada.
+ */
+function paso111_corteRevision_enSeco() {
+  _anunciar_('paso 111 — "lo viejo se deja como está": qué dejaría de aparecer para revisar (EN SECO, SÓLO LECTURA)',
+             'medirCorteRevision()  [diagnostico/40_corte_revision.js]',
+             'NO escribe nada (ni la base, ni la intermedia, ni las solapas de revisión; no manda mails)',
+             'el log: por solapa, cuántas líneas hoy, cuántas quedan y cuáles dejan de aparecer (con su fecha), y la VERIFICACIÓN');
+  return medirCorteRevision();
 }

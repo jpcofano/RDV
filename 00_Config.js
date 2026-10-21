@@ -1087,6 +1087,19 @@ const DIAS_OPCIONES_FICHA = 14;
 const DIAS_OPCION_USADA = 3;
 
 /**
+ * **"Lo viejo se deja como está; trabajamos hacia adelante"** (20/10, decisión del usuario, prompt 10, punto 2; 59_CorteRevision.js).
+ * Con el interruptor prendido, las solapas DE REVISIÓN muestran sólo lo de FECHA_CORTE_REVISION en adelante (la fecha de la REUNIÓN;
+ * cuál es, en cada solapa, en 59_CorteRevision.js): REVISAR_MATCH (las fichas pendientes y las RESUELTAS), SIN_MATCH,
+ * EMPAREJAR_MANUAL, HISTORICO_SIN_RESOLVER, IDS_SIN_CRUZAR y "se hizo y no está en la base" (AGENDA_PENDIENTES y el aviso diario).
+ * **Sólo deja de mostrar**: no borra nada de los datos, no cambia ningún cruce, ninguna escritura de la base ni ninguna elección
+ * guardada (ELECCIONES_MATCH se lee, se aplica y se guarda igual). Sin fecha legible, se muestra. APAGADO hasta que el usuario vea el
+ * seco (`medirCorteRevision()`, diagnostico/40_corte_revision.js). Apagado, todo como antes.
+ */
+const REVISION_DESDE_FECHA_CORTE = false;
+/** La fecha de corte, "yyyy-MM-dd": el 06/10/2026, el inicio de la agenda. Mal escrita, no se esconde nada (y el seco lo dice). */
+const FECHA_CORTE_REVISION = '2026-10-06';
+
+/**
  * Inscriptos mínimos para listar un formulario sin fila (sin ningún candidato) en
  * `listarFormulariosSinFila` (paso 13, "formularios sin fila: canceladas o reubicadas"). Los de menos
  * sólo se cuentan. Es informativo: un formulario sin fila no es un faltante a reclamar (regla 9).
