@@ -1955,6 +1955,25 @@ sobrevive a un cambio de día y hora, a una reescritura, a una reunión que desa
 2. **`paso48_ayuda()`** — reescribe LEER (y GUÍA) con el texto nuevo.
 3. `paso64_vistasAgenda_enSeco()` sigue sirviendo de vista previa en el log (no escribe nada).
 
+#### 20/10 — prompt 10, punto 3: el cierre de la Agenda, preparado (y qué espera cada interruptor)
+
+Prompt: docs/prompts/PROMPT-10-GUARDIAN-Y-CIERRE.md. Antes del prompt el usuario corrió c01 → c02 (la 824 corregida) y c03 → c04 (la
+base ordenada): salieron de `00_Correr.js`. `00_Correr.js` queda en este orden: (1) lo que espera un OK, (2) el guardián (c20-c24),
+(3) lo viejo (c30), (4) la etapa 2 (c40-c45); sólo lectura c10-c13; si algo sale mal c08, c09, c25, c46.
+
+| interruptor | estado | qué OK necesita |
+|---|---|---|
+| `BASE_ORDEN_POR_FECHA` | apagado | el usuario confirma que la corrida de la hora después del c04 salió bien |
+| `AGENDA_REPROGRAMADA` | apagado | el usuario mira c13 (paso 110) y da el OK |
+| `GUARDIAN_ACTIVO` (+ `GUARDIAN_MODO = 'avisar'`) | apagado | el usuario aprueba la lista A/B/C (c20) y corre c21 → c22 → c23 |
+| `GUARDIAN_MODO = 'restaurar'` | 'avisar' | unos días con el guardián prendido sin avisos falsos |
+| `REVISION_DESDE_FECHA_CORTE` | apagado | el usuario mira c30 (paso 116; VERIFICACIÓN: OK) |
+| `AGENDA_MAIL_FORMATO_DIRECTA` | apagado | el usuario corre c40, c41 y c42 (paso 74) y avisa |
+| `AVISOS_MAIL_ACTIVO` | apagado | el OK del usuario; después corre c43 (paso 80, el mail de prueba a jpcofano2@gmail.com) |
+| `AUDITORIA_SEMANAL_ACTIVA` | apagado | el usuario mira c44 (paso 81) y da el OK; después corre c45 (paso 82, el activador) |
+
+El paso 74 (c42) es de antes: escribe sin huella ni deshacer (AGENDA_EQUIPO sin pisar nada y oculta una solapa); no se cambió.
+
 #### 20/10 — prompt 10, punto 2: "lo viejo se deja como está" — escrito y APAGADO (`REVISION_DESDE_FECHA_CORTE`)
 
 Prompt: docs/prompts/PROMPT-10-GUARDIAN-Y-CIERRE.md, punto 2. **Decisión del usuario: "lo viejo se deja como está; trabajamos hacia
