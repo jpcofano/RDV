@@ -19,7 +19,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   '41_AgendaColores.js', '41_AgendaParser.js', '42_BarriosCabaGeo.js', '40_Agenda.js', 'diagnostico/17_peso_intermedia.js',
                   'diagnostico/08_verificar_escritura.js', 'diagnostico/03_muestras_mail.js', 'diagnostico/16_agenda_medicion.js',
                   'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js', '25_Elecciones.js',
-                  'diagnostico/22_previsualizar.js', 'diagnostico/30_duplicados_agenda.js', '54_FusionAgenda.js'];
+                  'diagnostico/22_previsualizar.js', 'diagnostico/30_duplicados_agenda.js', '54_FusionAgenda.js', '46_Guardian.js'];
 let AHORA = new Date(2026, 9, 16, 9, 0, 0).getTime();
 const avanzar = function (min) { AHORA += min * 60000; };
 class D extends Date {
@@ -445,6 +445,28 @@ const s6c = E.run('fusionarParesAgenda_enSeco({ filas: __f })');
 ok(s6c.pares.length === 1 && s6c.faltantes.length === 1, 'una nueva Suspendida ya no es "una reunión en dos filas" (el H3 sólo mira filas vivas): no se toca');
 ok(foto(S.X.ssD.hojas['RDV CONJUNTO']) === JSON.stringify({ v: [['Figura', 'Barrio', 'FECHA', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron']], bg: [[null, null, null, null, null, null]] }),
    'RDV CONJUNTO no se tocó en ningún momento');
+
+// ============================== [7] 20/10 (prompt 10): con el guardián prendido, la fusión y su deshacer no le dan falsos avisos ==============================
+
+console.log('[7] con el guardián prendido: la fusión (paso 97) y deshacer (paso 98 / 38) actualizan la copia → la corrida siguiente no avisa nada');
+{
+  S = escenario(false);
+  const G = sobre(S.X, Object.assign({}, ETAPA1, { GUARDIAN_ACTIVO: 'true' }));
+  G.run('tomarCopiaSistema_()');
+  G.ctx.__f = FILAS(S);
+  G.run('fusionarParesAgenda_enSeco({ filas: __f })');
+  const f7 = G.run('fusionarParesAgenda({ filas: __f })');
+  let g = G.run('guardianAntesDeEscribir_(true)');
+  ok(f7 && !f7.error && f7.borradas === 2 && g && !g.frenar && !g.vieja && !g.desalineada && g.plan.cambios.length === 0,
+     'después de juntar (2 filas borradas, columnas del sistema copiadas): ni desalineada, ni cambios, ni copia vieja — ' + (g && g.resumen));
+  const d7 = G.run('deshacerUltimaFusionAgenda(false)');
+  g = G.run('guardianAntesDeEscribir_(true)');
+  ok(d7 && d7.restauradas === 2 && g && !g.frenar && !g.vieja && g.plan.cambios.length === 0, 'después de deshacer (2 filas restauradas): tampoco — ' + (g && g.resumen));
+  avanzar(60);
+  correr(G, false, [V1, V3]);   // la agenda (la corrida de la hora), sin la copia del final: igual no es desalineación
+  g = G.run('guardianAntesDeEscribir_(true)');
+  ok(g && !g.frenar && !g.desalineada, 'y después de una corrida de la agenda: no es desalineación — ' + (g && g.resumen));
+}
 
 console.log(fallas ? '\n' + fallas + ' FALLA(S)' : '\nTodo en verde.');
 process.exit(fallas ? 1 : 0);

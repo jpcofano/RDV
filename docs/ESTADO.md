@@ -1359,6 +1359,10 @@ escribir nada y diga qué está listo para prender.
 
 #### El GUARDIÁN de las columnas del sistema: escrito y APAGADO (09/10) — primero el paso 58
 
+> **REDISEÑADO el 20/10 (prompt 10, punto 1): ver "20/10 — prompt 10, punto 1: el guardián".** Lo que sigue es el diseño del 09/10:
+> la desalineación ya no se "reubica" (frena y avisa), hay modo `'avisar'` / `'restaurar'`, y los pasos 58 / 59 quedaron reemplazados
+> por los 111 a 115.
+
 **13/10, el texto llegó otra vez** (el usuario: "si ya lo tenés empezado, seguí desde donde quedaste"): estaba hecho el 09/10.
 Se sumaron las dos cosas que faltaban (abajo, punto 3): las columnas que nacen después nacen protegidas / ocultas, y la
 prueba del orden parcial chico con el guardián activo. Las 14 ocultas son exactamente las del texto del usuario.
@@ -1979,7 +1983,7 @@ conteos del log y REGISTRO_UPSERT no cambian; nada se borra. La fecha de cada so
 
 Sin fecha legible (vacía, o un texto sin año como "1/10"), se muestra. Con la fecha de corte mal escrita, no se esconde nada.
 
-**El seco: `paso111_corteRevision_enSeco()`** (99_Correr.js → `medirCorteRevision()`, `diagnostico/40_corte_revision.js`), SÓLO
+**El seco: `paso116_corteRevision_enSeco()`** (99_Correr.js → `medirCorteRevision()`, `diagnostico/40_corte_revision.js`), SÓLO
 LECTURA, con el interruptor apagado (simula prendido con las mismas funciones): por solapa, cuántas líneas hay hoy, cuántas quedan y
 cuáles dejan de aparecer (las primeras 25, con su fecha, y cuántas por mes), y la **VERIFICACIÓN** de que no desaparece nada del 06/10 en
 adelante ni nada sin fecha (si pasara: "OJO: DESAPARECERÍA ALGO…", en mayúsculas, y no se prende). REVISAR_MATCH, SIN_MATCH y
@@ -1995,7 +1999,62 @@ Tests: `tests/corte_revision.test.js` (apagado = el código de d5662f3, leído c
 plan; prendido, lo de antes del corte no aparece y lo del corte en adelante es igual que apagado; la base escrita, idéntica; la fecha
 mal escrita; el seco no escribe nada y grita con un filtro roto a propósito).
 
-**Qué falta:** el usuario corre el paso 111 y, si está bien, `REVISION_DESDE_FECHA_CORTE = true` + clasp push.
+**Qué falta:** el usuario corre el paso 116 (c30) y, si está bien, `REVISION_DESDE_FECHA_CORTE = true` + clasp push.
+
+#### 20/10 — prompt 10, punto 1: el guardián (rediseñado, APAGADO hasta los pasos 111-114)
+
+Prompt: docs/prompts/PROMPT-10-GUARDIAN-Y-CIERRE.md, punto 1. El guardián del 09/10 (`46_Guardian.js`) nunca corrió (el paso 67
+mostraba 0 corridas de "guardian") y su copia (SISTEMA_COPIA) quedó en la fila 830. Desde entonces entraron la agenda, la fusión, la
+corrección c02, el orden de la base, las reprogramaciones y "manda el mail". Lo que cambió (CLAUDE.md §0, "La cuarta excepción"):
+
+1. **Las tres clases de columnas, por encabezado** (`00_Config.js`; el paso 111 las muestra contra la base real y lista las que no
+   están en ninguna lista). Cubren las 65 columnas de hoy, cada una una vez (test `guardian_activo` [9]):
+   - **A, del sistema, puras** (24, `GUARDIAN_CLASE_A`): RDV_UID, form_origen, form_score, form_nivel, form_fecha_match, form_clave,
+     No participa, agenda_uid, agenda_mail, agenda_version, agenda_hora_escrita, agenda_direccion_escrita, agenda_barrio_escrito,
+     agenda_fecha_escrita, agenda_status_escrito, Origen fila, Tocado por el equipo, Evento (mail), Lugar (mail), Dirección (mail),
+     Marcas (mail), Conjunta con, ID cuentas, Fecha envío campañas. Las 14 técnicas (traza y agenda_*) se ocultan.
+     **A, derivadas** (12, `GUARDIAN_CLASE_A_DERIVADAS`): Día de la semana, % de Asistencia, Direccion2, Falta Informacion, Comuna,
+     Poblacion, p. Mujer, P. Varon, (km2), (hab/km2), Zona, ID. Protegidas y grises; el guardián no las compara (las recalcula cada corrida).
+   - **B, datos que escribe el sistema y el equipo puede corregir** (24, `GUARDIAN_CLASE_B`): Figura, Barrio, EVENTO, FECHA, HORA,
+     Dirección, STATUS REUNIÓN, Inscriptos, Mail, Call Center, IVR, RRSS, Difusión, Asistentes, Oradores anotados, Oradores que
+     hablaron, Masculinos, Femeninos, 18-24, 25-39, 40-55, 56-65, 66+, Sin identificar. **Sexo, edades y Sin identificar van acá**:
+     verificado en el código, el upsert los escribe sólo en celda vacía (`setSiDelSistemaLote_`) y nunca vuelve a tocar lo que haya.
+   - **C, del equipo** (5, `GUARDIAN_CLASE_C`): One Page Entregado, Observaciones, Temas mas comentados, Semaforo politico, Síntesis
+     cualitativa:.
+   - **Dudas para el usuario**: (a) "ID cuentas" y "Fecha envío campañas" quedan A: con `'restaurar'`, el "no" que el equipo escribía en
+     "ID cuentas" (decisión 14) se vuelve atrás; (b) "No participa", "Conjunta con" y las "(mail)" son A (las escribe sólo la agenda);
+     (c) una columna nueva del equipo que no esté en ninguna lista sale "SIN CLASE" en el paso 111 (el guardián no la mira).
+2. **La desalineación ya no se arregla moviendo datos**: si alguien ordenó o pegó corrido sólo algunas columnas, esa corrida **no
+   escribe NADA en la base** (tampoco la ordena: el guardián va PRIMERO, antes del orden) y avisa con las filas y columnas que no
+   cierran: mail (tema nuevo `guardian_desalineacion`), AGENDA_PENDIENTES (líneas `guardian|…`; la agenda las conserva al reescribir la
+   solapa) y REGISTRO_PROTECCION. La corrida siguiente vuelve a mirar. Hasta hoy el diseño "reubicaba".
+3. **`GUARDIAN_MODO`**: `'avisar'` (cambio en una A: se avisa —tema `guardian_cambios`, AGENDA_PENDIENTES, REGISTRO_PROTECCION— y no se
+   toca; la copia del final lo toma, no se repite) / `'restaurar'` (se vuelve a la copia y se avisa). Empieza en `'avisar'`.
+4. **La copia después de toda escritura del sistema** (`guardianCopiaTrasEscritura_`): la agenda a mano, deshacer (38 / 98), la fusión
+   (97), c02 / c08, el orden (108 / 109), los IDs (57 / 63), el 92, separar; y al final de la corrida de la hora. Por clave y huella,
+   nunca por número de fila. La red: el sello deja la copia "vieja" y con una copia vieja no se comparan celdas (sí la desalineación).
+5. **Ocultar / proteger con seco y deshacer**: el 114 exige la huella del 113, no toca las protecciones del equipo y anota lo que hizo;
+   el 115 lo deshace (muestra lo ocultado, saca sólo las protecciones del sistema, el encabezado vuelve a su color). Las columnas A que
+   nacen después se protegen solas sólo si el 114 corrió.
+6. **La GUÍA y la LEER** (43_Ayuda.js): una sección "COLUMNAS: CUÁLES PUEDE TOCAR EL EQUIPO" (las tres clases, que no se ordena una
+   sola columna) y, con el guardián prendido, qué pasa si se toca una protegida (según el modo). Correr `paso48_ayuda()` después de
+   prenderlo.
+7. **Apagado = idéntico**: `tests/escritura_lote.test.js` [33] corre tres corridas de la hora con el código de hoy y el de `d5662f3`
+   (leído con git) y compara la base con sus fondos, toda la intermedia, el orden y los avisos.
+
+Tests: `guardian_activo` (reescrito: 100 chequeos), `escritura_lote` [33] (la corrida de la hora: primero, avisar, restaurar, la
+desalineación frena también el orden, apagado idéntico), `corregir_macri_1510` [6], `agenda_fusion` [7] y `orden_base` [10] (el c02 /
+c08, la fusión / deshacer y el orden no dan falsos avisos), `ayuda`.
+
+**Los pasos** (99_Correr.js; los 58 y 59 quedaron reemplazados), en orden:
+1. `paso111_guardian_enSeco()` — SÓLO LECTURA. **Predicción**: SIN CLASE 0 (si hay alguna, decidir su clase); "con una copia nueva"
+   0 (si no, son reales: claves repetidas = filas copiadas y pegadas); contra la copia de hoy (la de la fila 830), "DESALINEADA" o
+   "copia vieja" (se arregla con el 112); la prueba del orden parcial: FRENA.
+2. `paso112_guardian_copiaNueva()` — ESCRIBE sólo SISTEMA_COPIA (idempotente; sin hora).
+3. `paso113_ocultarProteger_enSeco()` → `paso114_ocultarProteger()` (ESCRIBE formato) — `paso115_deshacerOcultarProteger()` lo deshace.
+4. Con el OK del usuario: `GUARDIAN_ACTIVO = true` (`GUARDIAN_MODO = 'avisar'`) + clasp push + `paso48_ayuda()`. La primera corrida
+   dice "copia vieja … no comparó celdas" y toma la buena; desde la segunda, REGISTRO_UPSERT (columna `guardian`). Unos días sin avisos
+   falsos y el OK → `'restaurar'`.
 
 #### 20/10 (noche) — c01 y c03 dieron NO LISTO sólo por Looker: arreglado
 

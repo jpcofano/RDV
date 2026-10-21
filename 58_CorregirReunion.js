@@ -341,7 +341,7 @@ function aplicarCorregirReunion_(sh, plan, caso) {
   }
   SpreadsheetApp.flush();
   if (DERIVADAS_POR_SCRIPT) { try { recalcDerivadas_(RDV_HOJA_DESTINO, true); } catch (err) { Logger.log('>>> las derivadas NO se recalcularon: %s', err); } }
-  if (GUARDIAN_ACTIVO && typeof tomarCopiaSiAlineada_ === 'function') { try { tomarCopiaSiAlineada_(); } catch (err) { Logger.log('>>> el guardián no pudo tomar la copia: %s', err); } }
+  if (typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('la corrección (c02)');   // apagado no hace nada
   out.celdas = w.hechas.length;
   Logger.log('>>> corrida %s: la fila %s corregida (%s celdas). Deshacer: deshacerCorregirReunion(false).', corrida, X, w.hechas.length);
   return out;
@@ -379,6 +379,7 @@ function deshacerCorregirReunion(enSeco, corrida) {
     SpreadsheetApp.flush();
     reg.appendRow([id + '-deshacer', new Date(), 'DESHACER ' + id, '', '', '', '', '', '', '', '', '', '', '', '', '', d.hechas.length, '', d.saltadas.length, 0, '', '', '', '', '']);
     try { PropertiesService.getScriptProperties().deleteProperty(CORREGIR_PROP_CORRIDA); } catch (e) { /* nada */ }
+    if (typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('deshacer la corrección (c08)');   // apagado no hace nada
     Logger.log('>>> deshecho: %s celdas vueltas; no se pudieron (alguien las cambió) %s', d.hechas.length, d.saltadas.length);
     return { corrida: id, celdas: d.hechas.length, saltadas: d.saltadas.length };
   } finally { if (lock) lock.releaseLock(); }

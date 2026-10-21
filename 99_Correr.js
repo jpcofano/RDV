@@ -17,10 +17,13 @@
  *
  *  Antes de nada: `clasp push` desde la carpeta Rdv, si hubo commits desde el último.
  *
+ *  >>> 20/10 (prompt 10, punto 1): EL GUARDIÁN rediseñado y APAGADO (al final del archivo): paso111_guardian_enSeco (SÓLO LECTURA),
+ *      paso112_guardian_copiaNueva (escribe sólo SISTEMA_COPIA), paso113_ocultarProteger_enSeco → paso114_ocultarProteger (formato),
+ *      paso115_deshacerOcultarProteger. Los pasos 58 / 59 quedaron reemplazados.
  *  >>> 20/10 (prompt 09): LO QUE HAY QUE CORRER ESTÁ EN 00_Correr.js (c01..c12): corregir la 824 (c01 → c02), ordenar la base
  *      (c03 → c04), la GUÍA (c05); y lo de sólo lectura (c10 auditoría, c11 mediciones, c12 revisarTodo). Los pasos 101-103
  *      (separar la 824) quedaron DESCARTADOS: el equipo confirmó que la reunión de Villa Devoto no va ("manda el mail").
- *  >>> 20/10 (prompt 10, punto 2): paso111_corteRevision_enSeco()  SÓLO LECTURA (al final del archivo): con el corte de las
+ *  >>> 20/10 (prompt 10, punto 2): paso116_corteRevision_enSeco()  SÓLO LECTURA (al final del archivo): con el corte de las
  *      solapas de revisión (REVISION_DESDE_FECHA_CORTE, APAGADO; FECHA_CORTE_REVISION = 06/10), qué dejaría de aparecer en cada una.
  *  >>> 20/10: mediciones_soloLectura()  SÓLO LECTURA: los pasos 67, 104, 105 y 106 juntos.
  *      Decisiones del 20/10: el orden de la base va al PRINCIPIO de la corrida; las Suspendidas sin formulario no van a las fichas
@@ -84,12 +87,15 @@
  *      Si está bien: el interruptor = true + clasp push; los viejos, paso57_idsHistorial() otra vez (sólo celdas vacías).
  *  >>> 09/10 (3): IDS_EN_LA_HORA = true (pasos 55 a 57 OK: 733 cruzan, conflictos 0). Nada para correr a mano: la corrida de la
  *      hora completa los IDs de las filas activas que ya pasaron; mirar la columna "ids" de REGISTRO_UPSERT.
- *  >>> 09/10 (2): EL GUARDIÁN de las columnas del sistema (46_Guardian.js), escrito y APAGADO (GUARDIAN_ACTIVO = false):
- *        paso58_guardianEnSeco()     SÓLO LECTURA: qué ocultaría, protegería y restauraría; la prueba de la desalineación;
- *                                    las filas que no cuadran hoy
- *        paso59_guardianPreparar()   ESCRIBE FORMATO: oculta, protege con advertencia, encabezado gris; la primera copia
- *      Después: GUARDIAN_ACTIVO = true + clasp push, y paso48_ayuda() (la GUÍA con "las columnas grises"). ESTADO 0.z.
- *      (13/10: las columnas del sistema que nazcan después las protege —y oculta, si son técnicas— la corrida de la hora.)
+ *  >>> 09/10 (2): EL GUARDIÁN de las columnas del sistema (46_Guardian.js), escrito y APAGADO (GUARDIAN_ACTIVO = false).
+ *      20/10 (prompt 10, punto 1): REDISEÑADO; los pasos 58 y 59 (nunca corrieron) quedaron REEMPLAZADOS por (al final del archivo):
+ *        paso111_guardian_enSeco()          SÓLO LECTURA: las clases A/B/C de la base real, qué avisaría (con una copia nueva: 0)
+ *        paso112_guardian_copiaNueva()      ESCRIBE sólo SISTEMA_COPIA (intermedia), idempotente
+ *        paso113_ocultarProteger_enSeco()   EN SECO (guarda la huella)
+ *        paso114_ocultarProteger()          ESCRIBE FORMATO: oculta las técnicas, protege con advertencia las A, encabezado gris
+ *        paso115_deshacerOcultarProteger()  ESCRIBE FORMATO: deshace el 114
+ *      Después: GUARDIAN_ACTIVO = true con GUARDIAN_MODO = 'avisar' + clasp push, y paso48_ayuda(); unos días sin avisos falsos y
+ *      el OK del usuario → 'restaurar'. ESTADO: "20/10 — prompt 10, punto 1: el guardián".
  *  >>> 09/10, A LA MAÑANA: correr **manana()** (abajo, junto a los pasos 55-57). SÓLO LECTURA: no escribe nada. Corre la
  *      medición de los IDs (paso 55: el cruce, el caso 3735 → 805) y las del guardián (las filas cuyas trazas no cuadran hoy
  *      y la prueba del orden parcial, en memoria) y el inventario de las columnas del sistema (ocultas/protegidas), y termina
@@ -1805,29 +1811,7 @@ function paso64_vistasAgenda_enSeco() {
   return vistasAgendaEnSeco();
 }
 
-/**
- * PASO 58 — EN SECO (09/10): el GUARDIÁN de las columnas del sistema, sin tocar nada. Qué columnas ocultaría (las técnicas),
- * cuáles protegería con advertencia (todas las del sistema) y en cuáles pondría el encabezado gris; qué restauraría contra
- * la copia (si ya hay una); la prueba EN MEMORIA de "alguien ordenó sólo las columnas del equipo" (qué reubicaría o si
- * frenaría la corrida); y las filas cuyas trazas no cuadran HOY (el guardián no las toca: la primera copia las toma así).
- */
-function paso58_guardianEnSeco() {
-  _anunciar_('paso 58 — el guardián EN SECO', 'guardianEnSeco()  [46_Guardian.js]', 'NO escribe nada (ni la base, ni la intermedia)',
-             'el log: 1. ocultaría · 2. protegería y encabezado gris · 3. restauraría · 4. la prueba de la desalineación · 5. las filas que no cuadran hoy');
-  return guardianEnSeco();
-}
-
-/**
- * PASO 59 — ESCRIBE FORMATO (09/10): oculta las columnas técnicas, protege con ADVERTENCIA todas las del sistema (no
- * bloquea ordenar ni borrar filas), pone su encabezado gris y toma la primera copia (SISTEMA_COPIA, intermedia). Ningún
- * valor ni fondo de datos cambia. Después: GUARDIAN_ACTIVO = true + clasp push, y paso48_ayuda() (la GUÍA nueva).
- */
-function paso59_guardianPreparar() {
-  _anunciar_('paso 59 — el guardián: ocultar, proteger y la primera copia', 'guardianPreparar()  [46_Guardian.js]',
-             'ESCRIBE: oculta columnas, protecciones con advertencia, el encabezado gris de las columnas del sistema; SISTEMA_COPIA en la intermedia',
-             'el log: cuántas ocultó, protegió y pintó, y la primera copia');
-  return guardianPreparar();
-}
+// (20/10, prompt 10: los pasos 58 y 59 del guardián —nunca corrieron— quedaron REEMPLAZADOS por los pasos 111 a 115, al final.)
 
 /**
  * **ronda()** — los pasos de esta ronda, en orden, en una sola ejecución. La escribió el usuario en el editor (07/10) y
@@ -1979,15 +1963,70 @@ function paso110_reprogramadas_enSeco() {
 }
 
 /**
- * PASO 111 — SÓLO LECTURA (20/10; prompt 10, punto 2: "lo viejo se deja como está"): con el corte REVISION_DESDE_FECHA_CORTE prendido
+ * PASO 116 — SÓLO LECTURA (20/10; prompt 10, punto 2: "lo viejo se deja como está"): con el corte REVISION_DESDE_FECHA_CORTE prendido
  * (APAGADO; este paso lo SIMULA), qué dejaría de aparecer en cada solapa de revisión —REVISAR_MATCH (fichas y RESUELTAS), SIN_MATCH,
  * EMPAREJAR_MANUAL, HISTORICO_SIN_RESOLVER, IDS_SIN_CRUZAR y "se hizo y no está en la base"— por ser de antes de FECHA_CORTE_REVISION
  * (06/10), las primeras con su fecha, y la verificación de que no desaparece nada del corte en adelante. No escribe nada.
  */
-function paso111_corteRevision_enSeco() {
-  _anunciar_('paso 111 — "lo viejo se deja como está": qué dejaría de aparecer para revisar (EN SECO, SÓLO LECTURA)',
+function paso116_corteRevision_enSeco() {
+  _anunciar_('paso 116 — "lo viejo se deja como está": qué dejaría de aparecer para revisar (EN SECO, SÓLO LECTURA)',
              'medirCorteRevision()  [diagnostico/40_corte_revision.js]',
              'NO escribe nada (ni la base, ni la intermedia, ni las solapas de revisión; no manda mails)',
              'el log: por solapa, cuántas líneas hoy, cuántas quedan y cuáles dejan de aparecer (con su fecha), y la VERIFICACIÓN');
   return medirCorteRevision();
+}
+
+// ===================== 20/10 (prompt 10, punto 1): EL GUARDIÁN, aplicado y al día (46_Guardian.js; GUARDIAN_ACTIVO = false) =====================
+
+/**
+ * PASO 111 — SÓLO LECTURA (20/10; prompt 10, 1a/1c): el guardián EN SECO. (1) Las CLASES A / B / C de cada columna de la base real
+ * (y las que no están en ninguna lista de 00_Config.js), (2) qué ocultaría / protegería el paso 114, (3) con una copia NUEVA en
+ * memoria: qué avisaría o restauraría (tiene que dar 0: lo que no, es real), (4) contra SISTEMA_COPIA de hoy, (5) la prueba del orden
+ * parcial en memoria (tiene que FRENAR), (6) las filas cuyas trazas no cuadran. No escribe nada.
+ */
+function paso111_guardian_enSeco() {
+  _anunciar_('paso 111 — el guardián EN SECO (SÓLO LECTURA)', 'guardianEnSeco()  [46_Guardian.js]', 'NO escribe nada (ni la base, ni la intermedia, ni avisos)',
+             'el log: 1. las clases A/B/C y las sin clase · 2. ocultar/proteger · 3. con una copia nueva (tiene que dar 0) · 4. contra la copia de hoy · ' +
+             '5. la prueba (FRENA) · 6. las que no cuadran · RESUMEN');
+  return guardianEnSeco();
+}
+
+/**
+ * PASO 112 — ESCRIBE SÓLO SISTEMA_COPIA (intermedia; nunca la base): la copia nueva de las columnas del sistema, con la base de hoy.
+ * Idempotente (la solapa se reescribe entera). Sin hora: la primera corrida con el guardián prendido no compara celdas contra ésta
+ * (sólo mira la desalineación) y toma la buena al final.
+ */
+function paso112_guardian_copiaNueva() {
+  _anunciar_('paso 112 — la copia nueva del guardián (ESCRIBE sólo SISTEMA_COPIA)', 'guardianCopiaNueva(true)  [46_Guardian.js]',
+             'SÍ: sólo la solapa SISTEMA_COPIA de la intermedia (se reescribe entera: correrlo dos veces deja lo mismo). La base, NO',
+             'el log: cuántas filas y columnas copió');
+  return guardianCopiaNueva(true);
+}
+
+/**
+ * PASO 113 — EN SECO: qué columnas se ocultarían (las técnicas), cuáles se protegerían con advertencia (las A) y en cuáles se pondría
+ * el encabezado gris; las protecciones del equipo (no se tocan). Guarda la huella que exige el 114.
+ */
+function paso113_ocultarProteger_enSeco() {
+  _anunciar_('paso 113 — ocultar y proteger las columnas del sistema (EN SECO)', 'ocultarProteger_enSeco()  [46_Guardian.js]',
+             'NO escribe la base (sólo guarda la huella en una propiedad del script)', 'el log: ocultaría · protegería · gris · protecciones del equipo · la HUELLA');
+  return ocultarProteger_enSeco();
+}
+
+/**
+ * PASO 114 — ESCRIBE FORMATO (no valores): oculta las técnicas, protege con ADVERTENCIA las columnas A (el equipo ve el aviso y puede
+ * seguir; no bloquea ordenar ni borrar) y pone su encabezado gris. Exige la huella del 113 (de menos de 2 horas). Deshacer: paso 115.
+ */
+function paso114_ocultarProteger() {
+  _anunciar_('paso 114 — ocultar y proteger las columnas del sistema (ESCRIBE formato)', 'ocultarProteger()  [46_Guardian.js]',
+             'SÍ, formato: oculta columnas, protecciones con advertencia y el gris del encabezado (fila 1). Ningún valor ni fondo de datos',
+             'el log; deshacer: paso115_deshacerOcultarProteger()');
+  return ocultarProteger();
+}
+
+/** PASO 115 — ESCRIBE FORMATO: deshace el 114 (muestra lo ocultado, saca sólo las protecciones del sistema, el gris al color de antes). */
+function paso115_deshacerOcultarProteger() {
+  _anunciar_('paso 115 — deshacer ocultar y proteger (ESCRIBE formato)', 'deshacerOcultarProteger(true)  [46_Guardian.js]',
+             'SÍ, formato: muestra las columnas que ocultó el sistema, saca SÓLO sus protecciones, el encabezado vuelve a su color', 'el log');
+  return deshacerOcultarProteger(true);
 }

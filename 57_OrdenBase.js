@@ -218,7 +218,12 @@ function _logPlanOrden_(plan, bloque) {
 function ordenarBaseAhora() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(ESPERA_BLOQUEO_MS)) { Logger.log('>>> Hay otra corrida en curso: no se ordena nada.'); return { error: 'hay otra corrida en curso' }; }
-  try { return ordenarBase_({ aMano: true, exigirSeco: true }); }
+  try {
+    const r = ordenarBase_({ aMano: true, exigirSeco: true });
+    // 20/10 (prompt 10): el orden movió filas → la copia del guardián, de nuevo (apagado no hace nada)
+    if (r && r.movidas && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('el orden de la base (paso 108)');
+    return r;
+  }
   finally { lock.releaseLock(); }
 }
 
@@ -286,7 +291,7 @@ function ordenarBase_(opciones) {
   try { props.setProperty(ORDEN_PROP_HUELLA, v.huellaDespues); } catch (e) { Logger.log('  (la huella del orden no se pudo guardar: %s)', e); }
   // las vistas muestran "Fila del destino": que la próxima corrida las reescriba (49_Aceleraciones.js)
   if (typeof olvidarHuellasVistas === 'function') { try { olvidarHuellasVistas(); } catch (e) { /* la red de seguridad de 6 h igual las rehace */ } }
-  if (GUARDIAN_ACTIVO && typeof tomarCopiaSiAlineada_ === 'function') { try { tomarCopiaSiAlineada_(); } catch (e) { Logger.log('  el guardián no pudo tomar la copia: %s', e); } }
+  // 20/10 (prompt 10): la copia del guardián, en el paso 108 (ordenarBaseAhora); en la corrida de la hora la toma el final de la corrida
   const out = { movidas: plan.mueve.length, corrida: corrida, repuestos: v.repuestos, distintasDelCalculo: v.distintas, error: v.error, ms: Date.now() - t0 };
   Logger.log('>>> BASE ORDENADA (corrida %s): %s filas movidas de %s | formatos repuestos en %s filas | distintas del cálculo %s%s | %s ms. ' +
              'Deshacer: paso 109.', corrida, out.movidas, n, v.repuestos, v.distintas, v.error ? ' | ERROR: ' + v.error : '', out.ms);
@@ -373,7 +378,12 @@ function _verificarOrden_(sh, antes, plan, nCols) {
 function deshacerOrdenBase(enSeco, corrida) {
   const lock = enSeco ? null : LockService.getScriptLock();
   if (lock && !lock.tryLock(ESPERA_BLOQUEO_MS)) { Logger.log('>>> Hay otra corrida en curso: no se deshace nada.'); return { error: 'hay otra corrida en curso' }; }
-  try { return _deshacerOrden_(!!enSeco, corrida); }
+  try {
+    const r = _deshacerOrden_(!!enSeco, corrida);
+    // 20/10 (prompt 10): deshacer el orden movió filas → la copia del guardián, de nuevo (apagado no hace nada)
+    if (!enSeco && r && r.movidas && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('deshacer el orden (paso 109)');
+    return r;
+  }
   finally { if (lock) lock.releaseLock(); }
 }
 

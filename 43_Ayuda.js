@@ -43,8 +43,16 @@ const AYUDA_GUIA_ = [
   ['item', 'Si falta un dato, completarlo en la fila que ya existe. No cargar otra fila para una reunión del mail.'],
   ['item', 'Barrio vacío: cargarlo. Lo que corrijan, el sistema no lo vuelve a tocar.'],
   ['item', 'Si una fila sobra, borrarla: el sistema no la vuelve a crear.'],
-  ['item', 'No escribir en: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con.'],
-  ['item', 'Las columnas grises las escribe el sistema: si se tocan, el sistema las corrige. Para ordenar, usar Datos → Ordenar hoja o vistas de filtro; nunca ordenar sólo algunas columnas.'],
+  // 20/10 (prompt 10, punto 1): las tres clases de columnas (00_Config.js, GUARDIAN_CLASE_*); %B% y %C% los completa filasAyuda_
+  ['seccion', 'COLUMNAS: CUÁLES PUEDE TOCAR EL EQUIPO'],
+  ['item', 'Del equipo (el sistema nunca las toca): %C%.'],
+  ['item', 'Datos que completa el sistema y el equipo puede corregir: %B%. Lo que corrijan, el sistema no lo vuelve a tocar.'],
+  ['item', 'Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, ID cuentas, Fecha envío campañas.'],
+  ['item', 'Las columnas del sistema tienen el encabezado gris y están protegidas: si se intenta escribir en una, Sheets avisa antes (las técnicas están ocultas).', null, 'guardian'],
+  ['item', 'Si igual se cambia una columna del sistema, el sistema no la corrige: le avisa a quien lo administra.', null, 'guardianAvisar'],
+  ['item', 'Si igual se cambia una columna del sistema, el sistema la vuelve a poner como estaba en la hora siguiente (y le avisa a quien lo administra).', null, 'guardianRestaurar'],
+  ['item', 'Para ordenar: Datos → Ordenar hoja (la hoja entera) o vistas de filtro. Nunca ordenar ni pegar corrido sólo algunas columnas: cada reunión quedaría con datos de otra.'],
+  ['item', 'Si pasa, el sistema no escribe nada en la base hasta que se arregle (Edición → Deshacer, o Archivo → Historial de versiones) y avisa a quien lo administra.', null, 'guardian'],
   ['seccion', 'SOLAPA REVISAR_MATCH (formularios dudosos)'],
   ['item', 'Cada ficha: la reunión arriba y hasta 3 formularios abajo.'],
   ['item', 'Leer "¿por qué?" y elegir en ELEGIR: Opción 1, 2, 3, Ninguno o No sé.'],
@@ -121,7 +129,9 @@ const AYUDA_LEER_ = [
   ['item', 'Fila del destino: la fila de la base RDV donde está esa reunión. STATUS en el destino: su estado allí.'],
   ['item', 'Mail / Versión: de qué mail salió y qué versión es ("3 de 3").'],
   ['seccion', 'IMPORTANTE'],
-  ['item', 'No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)']
+  ['item', 'No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)'],
+  // 20/10 (prompt 10, punto 1): qué se corrige en la base y cómo se ordena (el detalle, en la GUÍA de la base)
+  ['item', 'En la base RDV se corrigen los datos (Figura, FECHA, HORA, Barrio, Dirección, EVENTO, STATUS, inscriptos, asistentes…); las columnas del sistema no se tocan (ver la GUÍA de la base). Para ordenar, la hoja entera (Datos → Ordenar hoja), nunca sólo algunas columnas.']
 ];
 
 /** Los colores de la sección de colores: los de las fichas (RM.COLOR) y la marca del sistema. */
@@ -149,9 +159,17 @@ function filasAyuda_(def) {
     if (l[3] === 'amarilloVerde' && !(AGENDA_COLORES_MAIL && AGENDA_COLORES_AMARILLO_VERDE)) return;
     // 16/10: RDV CONJUNTO como tercera fuente de cancelación (sólo con la cancelación automática)
     if (l[3] === 'conjunto' && !(cancelAuto && AGENDA_CANCELACION_CONJUNTO)) return;
-    if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: l[1] });
-    else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: l[1] }); }
-    else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + l[1], color: l[2] ? colores[l[2]] : null });
+    // 20/10 (prompt 10): el guardián (GUARDIAN_ACTIVO y su modo)
+    const guardian = typeof GUARDIAN_ACTIVO !== 'undefined' && GUARDIAN_ACTIVO;
+    const restaurar = guardian && typeof GUARDIAN_MODO !== 'undefined' && GUARDIAN_MODO === 'restaurar';
+    if (l[3] === 'guardian' && !guardian) return;
+    if (l[3] === 'guardianAvisar' && !(guardian && !restaurar)) return;
+    if (l[3] === 'guardianRestaurar' && !restaurar) return;
+    const texto = String(l[1]).replace('%B%', typeof GUARDIAN_CLASE_B !== 'undefined' ? GUARDIAN_CLASE_B.join(', ') : '')
+                              .replace('%C%', typeof GUARDIAN_CLASE_C !== 'undefined' ? GUARDIAN_CLASE_C.join(', ') : '');
+    if (l[0] === 'titulo') out.push({ tipo: 'titulo', texto: texto });
+    else if (l[0] === 'seccion') { out.push({ tipo: 'blanco', texto: '' }); out.push({ tipo: 'seccion', texto: texto }); }
+    else out.push({ tipo: 'item', texto: AYUDA_FORMATO_.vineta + texto, color: l[2] ? colores[l[2]] : null });
   });
   return out;
 }

@@ -87,7 +87,12 @@ function fusionarParesAgenda(opciones) {
     Logger.log('>>> Hay otra corrida (upsert o agenda) en curso: no se junta nada (LockService).');
     return { error: 'hay otra corrida en curso' };
   }
-  try { return _fusionarParesAgenda_(false, opciones || {}); }
+  try {
+    const r = _fusionarParesAgenda_(false, opciones || {});
+    // 20/10 (prompt 10): la fusión escribió y borró filas → la copia del guardián, de nuevo (apagado no hace nada)
+    if (r && r.corrida && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('la fusión (paso 97)');
+    return r;
+  }
   finally { lock.releaseLock(); }
 }
 

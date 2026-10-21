@@ -1625,9 +1625,10 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
   verificarHojaDestino_(ssDestino_());
   let errorCritico = null;
 
-  // EL GUARDIÁN (09/10, GUARDIAN_ACTIVO; 46_Guardian.js): antes de escribir NADA, las columnas del sistema contra su copia:
-  // restaura, reubica (desalineación) o, si no puede reubicar sin ambigüedad, esta corrida no escribe nada más en la base
-  // (sigue en seco: los reportes se regeneran). Si el guardián mismo falla, tampoco: con la base sin controlar no se escribe.
+  // EL GUARDIÁN (09/10; rediseñado el 20/10, prompt 10; GUARDIAN_ACTIVO; 46_Guardian.js): PRIMERO, antes del orden de la base y de
+  // escribir NADA, las columnas del sistema (clase A) contra su copia. Si la base está DESALINEADA, esta corrida no escribe nada en la
+  // base —tampoco la ordena— (sigue en seco: los reportes se regeneran) y avisa; un cambio en una columna A se avisa (modo 'avisar') o
+  // se restaura ('restaurar'). Si el guardián mismo falla, tampoco se escribe: con la base sin controlar no se escribe.
   let resGuardian = null;
   if (GUARDIAN_ACTIVO) {
     const tG = _ahoraMs_(); corridaEmpieza_('guardian');
@@ -1637,10 +1638,10 @@ function _correrUpsertPartes_(enSeco, t0, historial, soloUids) {
       resGuardian = { error: String(err && err.message || err), frenar: true };
     }
     corridaAnotar_('guardian', tG, resGuardian && resGuardian.error ? resGuardian.error : null);
-    if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('el guardián pudo restaurar o reubicar');
+    if (typeof baseCorridaInvalidar_ === 'function') baseCorridaInvalidar_('el guardián pudo restaurar');
     if (resGuardian.frenar && !enSeco) {
-      Logger.log('>>> ### EL GUARDIÁN FRENÓ LA CORRIDA: no se escribe nada en la base (agenda, IDs, datos, derivadas, tablero). ' +
-                 'Mirar REGISTRO_PROTECCION y el log de arriba. ###');
+      Logger.log('>>> ### EL GUARDIÁN FRENÓ LA CORRIDA (la base está desalineada, o el guardián falló): no se escribe nada en la base ' +
+                 '(ni el orden, ni agenda, IDs, datos, derivadas, tablero). Mirar AGENDA_PENDIENTES, REGISTRO_PROTECCION y el log. ###');
       enSeco = true;
     }
   }

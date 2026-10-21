@@ -302,42 +302,65 @@ vive aparte en `05_Escritura.js` (`escribirAgendaLote_`):
 
 `setSiDelSistema_` sigue siendo verificable con un grep: la agenda nunca pasa por él.
 
-### La cuarta excepción: el GUARDIÁN de las columnas del sistema (09/10; APAGADO: `GUARDIAN_ACTIVO = false`)
+### La cuarta excepción: el GUARDIÁN de las columnas del sistema (09/10; rediseñado el 20/10, prompt 10; APAGADO: `GUARDIAN_ACTIVO = false`)
 
 Decisión del usuario: **el equipo ORDENA y BORRA filas, pero las columnas del sistema no pueden quedar modificadas.** La
 protección real no sirve (bloquea ordenar y borrar), así que (`46_Guardian.js`):
 
-- las **técnicas** (sólo de traza: `GUARDIAN_OCULTAR`, las 6 de traza y las 8 `agenda_*`) se **ocultan**; **todas** las del
-  sistema (traza, agenda, "ID cuentas", "Fecha envío campañas" y las 12 derivadas) llevan **protección con advertencia** y
-  el **encabezado gris** (paso 59, una vez; buscadas por encabezado). Las del equipo no se tocan. **Las columnas del
-  sistema que nacen después** (13/10): al final de cada corrida con el guardián prendido, una columna del sistema sin su
-  protección es nueva y nace protegida, gris y, si es técnica, oculta (`asegurarColumnasNuevasGuardian_`); una técnica ya
-  protegida que alguien del equipo mostró no se vuelve a ocultar;
-- en la corrida de la hora, **antes de escribir nada**, el guardián compara las columnas guardadas (traza, agenda, IDs; las
-  derivadas no: se recalculan) contra su **copia** (`SISTEMA_COPIA`, intermedia; clave agenda_uid o RDV_UID y huella figura +
-  fecha), que se toma al final de cada corrida: lo que cambió sin que lo cambiara el sistema se **restaura**; si alguien
-  ordenó sólo algunas columnas (**desalineación**), las del sistema se **reubican** en la fila que tiene su huella (con un
-  desempate barrio | hora | evento sólo para los pares figura + fecha repetidos); una fila que el equipo borró se respeta;
-  una fila que no es de ninguna entrada de la copia (copiada y pegada, o nueva con algo tipeado) queda sin nada en esas
-  columnas. Todo a `REGISTRO_PROTECCION`;
-- **si no puede reubicar sin ambigüedad, esa corrida no escribe NADA en la base** (sigue en seco), y lo avisa en grande:
-  con filas corridas, cualquier escritura —que va por número de fila— puede caer en la fila de otra reunión. Es más que
-  "no escribir en esas filas", a propósito;
-- la escritura vive en `05_Escritura.js` (`escribirGuardianLote_`): **sólo columnas guardadas** (cualquier otra es un error
-  y no escribe nada), lectura fresca (una celda que alguien cambió mientras corría no se toca), `COLOR_SISTEMA` en lo
-  escrito; pisa celdas con valor: por eso es una excepción anunciada;
-- **la copia sirve para restaurar sólo si es fresca**: tomada al final de una corrida prendida hace menos de
-  `GUARDIAN_COPIA_MAX_MS` (75 min) y sin escrituras del sistema después (dejan un sello, `_selloEscrituraSistema_`, sólo con
-  el guardián prendido; un paso a mano: el 57, la agenda a mano, un deshacer). La del paso 59 no tiene hora. Con una copia
-  vieja no restaura, pero **sí busca la desalineación: si la hay, frena** (sin escribir nada). Al final de cada corrida la
-  copia se toma **sólo si la base no quedó desalineada** (un orden parcial hecho mientras corría no queda grabado). Si
-  frena, **no escribe nada**, tampoco lo que podría arreglar. El paso 57 pasa por el guardián antes de escribir;
-- **la fila de cada reunión**: la clave en una fila con su huella; la misma huella con los mismos valores; la clave manda si
-  el equipo cambió figura o fecha (una reprogramación, un intercambio de fechas: no es una desalineación); la huella en una
-  sola fila libre con el mismo desempate (o los mismos valores) → reubicada; con otro desempate o en varias filas →
-  ambigua (frena). Revisado por el agente revisor del punto 3c, con sus casos en `tests/guardian_activo.test.js` [6];
-- **consecuencia**: con el guardián prendido el equipo ya no puede corregir a mano una columna del sistema (se restaura): un
-  ID mal puesto o el "no" de la decisión 14 se vuelven atrás. Esas correcciones pasan por quien opera el sistema.
+- **tres clases de columnas, por encabezado** (`00_Config.js`; el paso 111 las muestra contra la base real, con las que no están
+  en ninguna lista):
+  - **A, del sistema, puras** (`GUARDIAN_CLASE_A`: traza, las 16 de la agenda, "ID cuentas", "Fecha envío campañas"; y las 12
+    derivadas, `GUARDIAN_CLASE_A_DERIVADAS`): **protección con advertencia** y **encabezado gris**; las **técnicas**
+    (`GUARDIAN_OCULTAR`, las 6 de traza y las 8 `agenda_*`) se **ocultan**. El guardián compara las de `GUARDIAN_CLASE_A`
+    contra su copia; las derivadas no (las recalcula cada corrida);
+  - **B, datos que escribe el sistema y el equipo puede corregir** (`GUARDIAN_CLASE_B`: Figura, FECHA, HORA, Barrio, Dirección,
+    EVENTO, STATUS REUNIÓN, Inscriptos, canales, sexo, edades, Sin identificar, Asistentes, Oradores): **el guardián no las
+    restaura nunca**; la corrección del equipo vale (la agenda la anota en "Tocado por el equipo");
+  - **C, del equipo** (`GUARDIAN_CLASE_C`): ni el guardián ni el sistema las tocan;
+- ocultar y proteger: pasos 113 (en seco, con huella) → 114 (real; las protecciones del equipo no se tocan; anota lo que hizo)
+  → 115 (deshacer: sólo lo suyo). **Las columnas A que nacen después** (13/10): al final de cada corrida con el guardián
+  prendido —y sólo si el 114 corrió—, una columna A sin su protección nace protegida, gris y, si es técnica, oculta
+  (`asegurarColumnasNuevasGuardian_`); una técnica ya protegida que alguien del equipo mostró no se vuelve a ocultar;
+- en la corrida de la hora, **PRIMERO** (antes del orden de la base, de la agenda y de todo), el guardián compara las columnas A
+  contra su **copia** (`SISTEMA_COPIA`, intermedia; clave agenda_uid o RDV_UID y huella figura + fecha, nunca el número de
+  fila):
+  - **DESALINEACIÓN** (alguien ordenó o pegó corrido sólo algunas columnas: las columnas A de una reunión quedaron en la fila de
+    otra): **el guardián NO la arregla moviendo datos** (hasta el 20/10 las "reubicaba": ya no). **Esa corrida no escribe NADA
+    en la base** —tampoco la ordena: sigue en seco— y avisa con las filas y las columnas que no cierran: por mail
+    (`registrarAviso_`, tema `guardian_desalineacion`), en `AGENDA_PENDIENTES` (líneas `guardian|…`, que la agenda conserva) y en
+    `REGISTRO_PROTECCION`. La corrida siguiente vuelve a mirar; arreglada (Edición → Deshacer, o el historial de versiones),
+    escribe. Con filas corridas, cualquier escritura —que va por número de fila— puede caer en la fila de otra reunión: por eso
+    es la corrida entera, no sólo esas filas;
+  - **un cambio en una columna A** (sin desalineación): con **`GUARDIAN_MODO = 'avisar'`** se avisa (tema `guardian_cambios`,
+    `AGENDA_PENDIENTES`, `REGISTRO_PROTECCION`) y **no se toca**; con `'restaurar'` vuelve a lo de la copia (y se avisa). Empieza
+    en `'avisar'`; a `'restaurar'` con el OK del usuario, después de unos días sin avisos falsos;
+  - una fila que el equipo **borró** se respeta (la copia la da de baja); una fila a la que el equipo le cambió Figura o FECHA
+    (una reprogramación, un intercambio de fechas) sigue siendo la misma reunión: la clave manda, no es desalineación;
+  - una fila que no es de ninguna reunión de la copia (copiada y pegada con su RDV_UID, o nueva con algo tipeado en una A): se
+    avisa; en `'restaurar'`, queda sin nada en esas columnas;
+- la escritura (sólo en `'restaurar'`) vive en `05_Escritura.js` (`escribirGuardianLote_`): **sólo columnas A guardadas**
+  (cualquier otra —una B, una C o una derivada— es un error y no escribe nada), lectura fresca (una celda que alguien cambió
+  mientras corría no se toca), `COLOR_SISTEMA` en lo escrito; pisa celdas con valor: por eso es una excepción anunciada;
+- **la copia, después de TODA escritura del sistema**: al final de la corrida de la hora (`tomarCopiaSiAlineada_`) y al final de
+  cada paso a mano que escribe la base (`guardianCopiaTrasEscritura_`: la agenda a mano, deshacer —38 / 98—, la fusión —97—, la
+  corrección c02 y su deshacer c08, el orden —108 / 109—, los IDs —57 / 63—, el 92, separar), así el guardián nunca toma por
+  "del equipo" algo que cambió el propio sistema. Se toma **sólo si la base no quedó desalineada** (un orden parcial hecho
+  mientras corría no queda grabado). **La red**, si un paso a mano no la tomó: cada escritura del sistema deja un sello
+  (`_selloEscrituraSistema_`, sólo con el guardián prendido) y una copia **vieja** —más de `GUARDIAN_COPIA_MAX_MS` (75 min),
+  escrituras del sistema después, o la del paso 112, que no tiene hora— **no se usa para comparar celdas** (no se sabría quién
+  cambió qué), **pero sí para ver la desalineación: si la hay, frena**. El paso 57 pasa por el guardián antes de escribir;
+- **la fila de cada reunión** (sin cambios desde el 09/10, revisado por el agente revisor del punto 3c; casos en
+  `tests/guardian_activo.test.js` [6]): la clave en una fila con su huella; la misma huella con los mismos valores; la clave
+  manda si el equipo cambió figura o fecha; la huella en una sola fila libre: si esa fila tiene las columnas A de **otra**
+  reunión (su clave, o los valores de otra entrada) → desalineación; si no (la misma fila, movida entera) → en su lugar; con otro
+  desempate o en varias filas → ambigua (desalineación);
+- **consecuencia**: con el guardián en `'restaurar'`, el equipo ya no puede corregir a mano una columna A (se vuelve atrás): un
+  ID mal puesto o el "no" de la decisión 14. Esas correcciones pasan por quien opera el sistema. En `'avisar'`, se avisan.
+
+Los pasos (99_Correr.js): **111** en seco (las clases, qué avisaría con una copia nueva —tiene que dar 0— y contra la de hoy, la
+prueba del orden parcial en memoria) → **112** la copia nueva (escribe sólo `SISTEMA_COPIA`, idempotente) → **113 / 114**
+ocultar y proteger → `GUARDIAN_ACTIVO = true` en `'avisar'` (115 deshace el 114). Los pasos 58 y 59 (nunca corrieron) quedaron
+reemplazados. Detalle: docs/ESTADO.md, "20/10 — prompt 10, punto 1: el guardián".
 
 `setSiDelSistema_` sigue siendo verificable con un grep: el guardián nunca pasa por él.
 
@@ -2864,7 +2887,7 @@ Para Revisar (legado)   [archivo, sólo lectura, no lo escribe nadie]
     > "formularios sin ningún candidato", la del formulario: su nombre o su cierre); en IDS_SIN_CRUZAR, la Fecha de la lista
     > (la planeada); en "se hizo y no está en la base" (AGENDA_PENDIENTES y el aviso diario), la de RDV CONJUNTO. Sin fecha
     > legible, se muestra; con la fecha de corte mal escrita, no se esconde nada. El seco: `medirCorteRevision()`
-    > (`diagnostico/40_corte_revision.js`, paso 111, sólo lectura: qué deja de aparecer en cada solapa y la verificación de
+    > (`diagnostico/40_corte_revision.js`, paso 116, sólo lectura: qué deja de aparecer en cada solapa y la verificación de
     > que no desaparece nada del corte en adelante). Test: `tests/corte_revision.test.js`. No es `DIAS_ACTIVOS`: aquélla
     > decide sobre qué filas trabaja el sistema; ésta, qué se muestra para revisar.
 
@@ -2984,9 +3007,10 @@ diagnostico/27_guardian.js  el GUARDIÁN de las columnas del sistema, SÓLO LO Q
                    del orden parcial (grande y chico), en memoria. No escribe nada; no hay interruptor        ← 08/10
 diagnostico/28_manana.js  lo que corre manana() (99_Correr.js): medirIds y medirGuardian con las listas acotadas, y el
                    RESUMEN de qué está listo para prender. SÓLO LECTURA                                         ← 08/10
-46_Guardian.js     EL GUARDIÁN (sección 0, la cuarta excepción): ocultar y proteger las columnas del sistema (paso 59), su
-                   copia (SISTEMA_COPIA), y en la corrida de la hora restaurar / reubicar / frenar (REGISTRO_PROTECCION).
-                   Paso 58 en seco. APAGADO (GUARDIAN_ACTIVO = false)                                           ← 09/10
+46_Guardian.js     EL GUARDIÁN (sección 0, la cuarta excepción; rediseñado el 20/10): las clases A / B / C, ocultar y proteger
+                   (pasos 113-115), su copia (SISTEMA_COPIA, paso 112 y después de toda escritura del sistema), y en la corrida
+                   de la hora, PRIMERO: desalineación → no escribe nada y avisa; cambio en una A → avisar / restaurar
+                   (GUARDIAN_MODO). Paso 111 en seco. APAGADO (GUARDIAN_ACTIVO = false)                          ← 09/10
 47_AgendaVistas.js las dos vistas nuevas del archivo "Agenda" (no de la base): "AgendaCall" (otro orden de columnas, un
                    color por fila según la semana) y "Agenda (mail)" (un renglón negro por día, una celda Evento / Hora /
                    Lugar por reunión, lo cambiado en naranja, lo desaparecido tachado, y las COLUMNAS DEL EQUIPO
@@ -3063,7 +3087,7 @@ diagnostico/34_colores_mail.js  las marcas de COLOR del mail (paso 90, SÓLO LEC
                    próxima corrida simulada y la huella, c02 real, c08 deshacer                                   ← 20/10
 59_CorteRevision.js  "lo viejo se deja como está" (decisión 13, el recuadro): las solapas de revisión, sólo desde
                    FECHA_CORTE_REVISION (sólo la vista; nada del plan ni de la base cambia). APAGADO
-                   (REVISION_DESDE_FECHA_CORTE); el seco: diagnostico/40_corte_revision.js (paso 111, sólo lectura)  ← 20/10
+                   (REVISION_DESDE_FECHA_CORTE); el seco: diagnostico/40_corte_revision.js (paso 116, sólo lectura)  ← 20/10
 00_Correr.js       LO QUE HAY QUE CORRER (c01..c12), primero en el editor; los pasoNN_ siguen en 99_Correr.js. Sin lógica  ← 20/10
 40_Alertas.js      verificarCambiosRecientes_() → ALERTA_CAMBIOS                ← ya escrito
 99_Correr.js       índice de lo que se corre a mano, en orden. Sin lógica propia    ← ya escrito
