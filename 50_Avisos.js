@@ -26,6 +26,8 @@
  *     'cancelacion_no_aplicada' una salvaguarda frenó una cancelación (lo registra la agenda);
  *     'suspendida_con_datos'    una fila que suspendió el sistema recibió después asistentes o inscriptos: no se pisó nada
  *                               (lo registra la agenda, una vez por fila; 15/10, noche);
+ *     'guardian_desalineacion'  la base está desalineada: la corrida no escribió nada (lo registra el guardián; 20/10, prompt 10);
+ *     'guardian_cambios'        alguien cambió columnas del sistema (el guardián avisa o restaura; 20/10, prompt 10);
  * - 'suspendidas' (lo registra la agenda, una línea por reunión suspendida): NO va de a una. Se anota en la solapa
  *   AVISOS_SUSPENDIDAS (intermedia) y sale en UN mail por día, "reuniones suspendidas hoy", en la primera corrida desde las
  *   AVISOS_SUSPENDIDAS_HORA; el lunes, además, en el resumen semanal.
@@ -62,6 +64,9 @@ const AVISOS_TITULOS_ = {
   suspendidas: 'reuniones suspendidas hoy',
   suspendida_con_datos: 'una reunión que el sistema suspendió o dejó "Reprogramada" recibió asistentes o inscriptos (no se pisó nada)',
   agenda_info: 'lo nuevo de la agenda que el equipo tiene que saber',
+  // 20/10 (prompt 10): el guardián (46_Guardian.js), sólo con GUARDIAN_ACTIVO
+  guardian_desalineacion: 'la base está DESALINEADA (alguien ordenó o pegó sólo algunas columnas): la corrida no escribió nada',
+  guardian_cambios: 'alguien cambió columnas del sistema de la base (el guardián avisa)',
   resumen_semanal: 'resumen semanal'
 };
 /**

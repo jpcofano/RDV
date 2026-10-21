@@ -104,6 +104,10 @@ function crearEntorno(formsSinFila, formatoDirecta) {
     if (formsSinFila && f === '00_Config.js') src = src.replace('const FORMULARIOS_SIN_FILA_ACTIVA = false;', 'const FORMULARIOS_SIN_FILA_ACTIVA = true;');
     // 15/10: la LEER habla del formato de "Agenda Directa" sólo con AGENDA_MAIL_FORMATO_DIRECTA
     if (formatoDirecta && f === '00_Config.js') src = src.replace('const AGENDA_MAIL_FORMATO_DIRECTA = false;', 'const AGENDA_MAIL_FORMATO_DIRECTA = true;');
+    // 20/10 (prompt 10): el guardián prendido, en 'avisar' o en 'restaurar' (crearEntorno.guardian = 'avisar' | 'restaurar')
+    if (crearEntorno.guardian && f === '00_Config.js') {
+      src = src.replace('const GUARDIAN_ACTIVO = false;', 'const GUARDIAN_ACTIVO = true;').replace("const GUARDIAN_MODO = 'avisar';", "const GUARDIAN_MODO = '" + crearEntorno.guardian + "';");
+    }
     vm.runInContext(src, ctx, { filename: f });
   });
   E.ctx = ctx;
@@ -141,8 +145,8 @@ const iSec = filas.indexOf('QUÉ HACE EL SISTEMA (solo, cada hora)');
 ok(iSec > 0 && filas[iSec - 1] === '' && fmt(g, iSec + 1).peso === 'bold' && fmt(g, iSec + 1).tamano === 12 && fmt(g, iSec + 1).fondo === '#D9E1F2',
    'título de sección: negrita 12, gris claro, con una fila en blanco antes');
 const secciones = filas.filter(function (t, i) { return fmt(g, i + 1).fondo === '#D9E1F2'; });
-ok(secciones.length === 7 && filas.filter(function (t) { return /^ • /.test(t); }).length === 26,
-   '7 secciones y 26 viñetas (20/10: MANDA EL MAIL; 09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo; 16/10: AGENDA_DUPLICADOS sólo decide, y una reunión en dos filas; FORMULARIOS_SIN_FILA apagada: no está) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
+ok(secciones.length === 8 && filas.filter(function (t) { return /^ • /.test(t); }).length === 28,
+   '8 secciones y 28 viñetas (20/10, prompt 10: COLUMNAS: CUÁLES PUEDE TOCAR EL EQUIPO, con el guardián apagado; 20/10: MANDA EL MAIL; 09/10: la de las columnas grises; 13/10: la solapa "Agenda" de este archivo; 16/10: AGENDA_DUPLICADOS sólo decide, y una reunión en dos filas; FORMULARIOS_SIN_FILA apagada: no está) (" • "), una por fila (' + secciones.length + ' / ' + filas.filter(function (t) { return /^ • /.test(t); }).length + ')');
 const colores = E.run('_coloresAyuda_()');
 const conColor = function (inicio) { const i = filas.findIndex(function (t) { return t.indexOf(' • ' + inicio) === 0; }); return fmt(g, i + 1).fondo; };
 ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde && conColor('Rojo') === colores.rojo &&
@@ -150,7 +154,11 @@ ok(conColor('Azul claro') === '#CFE2F3' && conColor('Verde') === colores.verde &
    'QUÉ SIGNIFICAN LOS COLORES: cada línea con su color (los de las fichas y #CFE2F3)');
 const iEleg = filas.findIndex(function (t) { return /ELEGIR/.test(t); });
 ok(iEleg > 0 && JSON.stringify(fmt(g, iEleg + 1).negritas) === '["ELEGIR"]', 'ELEGIR en negrita');
-ok(filas.indexOf(' • No escribir en: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con.') > 0 &&
+ok(filas.indexOf(' • Del sistema, no escribir en ellas: columnas calculadas, RDV_UID, form_*, agenda_*, Origen fila, Tocado por el equipo, columnas "(mail)", No participa, Conjunta con, ID cuentas, Fecha envío campañas.') > 0 &&
+   filas.indexOf(' • Del equipo (el sistema nunca las toca): One Page Entregado, Observaciones, Temas mas comentados, Semaforo politico, Síntesis cualitativa:.') > 0 &&
+   filas.some(function (t) { return /^ • Datos que completa el sistema y el equipo puede corregir: Figura, Barrio, EVENTO, FECHA, HORA, Dirección, STATUS REUNIÓN, Inscriptos, .*Sin identificar\. /.test(t); }) &&
+   filas.some(function (t) { return /Nunca ordenar ni pegar corrido sólo algunas columnas/.test(t); }) &&
+   !filas.some(function (t) { return /encabezado gris|no la corrige|vuelve a poner|no escribe nada en la base hasta/.test(t); }) &&
    filas.indexOf(' • "Agenda": la semana en curso. "Agenda cerrada": las anteriores. Sólo lectura.') === n - 2 &&
    filas[n - 1] === ' • La solapa "Agenda" de este archivo es la misma "Agenda": la escribe el sistema cada hora. Sólo lectura.', 'el texto, tal cual');
 ok(g.protecciones.length === 1 && g.protecciones[0].aviso === false && g.protecciones[0].editores.length === 1 &&
@@ -161,7 +169,8 @@ const l = E.planilla(idAg).getSheetByName('LEER');
 ok(E.planilla(idAg).getSheets()[0] === l && celda(l, 1) === 'AGENDA DE ENCUENTROS CON VECINOS' && fmt(l, 1).fondo === '#1F3864',
    'primera de la izquierda, con su título');
 const fl = []; for (let f = 1; f <= r.leer.filas; f++) fl.push(celda(l, f));
-ok(fl.indexOf('IMPORTANTE') > 0 && fl[fl.length - 1] === ' • No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)' &&
+ok(fl.indexOf('IMPORTANTE') > 0 && fl[fl.length - 2] === ' • No se edita: se reescribe en cada actualización. Las correcciones se hacen en la base RDV. (La excepción: las columnas del equipo de "Agenda (mail)".)' &&
+   /^ • En la base RDV se corrigen los datos .* nunca sólo algunas columnas\.$/.test(fl[fl.length - 1]) &&
    l.congeladas === 1 && l.sinGrilla && l.maxCols === 1, 'el texto y el mismo formato');
 ok(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v && Object.keys(E.planilla(idDest).getSheetByName('RVD JM-CM - ES').v).length === 0 &&
    Object.keys(E.planilla(idAg).getSheetByName('Agenda').v).length === 0, 'no toca ninguna otra solapa');
@@ -172,8 +181,24 @@ console.log('[3b] con FORMULARIOS_SIN_FILA prendida (13/10), la GUÍA suma su se
   const f2 = E2.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
   const f1 = E.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
   ok(f2.indexOf('SOLAPA FORMULARIOS_SIN_FILA (formularios que no quedaron en ninguna fila)') >= 0 &&
-     f2.filter(function (t) { return /^ • /.test(t); }).length === 29 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
-     'prendida: 8 secciones y 29 viñetas; apagada: ni una mención');
+     f2.filter(function (t) { return /^ • /.test(t); }).length === 31 && f1.join('|').indexOf('FORMULARIOS_SIN_FILA') < 0,
+     'prendida: 9 secciones y 31 viñetas; apagada: ni una mención');
+}
+
+console.log('[3d] 20/10 (prompt 10): con el guardián prendido, la GUÍA dice qué pasa si se toca una columna del sistema (según el modo)');
+{
+  crearEntorno.guardian = 'avisar';
+  const Ea = crearEntorno(false);
+  crearEntorno.guardian = 'restaurar';
+  const Er = crearEntorno(false);
+  crearEntorno.guardian = null;
+  const ga = Ea.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; }), gr = Er.run('filasAyuda_(AYUDA_GUIA_)').map(function (x) { return x.texto; });
+  const tiene = function (l, re) { return l.some(function (t) { return re.test(t); }); };
+  ok(tiene(ga, /encabezado gris y están protegidas/) && tiene(ga, /el sistema no la corrige: le avisa/) && !tiene(ga, /vuelve a poner como estaba/) &&
+     tiene(ga, /no escribe nada en la base hasta que se arregle/) && ga.filter(function (t) { return /^ • /.test(t); }).length === 31,
+     'modo avisar: el gris y la protección, "no la corrige: le avisa", y que una desalineación frena (31 viñetas)');
+  ok(tiene(gr, /vuelve a poner como estaba en la hora siguiente/) && !tiene(gr, /no la corrige: le avisa/) && tiene(gr, /no escribe nada en la base hasta que se arregle/),
+     'modo restaurar: "la vuelve a poner como estaba"');
 }
 
 console.log('[3c] la LEER y el formato de "Agenda Directa" (15/10): sólo con AGENDA_MAIL_FORMATO_DIRECTA');

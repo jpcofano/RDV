@@ -2902,6 +2902,118 @@ function escenarioSecoIgualReal() {
      'un barrio cargado cambia sólo la huella del destino: ' + parte(a, 'destino') + ' → ' + parte(b, 'destino'));
 }
 
+/**
+ * [33] (20/10, prompt 10, punto 1) EL GUARDIÁN en la corrida de la hora (upsertDiario): va PRIMERO; un cambio del equipo en una columna
+ * del sistema se AVISA (modo avisar: no se toca) o se RESTAURA; una B no se mira; una DESALINEACIÓN frena TODA la escritura de la corrida
+ * (también el orden de la base) y avisa, la siguiente vuelve a mirar, y arreglada la corrida escribe; y APAGADO, la corrida da IDÉNTICO
+ * al código de d5662f3 (leído con git).
+ */
+const BASE_GIT_GUARDIAN = 'd5662f3';
+function escenarioGuardian() {
+  console.log('\n[33] EL GUARDIÁN en la corrida de la hora (20/10, prompt 10): primero; avisar / restaurar; la desalineación frena todo (también el orden)');
+  const TRAZA_I = TRAZA.map(colD);
+  const nuevo = function (modo, fuente, cfgExtra) {
+    const cfg = Object.assign({ BASE_ORDEN_POR_FECHA: 'true', IDS_EN_LA_HORA: 'false' }, cfgExtra || {});
+    if (modo) { cfg.GUARDIAN_ACTIVO = 'true'; cfg.GUARDIAN_MODO = "'" + modo + "'"; }
+    const E = crearEntorno({ config: cfg, extra: ['46_Guardian.js'], fuente: fuente });
+    let k = 0;
+    E.ctx.Utilities.getUuid = function () { k++; return 'uuid-' + ('000' + k).slice(-4); };
+    E.ordenes = 0;
+    E.ctx.ordenarBaseEnLaHora_ = function () { E.ordenes++; return { nada: 'stub del test' }; };
+    E.avisos = [];
+    E.ctx.registrarAviso_ = function (t, x) { E.avisos.push({ tema: t, texto: x }); return true; };
+    const m = montar(E, 40, true);
+    const out = { E: E, m: m };
+    Object.defineProperty(out, 'h', { get: function () { return m.ssD.hojas['RVD JM-CM - ES']; } });
+    Object.defineProperty(out, 'ordenes', { get: function () { return E.ordenes; } });
+    Object.defineProperty(out, 'avisos', { get: function () { return E.avisos; } });
+    return out;
+  };
+  const reg = function (X) { const h = X.m.ssI.hojas['REGISTRO_UPSERT']; return h.v[h.v.length - 1][h.v[0].indexOf('guardian')]; };
+  const modoReg = function (X) { const h = X.m.ssI.hojas['REGISTRO_UPSERT']; return h.v[h.v.length - 1][1]; };
+  const pend = function (X) { const h = X.m.ssI.hojas['AGENDA_PENDIENTES']; return h ? h.v.slice(1).filter(function (r) { return /^guardian\|/.test(r[11]); }) : []; };
+  const conUid = function (X) { for (let i = 1; i < X.h.v.length; i++) if (X.h.v[i][colD('RDV_UID')]) return i; return -1; };
+
+  // --- avisar ---
+  let X = nuevo('avisar');
+  let r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.ordenes === 1 && !!X.m.ssI.hojas['SISTEMA_COPIA'] && /sin copia/.test(reg(X)), 'la primera corrida: sin copia, escribe, ordena y toma la copia al final');
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.ordenes === 2 && /avisadas 0 celdas/.test(reg(X)) && !X.avisos.length, 'la segunda: nada que avisar');
+  const i = conUid(X);
+  X.h.v[i][colD('form_origen')] = 'lo tipeó el equipo';
+  X.h.v[i + 1][colD('Inscriptos')] = 4321;                 // una B: no se mira
+  const iSexo = (function () { for (let j = 1; j < X.h.v.length; j++) if (X.h.v[j][colD('RDV_UID')] && X.h.v[j][colD('Masculinos')] !== '') return j; return -1; })();
+  X.h.v[iSexo][colD('Masculinos')] = '';                   // un hueco que la corrida completa (sigue escribiendo)
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.h.v[i][colD('form_origen')] === 'lo tipeó el equipo' && X.h.v[i + 1][colD('Inscriptos')] === 4321 && X.h.v[iSexo][colD('Masculinos')] !== '' &&
+     X.ordenes === 3 && modoReg(X) === 'ESCRITURA',
+     'modo AVISAR: no restaura la A ni toca la B; la corrida sigue escribiendo (Masculinos) y ordenando');
+  ok(X.avisos.length === 1 && X.avisos[0].tema === 'guardian_cambios' && /form_origen/.test(X.avisos[0].texto) && pend(X).length === 1 && /avisadas 1 celdas/.test(reg(X)),
+     '   avisa: el mail (guardian_cambios), AGENDA_PENDIENTES y REGISTRO_UPSERT ("avisadas 1")');
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.avisos.length === 1 && /avisadas 0 celdas/.test(reg(X)), '   la corrida siguiente no lo vuelve a avisar (la copia del final lo tomó)');
+
+  // --- restaurar ---
+  X = nuevo('restaurar');
+  X.E.ejecutar('upsertDiario');
+  const j = conUid(X), antes = X.h.v[j][colD('form_origen')];
+  X.h.v[j][colD('form_origen')] = 'lo tipeó el equipo';
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.h.v[j][colD('form_origen')] === antes && /restauradas 1 celdas/.test(reg(X)) && X.avisos.length === 1, 'modo RESTAURAR: la vuelve a lo de la copia y avisa');
+
+  // --- la DESALINEACIÓN ---
+  X = nuevo('avisar');
+  X.E.ejecutar('upsertDiario');
+  X.E.ejecutar('upsertDiario');
+  const k2 = (function () { for (let q = 1; q < X.h.v.length; q++) if (X.h.v[q][colD('RDV_UID')] && X.h.v[q][colD('Masculinos')] !== '') return q; return -1; })();
+  X.h.v[k2][colD('Masculinos')] = '';                       // algo que la corrida escribiría
+  const base0 = X.h.v.map(function (x) { return x.slice(); });
+  // el equipo ordena SÓLO sus columnas (las de traza y las derivadas, quietas), por figura
+  const sis = TRAZA_I.concat(DERIVADAS.map(colD));
+  const datos = X.h.v.slice(1), ord = datos.map(function (x, q) { return q; }).sort(function (a, b) { return String(datos[a][colD('Figura')]).localeCompare(String(datos[b][colD('Figura')])) || a - b; });
+  X.h.v = [X.h.v[0]].concat(datos.map(function (row, q) { return row.map(function (v, c) { return sis.indexOf(c) >= 0 ? v : datos[ord[q]][c]; }); }));
+  const fotoD = JSON.stringify(foto(X.h)), ordenes0 = X.ordenes, copia0 = JSON.stringify(X.m.ssI.hojas['SISTEMA_COPIA'].v);
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && JSON.stringify(foto(X.h)) === fotoD && X.ordenes === ordenes0 && modoReg(X) === 'en seco',
+     'DESALINEACIÓN: la corrida NO escribe nada en la base (ni el hueco de Masculinos, ni el orden: ' + (X.ordenes - ordenes0) + ' órdenes)');
+  ok(X.avisos.length === 1 && X.avisos[0].tema === 'guardian_desalineacion' && /fila \d+ /.test(X.avisos[0].texto) && pend(X).length > 0 &&
+     /DESALINEADA/.test(reg(X)) && JSON.stringify(X.m.ssI.hojas['SISTEMA_COPIA'].v) === copia0,
+     '   avisa (mail con las filas, ' + pend(X).length + ' líneas en AGENDA_PENDIENTES, REGISTRO_UPSERT) y no graba la copia');
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && JSON.stringify(foto(X.h)) === fotoD && X.ordenes === ordenes0, '   la corrida siguiente vuelve a mirar: sigue sin escribir nada');
+  X.h.v = base0.map(function (x) { return x.slice(); });   // el equipo deshace el orden
+  r = X.E.ejecutar('upsertDiario');
+  ok(!r.error && X.h.v[k2][colD('Masculinos')] !== '' && X.ordenes === ordenes0 + 1 && pend(X).length === 0,
+     'arreglada: la corrida escribe (Masculinos), ordena, y las líneas del guardián se van de AGENDA_PENDIENTES');
+
+  // --- APAGADO = IDÉNTICO al código de d5662f3 ---
+  const deGit = function (f) { return execSync('git show ' + BASE_GIT_GUARDIAN + ':"' + f + '"', { cwd: RAIZ, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); };
+  let gitOk = true;
+  try { deGit('46_Guardian.js'); } catch (e) { gitOk = false; }
+  if (!gitOk) { console.log('  (no se pudo leer el commit ' + BASE_GIT_GUARDIAN + ': se saltea la comparación)'); return; }
+  const N = nuevo(null), V = nuevo(null, deGit);
+  const unaHora = function (Y, n) {
+    if (n === 2) { const q = conUid(Y); Y.h.v[q][colD('form_origen')] = 'lo tipeó el equipo'; Y.h.v[q + 2][colD('Masculinos')] = ''; }
+    return Y.E.ejecutar('upsertDiario');
+  };
+  let iguales = true, donde = '';
+  [1, 2, 3].forEach(function (n) {
+    const rn = unaHora(N, n), rv = unaHora(V, n);
+    if (iguales && (!!rn.error !== !!rv.error)) { iguales = false; donde = 'corrida ' + n + ': error ' + (rn.error || rv.error); }
+    if (iguales && JSON.stringify(foto(N.h)) !== JSON.stringify(foto(V.h))) { iguales = false; donde = 'corrida ' + n + ': la base'; }
+    const hojas = function (Y) { const o = {}; Object.keys(Y.m.ssI.hojas).sort().forEach(function (nm) { o[nm] = Y.m.ssI.hojas[nm].v; }); return JSON.stringify(o); };
+    if (iguales && hojas(N) !== hojas(V)) {
+      iguales = false;
+      const a = JSON.parse(hojas(N)), b = JSON.parse(hojas(V));
+      donde = 'corrida ' + n + ': la intermedia (' + Object.keys(a).concat(Object.keys(b)).filter(function (nm) { return JSON.stringify(a[nm]) !== JSON.stringify(b[nm]); }).join(', ') + ')';
+    }
+    if (iguales && (N.ordenes !== V.ordenes || N.avisos.length !== V.avisos.length)) { iguales = false; donde = 'corrida ' + n + ': el orden o los avisos'; }
+  });
+  ok(iguales, 'APAGADO (GUARDIAN_ACTIVO = false): tres corridas de la hora (con un cambio del equipo en el medio) dan IDÉNTICO al código de ' +
+     BASE_GIT_GUARDIAN + ': la base con sus fondos, toda la intermedia, el orden y los avisos' + (donde ? ' — ' + donde : ''));
+}
+
 // ============================== correr ==============================
 
 const conViejo = process.argv.indexOf('--viejo') >= 0;
@@ -2920,7 +3032,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
     process.argv.indexOf('--columnasb') >= 0 || process.argv.indexOf('--paso47') >= 0 ||
     process.argv.indexOf('--ubicacion') >= 0 || process.argv.indexOf('--tanda') >= 0 ||
     process.argv.indexOf('--fichas0810') >= 0 || process.argv.indexOf('--id') >= 0 ||
-    process.argv.indexOf('--looker') >= 0) {   // uno solo, para iterar
+    process.argv.indexOf('--looker') >= 0 || process.argv.indexOf('--guardian') >= 0) {   // uno solo, para iterar
   if (process.argv.indexOf('--gemelos') >= 0) escenarioGemelos();
   else if (process.argv.indexOf('--pasoB') >= 0) escenarioPasoB();
   else if (process.argv.indexOf('--elegido') >= 0) { escenarioPorQueVacia(); escenarioElegido(); }
@@ -2941,6 +3053,7 @@ if (process.argv.indexOf('--gemelos') >= 0 || process.argv.indexOf('--pasoA') >=
   else if (process.argv.indexOf('--id') >= 0) escenarioInvestigarId();
   else if (process.argv.indexOf('--looker') >= 0) escenarioLooker();
   else if (process.argv.indexOf('--guarda') >= 0) escenarioGuardaTiempo();
+  else if (process.argv.indexOf('--guardian') >= 0) escenarioGuardian();
   else { escenarioPasoA(); escenarioEncabezadosB(); escenarioMalEscritas(); }
   console.log('\n%s', fallas ? fallas + ' FALLAS' : 'TODO OK');
   process.exit(fallas ? 1 : 0);
@@ -2988,6 +3101,7 @@ escenarioInvestigarId();
 escenarioLooker();
 escenarioPaso47();
 escenarioGuardaTiempo();
+escenarioGuardian();
 
 // Sensibilidad del modelo: con el servicio el doble de lento.
 const Ed = crearEntorno({ costo: { op: 80, lectura: 120 } }); montar(Ed, 800, true);

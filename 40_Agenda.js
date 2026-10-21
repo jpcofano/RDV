@@ -71,7 +71,10 @@ function correrAgenda(enSeco, opciones) {
     return null;
   }
   try {
-    return correrAgendaEnBloqueo_(enSeco, opciones);
+    const r = correrAgendaEnBloqueo_(enSeco, opciones);
+    // 20/10 (prompt 10): la agenda a mano escribió la base → la copia del guardián, de nuevo (apagado no hace nada)
+    if (!enSeco && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('la agenda a mano');
+    return r;
   } finally {
     lock.releaseLock();
   }
@@ -2565,7 +2568,10 @@ function deshacerAgenda(enSeco, corrida) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(ESPERA_BLOQUEO_MS)) { Logger.log('>>> Hay otra corrida en curso: no se deshace nada.'); return null; }
   try {
-    return _deshacerAgenda_(enSeco, corrida);
+    const r = _deshacerAgenda_(enSeco, corrida);
+    // 20/10 (prompt 10): deshacer escribió la base → la copia del guardián, de nuevo (apagado no hace nada)
+    if (!enSeco && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('deshacer la agenda (paso 38)');
+    return r;
   } finally {
     lock.releaseLock();
   }
@@ -4093,8 +4099,12 @@ function matrizPendientesAgenda_(P, previas) {
   });
   const limite = ahora.getTime() - AGENDA_PENDIENTES_DIAS_EVENTOS * 86400000;
   (previas || []).forEach(function (x) {
-    if (!x.id || ids.has(x.id) || TIPOS_EVENTO_PENDIENTES_AGENDA_.indexOf(x.tipo) < 0) return;
-    if (!(x.desde instanceof Date) || x.desde.getTime() < limite) return;
+    if (!x.id || ids.has(x.id)) return;
+    // 20/10 (prompt 10, el guardián): sus líneas ("guardian|…") las escribe y las saca el guardián al principio de cada corrida; la
+    // agenda las conserva tal cual (sólo con GUARDIAN_ACTIVO: apagado, todo como antes)
+    const delGuardian = typeof GUARDIAN_ACTIVO !== 'undefined' && GUARDIAN_ACTIVO && /^guardian\|/.test(x.id);
+    if (!delGuardian && TIPOS_EVENTO_PENDIENTES_AGENDA_.indexOf(x.tipo) < 0) return;
+    if (!delGuardian && (!(x.desde instanceof Date) || x.desde.getTime() < limite)) return;
     ids.add(x.id);
     out.push(x.fila.slice(0, ENC_PENDIENTES_AGENDA_.length));
   });

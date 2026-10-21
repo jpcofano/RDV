@@ -147,6 +147,7 @@ function _cancelarFilaAgenda_(fila, enSeco, opciones) {
   try { planF.escrito = aplicarPlanAgenda_(sh, destF, planF, corrida); }
   catch (err) { Logger.log('>>> %s', err && err.message || err); out.error = String(err && err.message || err); return fin(out); }
   _completarRegistroAgenda_(planF, t0);
+  if (typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('la suspensión a mano (paso 92)');   // apagado no hace nada
   out.corrida = corrida;
   out.escritas = planF.escrito.hechas.length;
   out.suspendida = planF.escrito.hechas.some(function (e) { return e.col === col('STATUS REUNIÓN'); });

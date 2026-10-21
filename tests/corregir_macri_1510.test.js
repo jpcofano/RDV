@@ -21,7 +21,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js', '25_Elecciones.js', '26_Fichas.js', '27_RevisarFormato.js',
                   'diagnostico/22_previsualizar.js', 'diagnostico/30_duplicados_agenda.js', '54_FusionAgenda.js', '50_Avisos.js',
                   'diagnostico/29_auditoria_agenda.js', '30_Derivadas.js', '44_Looker.js', '45_IdsCuentas.js', '55_SimularCorrida.js',
-                  '56_SepararReunion.js', '58_CorregirReunion.js', '51_FormatoLectura.js', '47_AgendaVistas.js'];
+                  '56_SepararReunion.js', '58_CorregirReunion.js', '51_FormatoLectura.js', '47_AgendaVistas.js', '46_Guardian.js'];
 let AHORA = new Date(2026, 9, 12, 9, 0, 0).getTime();
 const avanzar = function (min) { AHORA += min * 60000; };
 class D extends Date {
@@ -105,7 +105,8 @@ function crearEntorno(config) {
     clearContents() { this.v = this.v.map(function (r) { return r.map(function () { return ''; }); }); }
   }
   E.Hoja = Hoja;
-  const planillas = {};
+  const planillas = (config && config.__planillas) || {};   // 20/10: otro entorno sobre las mismas planillas (el guardián)
+  E.planillas = planillas;
   E.planilla = function (id) {
     if (!planillas[id]) planillas[id] = { hojas: {}, getSheetByName: function (n) { return this.hojas[n] || null; },
                                            insertSheet: function (n) { this.hojas[n] = new Hoja(n, []); return this.hojas[n]; },
@@ -382,6 +383,32 @@ const difs = E.hdr.filter(function (h, k) { return !E.run('esColumnaDerivada_(' 
 ok(!difs.length, 'la 824 vuelve a como estaba (fuera de las derivadas) — ' + JSON.stringify(difs));
 r = E.run('deshacerCorregirReunion(false)');
 ok(r && r.error, 'deshacer dos veces: no hace nada');
+
+// ============================== [6] 20/10 (prompt 10): con el guardián prendido, el c02 y el c08 no le dan falsos avisos ==============================
+
+console.log('[6] con el guardián prendido: la corrección (c02) y su deshacer (c08) actualizan la copia → la corrida siguiente no avisa nada');
+{
+  const G = crearEntorno(Object.assign({}, ETAPA1, { GUARDIAN_ACTIVO: 'true', __planillas: E.planillas }));
+  G.props = JSON.parse(JSON.stringify(E.props || {}));
+  delete G.props.CORREGIR_REUNION_CORRIDA_C02;
+  G.ctx.__opc = E.ctx.__opc;
+  G.run('tomarCopiaSistema_()');
+  const copiaAntes = JSON.stringify(G.planilla(G.run('RDV_SS_INTERMEDIA')).hojas['SISTEMA_COPIA'].v);
+  const s6 = G.run('corregirReunion_enSeco(__opc)');
+  const c6 = G.run('corregirReunion(__opc)');
+  ok(s6 && s6.listo === true && c6 && !c6.error && c6.celdas >= 6, 'c01 / c02 con el guardián prendido: corrige — ' + JSON.stringify(c6 && (c6.error || c6.celdas)));
+  ok(JSON.stringify(G.planilla(G.run('RDV_SS_INTERMEDIA')).hojas['SISTEMA_COPIA'].v) !== copiaAntes, '   y la copia del guardián se volvió a tomar después');
+  let g = G.run('guardianAntesDeEscribir_(true)');
+  ok(g && !g.frenar && !g.vieja && !g.desalineada && g.plan.cambios.length === 0, 'la corrida siguiente: ni desalineada, ni cambios, ni copia vieja — ' + (g && g.resumen));
+  G.ctx.__c = JSON.parse(copiaAntes);
+  const sinActualizar = G.run('(function () { var e = __c.slice(1).map(function (r) { var o = {}; try { o = JSON.parse(r[3]); } catch (x) {} var v = {}; Object.keys(o).forEach(function (k) { v[k] = _desGuardian_(o[k]); }); ' +
+                              'return { clave: String(r[0]), huella: String(r[1]), fila: Number(r[2]), valores: v, desempate: String(r[4]) }; }); ' +
+                              'return planGuardian_(e, leerEstadoGuardian_(hojaDestinoGuardian_())).cambios.length; })()');
+  ok(sinActualizar > 0, '   (con la copia de ANTES del c02 habría avisado ' + sinActualizar + ' celdas: por eso se actualiza)');
+  const d6 = G.run('deshacerCorregirReunion(false)');
+  g = G.run('guardianAntesDeEscribir_(true)');
+  ok(d6 && !d6.error && g && !g.frenar && !g.vieja && g.plan.cambios.length === 0, 'c08 (deshacer): tampoco — ' + (g && g.resumen));
+}
 
 console.log('');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');

@@ -577,22 +577,54 @@ const IDS_RE_SEGURIDAD_FILA = /\bseguridad en tu barrio\b|\bsobre seguridad\b/;
 // ===================== El guardián de las columnas del sistema (09/10; 46_Guardian.js; CLAUDE.md, sección 0) =====================
 
 /**
- * **El guardián en la corrida de la hora** (decisión del usuario, 09/10): antes de escribir nada, compara las columnas del
- * sistema contra su copia (SISTEMA_COPIA) y restaura lo que cambió sin que lo cambiara el sistema; si alguien ordenó sólo
- * algunas columnas (desalineación), reubica las del sistema por la huella figura + fecha; si no puede sin ambigüedad, esa
- * corrida no escribe nada en la base. `false` hasta: paso 58 (en seco) → paso 59 (ocultar, proteger, primera copia).
+ * **El guardián en la corrida de la hora** (decisión del usuario, 09/10; REDISEÑADO el 20/10, prompt 10 punto 1): PRIMERO, antes del
+ * orden de la base y de todo, compara las columnas de la clase A contra su copia (SISTEMA_COPIA):
+ *   - DESALINEACIÓN (alguien ordenó o pegó corrido sólo algunas columnas): NO la arregla moviendo datos (hasta el 20/10 las
+ *     "reubicaba"); esa corrida no escribe NADA en la base (tampoco la ordena) y avisa (mail, AGENDA_PENDIENTES, REGISTRO_PROTECCION)
+ *     con las filas y columnas que no cierran. La corrida siguiente vuelve a mirar;
+ *   - un cambio en una columna A: GUARDIAN_MODO = 'avisar' lo avisa y no lo toca; 'restaurar' lo vuelve atrás (y avisa).
+ * `false` hasta: paso 111 (en seco: las clases y qué avisaría) → 112 (la copia nueva) → 113 / 114 (ocultar y proteger) → `true` con
+ * GUARDIAN_MODO = 'avisar'; unos días sin avisos falsos y el OK del usuario → 'restaurar'.
  */
 const GUARDIAN_ACTIVO = false;
+/** 'avisar' (detecta y reporta, no restaura) o 'restaurar'. Empieza en 'avisar' (decisión del usuario, 20/10). */
+const GUARDIAN_MODO = 'avisar';
+/**
+ * **Las TRES CLASES de columnas de la base** (20/10, prompt 10, 1a), por ENCABEZADO (nunca por posición). El paso 111 las muestra
+ * contra la base real, con las columnas que no están en ninguna lista. Las cuatro listas juntas cubren las 65 columnas de hoy.
+ *
+ * A — DEL SISTEMA, PURAS: las escribe sólo el sistema. Protegidas con advertencia, encabezado gris; las técnicas (GUARDIAN_OCULTAR),
+ * ocultas. El guardián las compara contra su copia (y en modo 'restaurar', las vuelve atrás). Son COLUMNAS_TRAZA + COLUMNAS_AGENDA +
+ * COLUMNAS_IDS (un test lo controla). Ojo: con el guardián en 'restaurar', el "no" que el equipo escribía en "ID cuentas" (decisión
+ * 14) también se vuelve atrás.
+ */
+const GUARDIAN_CLASE_A = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave',
+  'No participa', 'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita', 'agenda_direccion_escrita',
+  'agenda_barrio_escrito', 'agenda_fecha_escrita', 'agenda_status_escrito', 'Origen fila', 'Tocado por el equipo',
+  'Evento (mail)', 'Lugar (mail)', 'Dirección (mail)', 'Marcas (mail)', 'Conjunta con', 'ID cuentas', 'Fecha envío campañas'];
+/** A — las DERIVADAS (las once + la ID): protegidas y grises como las A, pero el guardián no las compara: las recalcula cada corrida. */
+const GUARDIAN_CLASE_A_DERIVADAS = ['Día de la semana', '% de Asistencia', 'Direccion2', 'Falta Informacion', 'Comuna', 'Poblacion',
+  'p. Mujer', 'P. Varon', '(km2)', '(hab/km2)', 'Zona', 'ID'];
+/**
+ * B — DATOS QUE ESCRIBE EL SISTEMA PERO EL EQUIPO PUEDE CORREGIR. El guardián NO las restaura nunca: la corrección del equipo vale
+ * (la agenda la anota en "Tocado por el equipo"). Sexo, edades y "Sin identificar" van acá (verificado en el código, 20/10: el upsert
+ * los escribe sólo en celda vacía —setSiDelSistemaLote_— y nunca vuelve a tocar lo que haya; una corrección del equipo se queda).
+ */
+const GUARDIAN_CLASE_B = ['Figura', 'Barrio', 'EVENTO', 'FECHA', 'HORA', 'Dirección', 'STATUS REUNIÓN', 'Inscriptos', 'Mail',
+  'Call Center', 'IVR', 'RRSS', 'Difusión', 'Asistentes', 'Oradores anotados', 'Oradores que hablaron', 'Masculinos', 'Femeninos',
+  '18-24', '25-39', '40-55', '56-65', '66+', 'Sin identificar'];
+/** C — DEL EQUIPO: ni el guardián ni el sistema las tocan. */
+const GUARDIAN_CLASE_C = ['One Page Entregado', 'Observaciones', 'Temas mas comentados', 'Semaforo politico', 'Síntesis cualitativa:'];
 /** La copia de las columnas del sistema, una fila por fila de la base (intermedia; se reescribe al final de cada corrida). */
 const RDV_HOJA_SISTEMA_COPIA = 'SISTEMA_COPIA';
-/** Lo que restauró, reubicó o no pudo reubicar el guardián (intermedia; se acumula). */
+/** Lo que vio el guardián: cambios avisados o restaurados, filas desalineadas (intermedia; se acumula). */
 const RDV_HOJA_REGISTRO_PROTECCION = 'REGISTRO_PROTECCION';
-/** Las columnas técnicas que se OCULTAN (sólo traza): las otras del sistema quedan a la vista, en gris y protegidas. */
+/** Las columnas técnicas que se OCULTAN (traza y agenda_*, todas de la clase A): las otras A quedan a la vista, en gris y protegidas. */
 const GUARDIAN_OCULTAR = ['RDV_UID', 'form_origen', 'form_score', 'form_nivel', 'form_fecha_match', 'form_clave',
   'agenda_uid', 'agenda_mail', 'agenda_version', 'agenda_hora_escrita', 'agenda_direccion_escrita', 'agenda_barrio_escrito',
   'agenda_fecha_escrita', 'agenda_status_escrito'];
 /** La descripción de la protección con advertencia de las columnas del sistema (para reconocerla y no duplicarla). */
-const DESC_PROTECCION_SISTEMA = 'RDV: columna del sistema — si se toca, el sistema la corrige (guardián)';
+const DESC_PROTECCION_SISTEMA = 'RDV: columna del sistema — no editar (el guardián avisa o la vuelve atrás)';
 /** El gris del encabezado de las columnas del sistema ("las columnas grises" de la GUÍA). Sólo la fila 1. */
 const GUARDIAN_GRIS_ENCABEZADO = '#D9D9D9';
 /** Cuándo se tomó la copia y cuándo escribió el sistema por última vez (ms): si escribió después, la copia está vieja. */
@@ -602,6 +634,15 @@ const GUARDIAN_COPIA_MAX_MS = 75 * 60 * 1000;
 /** Con tantas filas restauradas o limpiadas a la vez, el log avisa en grande (alguien ordenó o movió columnas del sistema). */
 const GUARDIAN_MUCHAS_FILAS = 5;
 const PROP_GUARDIAN_ESCRITURA = 'GUARDIAN_ULTIMA_ESCRITURA_SISTEMA';
+/** Lo que hizo el paso 114 (y las columnas A nuevas): qué ocultó, protegió y pintó de gris (con el color de antes). El paso 115 lo deshace. */
+const PROP_GUARDIAN_PREPARADO = 'GUARDIAN_OCULTAR_PROTEGER_REGISTRO';
+/** La huella del paso 113 (en seco), que exige el 114; vence a las GUARDIAN_HUELLA_SECO_HORAS y sirve una vez. */
+const PROP_GUARDIAN_HUELLA_SECO = 'GUARDIAN_OCULTAR_PROTEGER_HUELLA_113';
+const GUARDIAN_HUELLA_SECO_HORAS = 2;
+/** El "tipo" de las líneas del guardián en AGENDA_PENDIENTES (id "guardian|…"; la agenda las conserva al reescribir la solapa). */
+const GUARDIAN_TIPO_PENDIENTE_DESALINEADA = 'guardián: base desalineada (no se escribió nada)';
+const GUARDIAN_TIPO_PENDIENTE_CAMBIO = 'guardián: columna del sistema cambiada (avisado)';
+const GUARDIAN_TIPO_PENDIENTE_RESTAURADA = 'guardián: columna del sistema cambiada (restaurada)';
 
 // ===================== Ventana de análisis =====================
 

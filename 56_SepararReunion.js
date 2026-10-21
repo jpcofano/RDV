@@ -531,7 +531,7 @@ function aplicarSepararReunion_(sh, plan, caso) {
   if (DERIVADAS_POR_SCRIPT) {
     try { recalcDerivadas_(RDV_HOJA_DESTINO, true); } catch (err) { Logger.log('>>> las derivadas NO se recalcularon: %s (lo demás ya quedó)', err); }
   }
-  if (GUARDIAN_ACTIVO) { try { tomarCopiaSiAlineada_(); } catch (err) { Logger.log('>>> el guardián no pudo tomar la copia: %s', err); } }
+  if (typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('separar la reunión (paso 102)');   // apagado no hace nada
   // 5. la verificación
   const vx = sh.getRange(X, 1, 1, nCols).getValues()[0], vn = sh.getRange(N, 1, 1, nCols).getValues()[0];
   const falta = plan.viejas.filter(function (e) { return valorAgendaComparable_(vx[e.col - 1], e.nombre) !== valorAgendaComparable_(e.valor, e.nombre); })
@@ -646,7 +646,7 @@ function _deshacerSeparar_(enSeco, corrida) {
   reg.appendRow([id + '-deshacer', new Date(), 'DESHACER ' + id, '', '', '', '', '', '', '', '', '', '', '', '', '', d.hechas.length,
                  JSON.stringify({ filas_borradas: s.borradas, filas_vaciadas: s.vaciadas }), d.saltadas.length, Date.now() - t0, '', '', '', '', '']);
   try { PropertiesService.getScriptProperties().deleteProperty(SEPARAR_PROP_CORRIDA); } catch (e) { /* el log lo dice */ }
-  if (GUARDIAN_ACTIVO) { try { tomarCopiaSiAlineada_(); } catch (err) { Logger.log('>>> el guardián no pudo tomar la copia: %s', err); } }
+  if (typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('deshacer la separación (paso 103)');   // apagado no hace nada
   Logger.log('>>> deshecho: celdas vueltas %s (no se pudieron: %s) | fila nueva borrada %s, vaciada %s', d.hechas.length, d.saltadas.length, s.borradas, s.vaciadas);
   return { corrida: id, celdas: d.hechas.length, saltadas: d.saltadas.length, borradas: s.borradas, vaciadas: s.vaciadas };
 }

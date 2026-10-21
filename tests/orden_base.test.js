@@ -21,7 +21,7 @@ const ARCHIVOS = ['00_Config.js', '01_Utils.js', '02_Parsing.js', '05_Escritura.
                   'diagnostico/19_direccion_conjunto.js', 'diagnostico/21_ubicacion.js', '25_Elecciones.js', '26_Fichas.js', '27_RevisarFormato.js',
                   'diagnostico/22_previsualizar.js', 'diagnostico/30_duplicados_agenda.js', '54_FusionAgenda.js', '50_Avisos.js',
                   'diagnostico/29_auditoria_agenda.js', '30_Derivadas.js', '44_Looker.js', '45_IdsCuentas.js', '55_SimularCorrida.js',
-                  '56_SepararReunion.js', '51_FormatoLectura.js', '47_AgendaVistas.js', '57_OrdenBase.js'];
+                  '56_SepararReunion.js', '51_FormatoLectura.js', '47_AgendaVistas.js', '57_OrdenBase.js', '46_Guardian.js'];
 let AHORA = new Date(2026, 9, 12, 9, 0, 0).getTime();
 const avanzar = function (min) { AHORA += min * 60000; };
 class D extends Date {
@@ -441,6 +441,27 @@ const L9 = E.logs.join('\n');
 ok(r && r.listo === true, 'LISTO: con el desempate nuevo, la próxima corrida da el mismo Aux_Maximos con la base ordenada — ' + JSON.stringify(r && r.motivos));
 ok(/cambian de representante UNA vez[^\n]*: 1 ---\n\s+02\/10\/2026 \| MaxPorFechaStatus Barrio "Flores" Realizada \| antes: Ezequiel Sabor \(Flores, 18:00\) → ahora: Laura Alonso \(Flores, 10:00\) \(empate en 20 asistentes\)/.test(L9),
    'el seco lista el empate que cambia de representante una vez (Sabor → Alonso, la de las 10:00)');
+
+// ============================== [10] 20/10 (prompt 10): con el guardián prendido, el orden no da falsos avisos ==============================
+
+console.log('[10] con el guardián prendido: el orden (108 / 109 y el de la hora) no es una desalineación ni un cambio');
+{
+  const G = montar({ GUARDIAN_ACTIVO: 'true' });
+  G.run('tomarCopiaSistema_()');
+  const vistas = function () { const g = G.run('guardianAntesDeEscribir_(true)'); return g && !g.frenar && !g.desalineada && !g.vieja && g.plan.cambios.length === 0 ? '' : JSON.stringify(g && g.resumen); };
+  G.ctx.__sim = SIM;
+  G.run('ordenBase_enSeco({ simulacion: __sim })');
+  let r10 = G.run('ordenarBaseAhora()');
+  ok(r10 && r10.movidas > 0 && vistas() === '', 'después del paso 108 (filas enteras movidas; la copia se volvió a tomar): nada que avisar ' + vistas());
+  r10 = G.run('deshacerOrdenBase(false)');
+  ok(r10 && r10.movidas > 0 && vistas() === '', 'después del paso 109: tampoco ' + vistas());
+  const H = montar({ GUARDIAN_ACTIVO: 'true', BASE_ORDEN_POR_FECHA: 'true' });
+  H.run('tomarCopiaSistema_()');
+  r10 = H.run('ordenarBaseEnLaHora_()');
+  const g = H.run('guardianAntesDeEscribir_(true)');
+  ok(r10 && r10.movidas > 0 && g && !g.desalineada && !g.frenar && g.plan.cambios.length === 0,
+     'el orden de la corrida de la hora (aunque la copia se tome recién al final): no es desalineación ni cambio — ' + (g && g.resumen));
+}
 
 console.log('');
 console.log(fallas ? fallas + ' FALLA(S)' : 'Todo en verde.');

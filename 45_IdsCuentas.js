@@ -133,9 +133,7 @@ function _correrIds_(enSeco, historial) {
   try { escribirSinCruzarIds_(res, corrida); }
   catch (err) { Logger.log('>>> No se pudo escribir %s: %s', IDS_SOLAPA_SIN_CRUZAR, err); }
   // el guardián (09/10): el historial de los IDs (paso 57, a mano) escribió en columnas del sistema: la copia, de nuevo
-  if (GUARDIAN_ACTIVO && historial && w) {
-    try { tomarCopiaSiAlineada_(); } catch (err) { Logger.log('>>> El guardián no pudo tomar la copia: %s', err); }
-  }
+  if (GUARDIAN_ACTIVO && historial && w && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('los IDs (paso 57)');
 
   res.ms = Date.now() - t0;
   res.escritas = w ? (w.ids || 0) + (w.fechas || 0) : 0;   // 16/10: para saber si la base cambió (49_Aceleraciones.js)
@@ -1311,6 +1309,7 @@ function corregirIdsSeguridad0910(escribe) {
     if (!escribe) { Logger.log('>>> EN SECO: no se tocó nada.'); return { plan: plan }; }
     const hechas = vaciarCeldasDelSistema_(sh, celdas);
     Logger.log('>>> vaciadas %s de %s celdas (las que no: alguien las cambió).', hechas.length, celdas.length);
+    if (hechas.length && typeof guardianCopiaTrasEscritura_ === 'function') guardianCopiaTrasEscritura_('vaciar los IDs (paso 63)');   // apagado no hace nada
     if (hechas.length) {
       const ss = ssIntermedia_();
       let reg = ss.getSheetByName(RDV_HOJA_REGISTRO_IDS);
